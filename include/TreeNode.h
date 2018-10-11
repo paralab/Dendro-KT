@@ -73,19 +73,25 @@ namespace ot {
       //@}
 
 
+      /** @name Mins and maxes */
+      inline unsigned int getLevel() const;
+      inline T minX(int d) const;
+      inline T maxX(int d) const;
+      inline std::array<T,dim> minX() const;
+      inline std::array<T,dim> maxX() const;
      
 
     };
         
 } // end namespace ot
 
-//#include "TreeNode.tcc"
-
 // Template specializations
 template class ot::TreeNode<unsigned int, 1>;
 template class ot::TreeNode<unsigned int, 2>;
 template class ot::TreeNode<unsigned int, 3>;
 template class ot::TreeNode<unsigned int, 4>;
+
+#include "TreeNode.tcc"
 
 #endif //DENDRO_KT_TREENODE_H
 
