@@ -24,6 +24,11 @@ extern unsigned int m_uiMaxDepth;
 
 namespace ot {
 
+    // Template forward declarations.
+    template<typename T, unsigned int dim> class TreeNode;
+    template<typename T, unsigned int dim>
+        std::ostream& operator<<(std::ostream& os, TreeNode<T,dim> const& other);
+
     /**
       @brief A class to manage octants.
       @author Rahul Sampath
@@ -73,12 +78,48 @@ namespace ot {
       //@}
 
 
+      /** @name Overloaded Operators */
+      //@{
+
+      /**
+        @author Rahul Sampath
+        @brief Assignment operator. No checks for dim or maxD are performed.
+        It's ok to change dim and maxD of the current octant using the assignment operator.
+        */
+      TreeNode & operator = (TreeNode const  & other);
+
+      /**
+        @author Rahul Sampath
+        @brief Two octants are equal if their respective anchors are equal and their levels are
+        equal.  
+        */
+      bool  operator == ( TreeNode const  &other) const;
+
+      /**
+        @author Rahul Sampath
+        @brief Two octants are equal if their respective anchors are equal and their levels are
+        equal.  
+        */
+      bool  operator != (TreeNode const  &other) const;
+
+          //@masado I didn't do inequality comparisons yet because I don't \
+                    know what space-filling curve will be used.
+
+      /**
+        @author Rahul Sampath
+        */
+      friend std::ostream & operator << <T,dim> (std::ostream & os,TreeNode<T,dim> const & node) ;  
+      //@}
+
+
       /** @name Mins and maxes */
-      inline unsigned int getLevel() const;
-      inline T minX(int d) const;
-      inline T maxX(int d) const;
-      inline std::array<T,dim> minX() const;
-      inline std::array<T,dim> maxX() const;
+      //@{
+      unsigned int getLevel() const;
+      T minX(int d) const;
+      T maxX(int d) const;
+      std::array<T,dim> minX() const;
+      std::array<T,dim> maxX() const;
+      //@}
      
 
     };

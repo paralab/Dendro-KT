@@ -5,6 +5,41 @@
 
 namespace ot {
 
+
+//========== Overloaded Operators =========== //
+
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::operator==(TreeNode<T,dim> const &other) const {
+  // std::array::operator== compares element by element.
+  //@masado Check if there is a function call overhead. If so, resort to TMP.
+  if ((m_uiCoords == other.m_uiCoords) &&
+      ((m_uiLevel & MAX_LEVEL) == (other.m_uiLevel & MAX_LEVEL))) {
+    return true;
+  } else {
+    return false;
+  }
+} //end fn.
+
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::operator!=(TreeNode<T,dim> const &other) const {
+  return (!((*this) == other));
+} //end fn.
+
+
+//
+// operator<<()
+//
+template<typename T, unsigned int dim>
+std::ostream& operator<<(std::ostream& os, TreeNode<T,dim> const& other) {
+  std::for_each(other.m_uiCoords.begin(), other.m_uiCoords.end(),
+      [&os] (T x) { os << x << " "; });
+  return (os << other.getLevel());
+} //end fn.
+
+
+
+
+
 template <typename T, unsigned int dim>
 inline unsigned int TreeNode<T,dim>::getLevel() const {
   return (m_uiLevel & MAX_LEVEL);

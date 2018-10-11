@@ -6,6 +6,11 @@ unsigned int m_uiMaxDepth = 30;   // @masado Does this go here? Should it be con
 
 namespace ot {
 
+// =============== Constructors ================= //
+
+//
+// TreeNode()
+//
 template <typename T, unsigned int dim>
 TreeNode<T,dim>::TreeNode() {
   m_uiLevel = 0;
@@ -21,6 +26,9 @@ TreeNode<T,dim>::TreeNode() {
 #endif
 } //end function
 
+//
+// TreeNode(coords, level)
+//
 template<typename T, unsigned int dim>
 TreeNode<T,dim>::TreeNode (const std::array<T,dim> coords, unsigned int level) {
   m_uiLevel = level;
@@ -44,7 +52,9 @@ TreeNode<T,dim>::TreeNode (const std::array<T,dim> coords, unsigned int level) {
 #endif
 } //end function
 
-
+//
+// TreeNode(otherTreeNode)
+//
 template<typename T, unsigned int dim>
 TreeNode<T,dim>::TreeNode (const TreeNode & other) {
   m_uiLevel = other.m_uiLevel;
@@ -56,8 +66,9 @@ TreeNode<T,dim>::TreeNode (const TreeNode & other) {
   //m_uiWeight = other.m_uiWeight;
 } //end function
 
-
-
+//
+// TreeNode(dummy, coords, level)
+//
 template<typename T, unsigned int dim>
 TreeNode<T,dim>::TreeNode (const int dummy, const std::array<T,dim> coords, unsigned int level)
 {
@@ -69,6 +80,18 @@ TreeNode<T,dim>::TreeNode (const int dummy, const std::array<T,dim> coords, unsi
   //m_uiDim = dim;
   //m_uiWeight = 1;
 }
+
+
+//Assignment operator
+template<typename T, unsigned int dim>
+TreeNode<T,dim>& TreeNode<T,dim>  :: operator = (TreeNode<T,dim>   const& other) {
+  if (this == (&other)) {return *this;}
+  m_uiCoords = other.m_uiCoords;
+  m_uiLevel = other.m_uiLevel;
+  ///m_uiWeight = other.m_uiWeight;
+
+  return *this;
+} //end fn.
 
 
 } //end namespace ot
