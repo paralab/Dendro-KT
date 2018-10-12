@@ -112,9 +112,60 @@ namespace ot {
       //@}
 
 
+      /**
+        @author Rahul Sampath
+        @name Getters and Setters
+        */
+      //@{
+      unsigned int getDim() const;
+      unsigned int getMaxDepth() const;
+      //unsigned int getWeight() const;
+      unsigned int getLevel() const;
+      unsigned int getFlag() const;
+      T getX(int d) const;
+      int getAnchor(std::array<T,dim> &xyz) const;
+      //Point getAnchor() const { return Point(m_uiX, m_uiY, m_uiZ); };
+      //unsigned char getChildNumber(bool real=true) const;
+      //unsigned char getMortonIndex() const ;
+      //int setWeight(unsigned int w);
+      //int addWeight(unsigned int w);
+      int setFlag(unsigned int w);
+      int orFlag(unsigned int w);
+      //@}
+
+      /**
+        @author Rahul Sampath
+        @name Pseudo-Getters and Setters
+       */
+      //@{
+      T getParentX(int d) const;
+
+      //@}
+
+      /**
+        @author Rahul Sampath
+        @return the parent of this octant
+        */
+      TreeNode  getParent() const;
+
+      /**
+        @author Rahul Sampath
+        @param The level of the ancestor
+        @return the ancestor of this octant at level 'ancLev'        
+        */
+      TreeNode	getAncestor(unsigned int ancLev) const;
+
+
+
+
+
+
+
+
+
+
       /** @name Mins and maxes */
       //@{
-      unsigned int getLevel() const;
       T minX(int d) const;
       T maxX(int d) const;
       std::array<T,dim> minX() const;
