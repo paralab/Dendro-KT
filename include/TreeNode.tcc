@@ -5,39 +5,35 @@
 
 namespace detail {
 
-///  /**
-///    @author Masado Ishii
-///    @brief Recursively defined static inline expressions for arbitrary number of terms.
-///  */
-///     //TODO put the inline short-circuit to the test.
-///  // Recursive case.
-///  template <unsigned int dim>
-///  struct StaticUtils
-///  {
-///    /**
-///      @param f  A function or operator()-enabled object: \
-///                ResType f(ResType prefixVal, unsigned int currentIdx).
-///      @param id The identity of f.
-///     */
-///    template <typename F_i, typename ResType>
-///    static ResType reduce(F_i f, ResType id)
-///    {
-///      return f(StaticUtils<dim-1>::reduce(f,id), dim-1);
-///    }
-///  };
-///
-///  // Base case.
-///  template struct StaticUtils<0u>
-///  {
-///    template <typename F_i, typename ResType>
-///    static ResType reduce(F_i f, ResType id)
-///    {
-///      return id;
-///    }
-///  };
-
-
-} // namespace detail
+/// /**
+///   @author Masado Ishii
+///   @brief Recursively defined static inline expressions for arbitrary number of terms.
+///   @tparam dim Array size, also size of the expression.
+///   @remarks I have verified the efficiency of the assembly code for \
+///            this struct using a toy lambda example.
+/// */
+/// // Recursive case.
+/// template <unsigned int dim>
+/// struct StaticUtils
+/// {
+///   /**
+///     @param acc Function object that accesses the i'th boolean value.
+///     @param start Starting index.
+///   */
+///   template <typename AccType>  // bool (*acc)(unsigned int idx)
+///   static bool reduce_and(AccType &&acc, unsigned int start = 0)
+///   { return acc(start) && StaticUtils<dim-1>::reduce_and(acc, start+1); }
+/// };
+/// 
+/// // Base case.
+/// template <> struct StaticUtils<0u>
+/// {
+///   template <typename AccType>
+///   static bool reduce_and(AccType &&acc, unsigned int start = 0)
+///   { return true; }
+/// };
+/// 
+/// } // namespace detail
 
 namespace ot {
 
@@ -223,6 +219,10 @@ inline bool TreeNode<T,dim>::isAncestor(TreeNode<T,dim> const &other) const {
 
     //@masado Again it should be possible to get a single short-circuiting expression \
               using recursive TMP if needed. See StaticUtils at top.
+      // Here is the TMP solution if desired.
+    ///  bool state1 = ( (this->getLevel() < other.getLevel())  \
+                  && detail::StaticUtils<dim>::reduce_and([&min1, &min2] (unsigned int d) { return min2[d] >= min1[d]; }) \
+                  && detail::StaticUtils<dim>::reduce_and([&max1, &max2] (unsigned int d) { return max2[d] <= max1[d]; }) );
     bool state1=( (this->getLevel() < other.getLevel()) );
     #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
