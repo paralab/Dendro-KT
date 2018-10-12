@@ -3,6 +3,42 @@
 #include <assert.h>
 #endif // __DEBUG_TN__
 
+namespace detail {
+
+///  /**
+///    @author Masado Ishii
+///    @brief Recursively defined static inline expressions for arbitrary number of terms.
+///  */
+///     //TODO put the inline short-circuit to the test.
+///  // Recursive case.
+///  template <unsigned int dim>
+///  struct StaticUtils
+///  {
+///    /**
+///      @param f  A function or operator()-enabled object: \
+///                ResType f(ResType prefixVal, unsigned int currentIdx).
+///      @param id The identity of f.
+///     */
+///    template <typename F_i, typename ResType>
+///    static ResType reduce(F_i f, ResType id)
+///    {
+///      return f(StaticUtils<dim-1>::reduce(f,id), dim-1);
+///    }
+///  };
+///
+///  // Base case.
+///  template struct StaticUtils<0u>
+///  {
+///    template <typename F_i, typename ResType>
+///    static ResType reduce(F_i f, ResType id)
+///    {
+///      return id;
+///    }
+///  };
+
+
+} // namespace detail
+
 namespace ot {
 
 
@@ -89,6 +125,7 @@ inline int TreeNode<T,dim>::orFlag(unsigned int w) {
 
 // ================= End Getters and Setters =================== //
 
+// ================= Begin Pseudo-getters ====================== //
 
 template <typename T, unsigned int dim>
 inline T TreeNode<T,dim>::getParentX(int d) const {
@@ -120,7 +157,6 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getAncestor(unsigned int ancLev) const {
         ancCoords[d] = ((m_uiCoords[d] >> (m_uiMaxDepth - ancLev)) << (m_uiMaxDepth - ancLev));
     return TreeNode(1, ancCoords, ancLev);
 } //end function
-
 
 
 /**
@@ -166,5 +202,37 @@ inline std::array<T,dim> TreeNode<T,dim>::maxX() const {
   return maxes;
 } //end function
 
+// ================= End Pseudo-getters ====================== //
+
+// ================= Begin is-tests ============================ //
+
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::isRoot() const {
+  return (this->getLevel() == 0);
+}
+
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::isAncestor(TreeNode<T,dim> const &other) const {
+    std::array<T,dim> min1, min2, max1, max2;
+
+    min1 = this->minX();
+    min2 = other.minX();
+    
+    max1 = this->maxX();
+    max2 = other.maxX();
+
+    //@masado Again it should be possible to get a single short-circuiting expression \
+              using recursive TMP if needed. See StaticUtils at top.
+    bool state1=( (this->getLevel() < other.getLevel()) );
+    #pragma unroll(dim)
+    for (int d = 0; d < dim; d++)
+      state1 = state1 && (min2[d] >= min1[d]) && (max2[d] <= max1[d]);
+
+    return state1;
+    // In a previous version there was `state2` involving Hilbert ordering.
+
+} // end function
+
+// ================ End is-tests ========================== //
 
 } //end namespace ot

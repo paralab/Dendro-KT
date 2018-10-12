@@ -94,4 +94,105 @@ TreeNode<T,dim>& TreeNode<T,dim>  :: operator = (TreeNode<T,dim>   const& other)
 } //end fn.
 
 
+    //@masado I need to ask how boundary info will be used.
+  ///  //
+  ///  // isBoundaryOctant(block, type, *flags)
+  ///  //
+  ///  template <typename T, unsigned int dim>
+  ///  bool TreeNode<T,dim>::isBoundaryOctant(const TreeNode<T,dim>& block, int type, TreeNode<T,dim>::Flag2K *flags) const {
+  ///  using Flag2K = TreeNode<T,dim>::Flag2K;
+  ///  #if __DEBUG_TN__
+  ///    if (sizeof(Flag2K)*8 < 2*dim)
+  ///    {
+  ///      std::cerr << "Error: Type used for flags has "
+  ///                << sizeof(Flag2K)*8 << "bits, but "
+  ///                << 2*dim << " bits are needed.\n";
+  ///      assert(false);
+  ///    }
+  ///  #endif
+  ///    Flag2K _flags = 0;
+  ///  
+  ///    unsigned int _x = block.getX();
+  ///    unsigned int _y = block.getY();
+  ///    unsigned int _z = block.getZ();	
+  ///    unsigned int _d = block.getLevel();
+  ///  
+  ///    /*
+  ///    // Block has to be an ancestor of the octant or equal to the octant.
+  ///    if( (!block.isAncestor(*this)) && (block != *this) ) {
+  ///    if (flags) {
+  ///     *flags = _flags;
+  ///     }
+  ///     return false;
+  ///     }
+  ///     */
+  ///  
+  ///    if ((type & NEGATIVE) == NEGATIVE) {
+  ///      // test if any of the anchor values matches those of the block ...
+  ///      if (m_uiX == _x) _flags |= X_NEG_BDY;
+  ///      if (m_uiY == _y) _flags |= Y_NEG_BDY;
+  ///      if (m_uiZ == _z) _flags |= Z_NEG_BDY;
+  ///    }
+  ///  
+  ///    if ((type & POSITIVE) == POSITIVE) {
+  ///      unsigned int len  = (unsigned int)(1u << (m_uiMaxDepth - getLevel()));
+  ///      unsigned int blen = ((unsigned int)(1u << (m_uiMaxDepth - _d))) - len;
+  ///  
+  ///      if (m_uiX == (_x + blen))  _flags |= X_POS_BDY;
+  ///      if (m_uiY == (_y + blen))  _flags |= Y_POS_BDY;
+  ///      if (m_uiZ == (_z + blen))  _flags |= Z_POS_BDY;
+  ///    }
+  ///  
+  ///    if (flags) {
+  ///      *flags = _flags;
+  ///    }
+  ///    if (_flags) {
+  ///      return true;
+  ///    }
+  ///    return false;
+  ///  } //end function
+  ///  
+  ///  //
+  ///  // isBoundary(type, *flags)
+  ///  //
+  ///  template <typename T, unsigned int dim>
+  ///  bool TreeNode<T,dim>::isBoundaryOctant(int type, TreeNode<T,dim>::Flag2K *flags) const {
+  ///  using Flag2K = TreeNode<T,dim>::Flag2K;
+  ///  #if __DEBUG_TN__
+  ///    if (sizeof(Flag2K)*8 < 2*dim)
+  ///    {
+  ///      std::cerr << "Error: Type used for flags has "
+  ///                << sizeof(Flag2K)*8 << "bits, but "
+  ///                << 2*dim << " bits are needed.\n";
+  ///      assert(false);
+  ///    }
+  ///  #endif
+  ///    Flag2K _flags = 0;
+  ///    if ((type & NEGATIVE) == NEGATIVE) {
+  ///      // test if any of the anchor values is zero ...  (sufficient ??? )
+  ///      if (!m_uiX) _flags |= X_NEG_BDY;
+  ///      if (!m_uiY) _flags |=  Y_NEG_BDY;
+  ///      if (!m_uiZ) _flags |=   Z_NEG_BDY;
+  ///    }
+  ///  
+  ///    if ((type & POSITIVE) == POSITIVE) {
+  ///      unsigned int len  = (unsigned int)(1u << (m_uiMaxDepth - getLevel()));
+  ///      unsigned int blen = ((unsigned int)(1u << m_uiMaxDepth)) - len;
+  ///  
+  ///      if (m_uiX == blen)  _flags |= X_POS_BDY;
+  ///      if (m_uiY == blen)  _flags |= Y_POS_BDY;
+  ///      if (m_uiZ == blen)  _flags |= Z_POS_BDY;
+  ///    }
+  ///  
+  ///    if (flags) *flags = _flags;
+  ///    if (_flags) return true;
+  ///  
+  ///    return false;
+  ///  } //end function
+
+
+
+
+
+
 } //end namespace ot

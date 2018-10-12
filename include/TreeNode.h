@@ -25,8 +25,8 @@ extern unsigned int m_uiMaxDepth;
 namespace ot {
 
     // Template forward declarations.
-    template<typename T, unsigned int dim> class TreeNode;
-    template<typename T, unsigned int dim>
+    template <typename T, unsigned int dim> class TreeNode;
+    template <typename T, unsigned int dim>
         std::ostream& operator<<(std::ostream& os, TreeNode<T,dim> const& other);
 
     /**
@@ -46,6 +46,12 @@ namespace ot {
 
 
     public:
+
+      /** @name Templated types.  */
+      //@{
+        //using Flag2K = typename detail::Flag2K<dim>::type; // I don't know how to do this.
+        using Flag2K = unsigned char;  // Has 8 bits, will work for (dim <= 4).
+      //@}
 
       /** @name Constructors */
       //@{
@@ -135,12 +141,10 @@ namespace ot {
 
       /**
         @author Rahul Sampath
-        @name Pseudo-Getters and Setters
+        @name Pseudo-Getters
        */
       //@{
       T getParentX(int d) const;
-
-      //@}
 
       /**
         @author Rahul Sampath
@@ -154,14 +158,40 @@ namespace ot {
         @return the ancestor of this octant at level 'ancLev'        
         */
       TreeNode	getAncestor(unsigned int ancLev) const;
+      //@}
 
 
+      /**
+        @name is-tests
+       */
+      //@{
 
+      bool isRoot() const;
 
+      /**
+        @author Rahul Sampath
+        @brief Checks if this octant is an ancestor of the input
+        @return 'true' if this is an ancestor of 'other'
+        */
+      bool isAncestor(const TreeNode & other) const;
 
+        //@masado I need to ask how boundary info will be used.
+      ///  /**
+      ///    @author Hari Sundar
+      ///    @brief flags is a datastructure which will store which boundaries were
+      ///    touched. highest 3 bits are for +Z,+y, and +x axes ... and and
+      ///    smallest 3 are for -z,-y and -x axes.
+      ///    */
+      ///  bool isBoundaryOctant(int type=POSITIVE, Flag2K *flags=NULL) const;
 
-
-
+      ///  /**
+      ///    @author Hari Sundar
+      ///    @brief flags is a datastructure which will store which boundaries were
+      ///    touched. highest 3 bits are for +Z,+y, and +x axes ... and and
+      ///    smallest 3 are for -z,-y and -x axes.
+      ///    */
+      ///  bool isBoundaryOctant(const TreeNode &block, int type=POSITIVE, Flag2K *flags=NULL) const;
+      //@}
 
 
       /** @name Mins and maxes */
