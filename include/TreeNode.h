@@ -158,6 +158,33 @@ namespace ot {
         @return the ancestor of this octant at level 'ancLev'        
         */
       TreeNode	getAncestor(unsigned int ancLev) const;
+
+      /**
+        @author Rahul Sampath
+        @return the Deepest first decendant of this octant
+        */
+      TreeNode getDFD() const;
+
+        //@masado Are we using Morton?
+      ///     TreeNode getDFDMorton() const;
+
+        //@masado Are we using this? Involves Hilbert curve.
+      ////  /*
+      ////   * @author Milinda Fernando
+      ////   * @return the coarset first decendant of this octant.
+      ////   * This is always the min x, min y, min z (the coordinates we store) but if we are
+      ////   * using Hilbert Curve this needs to be calculated.
+      ////   * */
+
+      ////  TreeNode getCFD() const;
+
+
+      /**
+        @author Rahul Sampath
+        @return the deepest last decendant of this octant
+        */
+      TreeNode getDLD() const;
+
       //@}
 
 
@@ -192,6 +219,8 @@ namespace ot {
       ///    */
       ///  bool isBoundaryOctant(const TreeNode &block, int type=POSITIVE, Flag2K *flags=NULL) const;
       //@}
+
+
 
 
       /** @name Mins and maxes */

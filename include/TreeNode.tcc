@@ -3,8 +3,8 @@
 #include <assert.h>
 #endif // __DEBUG_TN__
 
-namespace detail {
-
+/// namespace detail {
+/// 
 /// /**
 ///   @author Masado Ishii
 ///   @brief Recursively defined static inline expressions for arbitrary number of terms.
@@ -197,6 +197,27 @@ inline std::array<T,dim> TreeNode<T,dim>::maxX() const {
   for (int d = 0; d < dim; d++) { maxes[d] += len; }
   return maxes;
 } //end function
+
+
+
+template <typename T, unsigned int dim>
+inline TreeNode<T,dim> TreeNode<T,dim>::getDFD() const {
+  TreeNode<T,dim> dfd(1, m_uiCoords, m_uiMaxDepth);
+  return dfd;
+} //end function
+
+
+template <typename T, unsigned int dim>
+inline TreeNode<T,dim> TreeNode<T,dim>::getDLD() const {
+  std::array<T,dim> maxes = maxX();
+  std::for_each(maxes.begin(), maxes.end(), [](T &v) { v--; });
+  TreeNode<T,dim> dld(1, maxes, m_uiMaxDepth);
+  return dld;
+} //end function
+
+
+
+
 
 // ================= End Pseudo-getters ====================== //
 
