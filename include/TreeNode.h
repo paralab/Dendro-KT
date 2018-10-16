@@ -220,7 +220,28 @@ namespace ot {
       ///  bool isBoundaryOctant(const TreeNode &block, int type=POSITIVE, Flag2K *flags=NULL) const;
       //@}
 
+      /**
+        @name Other Morton-code related methods.
+       */
+      //@{
+      ///    /**
+      ///     *@author Dhairya Malhotra
+      ///     *@return the next octant in morton order which has the least depth.
+      ///     */
+      ///    TreeNode getNext() const;
 
+      ///    /**
+      ///     *@author Dhairya Malhotra
+      ///     *@return the smallest (in morton id) of this octant
+      ///     */
+      ///    TreeNode getFirstChild() const;
+
+      ///    /**
+      ///      @author Rahul Sampath
+      ///      @return the Morton encoding for this octant
+      ///      */
+      ///    std::vector<bool> getMorton() const;
+      //@}
 
 
       /** @name Mins and maxes */
@@ -231,6 +252,35 @@ namespace ot {
       std::array<T,dim> maxX() const;
       //@}
      
+
+      /**
+        @author Rahul Sampath
+        @name Get Neighbours at the same level as the current octant
+        */
+      //@{
+
+      //@masado An octant that is not on the boundary has 3^dim - 1 neighbors. \
+          (The original methods return the root octant for a nonexistent neighbor.) \
+          Original methods: The primitives +/-X +/-Y +/-Z are defined by computing len \
+          (as in max()) and either adding or subtracting this from current address \
+          in specified dimension. Other combinations are defined in terms of those primitives.
+
+        /**
+         @brief Return neighbor at the same level.
+         @author Masado Ishii
+         @tparam offsets Specify relative position as (-1,0,+1) for each dimension.
+        */
+        TreeNode getNeighbour(std::array<signed char,dim> offsets);
+
+        /**
+         @brief Return adjacent neighbor at the same level.
+         @author Masado Ishii
+         @tparam offsets Specify dimension of adjacency and relative position \
+                         as (-1,0,+1) for that dimension.
+        */
+        TreeNode getNeighbour(unsigned int d, signed char offset);
+
+      //@}
 
     };
         

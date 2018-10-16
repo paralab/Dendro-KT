@@ -216,6 +216,68 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getDLD() const {
 } //end function
 
 
+// Helper routine for getNeighbour() methods.
+// If addr_in plus offset does not overflow boundary,  sets addr_out and returns true.
+// Otherwise, returns false without setting addr_out.
+template <typename T>
+inline bool getNeighbour1d(T addr_in,
+    unsigned int level, signed char offset, T &addr_out)
+{
+  ////const unsigned int inv_level = m_uiMaxDepth - level;
+  ////addr_in = (addr_in >> inv_level) << inv_level;  // Clear any bits deeper than level.
+
+  if (offset == 0)
+  {
+    addr_out = addr_in;
+    return true;
+  }
+
+  unsigned int len = (1u << (m_uiMaxDepth - level));
+  if ((offset > 0 && addr_in >= (1u << m_uiMaxDepth) - len) ||
+      (offset < 0 && addr_in < len))
+  {
+    return false;
+  }
+
+  addr_out = (offset > 0 ? addr_in + len : addr_in - len);
+  return true;
+}
+
+template <typename T, unsigned int dim>
+inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(unsigned int d, signed char offset)
+{
+  T n_addr;
+  bool is_valid_neighbour = getNeighbour1d(m_uiCoords[d], getLevel(), offset, n_addr);
+  if (is_valid_neighbour)
+  {
+    std::array<T,dim> n_coords = m_uiCoords;
+    n_coords[d] = n_addr;
+    return TreeNode<T,dim>(1, n_coords, getLevel());
+  }
+  else
+  {
+    return TreeNode<T,dim>(); // Root octant.
+  }
+}
+
+template <typename T, unsigned int dim>
+inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim> offsets)
+{
+  std::array<T,dim> n_coords = m_uiCoords;
+  const unsigned int level = getLevel();
+  
+  #pragma unroll(dim)
+  for (int d = 0; d < dim; d++)
+  {
+    bool is_valid_neighbour = getNeighbour1d(n_coords[d], level, offsets[d], n_coords[d]);
+    if (!is_valid_neighbour)
+    {
+      return TreeNode<T,dim>();  // Root octant.
+    }
+  }
+
+  return TreeNode<T,dim>(1, n_coords, level);
+} //end function
 
 
 
