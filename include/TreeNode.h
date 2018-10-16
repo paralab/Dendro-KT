@@ -270,7 +270,7 @@ namespace ot {
          @author Masado Ishii
          @tparam offsets Specify relative position as (-1,0,+1) for each dimension.
         */
-        TreeNode getNeighbour(std::array<signed char,dim> offsets);
+        TreeNode getNeighbour(std::array<signed char,dim> offsets) const;
 
         /**
          @brief Return adjacent neighbor at the same level.
@@ -278,7 +278,42 @@ namespace ot {
          @tparam offsets Specify dimension of adjacency and relative position \
                          as (-1,0,+1) for that dimension.
         */
-        TreeNode getNeighbour(unsigned int d, signed char offset);
+        TreeNode getNeighbour(unsigned int d, signed char offset) const;
+
+///        //@masado I only define the named neighbours for dim==3.
+///        /**
+///          @author Rahul Sampath
+///          */
+///        //@{
+///        TreeNode  getLeft() const;
+///        TreeNode  getRight() const;
+///        TreeNode  getTop() const;
+///        TreeNode  getBottom() const;
+///        TreeNode  getFront() const;
+///        TreeNode  getBack() const; 
+///        TreeNode  getTopLeft() const;
+///        TreeNode  getTopRight() const;
+///        TreeNode  getBottomLeft() const; 
+///        TreeNode  getBottomRight() const;
+///        TreeNode  getLeftFront() const;
+///        TreeNode  getRightFront() const;
+///        TreeNode  getTopFront() const;
+///        TreeNode  getBottomFront() const;
+///        TreeNode  getTopLeftFront() const;
+///        TreeNode  getTopRightFront() const;
+///        TreeNode  getBottomLeftFront() const;
+///        TreeNode  getBottomRightFront() const;
+///        TreeNode  getLeftBack() const;
+///        TreeNode  getRightBack() const;
+///        TreeNode  getTopBack() const;
+///        TreeNode  getBottomBack() const;
+///        TreeNode  getTopLeftBack() const;
+///        TreeNode  getTopRightBack() const;
+///        TreeNode  getBottomLeftBack() const;
+///        TreeNode  getBottomRightBack() const;
+
+        std::vector<TreeNode> getAllNeighbours() const;
+        //@}
 
       //@}
 
