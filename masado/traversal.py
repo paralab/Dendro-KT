@@ -8,8 +8,10 @@ import itertools
 __DEBUG__=False;
 
 def __main__():
-    num_solutions = traverse();
+    (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines) = traverse();
     print("Total # of valid displacement sequences: %d." % num_solutions);
+    print("Minimum # of orientations (%d) on lines" % min_num_repl, min_lines);
+    print("Maximum # of orientations (%d) on lines" % max_num_repl, max_lines);
 
 def generate_base_path(dim):
     if (dim == 0):
@@ -25,11 +27,14 @@ def generate_moves(inregion_pos, outregion_pos, region_disp, dim):
         return (1 << d for d in range(dim-1,-1,-1) if (1 << d) != region_disp);
 
 def traverse():
+    ##dim = 2;   ## The answer it gives is exactly 1 possible solution (correct).
     dim = 3;   ## The answer it gives is 5 possible solutions.
     ##dim = 4;   ## The answer it gives is 5733 possible solutions.
     my_base_path = generate_base_path(dim);
     my_base_order = (
             [0] + list(itertools.accumulate(my_base_path, lambda x,y : x ^ y)));
+
+    print("Displacement sequences:");
 
     num_regions = 1 << dim;
     assert num_regions == len(my_base_order), "num_regions does not match region visitation list!";
@@ -41,20 +46,44 @@ def traverse():
     move_hist = [];
     moves = collections.deque();
 
+    ## Count how many orientations we will need.
+    inregion_hist = [];
+    min_num_repl = None;
+    min_lines = [];
+    max_num_repl = None;
+    max_lines = [];
+
     distance = 0;
     inregion_pos = inregion_start;
 
     while (True):
-        if __DEBUG__: print("State: d=%d, [out,in] == [%d,%d]" % (distance, my_base_order[distance], inregion_pos), end=' ');
+        if __DEBUG__: print("      State: d=%d, [out,in] == [%d,%d]" % (distance, my_base_order[distance], inregion_pos), end=' ');
         ## Is region terminal?
         if (distance == num_regions-1):
             ## If yes, and we reached the goal, then record a solution.
             final_move = my_base_path[-1];
             if (inregion_pos == inregion_end ^ final_move):
-                num_solutions += 1;
                 if __DEBUG__: print("Applying the final move (0,%d)." % final_move);
                 move_hist.append(final_move);
-                print(move_hist);
+                inregion_hist.append(inregion_pos);
+                print("%5d  " % num_solutions, move_hist);
+
+                ## Keep track of min and max num of orientations,
+                ## which are determined by net displacement and the
+                ## starting corner.
+                num_repl = len(set(zip(inregion_hist, move_hist)));
+                if (min_num_repl is None or num_repl < min_num_repl):
+                    min_num_repl = num_repl;
+                    min_lines = [num_solutions];
+                elif (num_repl == min_num_repl):
+                    min_lines.append(num_solutions);
+                if (max_num_repl is None or num_repl > max_num_repl):
+                    max_num_repl = num_repl;
+                    max_lines = [num_solutions];
+                elif (num_repl == max_num_repl):
+                    max_lines.append(num_solutions);
+
+                num_solutions += 1;
             else:
                 if __DEBUG__: print("Stuck at %d" % inregion_pos);
 
@@ -72,11 +101,14 @@ def traverse():
         (inregion_pos, next_move, distance) = moves.pop();
         if __DEBUG__: print("Applying the next move (%d,%d)." % (my_base_path[distance], next_move));
         move_hist[distance:] = [next_move];
+        inregion_hist[distance:] = [inregion_pos];
         inregion_pos ^= next_move;
         inregion_pos ^= my_base_path[distance];
         distance += 1;
 
-    return num_solutions;
+    print("Base path:", my_base_path, sep='\n');
+
+    return (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines);
 
 
 
