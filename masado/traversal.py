@@ -47,8 +47,8 @@ __DEBUG__=False;
 
 def __main__():
     ##dim = 2;   ## The answer it gives is exactly 1 possible traversal (correct).
-    ##dim = 3;   ## The answer it gives is 5 possible traversals.
-    dim = 4;   ## The answer it gives is 5733 possible traversals.
+    dim = 3;   ## The answer it gives is 5 possible traversals.
+    ##dim = 4;   ## The answer it gives is 5733 possible traversals.
     ##dim = 5;   ## An infeasible number of traversals.
     (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines, ss_repl) = traverse(dim);
     print("Dimension==%d" % dim);
@@ -62,7 +62,18 @@ def __main__():
 
     orig_task = (0, dim-1);
     refinements = ssrepl2refinements(ss_repl);
-    solutions = solve(dim, orig_task, refinements);
+    (min_size, solutions) = solve(dim, orig_task, refinements);
+    print("Victory! min_size==%d, solutions:" % min_size);
+    print(*solutions, sep='\n');
+    
+
+    ## Results so far:
+    ## 3D -- My program claims there are two possible orientation tables with
+    ##       the minimum length of 12 rows:
+    ##
+    ##           Victory! min_size==12, solutions:
+    ##           ((0, 0), (0, 1), (0, 2), (3, 0), (3, 1), (3, 2), (5, 0), (5, 1), (5, 2), (6, 0), (6, 1), (6, 2))
+    ##           ((1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2), (4, 0), (4, 1), (4, 2), (7, 0), (7, 1), (7, 2))
 
 
 class Progress:
@@ -253,7 +264,7 @@ def solve(dim, orig_task, refinements):
     satisfied_parents = dict();
     for phi in get_permute_reflect(dim):
         rot_parent = phi(orig_task);
-        rot_refinements = map(lambda r: frozenset(map(phi, r)), refinements);
+        rot_refinements = map(lambda r: tuple(sorted(set(map(phi, r)))), refinements);
         for r in rot_refinements:
             try:
                 satisfied_parents[r].add(rot_parent);
@@ -261,6 +272,11 @@ def solve(dim, orig_task, refinements):
                 satisfied_parents[r] = set([rot_parent]);
         progress_counter.update_inc(1);
     progress_counter.finish();
+    ## Note: Changed the type of the dictionary keys: previously frozensets of
+    ## tuples, now monotone tuples of tuples.
+    ## The reason is that next we will operate on monotone tuples of tuples.
+    ## Would like to not have to cast to frozenset for each one, now that the
+    ## keys are computed.
 
     ## For 3D there is exactly one satisfied parent per set of refining tasks.
     ## For 4D there are 1 or 2 satisfied parents per set of refining tasks.
@@ -269,15 +285,53 @@ def solve(dim, orig_task, refinements):
     ## DEBUG
     print("Maximum # satisfied parents per refinement: %d"
             % max(map(len, satisfied_parents.values())));
+    print("Total # of distinct values in the table: %d"
+            % len(set().union(*satisfied_parents.values())));
     ### for (k,v) in satisfied_parents.items():
     ###     print(k,v, sep=': ', end='\n\n');
 
-    ##TODO
+    ## Since there are so many refinements, it becomes infeasible to 
+    ## loop through all (lower) subsets of refinements. While this approach
+    ## never tests sets of tasks that would form incomplete refinements, the
+    ## approach actually does redundant work. There are fewer tasks than
+    ## possible refinements (in 4D, it is 384 versus a million). So a better
+    ## approach is to loop through all (lower) subsets of tasks rather than
+    ## subsets of refinements.
+    ##
+    ## Accumulate results with a dynamic-programming algorithm.
+    ## Induction on task subset size, so we encounter minimal solutions first.
+    all_tasks = sorted(set((phi(orig_task) for phi in get_permute_reflect(dim))));
+    sat_parents_tasks = {tuple(): set()};  ## Base case is null.
+    cand_size = 0;
+    solutions = [];
+    while(not solutions):
+        sat_parents_tasks_lower = sat_parents_tasks;
+        sat_parents_tasks = {};
+        cand_size += 1;
+        level_combos = itertools.combinations(all_tasks, cand_size);
+        for combo in level_combos:
+            if (combo in satisfied_parents):
+                new_sat_p = satisfied_parents[combo];
+            else:
+                new_sat_p = set();
+            sat_parents_tasks[combo] = new_sat_p.union(
+                    *map(lambda subcombo: sat_parents_tasks_lower[subcombo],
+                        itertools.combinations(combo, cand_size-1)));       ## Recursion
+            ## The CLOSURE condition:
+            if (sat_parents_tasks[combo]):
+                print(sat_parents_tasks[combo]);
+            if (set(combo).issubset(sat_parents_tasks[combo])):
+                ## Declare victory.
+                solutions.append(combo);
 
-    min_size = 'dummy';
-    solutions = 'dummy solutions';
-    return (min_size, solutions);
+            ## Add all solutions in the same (lowest) level.
+        print("Finished level %d.\n" % cand_size);
 
+    ##TODO when we build the satisfied_parents table, we should include
+    ##     a tag in the parents about which permutation of the parent was
+    #      satisfied. We need to be able to recover a full construction.
+
+    return (cand_size, solutions);
 
 
 __main__();
