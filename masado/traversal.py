@@ -39,29 +39,60 @@
 ## be minimal.
 ##
 
-
-
-
-
+import math
 import collections
 import itertools
 
 __DEBUG__=False;
 
 def __main__():
-    ### ##dim = 2;   ## The answer it gives is exactly 1 possible solution (correct).
-    ### ##dim = 3;   ## The answer it gives is 5 possible solutions.
-    ### dim = 4;   ## The answer it gives is 5733 possible solutions.
-    ### ##dim = 5;   ## Runs forever.
-    ### (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines, ss_repl) = traverse(dim);
-    ### print("Dimension==%d" % dim);
-    ### print("Total # of valid displacement sequences: %d." % num_solutions);
-    ### print("Minimum # of orientations (%d) on lines" % min_num_repl, min_lines);
-    ### print("Maximum # of orientations (%d) on lines" % max_num_repl, max_lines);
-    ### print("Number of sets of SAT orientations: %d" % len(ss_repl));
+    ##dim = 2;   ## The answer it gives is exactly 1 possible traversal (correct).
+    ##dim = 3;   ## The answer it gives is 5 possible traversals.
+    dim = 4;   ## The answer it gives is 5733 possible traversals.
+    ##dim = 5;   ## An infeasible number of traversals.
+    (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines, ss_repl) = traverse(dim);
+    print("Dimension==%d" % dim);
+    print("Total # of valid displacement sequences: %d." % num_solutions);
+    print("Minimum # of orientations (%d) on lines" % min_num_repl, min_lines);
+    print("Maximum # of orientations (%d) on lines" % max_num_repl, max_lines);
+    print("Number of sets of SAT orientations: %d" % len(ss_repl));
 
-    ### orig_task = (0, dim-1);
-    ### solutions = solve(dim, orig_task, ss_repl);
+    ### for s_repl in ss_repl:
+    ###     print(s_repl);
+
+    orig_task = (0, dim-1);
+    refinements = ssrepl2refinements(ss_repl);
+    solutions = solve(dim, orig_task, refinements);
+
+
+class Progress:
+    def __init__(self, total_count, frac_freq):
+        self.total_count = total_count;
+        self.frac_freq = frac_freq;
+        self.progress_count = 0;
+        self.last_emit = 0;
+
+    def begin(self):
+        print("0%", end='');
+
+    def emit(self):
+        print("....%d%%" % round(self.progress_count / self.total_count * 100), end='', flush=True);
+        self.last_emit = self.progress_count;
+
+    def update_inc(self, inc=1):
+        self.progress_count += inc;
+        if ((self.progress_count - self.last_emit) / self.total_count >= self.frac_freq):
+            self.emit();
+
+    def update_prog(self, prog):
+        self.progress_count = prog;
+        if ((self.progress_count - self.last_emit) / self.total_count >= self.frac_freq):
+            self.emit();
+
+    def finish(self):
+        print();
+        
+
 
 def generate_base_path(dim):
     if (dim == 0):
@@ -81,7 +112,7 @@ def traverse(dim):
     my_base_order = (
             [0] + list(itertools.accumulate(my_base_path, lambda x,y : x ^ y)));
 
-    print("Displacement sequences:");
+    ### print("Displacement sequences:");
 
     num_regions = 1 << dim;
     assert num_regions == len(my_base_order), "num_regions does not match region visitation list!";
@@ -121,7 +152,7 @@ def traverse(dim):
                 if __DEBUG__: print("Applying the final move (0,%d)." % final_move);
                 move_hist.append(final_move);
                 inregion_hist.append(inregion_pos);
-                print("%5d  " % num_solutions, move_hist);   ## Comment out to save on i/o
+                ### print("%5d  " % num_solutions, move_hist);   ## Comment out to save on i/o
 
                 ## Keep track of min and max num of orientations,
                 ## which are determined by net displacement and the
@@ -173,6 +204,11 @@ def traverse(dim):
 
     return (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines, ss_repl);
 
+## The second component of a task (i, highest_dim) can be expressed
+## either as a power of two or as the index of the dimension.
+## This function transforms from the former representation to the latter.
+def ssrepl2refinements(ss_repl):
+    return set(map(lambda r: frozenset(map(lambda i_hdp2: (i_hdp2[0], i_hdp2[1].bit_length() - 1), r)), ss_repl));
 
 def binary_decompose(i):
     while (i):
@@ -195,11 +231,12 @@ def get_permute_reflect(dim):
     ## of the permutations and the flips. This implies that each transformation
     ## can be expressed as a permutation followed by a flip.
     for (p, f) in itertools.product(perms, flips):
+        if __DEBUG__: print(p, f);
         yield lambda i__hd: (f ^ permute_bits(i__hd[0],p), p[i__hd[1]]);
 
 
-def solve(dim, orig_task, ss_repl):
-    ## ss_repl is a set of satisfying sets of orientations for the
+def solve(dim, orig_task, refinements):
+    ## refinements is a set of satisfying sets of orientations for the
     ## task (0,+highest_dim) with the default under-permutation.
     ##
     ## Not easy to isolate the under-permutations for a single task.
@@ -211,18 +248,34 @@ def solve(dim, orig_task, ss_repl):
     ##   Using a given set of subtasks, what parent tasks can be implemented
     ##   with a configuration that is built from this exact set of subtasks?
     ##
+    progress_counter = Progress((1 << dim)*math.factorial(dim), 0.01);
+    progress_counter.begin();
     satisfied_parents = dict();
     for phi in get_permute_reflect(dim):
-        parent = phi(orig_task);
-        refinements = map(lambda r: frozenset(map(phi, r)), ss_repl);
-        for r in refinements:
+        rot_parent = phi(orig_task);
+        rot_refinements = map(lambda r: frozenset(map(phi, r)), refinements);
+        for r in rot_refinements:
             try:
-                satisfied_parents[r].add(parent);
+                satisfied_parents[r].add(rot_parent);
             except:
-                satisfied_parents[r] = set([parent]);
+                satisfied_parents[r] = set([rot_parent]);
+        progress_counter.update_inc(1);
+    progress_counter.finish();
+
+    ## For 3D there is exactly one satisfied parent per set of refining tasks.
+    ## For 4D there are 1 or 2 satisfied parents per set of refining tasks.
+    ## So we have to keep the dictionary on sets, even though it's slow.
+
+    ## DEBUG
+    print("Maximum # satisfied parents per refinement: %d"
+            % max(map(len, satisfied_parents.values())));
+    ### for (k,v) in satisfied_parents.items():
+    ###     print(k,v, sep=': ', end='\n\n');
 
     ##TODO
 
+    min_size = 'dummy';
+    solutions = 'dummy solutions';
     return (min_size, solutions);
 
 
