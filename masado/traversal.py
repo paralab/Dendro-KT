@@ -49,14 +49,19 @@ import itertools
 __DEBUG__=False;
 
 def __main__():
-    ##dim = 2;   ## The answer it gives is exactly 1 possible solution (correct).
-    dim = 3;   ## The answer it gives is 5 possible solutions.
-    ##dim = 4;   ## The answer it gives is 5733 possible solutions.
-    ##dim = 5;   ## Runs forever.
-    (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines) = traverse(dim);
-    print("Total # of valid displacement sequences: %d." % num_solutions);
-    print("Minimum # of orientations (%d) on lines" % min_num_repl, min_lines);
-    print("Maximum # of orientations (%d) on lines" % max_num_repl, max_lines);
+    ### ##dim = 2;   ## The answer it gives is exactly 1 possible solution (correct).
+    ### ##dim = 3;   ## The answer it gives is 5 possible solutions.
+    ### dim = 4;   ## The answer it gives is 5733 possible solutions.
+    ### ##dim = 5;   ## Runs forever.
+    ### (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines, ss_repl) = traverse(dim);
+    ### print("Dimension==%d" % dim);
+    ### print("Total # of valid displacement sequences: %d." % num_solutions);
+    ### print("Minimum # of orientations (%d) on lines" % min_num_repl, min_lines);
+    ### print("Maximum # of orientations (%d) on lines" % max_num_repl, max_lines);
+    ### print("Number of sets of SAT orientations: %d" % len(ss_repl));
+
+    ### orig_task = (0, dim-1);
+    ### solutions = solve(dim, orig_task, ss_repl);
 
 def generate_base_path(dim):
     if (dim == 0):
@@ -97,8 +102,14 @@ def traverse(dim):
     max_num_repl = None;
     max_lines = [];
 
+    ## Enumerate all sets of orientations that can be used
+    ## to refine this permutation of this orientation.
+    ss_repl = set();
+
     distance = 0;
     inregion_pos = inregion_start;
+
+    save_stuff = dict();
 
     while (True):
         if __DEBUG__: print("      State: d=%d, [out,in] == [%d,%d]" % (distance, my_base_order[distance], inregion_pos), end=' ');
@@ -110,12 +121,13 @@ def traverse(dim):
                 if __DEBUG__: print("Applying the final move (0,%d)." % final_move);
                 move_hist.append(final_move);
                 inregion_hist.append(inregion_pos);
-                ##print("%5d  " % num_solutions, move_hist);   ## Comment out to save on i/o
+                print("%5d  " % num_solutions, move_hist);   ## Comment out to save on i/o
 
                 ## Keep track of min and max num of orientations,
                 ## which are determined by net displacement and the
                 ## starting corner.
-                num_repl = len(set(zip(inregion_hist, move_hist)));
+                s_repl = frozenset(zip(inregion_hist, move_hist));
+                num_repl = len(s_repl);
                 if (min_num_repl is None or num_repl < min_num_repl):
                     min_num_repl = num_repl;
                     min_lines = [num_solutions];
@@ -126,6 +138,11 @@ def traverse(dim):
                     max_lines = [num_solutions];
                 elif (num_repl == max_num_repl):
                     max_lines.append(num_solutions);
+
+                ## Record the exact set of orientations.
+                ss_repl.add(s_repl);
+                if (dim == 4 and num_solutions == 796):
+                    save_stuff[796] = list(zip(inregion_hist, move_hist));
 
                 num_solutions += 1;
             else:
@@ -152,8 +169,61 @@ def traverse(dim):
 
     print("Base path:", my_base_path, sep='\n');
 
-    return (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines);
+    print(save_stuff);
 
+    return (num_solutions, min_num_repl, min_lines, max_num_repl, max_lines, ss_repl);
+
+
+def binary_decompose(i):
+    while (i):
+        yield i & 1;
+        i >>= 1;
+
+def permute_bits(i, p):
+    return sum(map(lambda b,d: b << d, binary_decompose(i), p));
+
+
+## Tasks are represented as tuples (i, highest_dim). The index 'i' can be
+## considered as a compressed bit-vector of the starting point in D coordinates.
+##
+## This function is a generator of lambdas that extend the permute/reflect
+## transformations to the task tuples. There are (2^D)(D!) transformations.
+def get_permute_reflect(dim):
+    perms = itertools.permutations(list(range(0,dim)));
+    flips = list(range(0, 1<<dim));
+    ## The group of permute/reflect transformations is a semidirect product
+    ## of the permutations and the flips. This implies that each transformation
+    ## can be expressed as a permutation followed by a flip.
+    for (p, f) in itertools.product(perms, flips):
+        yield lambda i__hd: (f ^ permute_bits(i__hd[0],p), p[i__hd[1]]);
+
+
+def solve(dim, orig_task, ss_repl):
+    ## ss_repl is a set of satisfying sets of orientations for the
+    ## task (0,+highest_dim) with the default under-permutation.
+    ##
+    ## Not easy to isolate the under-permutations for a single task.
+    ## But we can rotate through all full-permutations to produce
+    ## all tasks with all under-permutations. That's what we ultimately
+    ## need to work with anyway.
+    ##
+    ## This dictionary stores answers to the question:
+    ##   Using a given set of subtasks, what parent tasks can be implemented
+    ##   with a configuration that is built from this exact set of subtasks?
+    ##
+    satisfied_parents = dict();
+    for phi in get_permute_reflect(dim):
+        parent = phi(orig_task);
+        refinements = map(lambda r: frozenset(map(phi, r)), ss_repl);
+        for r in refinements:
+            try:
+                satisfied_parents[r].add(parent);
+            except:
+                satisfied_parents[r] = set([parent]);
+
+    ##TODO
+
+    return (min_size, solutions);
 
 
 
