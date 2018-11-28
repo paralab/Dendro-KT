@@ -158,11 +158,11 @@ void refinement_operator(int rank, AxBits &out_loc, PhysOrient<K> &out_orient)
   int endr = rank & 1;
   int offset = 0;
   for (int ii = 0; ii < K; ii++)
-    offset += (((rank >> ii) & 1) != endr);
+    offset += (((rank >> (K-1 - ii)) & 1) != endr);
   int L = offset-1, R = K-1;
   for (int ii = 0; ii < K; ii++)
   {
-    if (((rank >> ii) & 1) != endr)   // Case one: Goes to the front section.
+    if (((rank >> (K-1 - ii)) & 1) != endr)   // Case one: Goes to the front section.
       out_orient.a[ii] = L--;                // <--> a_inverse[L] = ii
     else                        // Case two: Goes to the back section.
       out_orient.a[ii] = R--;                // <--> a_inverse[R] = ii
