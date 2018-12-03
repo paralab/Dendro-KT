@@ -95,12 +95,54 @@ struct PhysOrient
     return p;
   }
 
+  // Total order defined by lexicographic comparison.
+  bool operator< (const PhysOrient &that) const
+  {
+    return a < that.a || (a == that.a && m < that.m);
+  }
+
   // To produce children from parents, parent orientation should be
   // applied to the results of refinement.
   //TODO
   AxBits apply(AxBits location) const;        // Group action.
   PhysOrient apply(PhysOrient orient) const;  // Group multiplication.
 };
+
+template <int K>
+AxBits PhysOrient<K>::apply(AxBits location) const
+{
+  // Remember that the lowest bit has index K-1 in Haverkort's notation.
+
+  // 1. Permutation. Recall, axis `i' gets axis `a[i]`.
+  AxBits tr_location = 0;
+  for (int ii = 0; ii < K; ii++)
+  {
+    tr_location <<= 1;
+    tr_location |= ((location >> (K-1 - a[ii])) & 1u);
+  }
+
+  // 2. Reflection.
+  tr_location ^= m;
+
+  return tr_location;
+}
+
+template <int K>
+PhysOrient<K> PhysOrient<K>::apply(PhysOrient<K> orient) const
+{
+  // Using a little bit of group theory about semidirect products,
+  // we can rearrange the product of two orientations into our
+  // preferred form, which is (reflection)(permutation).
+  //   (MA)(ma) = MAm(A~)(A)a = M(AmA~)(Aa)
+  //
+  PhysOrient<K> tr_orient;
+
+  // Multiply permutations: Aa
+  // TODO
+
+  // Transform and multiply reflections: M(AmA~)
+  // TODO
+}
 
 
 //
@@ -168,6 +210,10 @@ void refinement_operator(int rank, AxBits &out_loc, PhysOrient<K> &out_orient)
       out_orient.a[ii] = R--;                // <--> a_inverse[R] = ii
   }
 }
+
+
+//TODO use std::set to tabulate the closure of refined orientations.
+
 
 
 }  // namespace hilbert.
