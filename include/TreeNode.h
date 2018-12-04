@@ -47,6 +47,8 @@ namespace ot {
 
     public:
 
+        static constexpr unsigned int numChildren = (1u << dim);
+
       /** @name Templated types.  */
       //@{
         //using Flag2K = typename detail::Flag2K<dim>::type; // I don't know how to do this.
@@ -132,7 +134,8 @@ namespace ot {
       int getAnchor(std::array<T,dim> &xyz) const;
       //Point getAnchor() const { return Point(m_uiX, m_uiY, m_uiZ); };
       //unsigned char getChildNumber(bool real=true) const;
-      //unsigned char getMortonIndex() const ;
+      unsigned char getMortonIndex(T level) const;
+      unsigned char getMortonIndex() const;
       //int setWeight(unsigned int w);
       //int addWeight(unsigned int w);
       int setFlag(unsigned int w);

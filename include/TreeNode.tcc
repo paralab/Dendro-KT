@@ -1,10 +1,11 @@
 #include <array>
+#include <iomanip>
 #if __DEBUG_TN__
 #include <assert.h>
 #endif // __DEBUG_TN__
 
 /// namespace detail {
-/// 
+///
 /// /**
 ///   @author Masado Ishii
 ///   @brief Recursively defined static inline expressions for arbitrary number of terms.
@@ -24,7 +25,7 @@
 ///   static bool reduce_and(AccType &&acc, unsigned int start = 0)
 ///   { return acc(start) && StaticUtils<dim-1>::reduce_and(acc, start+1); }
 /// };
-/// 
+///
 /// // Base case.
 /// template <> struct StaticUtils<0u>
 /// {
@@ -32,7 +33,7 @@
 ///   static bool reduce_and(AccType &&acc, unsigned int start = 0)
 ///   { return true; }
 /// };
-/// 
+///
 /// } // namespace detail
 
 namespace ot {
@@ -64,7 +65,7 @@ inline bool TreeNode<T,dim>::operator!=(TreeNode<T,dim> const &other) const {
 template<typename T, unsigned int dim>
 std::ostream& operator<<(std::ostream& os, TreeNode<T,dim> const& other) {
   std::for_each(other.m_uiCoords.begin(), other.m_uiCoords.end(),
-      [&os] (T x) { os << x << " "; });
+      [&os] (T x) { os << std::setw(10) << x << " "; });
   return (os << other.getLevel());
 } //end fn.
 
@@ -98,6 +99,28 @@ inline T TreeNode<T,dim>::getX(int d) const {
   assert(0 <= d && d < dim);
 #endif
     return m_uiCoords[d];
+}
+
+template <typename T, unsigned int dim>
+inline unsigned char TreeNode<T,dim>::getMortonIndex(T level) const
+{
+    unsigned char childNum;
+
+    unsigned int len = (1u << (getMaxDepth() - level));
+    unsigned int len_par = (1u << (getMaxDepth() - level + 1u));
+
+#pragma unroll(dim)
+    for (int d = 0; d < dim; d++)
+    {
+        childNum += ((m_uiCoords[d] % len_par) / len) << d;
+    }
+    return  childNum;
+}
+
+template <typename T, unsigned int dim>
+inline unsigned char TreeNode<T,dim>::getMortonIndex() const
+{
+    return getMortonIndex(m_uiLevel);
 }
 
 template <typename T, unsigned int dim>
@@ -265,7 +288,7 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim>
 {
   std::array<T,dim> n_coords = m_uiCoords;
   const unsigned int level = getLevel();
-  
+
   #pragma unroll(dim)
   for (int d = 0; d < dim; d++)
   {
@@ -298,7 +321,7 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim>
 ////   return getNeighbour(1,-1);
 //// }
 //// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBack() const 
+//// inline TreeNode<T,3> TreeNode<T,3>::getBack() const
 //// {
 ////   return getNeighbour(1,+1);
 //// }
@@ -312,7 +335,7 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim>
 //// {
 ////   return getNeighbour(2,+1);
 //// }
-//// 
+////
 //// template <typename T>
 //// inline TreeNode<T,3> TreeNode<T,3>::getTopLeft() const
 //// {
@@ -435,7 +458,7 @@ inline bool TreeNode<T,dim>::isAncestor(TreeNode<T,dim> const &other) const {
 
     min1 = this->minX();
     min2 = other.minX();
-    
+
     max1 = this->maxX();
     max2 = other.maxX();
 

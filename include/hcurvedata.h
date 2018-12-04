@@ -10,8 +10,8 @@
 // Created by Milinda Fernando
 // on 10/2/15.
 //
-#ifndef DENDRO_HCURVEDATA_H
-#define DENDRO_HCURVEDATA_H
+#ifndef DENDRO_KT_HCURVEDATA_H
+#define DENDRO_KT_HCURVEDATA_H
 
 
 #include <string.h>
@@ -57,4 +57,4 @@ void _InitializeHcurve(int pDim);
 
 
 
-#endif //DENDRO_HCURVEDATA_H
+#endif //DENDRO_KT_HCURVEDATA_H
