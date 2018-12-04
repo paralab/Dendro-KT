@@ -104,7 +104,7 @@ inline T TreeNode<T,dim>::getX(int d) const {
 template <typename T, unsigned int dim>
 inline unsigned char TreeNode<T,dim>::getMortonIndex(T level) const
 {
-    unsigned char childNum;
+    unsigned char childNum = 0;
 
     unsigned int len = (1u << (getMaxDepth() - level));
     unsigned int len_par = (1u << (getMaxDepth() - level + 1u));
