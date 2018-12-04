@@ -52,10 +52,14 @@ SFC_Tree<T,D>:: locTreeSort(const TreeNode<T,D> *inp_begin, const TreeNode<T,D> 
   // indexed by (Morton) child number.
   std::array<int, numChildren> counts;
   counts.fill(0);
+  int countAncestors = 0;   // Special bucket to ensure ancestors precede descendants.
   /// for (const TreeNode &tn : inp)
   for (const TreeNode *tn = inp_begin; tn != inp_end; tn++)
   {
-    counts[tn->getMortonIndex(sLev)]++;
+    if (tn->getLevel() < sLev)
+      countAncestors++;
+    else
+      counts[tn->getMortonIndex(sLev)]++;
   }
 
   // Compute offsets of buckets in permuted SFC order.
@@ -66,7 +70,8 @@ SFC_Tree<T,D>:: locTreeSort(const TreeNode<T,D> *inp_begin, const TreeNode<T,D> 
   //   for the duration of the body. This means we apply a single permutation
   //   to the buckets for all points.
   // - We need to "Un-permute offsets" so that we can index using Morton index.
-  int accum = 0;
+  int accum = countAncestors;           // Ancestors come first.
+  int offsetAncestors = 0;
   std::array<int, numChildren> offsets;
   // Logically permute: Scan the bucket-counts in the order of the SFC.
   // Since we want to map [SFC_rank]-->Morton_rank,
@@ -83,8 +88,13 @@ SFC_Tree<T,D>:: locTreeSort(const TreeNode<T,D> *inp_begin, const TreeNode<T,D> 
   /// for (const TreeNode &tn : inp)
   for (const TreeNode *tn = inp_begin; tn != inp_end; tn++)
   {
-    unsigned char child = tn->getMortonIndex(sLev);
-    out[offsets[child]++] = *tn;
+    if (tn->getLevel() < sLev)
+      out[offsetAncestors++] = *tn;
+    else
+    {
+      unsigned char child = tn->getMortonIndex(sLev);
+      out[offsets[child]++] = *tn;
+    }
   }
 
   //
