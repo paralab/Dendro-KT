@@ -22,7 +22,8 @@ inline std::vector<ot::TreeNode<T,dim>> genRand4DPoints(int numPoints)
   std::vector<ot::TreeNode<T,dim>> points;
   std::array<T,dim> uiCoords;
 
-  const T maxCoord = (1u << MAX_LEVEL) - 1;
+  //const T maxCoord = (1u << MAX_LEVEL) - 1;
+  const T maxCoord = (1u << m_uiMaxDepth) - 1;
   const T leafLevel = m_uiMaxDepth;
 
   // Set up random number generator.

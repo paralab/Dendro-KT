@@ -18,7 +18,7 @@
 int main(int argc, char* argv[])
 {
   using T = unsigned int;
-  const unsigned int dim = 4;
+  const unsigned int dim = 2;
   using TreeNode = ot::TreeNode<T,dim>;
 
   _InitializeHcurve(dim);
@@ -26,7 +26,7 @@ int main(int argc, char* argv[])
   const T leafLevel = m_uiMaxDepth;
 
   //const int numPoints = 10000;
-  const int numPoints = 100;
+  const int numPoints = 15;
 
   std::array<unsigned int, 1u<<dim> topOctCount_start, botOctCount_start,
                                     topOctCount_end, botOctCount_end;
@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
 
   // Sort them with locTreeSort().
   std::vector<ot::TreeNode<T,dim>> sortedPoints;
-  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), &(*points.end()), sortedPoints, 1, leafLevel, 0);
+  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), &(*points.end()), sortedPoints, 0, leafLevel, 0);
 
   std::cout << '\n';
 
@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 
   for (const TreeNode &tn : sortedPoints)
   {
-    std::cout << tn << '\n';
+    std::cout << tn << " \t " << tn.getBase32Hex().data() << '\n';
     topOctCount_end[tn.getMortonIndex(0)]++;
     botOctCount_end[tn.getMortonIndex(leafLevel)]++;
   }

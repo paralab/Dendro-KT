@@ -13,7 +13,7 @@
 #ifndef DENDRO_KT_TREENODE_H
 #define DENDRO_KT_TREENODE_H
 
-static unsigned int MAX_LEVEL=31;
+static const unsigned int MAX_LEVEL=31;
 //#define m_uiMaxDepth 30
 extern unsigned int m_uiMaxDepth;
 
@@ -141,6 +141,11 @@ namespace ot {
       int setFlag(unsigned int w);
       int orFlag(unsigned int w);
       //@}
+
+      /**
+       @author Masado Ishii
+        */
+      std::array<char, MAX_LEVEL+1> getBase32Hex() const;
 
       /**
         @author Rahul Sampath
