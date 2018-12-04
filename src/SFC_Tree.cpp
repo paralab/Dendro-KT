@@ -58,8 +58,15 @@ SFC_Tree<T,D>:: locTreeSort(const TreeNode<T,D> *inp_begin, const TreeNode<T,D> 
   /// for (const TreeNode &tn : inp)
   for (const TreeNode *tn = inp_begin; tn != inp_end; tn++)
   {
-    counts[tn->getMortonIndex(sLev)]++;
+    unsigned char ch = tn->getMortonIndex(sLev);
+    printf("Counting: child==%u\n", (char) ch);
+    counts[ch]++;
+    /// counts[tn->getMortonIndex(sLev)]++;
   }
+
+  std::cout << "After counting:\n";
+  for (int c : counts) { std::cout << c << " "; }
+  std::cout << '\n';
 
   // Compute offsets of buckets in permuted SFC order.
   // Conceptually:
@@ -78,15 +85,21 @@ SFC_Tree<T,D>:: locTreeSort(const TreeNode<T,D> *inp_begin, const TreeNode<T,D> 
   for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
   {
     char child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
+    printf("Scanning: child==%d\n", child);  //DEBUG
     offsets[child] = accum;
     accum += counts[child];
   }
+
+  std::cout << "After scanning:\n";
+  for (int offset : offsets) { std::cout << offset << " "; }
+  std::cout << '\n';
 
   // Move points from `inp' to `out' according to `offsets'
   /// for (const TreeNode &tn : inp)
   for (const TreeNode *tn = inp_begin; tn != inp_end; tn++)
   {
     unsigned char child = tn->getMortonIndex(sLev);
+    printf("Moving: child==%d, offset==%d\n", child, offsets[child]);
     out[offsets[child]++] = *tn;
   }
 
@@ -110,8 +123,11 @@ SFC_Tree<T,D>:: locTreeSort(const TreeNode<T,D> *inp_begin, const TreeNode<T,D> 
       unsigned int cRot = orientLookup[child];
 
       // Recall that offsets[child] attaned the last+1 index during MOVE.
-      TreeNode * const out_begin = &out[offsets[child] - counts[child]];
-      TreeNode * const out_end = &out[offsets[child]];
+      const int idx_begin = offsets[child] - counts[child];
+      const int idx_end = offsets[child];
+      printf("Recursing with idx_begin==%d, idx_end==%d\n", idx_begin, idx_end);
+      TreeNode * const out_begin = &out[idx_begin];
+      TreeNode * const out_end = &out[idx_end];
       locTreeSort(out_begin, out_end, reorderedChild, sLev + 1, eLev, cRot);
 
       // Now that `reorderedChild' contains the reorderedChild points,
