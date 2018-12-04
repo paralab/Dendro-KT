@@ -18,7 +18,7 @@
 int main(int argc, char* argv[])
 {
   using T = unsigned int;
-  const unsigned int dim = 2;
+  const unsigned int dim = 4;
   using TreeNode = ot::TreeNode<T,dim>;
 
   _InitializeHcurve(dim);
@@ -26,7 +26,7 @@ int main(int argc, char* argv[])
   const T leafLevel = m_uiMaxDepth;
 
   //const int numPoints = 10000;
-  const int numPoints = 15;
+  const int numPoints = 100;
 
   std::array<unsigned int, 1u<<dim> topOctCount_start, botOctCount_start,
                                     topOctCount_end, botOctCount_end;
