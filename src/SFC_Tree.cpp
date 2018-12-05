@@ -16,131 +16,244 @@
 namespace ot
 {
 
+
 //
 // locTreeSort()
 //
-//   `out' will be resized to inp_end - inp_begin.
+template<typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
+                          unsigned int begin, unsigned int end,
+                          unsigned int sLev,
+                          unsigned int eLev,
+                          int pRot,
+                          std::vector<BucketInfo<unsigned int>> &outBuckets)
+{
+  //// Recursive Depth-first, similar to Most Significant Digit First. ////
+
+  constexpr char numChildren = TreeNode<T,D>::numChildren;
+  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  // Reorder the buckets on sLev (current level).
+  std::array<unsigned int, TreeNode<T,D>::numChildren+1> tempSplitters;
+  SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters);
+  // The array `tempSplitters' has numChildren+1 slots, which includes the
+  // beginning, middles, and end of the range of children.
+
+  // Lookup tables to apply rotations.
+  const char * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  const int * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+  if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+  {
+    // Recurse.
+    // Use the splitters to specify ranges for the next level of recursion.
+    // Use the results of the recursion to build the list of leaf buckets.
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      // Columns of HILBERT_TABLE are indexed by the Morton rank.
+      // According to Dendro4 TreeNode.tcc:199 they are.
+      // (There are possibly inconsistencies in the old code...?
+      // Don't worry, we can regenerate the table later.)
+      char child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      int cRot = orientLookup[child];
+
+      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] == 0)
+        continue;
+      // We don't skip a singleton, since a singleton contributes a bucket.
+      // We need recursion to calculate the rotation at the leaf level.
+
+      locTreeSort(points,
+          tempSplitters[child_sfc], tempSplitters[child_sfc+1],
+          sLev+1, eLev,
+          cRot,
+          outBuckets);
+    }
+  }
+  else
+  {
+    // This is the leaf level. Use the splitters to build the list of leaf buckets.
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      char child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      int cRot = orientLookup[child];
+
+      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] == 0)
+        continue;
+
+      outBuckets.push_back(
+          {cRot, sLev+1,
+          tempSplitters[child_sfc],
+          tempSplitters[child_sfc+1]});
+      // These are the parameters that could be used to further refine the bucket.
+    }
+  }
+
+}// end function()
+
+
+//
+// SFC_bucketing()
+//
+//   Based on Dendro4 sfcSort.h SFC_bucketing().
 //
 template<typename T, unsigned int D>
 void
-SFC_Tree<T,D>:: locTreeSort(const TreeNode<T,D> *inp_begin, const TreeNode<T,D> *inp_end,
-                   std::vector<TreeNode<T,D>> &out,
-                   unsigned int sLev,
-                   unsigned int eLev,
-                   unsigned int pRot)
+SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
+                          unsigned int begin, unsigned int end,
+                          unsigned int lev,
+                          int pRot,
+                          std::array<unsigned int, TreeNode<T,D>::numChildren+1> &outSplitters)
 {
-  //// Recursive Depth-first Most Significant Digit First. ////
-
-  // There is a global stack declared in hcurvedata.h:
-  //   - std::vector<unsigned int> RotationID_Stack;
-  //   - unsigned int rotationStackPointer;
-  // TODO It seems that in later versions of Dendro this was replaced
-  //      by a local std::vector stack.
-  //      Maybe in the recursive locTreeSort we can just get away
-  //      with storing the rotation stack in the call stack (pRot).
+  // ==
+  // Reorder the points by child number at level `lev', in the order
+  // of the SFC, and yield the positions of the splitters.
+  // ==
 
   using TreeNode = TreeNode<T,D>;
-  constexpr unsigned int numChildren = TreeNode::numChildren;
-  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+  constexpr char numChildren = TreeNode::numChildren;
+  constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 
   //
-  // Reorder the points according to the SFC at level sLev.
-
-  out.resize(inp_end - inp_begin);
-
   // Count the number of points in each bucket,
   // indexed by (Morton) child number.
   std::array<int, numChildren> counts;
   counts.fill(0);
   int countAncestors = 0;   // Special bucket to ensure ancestors precede descendants.
   /// for (const TreeNode &tn : inp)
-  for (const TreeNode *tn = inp_begin; tn != inp_end; tn++)
+  for (const TreeNode *tn = points + begin; tn < points + end; tn++)
   {
-    if (tn->getLevel() < sLev)
+    if (tn->getLevel() < lev)
       countAncestors++;
     else
-      counts[tn->getMortonIndex(sLev)]++;
+      counts[tn->getMortonIndex(lev)]++;
   }
 
+  //
   // Compute offsets of buckets in permuted SFC order.
   // Conceptually:
   //   1. Permute counts;  2. offsets=scan(counts);  3. Un-permute offsets.
   //
-  // - Since this function is recursive, we are inside a single parent octant
-  //   for the duration of the body. This means we apply a single permutation
-  //   to the buckets for all points.
-  // - We need to "Un-permute offsets" so that we can index using Morton index.
-  int accum = countAncestors;           // Ancestors come first.
-  int offsetAncestors = 0;
-  std::array<int, numChildren> offsets;
+  // The `outSplitters' array is indexed in SFC order (to match final output),
+  // while the `offsets' and `bucketEnds` arrays are indexed in Morton order
+  // (for easy lookup using TreeNode.getMortonIndex()).
+  //
+  std::array<unsigned int, numChildren+1> offsets, bucketEnds;  // Last idx represents ancestors.
+  offsets[numChildren] = begin;
+  bucketEnds[numChildren] = begin + countAncestors;
+  unsigned int accum = begin + countAncestors;                  // Ancestors belong in front.
+
+  std::array<TreeNode, numChildren+1> unsortedBuffer;
+  int bufferSize = 0;
+
   // Logically permute: Scan the bucket-counts in the order of the SFC.
   // Since we want to map [SFC_rank]-->Morton_rank,
   // use the "left" columns of rotations[], aka `rot_perm'.
   const char *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
+  char child_sfc = 0;
+  for ( ; child_sfc < numChildren; child_sfc++)
   {
     char child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
-    offsets[child] = accum;
+    outSplitters[child_sfc] = accum;
+    offsets[child] = accum;           // Start of bucket. Moving marker.
     accum += counts[child];
+    bucketEnds[child] = accum;        // End of bucket. Fixed marker.
   }
+  outSplitters[child_sfc] = accum;  // Should be the end.
 
-  // Move points from `inp' to `out' according to `offsets'
-  /// for (const TreeNode &tn : inp)
-  for (const TreeNode *tn = inp_begin; tn != inp_end; tn++)
+  // Prepare for the in-place movement phase by copying each offsets[] pointee
+  // to the rotation buffer. This frees up the slots to be valid destinations.
+  // Includes ancestors.
+  for (char bucketId = 0; bucketId <= numChildren; bucketId++)
   {
-    if (tn->getLevel() < sLev)
-      out[offsetAncestors++] = *tn;
-    else
-    {
-      unsigned char child = tn->getMortonIndex(sLev);
-      out[offsets[child]++] = *tn;
-    }
+    if (offsets[bucketId] < bucketEnds[bucketId])
+      unsortedBuffer[bufferSize++] = points[offsets[bucketId]];  // Copy TreeNode.
   }
 
   //
-  // Recurse.
-  if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+  // Finish the movement phase.
+  //
+  // Invariant: Any offsets[] pointee has been copied into `unsortedBuffer'.
+  while (bufferSize > 0)
   {
-    std::vector<TreeNode> reorderedChild;
-    const char *orientLookup = &HILBERT_TABLE[pRot*numChildren];
-    for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
-    {
-      char child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
+    TreeNode *bufferTop = &unsortedBuffer[bufferSize-1];
+    unsigned char destBucket
+      = (bufferTop->getLevel() < lev) ? numChildren : bufferTop->getMortonIndex(lev);
 
-      if (counts[child] <= 1)
-        continue;
+    points[offsets[destBucket]++] = *bufferTop;  // Set down the TreeNode.
 
-      // Columns of HILBERT_TABLE are indexed by the Morton rank.
-      // According to Dendro4 TreeNode.tcc:199 they are.
-      // (There are possibly inconsistencies in the old code...
-      // Don't worry, we'll be regenerating the table later.)
-      unsigned int cRot = orientLookup[child];
+    // Follow the cycle by picking up the next element in destBucket...
+    // unless we completed a cycle: in that case we made progress with unsortedBuffer.
+    if (offsets[destBucket] < bucketEnds[destBucket])
+      *bufferTop = points[offsets[destBucket]];    // Copy TreeNode.
+    else
+      bufferSize--;
+  }
+}
 
-      // Recall that offsets[child] attaned the last+1 index during MOVE.
-      const int idx_begin = offsets[child] - counts[child];
-      const int idx_end = offsets[child];
-      TreeNode * const out_begin = &out[idx_begin];
-      TreeNode * const out_end = &out[idx_end];
-      locTreeSort(out_begin, out_end, reorderedChild, sLev + 1, eLev, cRot);
 
-      // Now that `reorderedChild' contains the reorderedChild points,
-      // copy them into `out'.
-      for (int ii = 0; ii < counts[child]; ii++)
-      {
-        out_begin[ii] = reorderedChild[ii];
-      }
-      /// for (TreeNode *outPtr = out_begin, int ii = 0; outPtr != out_end; outPtr++, ii++)
-      /// {
-      ///   *outPtr = reorderedChild[ii];
-      /// }
-    }
-  }//end if()
-}// end function()
-//TODO: Consider making this in-place: So `inp' will no longer be const, but we can
-//      avoid allocating (and joining) lots of std::vector. To do it, we just need an
-//      extra buffer of std::array<TreeNode, numChildren> during the
-//      MOVE phase; then repeat: {skip belonging points},
-//      {move points to buffers}, {accept points from buffers}.
-//      Downside: Perhaps not cache-friendly.
+
+template<typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> inp,            // The input needs to be rearranged to compute buckets...
+   /* const TreeNode<T,D> *inp_begin, const TreeNode<T,D> *inp_end,*/   // However, we won't be calling this method recursively.
+                          std::vector<TreeNode<T,D>> &out,
+                          double loadFlexibility,
+                          MPI_Comm comm/*,*/
+                          /*unsigned int sLev,*/
+                          /*unsigned int eLev,*/
+                          /*unsigned int pRot*/)    // Assume starting at the root.
+{
+
+  // -- Don't worry about K buckets for now, we'll add that later. --
+
+  // The goal of this function, as explained in Fernando and Sundar's paper,
+  // is to refine the list of points into finer sorted buckets until
+  // the balancing criterion has been met. Therefore the hyperoctree is
+  // traversed in breadth-first order.
+  //
+  // I've considered two ways to do a breadth first traversal:
+  // 1. Repeated depth-first traversal with a stack to hold rotations
+  //    (requires storage linear in height of the tree, but more computation)
+  // 2. Single breadth-first traversal with a queue to hold rotations
+  //    (requires storage linear in the breadth of the tree, but done in a
+  //    single pass. Also can take advantage of sparsity and filtering).
+  // The second approach is used in Dendro4 par::sfcTreeSort(), so
+  // I'm going to assume that linear aux storage is not too much to ask.
+
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  const int initNumBuckets = nProc;
+  const int initNumLevels = ceil(log2(initNumBuckets)); /*TODO Dendro has fastLog2 */
+
+  // Initial local sort to get sufficient number of partitions (splitters).
+  //   - There are (numPartitions + 1) splitters
+  //TODO  locTreeSort(&(*inp.begin()), &(*inp.end()), 0, initNumLevels, 1, counts, splitters);
+
+  //New buckets
+
+  // While(There are new splitters)
+
+    // Allreduce(counts_local, counts_global)  // TODO I think we should only communicate the new buckets
+
+    // Scan counts_global to find global bucket boundaries.
+
+    // For each processor, locate the position of its ideal partition boundary
+    // in relation to the global bucket boundaries. If it is too far off,
+    // note the bucket where it lands. Insert this bucket into the queue for
+    // further refinement (unless already inserted this round).
+
+    // Refine each bucket that needs it.
+
+  // All to all on list of TreeNodes, according to the final splitters.
+  //TODO figure out the 'staged' part with k-parameter.
+
+  // Finish with a local TreeSort to ensure all points are in order.
+}
+
+
+
 
 } // namspace ot

@@ -42,7 +42,7 @@ constexpr int _KD_ROTATIONS_SIZE(int pDim)
 }
 
 
-extern char* HILBERT_TABLE;
+extern int* HILBERT_TABLE;
 extern char* rotations;
 
 //#define DENDRO_DIM2

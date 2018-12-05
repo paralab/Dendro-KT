@@ -14,7 +14,7 @@
 #include "../include/hcurvedata.h"
 
 char* rotations;
-char* HILBERT_TABLE;
+int* HILBERT_TABLE;
 
 std::vector<unsigned int> RotationID_Stack;
 unsigned int rotationStackPointer;
@@ -27,7 +27,7 @@ void _InitializeHcurve(int pDim) {
 if(pDim==2) {
 
     rotations = new char[_2D_ROTATIONS_SIZE];
-    HILBERT_TABLE = new char[_2D_HILBERT_TABLE];
+    HILBERT_TABLE = new int[_2D_HILBERT_TABLE];
 
 
 
@@ -79,7 +79,7 @@ else if(pDim==3) {
 
 
     rotations = new char[_3D_ROTATIONS_SIZE];
-    HILBERT_TABLE = new char[_3D_HILBERT_TABLE];
+    HILBERT_TABLE = new int[_3D_HILBERT_TABLE];
 
     RotationID_Stack.push_back(0);
     rotationStackPointer=0;
@@ -538,7 +538,7 @@ else if(pDim==3) {
 
 const int num_orthant = (1u<<pDim);
 rotations = new char[2*num_orthant];
-HILBERT_TABLE = new char[num_orthant];
+HILBERT_TABLE = new int[num_orthant];
 for (int ort = 0; ort < num_orthant; ort++)
 {
   rotations[ort] = '0' + ort;

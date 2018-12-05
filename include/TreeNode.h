@@ -47,7 +47,7 @@ namespace ot {
 
     public:
 
-        static constexpr unsigned int numChildren = (1u << dim);
+        static constexpr char numChildren = (1u << dim);
 
       /** @name Templated types.  */
       //@{

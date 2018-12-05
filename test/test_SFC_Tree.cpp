@@ -58,8 +58,12 @@ int main(int argc, char* argv[])
   std::cout << "=============================\n";
 
   // Sort them with locTreeSort().
-  std::vector<ot::TreeNode<T,dim>> sortedPoints;
-  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), &(*points.end()), sortedPoints, 0, leafLevel, 0);
+  ///std::vector<ot::TreeNode<T,dim>> sortedPoints;
+  ///ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), &(*points.end()), sortedPoints, 0, leafLevel, 0);
+  auto leafBuckets = ot::SFC_Tree<T,dim>::getEmptyBucketVector();
+  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), 0, points.size(), 0, leafLevel, 0, leafBuckets);
+
+  std::vector<ot::TreeNode<T,dim>> &sortedPoints = points;
 
   std::cout << '\n';
 
@@ -75,6 +79,9 @@ int main(int argc, char* argv[])
   }
 
   std::cout << '\n';
+
+  std::cout << "Number of leaf buckets (leafLevel == " << leafLevel << "):  "
+            << leafBuckets.size() << '\n';
 
   std::cout << "=============================\n";
   std::cout << "Verify Counts.:\n";
@@ -94,12 +101,6 @@ int main(int argc, char* argv[])
   std::cout << "-----------------------------\n"
       << (success ? "Success: No losses." : "FAILURE: Lost some TreeNodes.")
       << '\n';
-
-
-
-
-
-  //TODO feed `points' to some octree methods.
 
   return 0;
 }
