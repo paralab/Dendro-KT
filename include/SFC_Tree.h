@@ -55,7 +55,8 @@ struct SFC_Tree
                           unsigned int sLev,
                           unsigned int eLev,
                           int pRot,            // Initial rotation, use 0 if sLev is 1.
-                          std::vector<BucketInfo<unsigned int>> &outBuckets);
+                          std::vector<BucketInfo<unsigned int>> &outBuckets,
+                          bool makeBuckets = true);
 
   // Use this to initialize the last argument to locTreeSort.
   // Convenient if you don't care about the buckets and you would rather
@@ -74,8 +75,9 @@ struct SFC_Tree
                           std::array<unsigned int, TreeNode<T,D>::numChildren+1> &outSplitters);
 
 
-  static void distTreeSort(std::vector<TreeNode<T,D>> inp,
-                           std::vector<TreeNode<T,D>> &out,
+  // Notes:
+  //   - points will be replaced/resized with globally sorted data.
+  static void distTreeSort(std::vector<TreeNode<T,D>> &points,
                            double loadFlexibility,
                            MPI_Comm comm);
 

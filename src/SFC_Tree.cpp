@@ -27,9 +27,12 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
                           unsigned int sLev,
                           unsigned int eLev,
                           int pRot,
-                          std::vector<BucketInfo<unsigned int>> &outBuckets)
+                          std::vector<BucketInfo<unsigned int>> &outBuckets,
+                          bool makeBuckets)
 {
   //// Recursive Depth-first, similar to Most Significant Digit First. ////
+
+  if (end <= begin) { return; }
 
   constexpr char numChildren = TreeNode<T,D>::numChildren;
   constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
@@ -46,6 +49,8 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
 
   if (sLev < eLev)  // This means eLev is further from the root level than sLev.
   {
+    const unsigned int continueThresh = makeBuckets ? 0 : 1;
+
     // Recurse.
     // Use the splitters to specify ranges for the next level of recursion.
     // Use the results of the recursion to build the list of leaf buckets.
@@ -58,7 +63,7 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
       char child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
       int cRot = orientLookup[child];
 
-      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] == 0)
+      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] <= continueThresh)
         continue;
       // We don't skip a singleton, since a singleton contributes a bucket.
       // We need recursion to calculate the rotation at the leaf level.
@@ -67,10 +72,11 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
           tempSplitters[child_sfc], tempSplitters[child_sfc+1],
           sLev+1, eLev,
           cRot,
-          outBuckets);
+          outBuckets,
+          makeBuckets);
     }
   }
-  else
+  else if (makeBuckets)
   {
     // This is the leaf level. Use the splitters to build the list of leaf buckets.
     for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
@@ -195,14 +201,9 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
 
 template<typename T, unsigned int D>
 void
-SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> inp,            // The input needs to be rearranged to compute buckets...
-   /* const TreeNode<T,D> *inp_begin, const TreeNode<T,D> *inp_end,*/   // However, we won't be calling this method recursively.
-                          std::vector<TreeNode<T,D>> &out,
+SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,            // The input needs to be rearranged to compute buckets...
                           double loadFlexibility,
-                          MPI_Comm comm/*,*/
-                          /*unsigned int sLev,*/
-                          /*unsigned int eLev,*/
-                          /*unsigned int pRot*/)    // Assume starting at the root.
+                          MPI_Comm comm)
 {
 
   // -- Don't worry about K buckets for now, we'll add that later. --
@@ -227,14 +228,35 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> inp,            // The i
 
   const int initNumBuckets = nProc;
   const int initNumLevels = ceil(log2(initNumBuckets)); /*TODO Dendro has fastLog2 */
+  //TODO this might be an off-by-one error. Might supposed to use one fewer levels.
+  //     Or we could change locTreeSort so that [sLev, eLev] is not inclusive of eLev.
 
   // Initial local sort to get sufficient number of partitions (splitters).
-  //   - There are (numPartitions + 1) splitters
-  //TODO  locTreeSort(&(*inp.begin()), &(*inp.end()), 0, initNumLevels, 1, counts, splitters);
+  std::vector<BucketInfo<unsigned int>> initBuckets;
+  locTreeSort(&(*points.begin()), 0, points.size(), 0, initNumLevels, 0, initBuckets);
+
+  // TODO Now that we are here at the communication stage, it becomes clear
+  // why we need locTreeSort to return buckets/splitters/counts for all leaf octants,
+  // both empty and nonempty: We need the buffers to align with those of all
+  // other processes, which may have different sets of empty/nonempty buckets.
+
+  bool gotNewBuckets = true;
+  while (gotNewBuckets)
+  {
+
+
+    /*if (...)*/
+      gotNewBuckets = true;
+    /*else*/
+      gotNewBuckets = false;
+  }
 
   //New buckets
 
   // While(There are new splitters)
+
+    // Extend counts_local to complete leaf level, then initialize counts_local
+    // by running through the nonempty buckets.
 
     // Allreduce(counts_local, counts_global)  // TODO I think we should only communicate the new buckets
 
