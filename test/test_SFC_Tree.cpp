@@ -82,6 +82,11 @@ int main(int argc, char* argv[])
 
   std::cout << "Number of leaf buckets (leafLevel == " << leafLevel << "):  "
             << leafBuckets.size() << '\n';
+  std::cout << "Buckets:\n";
+  for (const ot::BucketInfo<unsigned int> &b : leafBuckets)
+  {
+    printf("{%4d %4u %4u %4u}\n", b.rot_id, b.lev, b.begin, b.end);
+  }
 
   std::cout << "=============================\n";
   std::cout << "Verify Counts.:\n";
