@@ -15,7 +15,10 @@
 #include "genRand4DPoints.h"
 #include <vector>
 
-int main(int argc, char* argv[])
+//------------------------
+// test_locTreeSort()
+//------------------------
+void test_locTreeSort()
 {
   using T = unsigned int;
   const unsigned int dim = 4;
@@ -106,6 +109,39 @@ int main(int argc, char* argv[])
   std::cout << "-----------------------------\n"
       << (success ? "Success: No losses." : "FAILURE: Lost some TreeNodes.")
       << '\n';
+}
+//------------------------
+
+
+//------------------------
+// test_distTreeSort()
+//------------------------
+void test_distTreeSort()
+{
+  using T = unsigned int;
+  const unsigned int dim = 2;
+  using TreeNode = ot::TreeNode<T,dim>;
+
+  const int numPoints = 1000;
+
+  _InitializeHcurve(dim);
+
+  std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
+
+  ot::SFC_Tree<T,dim>::distTreeSort(points, 0.125, MPI_COMM_WORLD);
+}
+//------------------------
+
+
+int main(int argc, char* argv[])
+{
+  MPI_Init(&argc, &argv);
+
+  //test_locTreeSort();
+
+  test_distTreeSort();
+
+  MPI_Finalize();
 
   return 0;
 }
