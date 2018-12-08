@@ -42,11 +42,11 @@ inline std::vector<ot::TreeNode<T,dim>> genRand4DPoints(int numPoints)
     }
     //ot::TreeNode<T,dim> tn(0, uiCoords, leafLevel);
     ot::TreeNode<T,dim> tn(0, uiCoords, distLevel(gen));
-    std::cout << tn << '\n';
+    /// std::cout << tn << '\n';
     points.push_back(tn);
   }
 
-  std::cout << '\n';
+  /// std::cout << '\n';
   return points;
 }
 

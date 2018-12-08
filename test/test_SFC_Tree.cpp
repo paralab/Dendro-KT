@@ -126,27 +126,32 @@ void test_distTreeSort(MPI_Comm comm = MPI_COMM_WORLD)
   const unsigned int dim = 2;
   using TreeNode = ot::TreeNode<T,dim>;
 
-  const int numPoints = 50;
+  const int numPoints = 10;
 
   _InitializeHcurve(dim);
 
-  // Synchronize generation.
+  std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
+
+  // Synchronize printing.
   int dummyMsg;
   MPI_Status status;
   if (rProc > 0)
     MPI_Recv(&dummyMsg, 1, MPI_INT, rProc-1, 0, comm, &status);
-  std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
+  std::cout << "<<Unsorted (" << rProc << ")>>\n";
+  for (const TreeNode &tn : points)
+    std::cout << tn << " \t " << tn.getBase32Hex().data() << '\n';
   std::cout << '\n';
-  if (rProc < nProc - 1)
-    MPI_Send(&dummyMsg, 1, MPI_INT, rProc+1, 0, comm);
+  //
+  MPI_Send(&dummyMsg, 1, MPI_INT, (rProc+1) % nProc, 0, comm);
 
   // Sort!
   ///ot::SFC_Tree<T,dim>::distTreeSort(points, 0.125, MPI_COMM_WORLD);
   ot::SFC_Tree<T,dim>::distTreeSort(points, 0.0, comm);
 
   // Synchronize printing.
-  if (rProc > 0)
-    MPI_Recv(&dummyMsg, 1, MPI_INT, rProc-1, 0, comm, &status);
+  MPI_Recv(&dummyMsg, 1, MPI_INT, (nProc + rProc-1) % nProc, 0, comm, &status);
+  //
+  std::cout << "<<GLOBALLY Sorted (" << rProc << ")>>\n";
   for (const TreeNode &tn : points)
     std::cout << tn << " \t " << tn.getBase32Hex().data() << '\n';
   std::cout << '\n';

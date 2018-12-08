@@ -14,6 +14,8 @@
 #include "hcurvedata.h"
 #include "PROXY_parUtils.h"
 
+#include <stdio.h>
+
 namespace ot
 {
 
@@ -273,7 +275,6 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   RankI sizeG, sizeL = points.size();
   sizeG = sizeL;   // Proxy for summing, to test with one proc.
   par::Mpi_Allreduce<RankI>(&sizeL, &sizeG, 1, MPI_SUM, comm);
-  /// MPI_Allreduce(&sizeL, &sizeG, 1, MPI_INT, MPI_SUM, comm);  //TODO after get dependencies, use the templated one ^^
 
 
   /// //TEST  print all ideal splitters pictorally
@@ -315,7 +316,6 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
     bktCountsG.resize(bktCountsL.size());
     bktCountsG = bktCountsL;              // Proxy for summing, to test with one proc.
     par::Mpi_Allreduce<RankI>(&(*bktCountsL.begin()), &(*bktCountsG.begin()), (int) bktCountsL.size(), MPI_SUM, comm);
-    /// MPI_Allreduce(&(*bktCountsL.begin()), &(*bktCountsG.begin()), bktCountsL.size(), MPI_INT, MPI_SUM, comm);    //TODO after get dependencies, use the templated one ^^
 
     // Compute ranks, test load balance, and collect buckets for refinement.
     // Process each bucket in sequence, one block of buckets at a time.
@@ -392,16 +392,36 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
     sPrev = s;
   }
   par::Mpi_Alltoall<RankI>(&(*sendCnt.begin()), &(*recvCnt.begin()), 1, comm);
-  /// MPI_Alltoall<RankI>(
-  ///     &(*sendCnt.begin()), 1, MPI_INT
-  ///     &(*recvCnt.begin()), 1, MPI_INT, comm);   //TODO after get dependencies, use the templated one ^^
   sPrev = 0;
   for (RankI &c : recvCnt)      // Sequential scan.
-    recvDspl.push_back(sPrev += c);
+  {
+    recvDspl.push_back(sPrev);
+    sPrev += c;
+  }
 
   RankI sizeNew = recvDspl.back() + recvCnt.back();
   if (sizeNew > sizeL)
     points.resize(sizeNew);
+
+
+  // Synchronize printing.  DEBUG
+  int dummyMsg;
+  MPI_Status status;
+  MPI_Recv(&dummyMsg, 1, MPI_INT, rProc-1, 0, comm, &status);
+  std::cout << "<<LOCALLY Sorted (" << rProc << ")>>\n";
+  for (const TreeNode &tn : points)
+    std::cout << tn << " \t " << tn.getBase32Hex().data() << '\n';
+  printf("Splitters   "); for (RankI x : splitters) { printf("%3u", x); } printf("\n");
+  printf("sendCnt     "); for (RankI x : sendCnt) { printf("%3u", x); } printf("\n");
+  printf("sendDspl    "); for (RankI x : sendDspl) { printf("%3u", x); } printf("\n");
+  printf("recvCnt     "); for (RankI x : recvCnt) { printf("%3u", x); } printf("\n");
+  printf("recvDspl    "); for (RankI x : recvDspl) { printf("%3u", x); } printf("\n");
+  std::cout << '\n';
+  //
+  MPI_Send(&dummyMsg, 1, MPI_INT, (rProc+1) % nProc, 0, comm);
+
+
+
 
   par::Mpi_Alltoallv<TreeNode>(
       &(*points.begin()), (int*) &(*sendCnt.begin()), (int*) &(*sendDspl.begin()),
