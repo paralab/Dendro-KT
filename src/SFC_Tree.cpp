@@ -209,7 +209,7 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
 
 template<typename T, unsigned int D>
 void
-SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,            // The input needs to be rearranged to compute buckets...
+SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
@@ -226,7 +226,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,            // T
   //    (requires storage linear in height of the tree, but more computation)
   // 2. Single breadth-first traversal with a queue to hold rotations
   //    (requires storage linear in the breadth of the tree, but done in a
-  //    single pass. Also can take advantage of sparsity and filtering).
+  //    single pass of the tree. Also can take advantage of sparsity and filtering).
   // The second approach is used in Dendro4 par::sfcTreeSort(), so
   // I'm going to assume that linear aux storage is not too much to ask.
 
@@ -238,116 +238,128 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,            // T
   constexpr char numChildren = TreeNode::numChildren;
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 
-  //
-  // Main activity:
-  //   Breadth-first traversal by enqueuing/dequeuing level by level.
-  //
-  // We have no reason to intervene in the middle of a level,
-  // so the within-level loop has been abstracted to a function.
-  //
+  // The outcome of the BFT will be a list of splitters, i.e. refined buckets.
+  // As long as there are `pending splitters', we will refine their corresponding buckets.
+  // Initially all splitters are pending.
+  std::vector<unsigned int> splitters(nProc, 0);
+  BarrierQueue<unsigned int> pendingSplitterIdx;
+  for (unsigned int sIdx = 0; sIdx < nProc; sIdx++)
+    pendingSplitterIdx.q[sIdx] = sIdx;
+  pendingSplitterIdx.reset_barrier();
 
-  std::vector<BucketInfo<unsigned int>> bftQueue;
-
-  // First phase: move down the levels until we have enough buckets
+  //
+  // Phase 1: move down the levels until we have enough buckets
   //   to test our load-balancing criterion.
-  /// const int initNumBuckets = nProc;
-  const int initNumBuckets = 31;    //TODO restore ^^
-  const BucketInfo<unsigned int> rootOrthant = {0, 0, 0, (unsigned int) points.size()};
-  bftQueue.push_back(rootOrthant);
-        // The second clause prevents runaway in case we run out of points.
+  BarrierQueue<BucketInfo<unsigned int>> bftQueue;
+  const int initNumBuckets = nProc;
+  /// const int initNumBuckets = 31;    //TODO restore ^^
+  const BucketInfo<unsigned int> rootBucket = {0, 0, 0, (unsigned int) points.size()};
+  bftQueue.q.push_back(rootBucket);
+        // No-runaway, in case we run out of points.
         // It is `<' because refining m_uiMaxDepth would make (m_uiMaxDepth+1).
-  while (bftQueue.size() < initNumBuckets && bftQueue[0].lev < m_uiMaxDepth)
+  while (bftQueue.q.size() < initNumBuckets && bftQueue.q[0].lev < m_uiMaxDepth)
   {
-    treeBFTNextLevel(&(*points.begin()), bftQueue);
-
-    // DEBUG / TEST
-    for (BucketInfo<unsigned int> b : bftQueue)
-    {
-       printf("rot_id:%d lev:%u b:%u e:%u\n", b.rot_id, b.lev, b.begin, b.end);
-    }
-    printf("\n");
+    treeBFTNextLevel(&(*points.begin()), bftQueue.q);
   }
   // Remark: Due to the no-runaway clause, we are not guaranteed
   // that bftQueue actually holds `initNumBuckets' buckets.
 
-  //TODO Before moving on, test that the depth-first traversal works as intended.
-
-  // Second phase: Count bucket sizes, communicate bucket sizes,
+  //
+  // Phase 2: Count bucket sizes, communicate bucket sizes,
   //   test load balance, select buckets and refine, repeat.
 
-  //PSEUDOCODE
-  /*
-    1. refinedBuckets = bftQueue.consume();
-    2. unfound_q = {0, ..., p-1};
-    3. 
+  unsigned int sizeG, sizeL = points.size();
+  /// TODO Mpi_Reduceall<???>(&sizeL, &sizeG, ... MPI_SUM ...);TODO
 
-
-    1. Could use a datastruture for ordered types that supports std::lower_bound, and replacing a located item with several new items.
-    2. ACTUALLY our goal is to compute splitters... We should retain a list of buckets
-       that contain ideal splitters. The bucket data structure could be extended
-       to record which splitters it contains. That way, if we refine a bucket,
-       all splitters that were in that bucket are able to benefit.
-    3. NOPE That's not a benefit. We want to minimize boundary area as much
-       as possible, if the load balance tolerance will allow us.
-       So, pretty much, we just use the refined buckets as a tool to continue
-       adjusting the splitters that weren't satisfied.
-    AwesomeDataStructure bucketList
-    Count buckets... countsL; 
-
-
-   */
-
-
-  // TODO Now that we are here at the communication stage, it becomes clear
-  // why we need locTreeSort to return buckets/splitters/counts for all ending octants,
-  // both empty and nonempty: We need the buffers to align with those of all
-  // other processes, which may have different sets of empty/nonempty buckets.
-  //
-  // ACTUALLY, we'll just compute those in breadth-first order here.
-
-
-  // Other containers.
-
-  bool gotNewBuckets = true;
-  while (gotNewBuckets)
+  // To avoid communicating buckets that did not get updated, we'll cycle:
+  //   Select buckets from old queue, -> enqueue in a "new" queue, -> ...
+  //   Use the class BarrierQueue to separate old from new.
+  // I also group buckets into "blocks" of contiguous siblings before scanning.
+  std::vector<unsigned int> bktCountsL, bktCountsG;  // As single-use containers.
+  BarrierQueue<unsigned int> blkBeginG;              // As queue with barrier, to bridge levels.
+  blkBeginG.enqueue(0);
+  unsigned int blkNumBkt = bftQueue.size();  // The first block is special. It contains all buckets.
+  while (pendingSplitterIdx.size() > 0)
   {
+    bftQueue.reset_barrier();
+    blkBeginG.reset_barrier();
+    pendingSplitterIdx.reset_barrier();
 
+    // Count buckets locally and globally.
+    bktCountsL.clear();
+    for (BucketInfo<unsigned int> b : bftQueue.leading())
+      bktCountsL.push_back(b.end - b.begin);
+    bktCountsG.resize(bktCountsL.size());
+    /// TODO Mpi_Reduceall<???>(&(*bktCountsL.begin()), &(*bktCountsG.begin()), bktCountsL.size()); TODO
 
-    /*if (...)*/
-      gotNewBuckets = true;
-    /*else*/
-      gotNewBuckets = false;
+    // Compute ranks, test load balance, and collect buckets for refinement.
+    // Process each bucket in sequence, one block of buckets at a time.
+    unsigned int bktBeginG;
+    while (blkBeginG.dequeue(bktBeginG))
+    {
+      for (unsigned int ii = 0; ii < blkNumBkt; ii++)
+      {
+        const unsigned int bktCountG = bktCountsG[0];
+        const unsigned int bktEndG = bktBeginG + bktCountG;
+        bktCountsG.erase(bktCountsG.begin());
+
+        BucketInfo<unsigned int> refBkt;
+        bftQueue.dequeue(refBkt);
+        bool selectBucket = false;
+        const bool bktCanBeRefined = (refBkt.lev < m_uiMaxDepth);
+        
+        // Test the splitter indices that may fall into the current bucket.
+        unsigned int idealSplitterG;
+        while (pendingSplitterIdx.get_barrier()
+            && (idealSplitterG = pendingSplitterIdx.front() * sizeG / nProc) <= bktEndG)
+        {
+          unsigned int r;
+          pendingSplitterIdx.dequeue(r);
+          unsigned int absTolerance = ((r+1) * sizeG / nProc - r * sizeG / nProc) * loadFlexibility;
+          if (bktCanBeRefined && (bktEndG - idealSplitterG) > absTolerance)
+          {
+            // Too far. Mark bucket for refinment. Send splitter back to queue.
+            selectBucket = true;
+            pendingSplitterIdx.enqueue(r);
+          }
+          else
+          {
+            // Good enough. Accept the bucket by recording the local splitter.
+            splitters[r] = refBkt.end;
+          }
+        }
+
+        if (selectBucket)
+        {
+          bftQueue.enqueue(refBkt);      // For refinment.
+          blkBeginG.enqueue(bktBeginG);  // Bucket-begin becomes block-begin on next iteration.
+        }
+
+        bktBeginG = bktEndG;
+      }
+    }
+
+    // Refine the buckets that we have set aside.
+    treeBFTNextLevel(&(*points.begin()), bftQueue.q);
+    
+    blkNumBkt = numChildren;  // After the first level, blocks result from refining a single bucket.
   }
-
-  //New buckets
-
-  // While(There are new splitters)
-
-    // Extend counts_local to complete leaf level, then initialize counts_local
-    // by running through the nonempty buckets.
-
-    // Allreduce(counts_local, counts_global)  // TODO I think we should only communicate the new buckets
-
-    // Scan counts_global to find global bucket boundaries.
-
-    // For each processor, locate the position of its ideal partition boundary
-    // in relation to the global bucket boundaries. If it is too far off,
-    // note the bucket where it lands. Insert this bucket into the queue for
-    // further refinement (unless already inserted this round).
-
-    // Refine each bucket that needs it.
 
   // All to all on list of TreeNodes, according to the final splitters.
   //TODO figure out the 'staged' part with k-parameter.
 
-  // Finish with a local TreeSort to ensure all points are in order.
+  // Finish with a local TreeSort to ensure all points are in order. TODO
 }
+
 
 template <typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
       std::vector<BucketInfo<unsigned int>> &bftQueue)
 {
+  if (bftQueue.size() == 0)
+    return;
+
   const unsigned int startLev = bftQueue[0].lev;
 
   using TreeNode = TreeNode<T,D>;
