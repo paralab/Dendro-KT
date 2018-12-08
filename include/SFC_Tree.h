@@ -68,6 +68,8 @@ struct BarrierQueue
   std::vector<T> q;             // If you modify this, call reset_barrier() afterward.
 
   BarrierQueue() : q(), b(0) {};
+  BarrierQueue(typename std::vector<T>::size_type s) : q(s), b(0) {};
+  BarrierQueue(typename std::vector<T>::size_type s, T val) : q(s, val), b(0) {};
   void clear() { q.clear(); b = 0; }
   void reset_barrier() { b = q.size(); }
   void resize_back(typename std::vector<T>::size_type count) { q.resize(count + b); }

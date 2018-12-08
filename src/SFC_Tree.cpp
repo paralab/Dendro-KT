@@ -234,15 +234,20 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
+  /// if (nProc == 1) { locTreeSort(points, ...); }
+
   using TreeNode = TreeNode<T,D>;
   constexpr char numChildren = TreeNode::numChildren;
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  //TEST TODO
+  nProc = 10;
 
   // The outcome of the BFT will be a list of splitters, i.e. refined buckets.
   // As long as there are `pending splitters', we will refine their corresponding buckets.
   // Initially all splitters are pending.
   std::vector<unsigned int> splitters(nProc, 0);
-  BarrierQueue<unsigned int> pendingSplitterIdx;
+  BarrierQueue<unsigned int> pendingSplitterIdx(nProc);
   for (unsigned int sIdx = 0; sIdx < nProc; sIdx++)
     pendingSplitterIdx.q[sIdx] = sIdx;
   pendingSplitterIdx.reset_barrier();
@@ -252,7 +257,6 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   //   to test our load-balancing criterion.
   BarrierQueue<BucketInfo<unsigned int>> bftQueue;
   const int initNumBuckets = nProc;
-  /// const int initNumBuckets = 31;    //TODO restore ^^
   const BucketInfo<unsigned int> rootBucket = {0, 0, 0, (unsigned int) points.size()};
   bftQueue.q.push_back(rootBucket);
         // No-runaway, in case we run out of points.
@@ -269,7 +273,21 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   //   test load balance, select buckets and refine, repeat.
 
   unsigned int sizeG, sizeL = points.size();
+  sizeG = sizeL;   // Proxy for summing, to test with one proc.
   /// TODO Mpi_Reduceall<???>(&sizeL, &sizeG, ... MPI_SUM ...);TODO
+
+
+  //TEST  print all ideal splitters pictorally
+  unsigned int oldLoc = 0;
+  for (int rr = 0; rr < nProc; rr++)
+  {
+    unsigned int idealSplitter = (rr+1) * sizeG / nProc;
+    for ( ; oldLoc < idealSplitter; oldLoc++) { std::cout << ' '; }
+    std::cout << 'I';     oldLoc++;
+  }
+  std::cout << '\n';
+
+  std::vector<unsigned int> DBG_splitterIteration(nProc, 0);  //DEBUG
 
   // To avoid communicating buckets that did not get updated, we'll cycle:
   //   Select buckets from old queue, -> enqueue in a "new" queue, -> ...
@@ -281,6 +299,12 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   unsigned int blkNumBkt = bftQueue.size();  // The first block is special. It contains all buckets.
   while (pendingSplitterIdx.size() > 0)
   {
+    // TEST Print all new buckets pictorally.
+    { unsigned int DBG_oldLoc = 0;
+      for (BucketInfo<unsigned int> b : bftQueue.q) { while(DBG_oldLoc < b.end) { std::cout << ' '; DBG_oldLoc++; } if (DBG_oldLoc == b.end) { std::cout << '|'; DBG_oldLoc++; } }
+      std::cout << '\n';
+    }
+
     bftQueue.reset_barrier();
     blkBeginG.reset_barrier();
     pendingSplitterIdx.reset_barrier();
@@ -290,6 +314,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
     for (BucketInfo<unsigned int> b : bftQueue.leading())
       bktCountsL.push_back(b.end - b.begin);
     bktCountsG.resize(bktCountsL.size());
+    bktCountsG = bktCountsL;              // Proxy for summing, to test with one proc.
     /// TODO Mpi_Reduceall<???>(&(*bktCountsL.begin()), &(*bktCountsG.begin()), bktCountsL.size()); TODO
 
     // Compute ranks, test load balance, and collect buckets for refinement.
@@ -311,7 +336,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
         // Test the splitter indices that may fall into the current bucket.
         unsigned int idealSplitterG;
         while (pendingSplitterIdx.get_barrier()
-            && (idealSplitterG = pendingSplitterIdx.front() * sizeG / nProc) <= bktEndG)
+            && (idealSplitterG = (pendingSplitterIdx.front()+1) * sizeG / nProc) <= bktEndG)
         {
           unsigned int r;
           pendingSplitterIdx.dequeue(r);
@@ -321,12 +346,14 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
             // Too far. Mark bucket for refinment. Send splitter back to queue.
             selectBucket = true;
             pendingSplitterIdx.enqueue(r);
+            splitters[r] = refBkt.end;      // Will be overwritten. Uncomment if want to see progress.
           }
           else
           {
             // Good enough. Accept the bucket by recording the local splitter.
             splitters[r] = refBkt.end;
           }
+          DBG_splitterIteration[r]++;   //DEBUG
         }
 
         if (selectBucket)
@@ -339,6 +366,12 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
       }
     }
 
+    // TEST Print all splitters.
+    { unsigned int DBG_oldLoc = 0;
+      for (unsigned int s : splitters) { while(DBG_oldLoc < s) { std::cout << '_'; DBG_oldLoc++; }  if (DBG_oldLoc == s) { std::cout << 'x'; DBG_oldLoc++; } }
+      std::cout << '\n';
+    }
+    
     // Refine the buckets that we have set aside.
     treeBFTNextLevel(&(*points.begin()), bftQueue.q);
     

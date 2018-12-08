@@ -122,13 +122,14 @@ void test_distTreeSort()
   const unsigned int dim = 2;
   using TreeNode = ot::TreeNode<T,dim>;
 
-  const int numPoints = 1000;
+  const int numPoints = 200;
 
   _InitializeHcurve(dim);
 
   std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
 
-  ot::SFC_Tree<T,dim>::distTreeSort(points, 0.125, MPI_COMM_WORLD);
+  ///ot::SFC_Tree<T,dim>::distTreeSort(points, 0.125, MPI_COMM_WORLD);
+  ot::SFC_Tree<T,dim>::distTreeSort(points, 0.0, MPI_COMM_WORLD);
 }
 //------------------------
 
