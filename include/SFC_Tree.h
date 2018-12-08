@@ -22,6 +22,12 @@
 namespace ot
 {
 
+using LevI   = unsigned int;
+using RankI  = unsigned int;
+using RotI   = int;
+using ChildI = char;
+
+
 //
 // BucketInfo{}
 //
@@ -30,13 +36,13 @@ namespace ot
 template <typename T>
 struct BucketInfo          // Adapted from Dendro4 sfcSort.h:132.
 {
-  int rot_id;
-  unsigned int lev;
+  RotI rot_id;
+  LevI lev;
   T begin;
   T end;
 };
 
-template struct BucketInfo<unsigned int>;
+template struct BucketInfo<RankI>;
 
 
 // Wrapper around std::vector to act like a queue, plus it has a
@@ -99,11 +105,11 @@ struct SFC_Tree
   //     (Any TreeNodes at or above eLev will have been sorted.)
   //     Recommended to init to empty vector, i.e. getEmptyBucketVector().
   static void locTreeSort(TreeNode<T,D> *points,
-                          unsigned int begin, unsigned int end,
-                          unsigned int sLev,
-                          unsigned int eLev,
-                          int pRot,            // Initial rotation, use 0 if sLev is 1.
-                          std::vector<BucketInfo<unsigned int>> &outBuckets,
+                          RankI begin, RankI end,
+                          LevI sLev,
+                          LevI eLev,
+                          RotI pRot,            // Initial rotation, use 0 if sLev is 1.
+                          std::vector<BucketInfo<RankI>> &outBuckets,
                           bool makeBuckets = true);
 
   //TODO remove all bucket-collecting from locTreeSort() (`outBuckets').
@@ -118,9 +124,9 @@ struct SFC_Tree
   // Use this to initialize the last argument to locTreeSort.
   // Convenient if you don't care about the buckets and you would rather
   // write `auto' instead of the full parameter type.
-  static std::vector<BucketInfo<unsigned int>> getEmptyBucketVector()
+  static std::vector<BucketInfo<RankI>> getEmptyBucketVector()
   {
-    return std::vector<BucketInfo<unsigned int>>();
+    return std::vector<BucketInfo<RankI>>();
   }
 
   // Notes:
@@ -132,10 +138,10 @@ struct SFC_Tree
   //     monotonically increasing; whereas in Dendro4 SFC_bucketing(), the splitters
   //     are in permuted order.
   static void SFC_bucketing(TreeNode<T,D> *points,
-                          unsigned int begin, unsigned int end,
-                          unsigned int lev,
-                          int pRot,
-                          std::array<unsigned int, TreeNode<T,D>::numChildren+1> &outSplitters);
+                          RankI begin, RankI end,
+                          LevI lev,
+                          RotI pRot,
+                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters);
 
 
   // Notes:
@@ -152,7 +158,7 @@ struct SFC_Tree
   //   Then the sub-buckets are initialized and enqueued to the back.
   //
   static void treeBFTNextLevel(TreeNode<T,D> *points,
-      std::vector<BucketInfo<unsigned int>> &bftQueue);
+      std::vector<BucketInfo<RankI>> &bftQueue);
 
 
 };

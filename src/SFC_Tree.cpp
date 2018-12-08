@@ -23,11 +23,11 @@ namespace ot
 template<typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
-                          unsigned int begin, unsigned int end,
-                          unsigned int sLev,
-                          unsigned int eLev,
-                          int pRot,
-                          std::vector<BucketInfo<unsigned int>> &outBuckets,  //TODO remove
+                          RankI begin, RankI end,
+                          LevI sLev,
+                          LevI eLev,
+                          RotI pRot,
+                          std::vector<BucketInfo<RankI>> &outBuckets,  //TODO remove
                           bool makeBuckets)                                   //TODO remove
 {
   //// Recursive Depth-first, similar to Most Significant Digit First. ////
@@ -38,14 +38,14 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
   constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
 
   // Reorder the buckets on sLev (current level).
-  std::array<unsigned int, TreeNode<T,D>::numChildren+1> tempSplitters;
+  std::array<RankI, numChildren+1> tempSplitters;
   SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters);
   // The array `tempSplitters' has numChildren+1 slots, which includes the
   // beginning, middles, and end of the range of children.
 
   // Lookup tables to apply rotations.
-  const char * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  const int * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
 
   if (sLev < eLev)  // This means eLev is further from the root level than sLev.
   {
@@ -64,8 +64,8 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
       // According to Dendro4 TreeNode.tcc:199 they are.
       // (There are possibly inconsistencies in the old code...?
       // Don't worry, we can regenerate the table later.)
-      char child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
-      int cRot = orientLookup[child];
+      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      RotI cRot = orientLookup[child];
 
       if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] <= continueThresh)
         continue;
@@ -85,8 +85,8 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
     // This is the ending level. Use the splitters to build the list of ending buckets.
     for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
-      char child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
-      int cRot = orientLookup[child];
+      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      RotI cRot = orientLookup[child];
 
       if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] == 0)
         continue;
@@ -111,10 +111,10 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
 template<typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
-                          unsigned int begin, unsigned int end,
-                          unsigned int lev,
-                          int pRot,
-                          std::array<unsigned int, TreeNode<T,D>::numChildren+1> &outSplitters)
+                          RankI begin, RankI end,
+                          LevI lev,
+                          RotI pRot,
+                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters)
 {
   // ==
   // Reorder the points by child number at level `lev', in the order
@@ -151,10 +151,10 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
   // while the `offsets' and `bucketEnds` arrays are indexed in Morton order
   // (for easy lookup using TreeNode.getMortonIndex()).
   //
-  std::array<unsigned int, numChildren+1> offsets, bucketEnds;  // Last idx represents ancestors.
+  std::array<RankI, numChildren+1> offsets, bucketEnds;  // Last idx represents ancestors.
   offsets[numChildren] = begin;
   bucketEnds[numChildren] = begin + countAncestors;
-  unsigned int accum = begin + countAncestors;                  // Ancestors belong in front.
+  RankI accum = begin + countAncestors;                  // Ancestors belong in front.
 
   std::array<TreeNode, numChildren+1> unsortedBuffer;
   int bufferSize = 0;
@@ -162,11 +162,11 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
   // Logically permute: Scan the bucket-counts in the order of the SFC.
   // Since we want to map [SFC_rank]-->Morton_rank,
   // use the "left" columns of rotations[], aka `rot_perm'.
-  const char *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  char child_sfc = 0;
+  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  ChildI child_sfc = 0;
   for ( ; child_sfc < numChildren; child_sfc++)
   {
-    char child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
+    ChildI child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
     outSplitters[child_sfc] = accum;
     offsets[child] = accum;           // Start of bucket. Moving marker.
     accum += counts[child];
@@ -240,24 +240,21 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   constexpr char numChildren = TreeNode::numChildren;
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 
-  //TEST TODO
-  nProc = 10;
-
   // The outcome of the BFT will be a list of splitters, i.e. refined buckets.
   // As long as there are `pending splitters', we will refine their corresponding buckets.
   // Initially all splitters are pending.
-  std::vector<unsigned int> splitters(nProc, 0);
-  BarrierQueue<unsigned int> pendingSplitterIdx(nProc);
-  for (unsigned int sIdx = 0; sIdx < nProc; sIdx++)
+  std::vector<RankI> splitters(nProc, 0);
+  BarrierQueue<RankI> pendingSplitterIdx(nProc);
+  for (RankI sIdx = 0; sIdx < nProc; sIdx++)
     pendingSplitterIdx.q[sIdx] = sIdx;
   pendingSplitterIdx.reset_barrier();
 
   //
   // Phase 1: move down the levels until we have enough buckets
   //   to test our load-balancing criterion.
-  BarrierQueue<BucketInfo<unsigned int>> bftQueue;
+  BarrierQueue<BucketInfo<RankI>> bftQueue;
   const int initNumBuckets = nProc;
-  const BucketInfo<unsigned int> rootBucket = {0, 0, 0, (unsigned int) points.size()};
+  const BucketInfo<RankI> rootBucket = {0, 0, 0, (RankI) points.size()};
   bftQueue.q.push_back(rootBucket);
         // No-runaway, in case we run out of points.
         // It is `<' because refining m_uiMaxDepth would make (m_uiMaxDepth+1).
@@ -272,20 +269,20 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   // Phase 2: Count bucket sizes, communicate bucket sizes,
   //   test load balance, select buckets and refine, repeat.
 
-  unsigned int sizeG, sizeL = points.size();
+  RankI sizeG, sizeL = points.size();
   sizeG = sizeL;   // Proxy for summing, to test with one proc.
   /// TODO Mpi_Reduceall<???>(&sizeL, &sizeG, ... MPI_SUM ...);TODO
 
 
-  //TEST  print all ideal splitters pictorally
-  unsigned int oldLoc = 0;
-  for (int rr = 0; rr < nProc; rr++)
-  {
-    unsigned int idealSplitter = (rr+1) * sizeG / nProc;
-    for ( ; oldLoc < idealSplitter; oldLoc++) { std::cout << ' '; }
-    std::cout << 'I';     oldLoc++;
-  }
-  std::cout << '\n';
+  /// //TEST  print all ideal splitters pictorally
+  /// RankI oldLoc = 0;
+  /// for (int rr = 0; rr < nProc; rr++)
+  /// {
+  ///   RankI idealSplitter = (rr+1) * sizeG / nProc;
+  ///   for ( ; oldLoc < idealSplitter; oldLoc++) { std::cout << ' '; }
+  ///   std::cout << 'I';     oldLoc++;
+  /// }
+  /// std::cout << '\n';
 
   std::vector<unsigned int> DBG_splitterIteration(nProc, 0);  //DEBUG
 
@@ -293,17 +290,17 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   //   Select buckets from old queue, -> enqueue in a "new" queue, -> ...
   //   Use the class BarrierQueue to separate old from new.
   // I also group buckets into "blocks" of contiguous siblings before scanning.
-  std::vector<unsigned int> bktCountsL, bktCountsG;  // As single-use containers.
-  BarrierQueue<unsigned int> blkBeginG;              // As queue with barrier, to bridge levels.
+  std::vector<RankI> bktCountsL, bktCountsG;  // As single-use containers.
+  BarrierQueue<RankI> blkBeginG;              // As queue with barrier, to bridge levels.
   blkBeginG.enqueue(0);
-  unsigned int blkNumBkt = bftQueue.size();  // The first block is special. It contains all buckets.
+  RankI blkNumBkt = bftQueue.size();  // The first block is special. It contains all buckets.
   while (pendingSplitterIdx.size() > 0)
   {
-    // TEST Print all new buckets pictorally.
-    { unsigned int DBG_oldLoc = 0;
-      for (BucketInfo<unsigned int> b : bftQueue.q) { while(DBG_oldLoc < b.end) { std::cout << ' '; DBG_oldLoc++; } if (DBG_oldLoc == b.end) { std::cout << '|'; DBG_oldLoc++; } }
-      std::cout << '\n';
-    }
+    /// // TEST Print all new buckets pictorally.
+    /// { RankI DBG_oldLoc = 0;
+    ///   for (BucketInfo<RankI> b : bftQueue.q) { while(DBG_oldLoc < b.end) { std::cout << ' '; DBG_oldLoc++; } if (DBG_oldLoc == b.end) { std::cout << '|'; DBG_oldLoc++; } }
+    ///   std::cout << '\n';
+    /// }
 
     bftQueue.reset_barrier();
     blkBeginG.reset_barrier();
@@ -311,7 +308,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 
     // Count buckets locally and globally.
     bktCountsL.clear();
-    for (BucketInfo<unsigned int> b : bftQueue.leading())
+    for (BucketInfo<RankI> b : bftQueue.leading())
       bktCountsL.push_back(b.end - b.begin);
     bktCountsG.resize(bktCountsL.size());
     bktCountsG = bktCountsL;              // Proxy for summing, to test with one proc.
@@ -319,28 +316,28 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 
     // Compute ranks, test load balance, and collect buckets for refinement.
     // Process each bucket in sequence, one block of buckets at a time.
-    unsigned int bktBeginG;
+    RankI bktBeginG;
     while (blkBeginG.dequeue(bktBeginG))
     {
-      for (unsigned int ii = 0; ii < blkNumBkt; ii++)
+      for (RankI ii = 0; ii < blkNumBkt; ii++)
       {
-        const unsigned int bktCountG = bktCountsG[0];
-        const unsigned int bktEndG = bktBeginG + bktCountG;
+        const RankI bktCountG = bktCountsG[0];
+        const RankI bktEndG = bktBeginG + bktCountG;
         bktCountsG.erase(bktCountsG.begin());
 
-        BucketInfo<unsigned int> refBkt;
+        BucketInfo<RankI> refBkt;
         bftQueue.dequeue(refBkt);
         bool selectBucket = false;
         const bool bktCanBeRefined = (refBkt.lev < m_uiMaxDepth);
         
         // Test the splitter indices that may fall into the current bucket.
-        unsigned int idealSplitterG;
+        RankI idealSplitterG;
         while (pendingSplitterIdx.get_barrier()
             && (idealSplitterG = (pendingSplitterIdx.front()+1) * sizeG / nProc) <= bktEndG)
         {
-          unsigned int r;
+          RankI r;
           pendingSplitterIdx.dequeue(r);
-          unsigned int absTolerance = ((r+1) * sizeG / nProc - r * sizeG / nProc) * loadFlexibility;
+          RankI absTolerance = ((r+1) * sizeG / nProc - r * sizeG / nProc) * loadFlexibility;
           if (bktCanBeRefined && (bktEndG - idealSplitterG) > absTolerance)
           {
             // Too far. Mark bucket for refinment. Send splitter back to queue.
@@ -366,11 +363,11 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
       }
     }
 
-    // TEST Print all splitters.
-    { unsigned int DBG_oldLoc = 0;
-      for (unsigned int s : splitters) { while(DBG_oldLoc < s) { std::cout << '_'; DBG_oldLoc++; }  if (DBG_oldLoc == s) { std::cout << 'x'; DBG_oldLoc++; } }
-      std::cout << '\n';
-    }
+    /// // TEST Print all splitters.
+    /// { RankI DBG_oldLoc = 0;
+    ///   for (RankI s : splitters) { while(DBG_oldLoc < s) { std::cout << '_'; DBG_oldLoc++; }  if (DBG_oldLoc == s) { std::cout << 'x'; DBG_oldLoc++; } }
+    ///   std::cout << '\n';
+    /// }
     
     // Refine the buckets that we have set aside.
     treeBFTNextLevel(&(*points.begin()), bftQueue.q);
@@ -388,12 +385,12 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 template <typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
-      std::vector<BucketInfo<unsigned int>> &bftQueue)
+      std::vector<BucketInfo<RankI>> &bftQueue)
 {
   if (bftQueue.size() == 0)
     return;
 
-  const unsigned int startLev = bftQueue[0].lev;
+  const LevI startLev = bftQueue[0].lev;
 
   using TreeNode = TreeNode<T,D>;
   constexpr char numChildren = TreeNode::numChildren;
@@ -401,25 +398,25 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
 
   while (bftQueue[0].lev == startLev)
   {
-    BucketInfo<unsigned int> front = bftQueue[0];
+    BucketInfo<RankI> front = bftQueue[0];
     bftQueue.erase(bftQueue.begin());
 
     // Refine the current orthant/bucket by sorting the sub-buckets.
     // Get splitters for sub-buckets.
-    std::array<unsigned int, numChildren+1> childSplitters;
+    std::array<RankI, numChildren+1> childSplitters;
     if (front.begin < front.end)
       SFC_bucketing(points, front.begin, front.end, front.lev, front.rot_id, childSplitters);
     else
       childSplitters.fill(front.begin);  // Don't need to sort an empty selection, it's just empty.
 
     // Enqueue our children in the next level.
-    const char * const rot_perm = &rotations[front.rot_id*rotOffset + 0*numChildren];
-    const int * const orientLookup = &HILBERT_TABLE[front.rot_id*numChildren];
+    const ChildI * const rot_perm = &rotations[front.rot_id*rotOffset + 0*numChildren];
+    const RotI * const orientLookup = &HILBERT_TABLE[front.rot_id*numChildren];
     for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
-      char child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
-      int cRot = orientLookup[child];
-      BucketInfo<unsigned int> childBucket =
+      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      RotI cRot = orientLookup[child];
+      BucketInfo<RankI> childBucket =
           {cRot, front.lev+1, childSplitters[child_sfc], childSplitters[child_sfc+1]};
 
       bftQueue.push_back(childBucket);
