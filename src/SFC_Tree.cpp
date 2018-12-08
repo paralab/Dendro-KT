@@ -12,6 +12,7 @@
 
 #include "SFC_Tree.h"
 #include "hcurvedata.h"
+#include "PROXY_parUtils.h"
 
 namespace ot
 {
@@ -271,7 +272,8 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 
   RankI sizeG, sizeL = points.size();
   sizeG = sizeL;   // Proxy for summing, to test with one proc.
-  /// TODO Mpi_Reduceall<???>(&sizeL, &sizeG, ... MPI_SUM ...);TODO
+  par::Mpi_Allreduce<RankI>(&sizeL, &sizeG, 1, MPI_SUM, comm);
+  /// MPI_Allreduce(&sizeL, &sizeG, 1, MPI_INT, MPI_SUM, comm);  //TODO after get dependencies, use the templated one ^^
 
 
   /// //TEST  print all ideal splitters pictorally
@@ -312,7 +314,8 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
       bktCountsL.push_back(b.end - b.begin);
     bktCountsG.resize(bktCountsL.size());
     bktCountsG = bktCountsL;              // Proxy for summing, to test with one proc.
-    /// TODO Mpi_Reduceall<???>(&(*bktCountsL.begin()), &(*bktCountsG.begin()), bktCountsL.size()); TODO
+    par::Mpi_Allreduce<RankI>(&(*bktCountsL.begin()), &(*bktCountsG.begin()), (int) bktCountsL.size(), MPI_SUM, comm);
+    /// MPI_Allreduce(&(*bktCountsL.begin()), &(*bktCountsG.begin()), bktCountsL.size(), MPI_INT, MPI_SUM, comm);    //TODO after get dependencies, use the templated one ^^
 
     // Compute ranks, test load balance, and collect buckets for refinement.
     // Process each bucket in sequence, one block of buckets at a time.
@@ -375,10 +378,43 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
     blkNumBkt = numChildren;  // After the first level, blocks result from refining a single bucket.
   }
 
-  // All to all on list of TreeNodes, according to the final splitters.
+  // All to all exchange of the points arrays.
+  std::vector<unsigned int> sendCnt, sendDspl;
+  std::vector<unsigned int> recvCnt(splitters.size()), recvDspl;
+  sendCnt.reserve(splitters.size());
+  sendDspl.reserve(splitters.size());
+  recvDspl.reserve(splitters.size());
+  RankI sPrev = 0;
+  for (RankI s : splitters)     // Sequential counting and displacement.
+  {
+    sendDspl.push_back(sPrev);
+    sendCnt.push_back(s - sPrev);
+    sPrev = s;
+  }
+  par::Mpi_Alltoall<RankI>(&(*sendCnt.begin()), &(*recvCnt.begin()), 1, comm);
+  /// MPI_Alltoall<RankI>(
+  ///     &(*sendCnt.begin()), 1, MPI_INT
+  ///     &(*recvCnt.begin()), 1, MPI_INT, comm);   //TODO after get dependencies, use the templated one ^^
+  sPrev = 0;
+  for (RankI &c : recvCnt)      // Sequential scan.
+    recvDspl.push_back(sPrev += c);
+
+  RankI sizeNew = recvDspl.back() + recvCnt.back();
+  if (sizeNew > sizeL)
+    points.resize(sizeNew);
+
+  par::Mpi_Alltoallv<TreeNode>(
+      &(*points.begin()), (int*) &(*sendCnt.begin()), (int*) &(*sendDspl.begin()),
+      &(*points.begin()), (int*) &(*recvCnt.begin()), (int*) &(*recvDspl.begin()),
+      comm);
+
+  points.resize(sizeNew);
+
   //TODO figure out the 'staged' part with k-parameter.
 
-  // Finish with a local TreeSort to ensure all points are in order. TODO
+  // Finish with a local TreeSort to ensure all points are in order.
+  auto unusedBucketVector = getEmptyBucketVector();
+  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0, unusedBucketVector, false);
 }
 
 

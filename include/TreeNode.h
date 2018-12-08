@@ -22,6 +22,8 @@ extern unsigned int m_uiMaxDepth;
 #include <iostream>
 #include <array>
 
+#include <mpi.h>
+
 namespace ot {
 
     // Template forward declarations.
@@ -37,7 +39,7 @@ namespace ot {
     template<typename T,unsigned int dim>
     class TreeNode {
     protected:
-        
+
         /**TreeNode coefficients*/
         std::array<T,dim> m_uiCoords;
 
@@ -99,14 +101,14 @@ namespace ot {
       /**
         @author Rahul Sampath
         @brief Two octants are equal if their respective anchors are equal and their levels are
-        equal.  
+        equal.
         */
       bool  operator == ( TreeNode const  &other) const;
 
       /**
         @author Rahul Sampath
         @brief Two octants are equal if their respective anchors are equal and their levels are
-        equal.  
+        equal.
         */
       bool  operator != (TreeNode const  &other) const;
 
@@ -116,7 +118,7 @@ namespace ot {
       /**
         @author Rahul Sampath
         */
-      friend std::ostream & operator << <T,dim> (std::ostream & os,TreeNode<T,dim> const & node) ;  
+      friend std::ostream & operator << <T,dim> (std::ostream & os,TreeNode<T,dim> const & node) ;
       //@}
 
 
@@ -163,7 +165,7 @@ namespace ot {
       /**
         @author Rahul Sampath
         @param The level of the ancestor
-        @return the ancestor of this octant at level 'ancLev'        
+        @return the ancestor of this octant at level 'ancLev'
         */
       TreeNode	getAncestor(unsigned int ancLev) const;
 
@@ -259,7 +261,7 @@ namespace ot {
       std::array<T,dim> minX() const;
       std::array<T,dim> maxX() const;
       //@}
-     
+
 
       /**
         @author Rahul Sampath
@@ -298,10 +300,10 @@ namespace ot {
 ///        TreeNode  getTop() const;
 ///        TreeNode  getBottom() const;
 ///        TreeNode  getFront() const;
-///        TreeNode  getBack() const; 
+///        TreeNode  getBack() const;
 ///        TreeNode  getTopLeft() const;
 ///        TreeNode  getTopRight() const;
-///        TreeNode  getBottomLeft() const; 
+///        TreeNode  getBottomLeft() const;
 ///        TreeNode  getBottomRight() const;
 ///        TreeNode  getLeftFront() const;
 ///        TreeNode  getRightFront() const;
@@ -326,7 +328,7 @@ namespace ot {
       //@}
 
     };
-        
+
 } // end namespace ot
 
 // Template specializations
@@ -336,6 +338,51 @@ template class ot::TreeNode<unsigned int, 3>;
 template class ot::TreeNode<unsigned int, 4>;
 
 #include "TreeNode.tcc"
+
+
+
+
+namespace par {
+
+  //Forward Declaration
+  template <typename T>
+    class Mpi_datatype;
+
+/**
+@author Rahul Sampath, rahul.sampath@gmail.com
+@brief A template specialization of the abstract class "Mpi_datatype" for communicating messages of type "ot::TreeNode".
+*/
+  template <typename T, unsigned int dim>
+    class Mpi_datatype< ot::TreeNode<T,dim> > {
+
+    /* @masado Omitted all the comparison/reduction operations, limited to ::value(). */
+
+      public:
+
+      /**
+       @return The MPI_Datatype corresponding to the datatype "ot::TreeNode".
+     */
+      static MPI_Datatype value()
+      {
+        static bool         first = true;
+        static MPI_Datatype datatype;
+
+        if (first)
+        {
+          first = false;
+          MPI_Type_contiguous(sizeof(ot::TreeNode<T,dim>), MPI_BYTE, &datatype);
+          MPI_Type_commit(&datatype);
+        }
+
+        return datatype;
+      }
+
+    };
+}//end namespace par
+
+
+
+
 
 #endif //DENDRO_KT_TREENODE_H
 
