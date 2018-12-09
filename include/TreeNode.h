@@ -115,6 +115,17 @@ namespace ot {
           //@masado I didn't do inequality comparisons yet because I don't \
                     know what space-filling curve will be used.
 
+          //@masado But I will temporarily add `<' with respecto to the Morton order.
+      /**
+        @author Rahul Sampath
+        @author Hari Sundar
+        @brief The comparisons are based on the Morton/Hilbert 
+               ordering of the octants
+        */
+      bool operator < (TreeNode const &other) const;
+
+      bool operator <= (TreeNode const &other) const;
+
       /**
         @author Rahul Sampath
         */

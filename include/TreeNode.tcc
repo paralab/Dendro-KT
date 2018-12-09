@@ -60,6 +60,45 @@ inline bool TreeNode<T,dim>::operator!=(TreeNode<T,dim> const &other) const {
 
 
 //
+// operator<()
+//
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::operator<(TreeNode<T,dim> const &other) const {
+
+  // -- original Morton
+  
+  // Use the coordinate with the highest level difference (closest to root).
+  T maxDiffCoord = 0;
+  for (int d = 0; d < dim; d++)
+  {
+    T diffCoord = m_uiCoords[d] ^ other.m_uiCoords[d];  // Will have 0's where equal.
+    maxDiffCoord = (diffCoord > maxDiffCoord ? diffCoord : maxDiffCoord);
+  }
+
+  // Find the index of the highest level of difference.
+  T levelDiff = 0;
+  while (levelDiff < m_uiLevel && levelDiff < other.m_uiLevel
+      && !(maxDiffCoord & (1u << (m_uiMaxDepth - levelDiff))))
+  {
+    levelDiff++;
+  }
+
+  // Use that level to compare child numbers.
+  return getMortonIndex(levelDiff) < other.getMortonIndex(levelDiff);
+
+  // -- original Morton
+}
+
+//
+// operator<=()
+//
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::operator<=(TreeNode<T,dim> const &other) const
+{
+  return operator==(other) || operator<(other);
+}
+
+//
 // operator<<()
 //
 template<typename T, unsigned int dim>
