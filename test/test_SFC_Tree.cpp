@@ -15,6 +15,9 @@
 #include "genRand4DPoints.h"
 #include <vector>
 
+#include <assert.h>
+#include <mpi.h>
+
 //------------------------
 // test_locTreeSort()
 //------------------------
@@ -126,37 +129,68 @@ void test_distTreeSort(MPI_Comm comm = MPI_COMM_WORLD)
   const unsigned int dim = 2;
   using TreeNode = ot::TreeNode<T,dim>;
 
-  const int numPoints = 10;
+  const int numPoints = 23;
 
   _InitializeHcurve(dim);
 
   std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
 
-  // Synchronize printing.
-  int dummyMsg;
-  MPI_Status status;
-  if (rProc > 0)
-    MPI_Recv(&dummyMsg, 1, MPI_INT, rProc-1, 0, comm, &status);
-  std::cout << "<<Unsorted (" << rProc << ")>>\n";
-  for (const TreeNode &tn : points)
-    std::cout << tn << " \t " << tn.getBase32Hex().data() << '\n';
-  std::cout << '\n';
-  //
-  MPI_Send(&dummyMsg, 1, MPI_INT, (rProc+1) % nProc, 0, comm);
-
   // Sort!
   ///ot::SFC_Tree<T,dim>::distTreeSort(points, 0.125, MPI_COMM_WORLD);
   ot::SFC_Tree<T,dim>::distTreeSort(points, 0.0, comm);
 
-  // Synchronize printing.
-  MPI_Recv(&dummyMsg, 1, MPI_INT, (nProc + rProc-1) % nProc, 0, comm, &status);
-  //
-  std::cout << "<<GLOBALLY Sorted (" << rProc << ")>>\n";
-  for (const TreeNode &tn : points)
-    std::cout << tn << " \t " << tn.getBase32Hex().data() << '\n';
-  std::cout << '\n';
-  if (rProc < nProc - 1)
-    MPI_Send(&dummyMsg, 1, MPI_INT, rProc+1, 0, comm);
+  // 1. Verify that the points are locally sorted.
+  int locallySorted = true;
+  for (int ii = 1; ii < points.size(); ii++)
+  {
+    if (!(points[ii-1] <= points[ii]))
+    {
+      locallySorted = false;
+      break;
+    }
+  }
+
+  int allLocallySorted = false;
+  MPI_Reduce(&locallySorted, &allLocallySorted, 1, MPI_INT, MPI_SUM, 0, comm);
+  if (rProc == 0)
+    printf("Local sorts: %s (%d succeeded)\n", (allLocallySorted == nProc ? "Success" : "SOME FAILED!"), allLocallySorted);
+
+  
+  // 2. Verify that the endpoints are globally sorted.
+  std::vector<TreeNode> endpoints(2);
+  endpoints[0] = points.front();
+  endpoints[1] = points.back();
+
+  /// std::cout << endpoints[0].getBase32Hex().data() << "\n";
+  /// std::cout << endpoints[1].getBase32Hex().data() << "\n";
+
+  std::vector<TreeNode> allEndpoints;
+  if (rProc == 0)
+    allEndpoints.resize(2*nProc);
+
+  // Hack, because I don't want to finish verifying
+  // the templated Mpi_datatype<> for TreeNode right now.
+  MPI_Gather((unsigned char *) endpoints.data(), (int) 2*sizeof(TreeNode), MPI_UNSIGNED_CHAR,
+      (unsigned char *) allEndpoints.data(), (int) 2*sizeof(TreeNode), MPI_UNSIGNED_CHAR,
+      0, comm);
+
+  if (rProc == 0)
+  {
+    int globallySorted = true;
+    for (int ii = 2; ii < allEndpoints.size(); ii+=2)
+    {
+      /// std::cout << allEndpoints[ii-1].getBase32Hex().data() << "\n";
+      /// std::cout << allEndpoints[ii].getBase32Hex().data() << "\n";
+      if (!(allEndpoints[ii-1] <= allEndpoints[ii]))
+      {
+        globallySorted = false;
+        break;
+      }
+    }
+
+    printf("Global sort: %s\n", (globallySorted ? "Success" : "FAILED!"));
+  }
+
 }
 //------------------------
 
