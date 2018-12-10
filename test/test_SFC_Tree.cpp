@@ -136,8 +136,8 @@ void test_distTreeSort(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
 
   // Sort!
-  ///ot::SFC_Tree<T,dim>::distTreeSort(points, 0.125, MPI_COMM_WORLD);
-  ot::SFC_Tree<T,dim>::distTreeSort(points, 0.0, comm);
+  ot::SFC_Tree<T,dim>::distTreeSort(points, 0.2, MPI_COMM_WORLD);
+  ///ot::SFC_Tree<T,dim>::distTreeSort(points, 0.0, comm);
 
   // 1. Verify that the points are locally sorted.
   int locallySorted = true;
