@@ -378,13 +378,13 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
     blkNumBkt = numChildren;  // After the first level, blocks result from refining a single bucket.
   }
 
-  // DEBUG: print out all the points.
-  { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
-  spaces.back() = '\0';
-  for (const TreeNode tn : points)
-    std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
-  std::cout << spaces.data() << "------------------------------------\n";
-  }
+  /// // DEBUG: print out all the points.
+  /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
+  /// spaces.back() = '\0';
+  /// for (const TreeNode tn : points)
+  ///   std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
+  /// std::cout << spaces.data() << "------------------------------------\n";
+  /// }
 
   //
   // All to all exchange of the points arrays.
@@ -422,13 +422,13 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 
   points.resize(sizeNew);
 
-  // DEBUG: print out all the points.
-  { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
-  spaces.back() = '\0';
-  for (const TreeNode tn : points)
-    std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
-  std::cout << spaces.data() << "------------------------------------\n";
-  }
+  /// // DEBUG: print out all the points.
+  /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
+  /// spaces.back() = '\0';
+  /// for (const TreeNode tn : points)
+  ///   std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
+  /// std::cout << spaces.data() << "------------------------------------\n";
+  /// }
 
   //TODO figure out the 'staged' part with k-parameter.
 
@@ -436,13 +436,13 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   auto unusedBucketVector = getEmptyBucketVector();
   locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0, unusedBucketVector, false);
 
-  // DEBUG: print out all the points.
-  { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
-  spaces.back() = '\0';
-  for (const TreeNode tn : points)
-    std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
-  std::cout << spaces.data() << "------------------------------------\n";
-  }
+  /// // DEBUG: print out all the points.
+  /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
+  /// spaces.back() = '\0';
+  /// for (const TreeNode tn : points)
+  ///   std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
+  /// std::cout << spaces.data() << "------------------------------------\n";
+  /// }
 }
 
 

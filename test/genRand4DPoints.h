@@ -29,7 +29,7 @@ inline std::vector<ot::TreeNode<T,dim>> genRand4DPoints(int numPoints)
   // Set up random number generator.
   std::random_device rd;
   std::mt19937 gen(rd());
-  gen.seed(14641);             // Uncomment for deterministic testing.
+  ///gen.seed(14641);             // Uncomment for deterministic testing.
   std::uniform_int_distribution<T> distCoord(0, maxCoord);
   std::uniform_int_distribution<T> distLevel(1, m_uiMaxDepth);
 
