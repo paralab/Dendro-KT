@@ -293,7 +293,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   //   Select buckets from old queue, -> enqueue in a "new" queue, -> ...
   //   Use the class BarrierQueue to separate old from new.
   // I also group buckets into "blocks" of contiguous siblings before scanning.
-  std::vector<RankI> bktCountsL, bktCountsG;  // As single-use containers.
+  std::vector<RankI> bktCountsL, bktCountsG;  // As single-use containers per level.
   BarrierQueue<RankI> blkBeginG;              // As queue with barrier, to bridge levels.
   blkBeginG.enqueue(0);
   RankI blkNumBkt = bftQueue.size();  // The first block is special. It contains all buckets.
@@ -383,11 +383,12 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   spaces.back() = '\0';
   for (const TreeNode tn : points)
     std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
+  std::cout << spaces.data() << "------------------------------------\n";
   }
 
-  std::cout << "--------------------------------------------------\n";
-
+  //
   // All to all exchange of the points arrays.
+
   std::vector<unsigned int> sendCnt, sendDspl;
   std::vector<unsigned int> recvCnt(splitters.size()), recvDspl;
   sendCnt.reserve(splitters.size());
@@ -409,11 +410,13 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   }
   RankI sizeNew = sPrev;
 
+  std::vector<TreeNode> origPoints = points;   // Sendbuffer is a copy.
+
   if (sizeNew > sizeL)
     points.resize(sizeNew);
 
   par::Mpi_Alltoallv<TreeNode>(
-      &(*points.begin()), (int*) &(*sendCnt.begin()), (int*) &(*sendDspl.begin()),
+      &(*origPoints.begin()), (int*) &(*sendCnt.begin()), (int*) &(*sendDspl.begin()),
       &(*points.begin()), (int*) &(*recvCnt.begin()), (int*) &(*recvDspl.begin()),
       comm);
 
@@ -424,9 +427,8 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   spaces.back() = '\0';
   for (const TreeNode tn : points)
     std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
+  std::cout << spaces.data() << "------------------------------------\n";
   }
-
-  std::cout << "--------------------------------------------------\n";
 
   //TODO figure out the 'staged' part with k-parameter.
 
@@ -439,9 +441,8 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   spaces.back() = '\0';
   for (const TreeNode tn : points)
     std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
+  std::cout << spaces.data() << "------------------------------------\n";
   }
-
-  std::cout << "--------------------------------------------------\n";
 }
 
 
