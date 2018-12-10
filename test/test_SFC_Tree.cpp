@@ -119,7 +119,7 @@ void test_locTreeSort()
 //------------------------
 // test_distTreeSort()
 //------------------------
-void test_distTreeSort(MPI_Comm comm = MPI_COMM_WORLD)
+void test_distTreeSort(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 {
   int nProc, rProc;
   MPI_Comm_size(comm, &nProc);
@@ -129,7 +129,7 @@ void test_distTreeSort(MPI_Comm comm = MPI_COMM_WORLD)
   const unsigned int dim = 2;
   using TreeNode = ot::TreeNode<T,dim>;
 
-  const int numPoints = 23;
+  /// const int numPoints = 23;    // Now made a parameter.
 
   _InitializeHcurve(dim);
 
@@ -155,7 +155,18 @@ void test_distTreeSort(MPI_Comm comm = MPI_COMM_WORLD)
   if (rProc == 0)
     printf("Local sorts: %s (%d succeeded)\n", (allLocallySorted == nProc ? "Success" : "SOME FAILED!"), allLocallySorted);
 
-  
+
+  // 3.1 Gather final counts.
+  //     Do it early to ensure the root knows if any process has no points.
+  unsigned int finalNumPoints = points.size();
+  std::vector<unsigned int> allFinalNumPoints;
+  if (rProc == 0)
+    allFinalNumPoints.resize(nProc);
+  MPI_Gather(&finalNumPoints, 1, MPI_UNSIGNED,
+      allFinalNumPoints.data(), 1, MPI_UNSIGNED,
+      0, comm);
+
+
   // 2. Verify that the endpoints are globally sorted.
   std::vector<TreeNode> endpoints(2);
   endpoints[0] = points.front();
@@ -177,18 +188,32 @@ void test_distTreeSort(MPI_Comm comm = MPI_COMM_WORLD)
   if (rProc == 0)
   {
     int globallySorted = true;
-    for (int ii = 2; ii < allEndpoints.size(); ii+=2)
+    int prev = 0;
+    while (allFinalNumPoints[prev] == 0)
+      prev++;
+    for (int ii = prev + 1; ii < nProc; ii++)
     {
-      /// std::cout << allEndpoints[ii-1].getBase32Hex().data() << "\n";
-      /// std::cout << allEndpoints[ii].getBase32Hex().data() << "\n";
-      if (!(allEndpoints[ii-1] <= allEndpoints[ii]))
+      if (allFinalNumPoints[ii] == 0)
+        continue;
+      if (!(allEndpoints[2*prev+1] < allEndpoints[2*ii+1]))
       {
         globallySorted = false;
         break;
       }
+      prev = ii;
     }
 
     printf("Global sort: %s\n", (globallySorted ? "Success" : "FAILED!"));
+  }
+
+  
+  // 3. Report the distribution of points on processors.
+  if (rProc == 0)
+  {
+    printf("Partitioning balance:    ");
+    for (unsigned int c : allFinalNumPoints)
+      printf("%7u", c);
+    printf("\n");
   }
 
 }
@@ -199,9 +224,13 @@ int main(int argc, char* argv[])
 {
   MPI_Init(&argc, &argv);
 
+  int ptsPerProc = 200;
+  if (argc > 1)
+    ptsPerProc = strtol(argv[1], NULL, 0);
+
   //test_locTreeSort();
 
-  test_distTreeSort(MPI_COMM_WORLD);
+  test_distTreeSort(ptsPerProc, MPI_COMM_WORLD);
 
   MPI_Finalize();
 
