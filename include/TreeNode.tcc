@@ -84,7 +84,13 @@ inline bool TreeNode<T,dim>::operator<(TreeNode<T,dim> const &other) const {
   }
 
   // Use that level to compare child numbers.
-  return getMortonIndex(levelDiff) < other.getMortonIndex(levelDiff);
+  // In case of descendantship, ancestor is strictly less than descendant.
+  unsigned int myIndex = getMortonIndex(levelDiff);
+  unsigned int otherIndex = other.getMortonIndex(levelDiff);
+  if (myIndex == otherIndex)
+    return m_uiLevel < other.m_uiLevel;
+  else
+    return myIndex < otherIndex;
 
   // -- original Morton
 }
