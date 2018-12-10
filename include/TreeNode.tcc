@@ -43,14 +43,22 @@ namespace ot {
 
 template <typename T, unsigned int dim>
 inline bool TreeNode<T,dim>::operator==(TreeNode<T,dim> const &other) const {
-  // std::array::operator== compares element by element.
-  //@masado Check if there is a function call overhead. If so, resort to TMP.
-  if ((m_uiCoords == other.m_uiCoords) &&
-      ((m_uiLevel & MAX_LEVEL) == (other.m_uiLevel & MAX_LEVEL))) {
-    return true;
-  } else {
+  // Levels must match.
+  if (m_uiLevel != other.m_uiLevel)
     return false;
+
+  // Shift so that we only compare the relevant bits in each coordinate.
+  unsigned int shiftIrlvnt = m_uiMaxDepth - m_uiLevel;
+
+  // Compare coordinates one dimension at a time.
+  for (int d = 0; d < dim; d++)
+  {
+    if ((m_uiCoords[d] >> shiftIrlvnt) != (other.m_uiCoords[d] >> shiftIrlvnt))
+      return false;
   }
+
+  return true;
+ 
 } //end fn.
 
 template <typename T, unsigned int dim>
