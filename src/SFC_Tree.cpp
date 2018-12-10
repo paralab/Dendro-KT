@@ -237,7 +237,13 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  /// if (nProc == 1) { locTreeSort(points, ...); }
+  if (nProc == 1)
+  {
+    auto unusedBucketVector = getEmptyBucketVector();
+    locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0, unusedBucketVector, false);
+    return;
+  }
+
 
   using TreeNode = TreeNode<T,D>;
   constexpr char numChildren = TreeNode::numChildren;
