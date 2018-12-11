@@ -33,8 +33,10 @@ template<typename T, unsigned int dim>
 TreeNode<T,dim>::TreeNode (const std::array<T,dim> coords, unsigned int level) {
   m_uiLevel = level;
 
+  T mask = -(1u << (m_uiMaxDepth - level));
+
   #pragma unroll(dim)
-  for (int d = 0; d < dim; d++) { m_uiCoords[d] = coords[d]; }
+  for (int d = 0; d < dim; d++) { m_uiCoords[d] = (coords[d] & mask); }
 
   //m_uiDim = dim;
   //m_uiWeight = 1;

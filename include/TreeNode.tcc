@@ -177,6 +177,20 @@ inline unsigned char TreeNode<T,dim>::getMortonIndex() const
 }
 
 template <typename T, unsigned int dim>
+inline void TreeNode<T,dim>::setMortonIndex(unsigned char child)
+{
+    const T level = m_uiLevel;  // For now, only set at this level.
+    const T selector = 1u << (m_uiMaxDepth - level);
+#pragma unroll(dim)
+    for (int d = 0; d < dim; d++)
+    {
+      const T D = 1u << d;
+      T oldCoord = m_uiCoords[d];           // Activate.          // Suppress.
+      m_uiCoords[d] = (child & D ? oldCoord | selector : oldCoord & (~selector));
+    }
+}
+
+template <typename T, unsigned int dim>
 inline int TreeNode<T,dim>::getAnchor(std::array<T,dim> &xyz) const {
     xyz = m_uiCoords;
     return 1;
@@ -246,6 +260,18 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getAncestor(unsigned int ancLev) const {
     return TreeNode(1, ancCoords, ancLev);
 } //end function
 
+
+template <typename T, unsigned int dim>
+inline TreeNode<T,dim> TreeNode<T,dim>::getFirstChildMorton() const {
+  const T mask = ~((1u << (m_uiMaxDepth - m_uiLevel)) - 1);
+  TreeNode<T,dim> m = *this;
+#pragma unroll(dim)
+  for (int d = 0; d < dim; d++)
+    m.m_uiCoords[d] &= mask;      // Clear anything below parent bit.
+  m.m_uiLevel++;
+  
+  return m;
+}
 
 /**
   @brief Get min (inclusive lower bound) for a single dimension.

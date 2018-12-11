@@ -149,6 +149,7 @@ namespace ot {
       //unsigned char getChildNumber(bool real=true) const;
       unsigned char getMortonIndex(T level) const;
       unsigned char getMortonIndex() const;
+      void setMortonIndex(unsigned char child);
       //int setWeight(unsigned int w);
       //int addWeight(unsigned int w);
       int setFlag(unsigned int w);
@@ -264,6 +265,11 @@ namespace ot {
       ///    std::vector<bool> getMorton() const;
       //@}
 
+          /**
+           *@author Dhairya Malhotra
+           *@return the smallest (in morton id) of this octant
+           */
+          TreeNode getFirstChildMorton() const;
 
       /** @name Mins and maxes */
       //@{
