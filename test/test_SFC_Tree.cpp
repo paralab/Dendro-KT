@@ -220,6 +220,97 @@ void test_distTreeSort(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 //------------------------
 
 
+
+//------------------------
+// test_locTreeConstruction()
+//------------------------
+void test_locTreeConstruction(int numPoints)
+{
+  using T = unsigned int;
+  /// const unsigned int dim = 4;
+  const unsigned int dim = 2;
+  using TreeNode = ot::TreeNode<T,dim>;
+
+  _InitializeHcurve(dim);
+
+  std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
+  std::vector<TreeNode> tree;
+
+  /// const unsigned int maxPtsPerRegion = 8;
+  const unsigned int maxPtsPerRegion = 3;
+
+  const T leafLevel = m_uiMaxDepth;
+
+  ot::SFC_Tree<T,dim>::locTreeConstruction(
+      &(*points.begin()), tree,
+      maxPtsPerRegion,
+      0, (unsigned int) points.size(),
+      1, leafLevel,
+      0,
+      TreeNode());
+
+  for (TreeNode pt : points)
+  {
+    std::cout << pt.getBase32Hex().data() << "\n";
+  }
+  std::cout << "\n";
+
+  int lev = 0, prevLev = 0;
+  std::vector<TreeNode>::const_iterator pIt = points.begin();
+  const char continueStr[] = "  ";
+  const char expandStr[]   = " [_]";
+  const char newBlockStr[] = "__";
+  const int beginTextPos = 40;
+  std::streamsize oldWidth = std::cout.width();
+  std::cout << "    (Buckets)                           (Points)\n";
+  for (const TreeNode tn : tree)
+  {
+    prevLev = lev;
+    lev = tn.getLevel();
+
+    if (lev != prevLev)
+    {
+      for (int ii = 0; ii < lev; ii++)
+        std::cout << continueStr;
+      std::cout << "\n";
+    }
+
+    if (tn.getMortonIndex() == 0)
+    {
+      for (int ii = 0; ii < lev; ii++)
+        std::cout << newBlockStr;
+      std::cout << "\n";
+    }
+
+    for (int ii = 0; ii < lev; ii++)
+      std::cout << continueStr;
+    std::cout << expandStr << "    " << tn.getBase32Hex().data() << "\n";
+
+    while (tn.isAncestor(pIt->getDFD()))
+    {
+      for (int ii = 0; ii < lev; ii++)
+        std::cout << continueStr;
+      
+      std::cout << std::setw(beginTextPos - 2*lev) << ' '
+                << std::setw(oldWidth) << pIt->getBase32Hex().data()
+                << "\n";
+      pIt++;
+    }
+  }
+
+  if (pIt == points.end())
+    std::cout << "All points accounted for.\n";
+  else
+    std::cout << "SOME POINTS WERE NOT LISTED.\n";
+
+}
+//------------------------
+
+
+
+
+
+
 int main(int argc, char* argv[])
 {
   MPI_Init(&argc, &argv);
@@ -230,7 +321,9 @@ int main(int argc, char* argv[])
 
   //test_locTreeSort();
 
-  test_distTreeSort(ptsPerProc, MPI_COMM_WORLD);
+  //test_distTreeSort(ptsPerProc, MPI_COMM_WORLD);
+
+  test_locTreeConstruction(ptsPerProc);
 
   MPI_Finalize();
 

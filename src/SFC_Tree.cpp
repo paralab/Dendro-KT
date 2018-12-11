@@ -495,6 +495,86 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
 }
 
 
+//
+// locTreeConstruction()
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
+                                  std::vector<TreeNode<T,D>> &tree,
+                                  RankI maxPtsPerRegion,
+                                  RankI begin, RankI end,
+                                  LevI sLev,
+                                  LevI eLev,
+                                  RotI pRot,
+                                  TreeNode<T,D> pNode)
+{
+  // Most of this code is copied from locTreeSort().
+
+  if (end <= begin) { return; }
+
+  constexpr char numChildren = TreeNode<T,D>::numChildren;
+  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  using TreeNode = TreeNode<T,D>;
+
+  // Reorder the buckets on sLev (current level).
+  std::array<RankI, numChildren+1> tempSplitters;
+  SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters);
+  // The array `tempSplitters' has numChildren+1 slots, which includes the
+  // beginning, middles, and end of the range of children.
+
+  // Lookup tables to apply rotations.
+  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+  TreeNode cNode = pNode.getFirstChildMorton();
+
+  if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+  {
+    // We satisfy the completeness property because we iterate over
+    // all possible children here. For each child, append either
+    // a leaf orthant or a non-empty complete subtree.
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      // Columns of HILBERT_TABLE are indexed by the Morton rank.
+      // According to Dendro4 TreeNode.tcc:199 they are.
+      // (There are possibly inconsistencies in the old code...?
+      // Don't worry, we can regenerate the table later.)
+      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      RotI cRot = orientLookup[child];
+      cNode.setMortonIndex(child);
+
+      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] > maxPtsPerRegion)
+      {
+        // Recursively build a complete sub-tree out of this bucket's points.
+        // Use the splitters to specify ranges for the next level of recursion.
+        locTreeConstruction(
+            points, tree, maxPtsPerRegion,
+            tempSplitters[child_sfc], tempSplitters[child_sfc+1],
+            sLev+1, eLev,
+            cRot,
+            cNode);
+      }
+      else
+      {
+        // Append a leaf orthant.
+        tree.push_back(cNode);
+      }
+    }
+  }
+  else   // We have reached eLev. Violate `maxPtsPerRegion' to satisfy completeness.
+  {
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      cNode.setMortonIndex(child);
+      tree.push_back(cNode);
+    }
+  }
+
+}  // end function
+
 
 
 } // namspace ot

@@ -94,7 +94,7 @@ struct BarrierQueue
 template <typename T, unsigned int D>
 struct SFC_Tree
 {
-  
+
   // Notes:
   //   - This method operates in-place and returns buckets at level eLev.
   //     The members of each BucketInfo object can be used to further
@@ -160,6 +160,19 @@ struct SFC_Tree
   static void treeBFTNextLevel(TreeNode<T,D> *points,
       std::vector<BucketInfo<RankI>> &bftQueue);
 
+
+  // -------------------------------------------------------------
+
+  // Notes:
+  //   - (Sub)tree will be built by appending to `tree'.
+  static void locTreeConstruction(TreeNode<T,D> *points,
+                                  std::vector<TreeNode<T,D>> &tree,
+                                  RankI maxPtsPerRegion,
+                                  RankI begin, RankI end,
+                                  LevI sLev,
+                                  LevI eLev,
+                                  RotI pRot,
+                                  TreeNode<T,D> pNode);
 
 };
 
