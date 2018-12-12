@@ -227,8 +227,8 @@ void test_distTreeSort(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 void test_locTreeConstruction(int numPoints)
 {
   using T = unsigned int;
-  /// const unsigned int dim = 4;
-  const unsigned int dim = 2;
+  const unsigned int dim = 4;
+  const unsigned int numChildren = 1u << dim;
   using TreeNode = ot::TreeNode<T,dim>;
 
   _InitializeHcurve(dim);
@@ -236,11 +236,14 @@ void test_locTreeConstruction(int numPoints)
   std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
   std::vector<TreeNode> tree;
 
-  /// const unsigned int maxPtsPerRegion = 8;
-  const unsigned int maxPtsPerRegion = 3;
+  const unsigned int maxPtsPerRegion = 8;
+  /// const unsigned int maxPtsPerRegion = 3;
 
   const T leafLevel = m_uiMaxDepth;
 
+  // TODO The fact that this starts at level 1 and it works,
+  //      might indicate I am confused about what constitutes `root'
+  //      and what is the range of allowable addresses.
   ot::SFC_Tree<T,dim>::locTreeConstruction(
       &(*points.begin()), tree,
       maxPtsPerRegion,
@@ -255,6 +258,9 @@ void test_locTreeConstruction(int numPoints)
   }
   std::cout << "\n";
 
+  std::vector<int> address(m_uiMaxDepth+1, 0);
+  bool completeness = true;
+
   int lev = 0, prevLev = 0;
   std::vector<TreeNode>::const_iterator pIt = points.begin();
   const char continueStr[] = "  ";
@@ -268,6 +274,20 @@ void test_locTreeConstruction(int numPoints)
     prevLev = lev;
     lev = tn.getLevel();
 
+    // Check completeness.
+    // `address' must match address at this node.
+    for (int l = 0; l <= lev; l++)
+      if (address[l] != tn.getMortonIndex(l))
+      {
+        completeness = false;
+        std::cout << "Completeness failure here. Level [" << lev << "], counter == "
+          << address[l] << ", but node address == " << tn.getMortonIndex(l) << "\n";
+      }
+    // Now that we've visited this node, add 1 at this level.
+    // Remember that addition propagates.
+    for (int l = lev; l >= 0 && ++address[l] == numChildren; address[l] = 0, l--);
+
+    // Print buckets.
     if (lev != prevLev)
     {
       for (int ii = 0; ii < lev; ii++)
@@ -286,6 +306,7 @@ void test_locTreeConstruction(int numPoints)
       std::cout << continueStr;
     std::cout << expandStr << "    " << tn.getBase32Hex().data() << "\n";
 
+    // Print points.
     while (tn.isAncestor(pIt->getDFD()) || tn == pIt->getDFD())
     {
       for (int ii = 0; ii < lev; ii++)
@@ -298,10 +319,23 @@ void test_locTreeConstruction(int numPoints)
     }
   }
 
-  if (pIt == points.end())
-    std::cout << "All points accounted for.\n";
+  // Final check on completeness.
+  for (int lev = 1; lev < address.size(); lev++)   // See note at calling of locTreeConstruction().
+    if (address[lev] != 0)
+    {
+      completeness = false;
+      std::cout << "Completeness failure here. Previous count [" << lev << "] == " << address[lev] << "\n";
+    }
+
+  if (completeness)
+    std::cout << "Completeness criterion successful, all addresses adjacent.\n";
   else
-    std::cout << "SOME POINTS WERE NOT LISTED.\n";
+    std::cout << "Completeness criterion FAILED.\n";
+
+  if (pIt == points.end())
+    std::cout << "Counting points: All points accounted for.\n";
+  else
+    std::cout << "Counting points: FAILED - SOME POINTS WERE NOT LISTED.\n";
 
 }
 //------------------------
