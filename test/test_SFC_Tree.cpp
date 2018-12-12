@@ -286,7 +286,7 @@ void test_locTreeConstruction(int numPoints)
       std::cout << continueStr;
     std::cout << expandStr << "    " << tn.getBase32Hex().data() << "\n";
 
-    while (tn.isAncestor(pIt->getDFD()))
+    while (tn.isAncestor(pIt->getDFD()) || tn == pIt->getDFD())
     {
       for (int ii = 0; ii < lev; ii++)
         std::cout << continueStr;
