@@ -1,20 +1,16 @@
-/*
- * SFC_Tree.cpp
- *
- * Masado Ishii  --  UofU SoC, 2018-12-03
- *
- * Based on work by Milinda Fernando and Hari Sundar.
- *   - Algorithms: SC18 "Comparison Free Computations..." TreeSort, TreeConstruction, TreeBalancing
- *   - Code: Dendro4 [sfcSort.h] [construct.cpp]
+/**
+ * @file:tsort.cpp
+ * @author: Masado Ishii  --  UofU SoC,
+ * @date: 2018-12-03
+ * @brief: Based on work by Milinda Fernando and Hari Sundar.
+ * - Algorithms: SC18 "Comparison Free Computations..." TreeSort, TreeConstruction, TreeBalancing
+ * - Code: Dendro4 [sfcSort.h] [construct.cpp]
  *
  * My contribution is to extend the data structures to 4 dimensions (or higher).
  */
 
-#include "SFC_Tree.h"
-#include "hcurvedata.h"
-#include "PROXY_parUtils.h"
+#include "tsort.h"
 
-#include <stdio.h>
 
 namespace ot
 {

@@ -23,8 +23,12 @@
 #include "mpi.h"
 #include <vector>
 #include "dendro.h"
-#define TOLLERANCE_OCT 0.1
-//#include "seqUtils.h"
+
+#ifndef KWAY
+#define KWAY 128
+#endif
+
+
 
 #ifdef PETSC_USE_LOG
 
@@ -241,14 +245,7 @@ PetscFunctionReturn(0);
   @author Hari Sundar
   @brief Collection of Generic Parallel Functions: Sorting, Partitioning, Searching,...
   */
-
-
-
-
-
 namespace par {
-
-
 
   template <typename T>
     int Mpi_Isend(T* buf, int count, int dest, int tag, MPI_Comm comm, MPI_Request* request);
@@ -340,7 +337,7 @@ namespace par {
 
 
 
-    /**
+  /**
     @brief Re-distributes a STL vector, preserving the relative ordering of the
     elements. 
     @author Rahul S. Sampath
@@ -407,26 +404,6 @@ namespace par {
         std::vector<T> & listB, MPI_Comm comm);
 
   /**
-    @brief A parallel sample sort implementation. In our implementation, we do not pose any 
-    restriction on the input or the number of processors. This function can be used with an odd number of processors as well.
-    Some processors can pass an empty vector as input. If the total number of elements in the vector (globally) is fewer 
-    than 10*p^2, where p is the number of processors, then we will use bitonic sort instead of sample sort to sort the vector.
-    We use a paralle bitonic sort to sort the samples in the sample sort algorithm. Hence, the complexity of the algorithm
-    is O(n/p log n/p) + O(p log p). Here, n is the global length of the vector and p is the number of processors.
-    @author Hari Sundar
-    @author Rahul Sampath
-    @author Santi Swaroop Adavani
-    @author Shravan Veerapaneni
-    @param in the input vector
-    @param out the output vector
-    @param comm the communicator
-    */
-  template<typename T>
-    int sampleSort(std::vector<T>& in, std::vector<T> & out, MPI_Comm comm); 
-
-
-
-  /**
     @brief Removes duplicates in parallel. If the input is not sorted, sample sort will be called 
     within the function to sort the vector and then duplicates will be removed.
     @param nodes the input vector.
@@ -434,8 +411,8 @@ namespace par {
     @param comm The communicator
     @author Rahul Sampath
     */
-  template<typename T>
-    int removeDuplicates(std::vector<T>& nodes, bool isSorted,MPI_Comm comm);
+  /*template<typename T>
+    int removeDuplicates(std::vector<T>& nodes, bool isSorted, MPI_Comm comm);*/
 
   /**
     @brief Splits a communication group into two, one containing processors that passed a value of 'false' 
@@ -582,8 +559,9 @@ namespace par {
 #ifdef USE_OLD_SORT
 #include "parUtils_old.tcc"
 #else
-#include "PROXY_parUtils.tcc"
+#include "parUtils.tcc"
 #endif
+
 #endif
 
 

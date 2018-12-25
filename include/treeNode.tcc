@@ -36,7 +36,78 @@
 ///
 /// } // namespace detail
 
+
 namespace ot {
+
+    // =============== Constructors ================= //
+
+    template <typename T, unsigned int dim>
+    TreeNode<T,dim>::TreeNode() {
+        m_uiLevel = 0;
+        m_uiCoords.fill(0);
+        m_uiLevel = 0;
+
+        //==========
+#ifdef __DEBUG_TN__
+        //@masado Allow arbitrary dimensions but warn about unexpected cases.
+  if (dim < 1 || dim > 4) {
+    std::cout << "Warning: Value for dim: " << dim << std::endl;
+  }
+#endif
+    } //end function
+
+    template<typename T, unsigned int dim>
+    TreeNode<T,dim>::TreeNode (const std::array<T,dim> coords, unsigned int level) {
+        m_uiLevel = level;
+
+        T mask = -(1u << (m_uiMaxDepth - level));
+
+#pragma unroll(dim)
+        for (int d = 0; d < dim; d++) { m_uiCoords[d] = (coords[d] & mask); }
+
+#ifdef __DEBUG_TN__
+        //@masado Allow arbitrary dimensions but warn about unexpected cases.
+  if (dim < 1 || dim > 4) {
+    std::cout << "Warning: Value for dim: " << dim << std::endl;
+  }
+  for ( T x : m_uiCoords )
+  {
+    assert( x < ((unsigned int)(1u << m_uiMaxDepth)));
+    assert((x % ((unsigned int)(1u << (m_uiMaxDepth - level)))) == 0);
+  }
+#endif
+    } //end function
+
+    template<typename T, unsigned int dim>
+    TreeNode<T,dim>::TreeNode (const TreeNode & other) {
+        m_uiLevel = other.m_uiLevel;
+
+#pragma unroll(dim)
+        for (int d = 0; d < dim; d++) { m_uiCoords[d] = other.m_uiCoords[d]; }
+
+    } //end function
+
+    template<typename T, unsigned int dim>
+    TreeNode<T,dim>::TreeNode (const int dummy, const std::array<T,dim> coords, unsigned int level)
+    {
+        m_uiLevel = level;
+
+#pragma unroll(dim)
+        for (int d = 0; d < dim; d++) { m_uiCoords[d] = coords[d]; }
+
+    }
+
+
+    template<typename T, unsigned int dim>
+    TreeNode<T,dim>& TreeNode<T,dim>  :: operator = (TreeNode<T,dim>   const& other) {
+        if (this == (&other)) {return *this;}
+        m_uiCoords = other.m_uiCoords;
+        m_uiLevel = other.m_uiLevel;
+
+        return *this;
+    } //end fn.
+
+
 
 
 //========== Overloaded Operators =========== //
@@ -396,146 +467,6 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim>
 
   return TreeNode<T,dim>(1, n_coords, level);
 } //end function
-
-
-//// // Named neighbours for 3D.
-//// // Assume that 3D dimensions are 0=X 1=Y 2=Z.
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getLeft() const
-//// {
-////   return getNeighbour(0,-1);
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getRight() const
-//// {
-////   return getNeighbour(0,+1);
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getFront() const
-//// {
-////   return getNeighbour(1,-1);
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBack() const
-//// {
-////   return getNeighbour(1,+1);
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTop() const
-//// {
-////   return getNeighbour(2,-1);
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottom() const
-//// {
-////   return getNeighbour(2,+1);
-//// }
-////
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTopLeft() const
-//// {
-////   return getNeighbour({-1,0,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTopRight() const
-//// {
-////   return getNeighbour({+1,0,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottomLeft() const
-//// {
-////   return getNeighbour({-1,0,-1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottomRight() const
-//// {
-////   return getNeighbour({+1,0,-1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getLeftFront() const
-//// {
-////   return getNeighbour({-1,0,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getRightFront() const
-//// {
-////   return getNeighbour({+1,-1,0});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTopFront() const
-//// {
-////   return getNeighbour({0,-1,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottomFront() const
-//// {
-////   return getNeighbour({0,-1,-1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTopLeftFront() const
-//// {
-////   return getNeighbour({-1,-1,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTopRightFront() const
-//// {
-////   return getNeighbour({+1,-1,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottomLeftFront() const
-//// {
-////   return getNeighbour({-1,-1,-1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottomRightFront() const
-//// {
-////   return getNeighbour({+1,-1,-1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getLeftBack() const
-//// {
-////   return getNeighbour({-1,+1,0});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getRightBack() const
-//// {
-////   return getNeighbour({+1,+1,0});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTopBack() const
-//// {
-////   return getNeighbour({0,+1,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottomBack() const
-//// {
-////   return getNeighbour({0,+1,-1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTopLeftBack() const
-//// {
-////   return getNeighbour({-1,+1,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getTopRightBack() const
-//// {
-////   return getNeighbour({+1,+1,+1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottomLeftBack() const
-//// {
-////   return getNeighbour({-1,+1,-1});
-//// }
-//// template <typename T>
-//// inline TreeNode<T,3> TreeNode<T,3>::getBottomRightBack() const
-//// {
-////   return getNeighbour({+1,+1,-1});
-//// }
-
-
-
-
-
 
 
 // ================= End Pseudo-getters ====================== //

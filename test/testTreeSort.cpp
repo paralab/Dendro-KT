@@ -7,12 +7,13 @@
  */
 
 
-#include "TreeNode.h"
-#include "SFC_Tree.h"
+#include "treeNode.h"
+#include "tsort.h"
+#include "octUtils.h"
 
 #include "hcurvedata.h"
 
-#include "genRand4DPoints.h"
+#include "octUtils.h"
 #include <vector>
 
 #include <assert.h>
@@ -45,7 +46,7 @@ void test_locTreeSort()
   std::cout << "Begin Adding Points.\n";
   std::cout << "=============================\n";
 
-  std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
+  std::vector<TreeNode> points = ot::getPts<T,dim>(numPoints);
 
   for (const TreeNode &tn : points)
   {
@@ -133,7 +134,7 @@ void test_distTreeSort(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 
   _InitializeHcurve(dim);
 
-  std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
+  std::vector<TreeNode> points = ot::getPts<T,dim>(numPoints);
 
   // Sort!
   ot::SFC_Tree<T,dim>::distTreeSort(points, 0.2, MPI_COMM_WORLD);
@@ -233,7 +234,7 @@ void test_locTreeConstruction(int numPoints)
 
   _InitializeHcurve(dim);
 
-  std::vector<TreeNode> points = genRand4DPoints<T,dim>(numPoints);
+  std::vector<TreeNode> points = ot::getPts<T,dim>(numPoints);
   std::vector<TreeNode> tree;
 
   const unsigned int maxPtsPerRegion = 8;

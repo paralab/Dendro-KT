@@ -4,13 +4,14 @@
  * Masado Ishii  --  ParaLab @ UofU SoC, 2018
  */
 
-#include "TreeNode.h"
+#include "treeNode.h"
 
 #include <array>
 #include <vector>
 
 #include <stdio.h>
 #include <iostream>
+#include "octUtils.h"
 
 
 // -------------------------------
