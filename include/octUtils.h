@@ -53,6 +53,31 @@ namespace ot
         return points;
     }
 
+    /**
+     * @brief perform slicing operation on k trees.
+     * @param[in] in: input k-tree
+     * @param[out] out: sliced k-tree
+     * @param[in] numNodes: number of input nodes
+     * @param[in] sDim: slicing dimention.
+     * @param[in] sliceVal: extraction value for the slice
+     * @param[in] tolernace: tolerance value for slice extraction.
+     * */
+     template<typename T, unsigned int dim>
+     void sliceKTree(const ot::TreeNode<T,dim> * in,std::vector<ot::TreeNode<T,dim>> & out,unsigned int numNodes, unsigned int sDim, T sliceVal,double tolerance=1e-6)
+     {
+
+         out.clear();
+         for(unsigned int i=0;i<numNodes;i++)
+         {
+             if(fabs(in[i].getX(sDim)-sliceVal)<=tolerance)
+                 out[i].push_back(in[i]);
+         }
+
+
+     }
+
+
+
 }// end of namespace ot
 
 
