@@ -100,34 +100,13 @@ struct SFC_Tree
   //     The members of each BucketInfo object can be used to further
   //     refine the bucket.
   //   - From sLev to eLev INCLUSIVE
-  //   - outBuckets will be appended with all the ending-level buckets at eLev.
-  //     These buckets also represent all the chunks that could be internally unsorted.
-  //     (Any TreeNodes at or above eLev will have been sorted.)
-  //     Recommended to init to empty vector, i.e. getEmptyBucketVector().
   static void locTreeSort(TreeNode<T,D> *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
-                          RotI pRot,            // Initial rotation, use 0 if sLev is 1.
-                          std::vector<BucketInfo<RankI>> &outBuckets,
-                          bool makeBuckets = true);
+                          RotI pRot);            // Initial rotation, use 0 if sLev is 1.
 
-  //TODO remove all bucket-collecting from locTreeSort() (`outBuckets').
-  //It is not needed, and besides, the bucketing I implemented in locTreeSort()
-  //does not indicate what point in the SFC ordering each bucket belongs to,
-  //so it is not really useful anyway.
-  //Proper bucketing will be implemented in distTreeSort.
-  //Both locTreeSort and distTreeSort will make use of SFC_bucketing(),
-  //and the splitters returned by SFC_bucketing are useful in both cases
-  //to know where to set bounds for deeper refinement.
 
-  // Use this to initialize the last argument to locTreeSort.
-  // Convenient if you don't care about the buckets and you would rather
-  // write `auto' instead of the full parameter type.
-  static std::vector<BucketInfo<RankI>> getEmptyBucketVector()
-  {
-    return std::vector<BucketInfo<RankI>>();
-  }
 
   // Notes:
   //   - outSplitters contains both the start and end of children at level `lev'

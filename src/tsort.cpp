@@ -25,9 +25,7 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
-                          RotI pRot,
-                          std::vector<BucketInfo<RankI>> &outBuckets,  //TODO remove
-                          bool makeBuckets)                                   //TODO remove
+                          RotI pRot)
 {
   //// Recursive Depth-first, similar to Most Significant Digit First. ////
 
@@ -48,12 +46,8 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
 
   if (sLev < eLev)  // This means eLev is further from the root level than sLev.
   {
-    const unsigned int continueThresh = makeBuckets ? 0 : 1;
-    //TODO can remove the threshold. We only need the splitters to recurse.
-
     // Recurse.
     // Use the splitters to specify ranges for the next level of recursion.
-    // Use the results of the recursion to build the list of ending buckets.  //TODO no buckets
     // While at first it might seem wasteful that we keep sorting the
     // ancestors and they don't move, in reality there are few ancestors,
     // so it (probably) doesn't matter that much.
@@ -66,39 +60,15 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
       ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
       RotI cRot = orientLookup[child];
 
-      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] <= continueThresh)
+      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] <= 1)
         continue;
-      // We don't skip a singleton, since a singleton contributes a bucket.   //TODO no buckets
-      // We need recursion to calculate the rotation at the ending level.
 
       locTreeSort(points,
           tempSplitters[child_sfc], tempSplitters[child_sfc+1],
           sLev+1, eLev,
-          cRot,
-          outBuckets,
-          makeBuckets);
+          cRot);
     }
   }
-  else if (makeBuckets)   //TODO Don't need this branch if no buckets.
-  {
-    // This is the ending level. Use the splitters to build the list of ending buckets.
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
-    {
-      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
-      RotI cRot = orientLookup[child];
-
-      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] == 0)
-        continue;
-
-      //TODO remove
-      outBuckets.push_back(
-          {cRot, sLev+1,
-          tempSplitters[child_sfc],
-          tempSplitters[child_sfc+1]});
-      // These are the parameters that could be used to further refine the bucket.
-    }
-  }
-
 }// end function()
 
 
@@ -235,8 +205,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 
   if (nProc == 1)
   {
-    auto unusedBucketVector = getEmptyBucketVector();
-    locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0, unusedBucketVector, false);
+    locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
     return;
   }
 
@@ -435,8 +404,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   //TODO figure out the 'staged' part with k-parameter.
 
   // Finish with a local TreeSort to ensure all points are in order.
-  auto unusedBucketVector = getEmptyBucketVector();
-  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0, unusedBucketVector, false);
+  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
 
   /// // DEBUG: print out all the points.
   /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');

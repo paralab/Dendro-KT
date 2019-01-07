@@ -67,8 +67,7 @@ void test_locTreeSort()
   // Sort them with locTreeSort().
   ///std::vector<ot::TreeNode<T,dim>> sortedPoints;
   ///ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), &(*points.end()), sortedPoints, 0, leafLevel, 0);
-  auto leafBuckets = ot::SFC_Tree<T,dim>::getEmptyBucketVector();
-  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), 0, points.size(), 0, leafLevel, 0, leafBuckets);
+  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), 0, points.size(), 0, leafLevel, 0);
 
   std::vector<ot::TreeNode<T,dim>> &sortedPoints = points;
 
@@ -83,16 +82,6 @@ void test_locTreeSort()
     std::cout << tn << " \t " << tn.getBase32Hex().data() << '\n';
     topOctCount_end[tn.getMortonIndex(0)]++;
     botOctCount_end[tn.getMortonIndex(leafLevel)]++;
-  }
-
-  std::cout << '\n';
-
-  std::cout << "Number of leaf buckets (leafLevel == " << leafLevel << "):  "
-            << leafBuckets.size() << '\n';
-  std::cout << "Buckets:\n";
-  for (const ot::BucketInfo<unsigned int> &b : leafBuckets)
-  {
-    printf("{%4d %4u %4u %4u}\n", b.rot_id, b.lev, b.begin, b.end);
   }
 
   std::cout << "=============================\n";
