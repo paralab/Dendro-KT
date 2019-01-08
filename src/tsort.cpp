@@ -175,10 +175,31 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
 }
 
 
-
 template<typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
+                          double loadFlexibility,
+                          MPI_Comm comm)
+{
+  // The heavy lifting to globally sort/partition.
+  distTreePartition(points, loadFlexibility, comm);
+
+  // Finish with a local TreeSort to ensure all points are in order.
+  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
+
+  /// // DEBUG: print out all the points.  // This debugging section will break.
+  /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
+  /// spaces.back() = '\0';
+  /// for (const TreeNode tn : points)
+  ///   std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
+  /// std::cout << spaces.data() << "------------------------------------\n";
+  /// }
+}
+
+
+template<typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
@@ -403,16 +424,9 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 
   //TODO figure out the 'staged' part with k-parameter.
 
-  // Finish with a local TreeSort to ensure all points are in order.
-  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
-
-  /// // DEBUG: print out all the points.
-  /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
-  /// spaces.back() = '\0';
-  /// for (const TreeNode tn : points)
-  ///   std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
-  /// std::cout << spaces.data() << "------------------------------------\n";
-  /// }
+  // After this process, distTreeSort or distTreeConstruction
+  // picks up with a local sorting or construction operation.
+  // TODO Need to have the global buckets for that to work.
 }
 
 
@@ -539,6 +553,86 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
 
 }  // end function
 
+
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
+                                   RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  tree.clear();
+
+  // The heavy lifting to globally sort/partition.
+  distTreePartition(points, loadFlexibility, comm);
+
+  // Instead of locally sorting, locally complete the tree.
+  // Since we don't have info about the global buckets, construct from the top.
+  const LevI leafLevel = m_uiMaxDepth;
+  locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
+                      0, (RankI) points.size(),
+                      0, leafLevel,         //TODO is sLev 0 or 1?
+                      0, TreeNode<T,D>());
+
+  // We have now introduced duplicate sections of subtrees at the
+  // edges of the partition.
+
+  // For now:
+  // Rather than do a complicated elimination of duplicates,
+  // perform another global sort, removing duplicates locally, and then
+  // eliminate at most one duplicate from the end of each processor's partition.
+
+  //TODO Technically we can end up with a processor holding only duplicates,
+  //and it will later be emptied. Is this fine?
+
+  distTreeSort(tree, loadFlexibility, comm);
+  locRemoveDuplicates(tree);
+
+  // At this point, the end of our portion of the tree is possibly a duplicate of,
+  // or an ancestor of, the beginning of the next processors portion of the tree.
+
+  // Exchange to test if our end is a duplicate.
+  TreeNode<T,D> nextBegin;
+  MPI_Request request;
+  MPI_Status status;
+  if (rProc > 0)
+    par::Mpi_Isend<TreeNode<T,D>>(&(*tree.begin()), 1, rProc-1, 0, comm, &request);
+  if (rProc < nProc)
+    par::Mpi_Recv<TreeNode<T,D>>(&nextBegin, 1, rProc+1, 0, comm, &status);
+
+  // If so, delete our end.
+  if (rProc > 0)
+    MPI_Wait(&request, &status);
+  if (rProc < nProc && (*tree.end() == nextBegin || tree.end()->isAncestor(nextBegin)))
+    tree.pop_back();
+}
+
+
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes)
+{
+  const TreeNode<T,D> *tLast = &(*tnodes.end());
+  TreeNode<T,D> *chunkStart = &(*tnodes.begin()), *chunkEnd;
+  size_t numUnique = 0;
+
+  while (chunkStart < tLast)
+  {
+    chunkEnd = chunkStart + 1;
+    while (chunkEnd < tLast && (chunkStart == chunkEnd || chunkStart->isAncestor(*chunkEnd)))
+      chunkEnd++;
+
+    tnodes[numUnique++] = *(chunkEnd - 1);
+    chunkStart = chunkEnd;
+  }
+
+  tnodes.resize(numUnique);
+}
 
 
 } // namspace ot

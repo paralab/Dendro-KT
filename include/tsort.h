@@ -129,6 +129,20 @@ struct SFC_Tree
                            double loadFlexibility,
                            MPI_Comm comm);
 
+  // This method does most of the work for distTreeSort and distTreeConstruction.
+  // It includes the breadth-first global sorting phase and Alltoallv()
+  // but does not sort locally.
+  //
+  // pFinalOctants is an output parameter of the global refinement structure.
+  // If it is NULL then it is unused.
+  // If it is not NULL then it is cleared and filled with the output data.
+  //
+  // Notes:
+  //   - points will be replaced/resized with globally sorted data.
+  static void distTreePartition(std::vector<TreeNode<T,D>> &points,
+                           double loadFlexibility,
+                           MPI_Comm comm);
+
   //
   // treeBFTNextLevel()
   //   Takes the queue of BucketInfo in a breadth-first traversal, and finishes
@@ -152,6 +166,17 @@ struct SFC_Tree
                                   LevI eLev,
                                   RotI pRot,
                                   TreeNode<T,D> pNode);
+
+  static void distTreeConstruction(std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
+                                   RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm);
+
+  // Removes duplicate/ancestor TreeNodes from a sorted list of TreeNodes.
+  // Notes:
+  //   - Removal is done in a single pass in-place. The vector may be shrunk.
+  static void locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes);
 
 };
 
