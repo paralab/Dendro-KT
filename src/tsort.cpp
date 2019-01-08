@@ -623,11 +623,13 @@ SFC_Tree<T,D>:: locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes)
 
   while (chunkStart < tLast)
   {
-    chunkEnd = chunkStart + 1;
+    chunkEnd = chunkStart;
     while (chunkEnd < tLast && (chunkStart == chunkEnd || chunkStart->isAncestor(*chunkEnd)))
       chunkEnd++;
 
-    tnodes[numUnique++] = *(chunkEnd - 1);
+    if (chunkEnd > chunkStart + 1)
+      tnodes[numUnique++] = *(chunkEnd - 1);
+
     chunkStart = chunkEnd;
   }
 
