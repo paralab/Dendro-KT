@@ -194,4 +194,10 @@ add_executable(tstTreeSort ${SRC_FILES})
 target_include_directories(tstTreeSort PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstTreeSort dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeConstruction.cpp)
+add_executable(tstTreeConstruction ${SRC_FILES})
+target_include_directories(tstTreeConstruction PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstTreeConstruction dendroKT ${MPI_LIBRARIES} m)
+
+
 
