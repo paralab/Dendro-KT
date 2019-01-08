@@ -20,7 +20,7 @@
 
 // ...........................................................................
 template <typename T, unsigned int D>
-void checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
+bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData);
@@ -64,9 +64,18 @@ void test_locTreeConstruction(int numPoints)
 
 //------------------------
 // test_distTreeConstruction()
+//
+// Notes:
+//   - For this test we expect the local and global adjacency criteria to succeed.
+//   - However we expect the points-in-buckets criterion to probably fail, since
+//     buckets are redistributed again after points are partitioned.
 //------------------------
 void test_distTreeConstruction(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 {
+  int nProc, rProc;
+  MPI_Comm_size(comm, &nProc);
+  MPI_Comm_rank(comm, &rProc);
+
   using T = unsigned int;
   const unsigned int dim = 4;
   const unsigned int numChildren = 1u << dim;
@@ -83,12 +92,102 @@ void test_distTreeConstruction(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   const double loadFlexibility = 0.2;
 
   const T leafLevel = m_uiMaxDepth;
+  const T firstVariableLevel = 1;      // Not sure about this whole root thing...
 
   std::cerr << "Starting distTreeConstruction()...\n";
   ot::SFC_Tree<T,dim>::distTreeConstruction(points, treePart, maxPtsPerRegion, loadFlexibility, comm);
   std::cerr << "Finished distTreeConstruction().\n\n";
 
-  checkLocalCompleteness<T,dim>(points, treePart, false, true);
+  // Local adjacency test. Ignore messages about unaccounted points.
+  int myLocAdjacency = checkLocalCompleteness<T,dim>(points, treePart, false, false);
+
+  const bool printGlobData = true;
+
+  int myGlobAdjacency = true;
+
+  // Exchange left to right to test adjacency.
+  TreeNode prevEnd;
+  MPI_Request request;
+  MPI_Status status;
+  if (rProc < nProc-1)
+    par::Mpi_Isend<TreeNode>(&treePart.back(), 1, rProc+1, 0, comm, &request);
+  if (rProc > 0)
+    par::Mpi_Recv<TreeNode>(&prevEnd, 1, rProc-1, 0, comm, &status);
+  
+  // Completeness at boundaries.
+  if (rProc == 0)
+  {
+    const TreeNode &tn = treePart.front();
+    for (int l = firstVariableLevel; l <= tn.getLevel(); l++)
+      if (tn.getMortonIndex(l) != 0)
+      {
+        myGlobAdjacency = false;
+        if (printGlobData)
+          std::cout << "Global completeness failed, bdry start (rank " << rProc << ")\n";
+      }
+  }
+  if (rProc == nProc - 1)
+  {
+    const TreeNode &tn = treePart.back();
+    for (int l = firstVariableLevel; l <= tn.getLevel(); l++)   // < not <=, since level should be 0?
+      if (tn.getMortonIndex(l) != numChildren - 1)
+      {
+        myGlobAdjacency = false;
+        if (printGlobData)
+          std::cout << "Global completeness failed, bdry end (rank " << rProc << ")"
+                    << "  (index[" << l << "] == " << (int) tn.getMortonIndex(l) << ")\n";
+      }
+  }
+
+  // Inter-processor adjacency.
+  //TODO there is probably a clever bitwise Morton-adjacency test. make a class member function.
+  if (rProc > 0)
+  {
+    // Verify that our beginning is adjacent to previous end.
+    const TreeNode &myFront = treePart.front();
+    int l_match = 0;
+    while (l_match <= m_uiMaxDepth && myFront.getMortonIndex(l_match) == prevEnd.getMortonIndex(l_match))
+      l_match++;
+
+    if (myFront.getMortonIndex(l_match) != 1 + prevEnd.getMortonIndex(l_match))
+    {
+      myGlobAdjacency = false;
+      if (printGlobData)
+        std::cout << "Global completeness failed, digit increment (rank " << rProc << ")\n";
+    }
+
+    for (int l = l_match + 1; l <= myFront.getLevel(); l++)
+      if (myFront.getMortonIndex(l) != 0)
+      {
+        myGlobAdjacency = false;
+        if (printGlobData)
+          std::cout << "Global completeness failed, local front nonzero (rank " << rProc << ")\n";
+      }
+
+    for (int l = l_match + 1; l <= prevEnd.getLevel(); l++)
+      if (prevEnd.getMortonIndex(l) != numChildren - 1)
+      {
+        myGlobAdjacency = false;
+        if (printGlobData)
+          std::cout << "Global completeness failed, prev back nonfull (rank " << rProc << ")\n";
+      }
+  }
+
+  if (rProc < nProc-1)
+    MPI_Wait(&request, &status);
+
+  int recvLocAdjacency, recvGlobAdjacency;
+
+  MPI_Reduce(&myLocAdjacency, &recvLocAdjacency, 1, MPI_INT, MPI_LAND, 0, comm);
+  MPI_Reduce(&myGlobAdjacency, &recvGlobAdjacency, 1, MPI_INT, MPI_LAND, 0, comm);
+  if (rProc == 0)
+  {
+    std::cout << "\n\n";
+    std::cout << "--------------------------------------------------\n";
+    std::cout << "Local adjacencies " << (recvLocAdjacency ? "succeeded" : "FAILED") << "\n";
+    std::cout << "Global adjacency " << (recvGlobAdjacency ? "succeeded" : "FAILED") << "\n";
+  }
+
 }
 
 
@@ -96,7 +195,7 @@ void test_distTreeConstruction(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 // checkLocalCompleteness
 // ----------------------
 template <typename T, unsigned int D>
-void checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
+bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData)
@@ -227,6 +326,8 @@ void checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
   else
     std::cout << "Counting points: FAILED - SOME POINTS WERE NOT LISTED.\n";
 
+  return completeness;
+
 }
 //------------------------
 
@@ -244,7 +345,7 @@ int main(int argc, char* argv[])
     ptsPerProc = strtol(argv[1], NULL, 0);
 
   //test_locTreeConstruction(ptsPerProc);
-  test_distTreeConstruction(ptsPerProc, MPI_COMM_WORLD);
+  test_distTreeConstruction(ptsPerProc, MPI_COMM_WORLD);  // Expected results: See note at definition.
 
   MPI_Finalize();
 
