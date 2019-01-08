@@ -602,13 +602,13 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
   MPI_Status status;
   if (rProc > 0)
     par::Mpi_Isend<TreeNode<T,D>>(&(*tree.begin()), 1, rProc-1, 0, comm, &request);
-  if (rProc < nProc)
+  if (rProc < nProc-1)
     par::Mpi_Recv<TreeNode<T,D>>(&nextBegin, 1, rProc+1, 0, comm, &status);
 
   // If so, delete our end.
   if (rProc > 0)
     MPI_Wait(&request, &status);
-  if (rProc < nProc && (*tree.end() == nextBegin || tree.end()->isAncestor(nextBegin)))
+  if (rProc < nProc-1 && (*tree.end() == nextBegin || tree.end()->isAncestor(nextBegin)))
     tree.pop_back();
 }
 
