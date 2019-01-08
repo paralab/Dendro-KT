@@ -22,7 +22,7 @@
 template <typename T, unsigned int D>
 void checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
-                            bool startAtZero,
+                            bool entireTree,
                             bool printData);
 // ...........................................................................
 
@@ -98,7 +98,7 @@ void test_distTreeConstruction(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 template <typename T, unsigned int D>
 void checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
-                            bool startAtZero,
+                            bool entireTree,
                             bool printData)
 {
   const unsigned int dim = D;
@@ -117,7 +117,7 @@ void checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
   std::vector<int> address(m_uiMaxDepth+1, 0);
   bool completeness = true;
 
-  if (!startAtZero)
+  if (!entireTree)
   {
     // Set address to match the first TreeNode.
     const TreeNode &front = tree.front();
@@ -144,16 +144,22 @@ void checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
     // Check completeness.
     // `address' must match address at this node.
     for (int l = 0; l <= lev; l++)
+    {
       if (address[l] != tn.getMortonIndex(l))
       {
         completeness = false;
 
         if (printData)
         {
-          std::cout << "Completeness failure here. Level [" << lev << "], counter == "
-            << address[l] << ", but node address == " << (int) tn.getMortonIndex(l) << "\n";
+          std::cout << "Completeness failure here. Level [" << l << "/" << lev <<"], counter == "
+            << address[l] << ", but node address == " << (int) tn.getMortonIndex(l) << "  (" << tn.getBase32Hex().data() << ")\n";
         }
       }
+      else if (printData)
+      {
+        std::cout << "Completeness not violated here. level=["<<l<<"/"<<lev<<"] (" << tn.getBase32Hex().data() << ")\n";
+      }
+    }
     // Now that we've visited this node, add 1 at this level.
     // Remember that addition propagates.
     for (int l = lev; l >= 0 && ++address[l] == numChildren; address[l] = 0, l--);
@@ -198,15 +204,18 @@ void checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
   }
 
   // Final check on completeness.
-  for (int lev = 1; lev < address.size(); lev++)   // See note at calling of locTreeConstruction().
-    if (address[lev] != 0)
-    {
-      completeness = false;
-      if (printData)
+  if (entireTree)
+  {
+    for (int lev = 1; lev < address.size(); lev++)   // See note at calling of locTreeConstruction().
+      if (address[lev] != 0)
       {
-        std::cout << "Completeness failure here. Previous count [" << lev << "] == " << address[lev] << "\n";
+        completeness = false;
+        if (printData)
+        {
+          std::cout << "Completeness failure here. Previous count [" << lev << "] == " << address[lev] << "\n";
+        }
       }
-    }
+  }
 
   if (completeness)
     std::cout << "Completeness criterion successful, all addresses adjacent.\n";
