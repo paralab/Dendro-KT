@@ -48,8 +48,8 @@ namespace ot {
 
         static constexpr char numChildren = (1u << dim);
 
-        //@massado, can you please fix this to work with any dim.
-        using Flag2K = unsigned char;  // Has 8 bits, will work for (dim <= 4).
+        //@masado, can you please fix this to work with any dim. (@masado: Looks like it's not being used.)
+        ///using Flag2K = unsigned char;  // Has 8 bits, will work for (dim <= 4).
 
       /**
         @brief Constructs a root octant
@@ -112,19 +112,19 @@ namespace ot {
        * @param[out]: coppied coordinates*/
       int getAnchor(std::array<T,dim> &xyz) const;
 
-      /**@brief @massado can you write brief for this function*/
+      /**@brief return the (Morton indexed) child number at specified level.*/
       unsigned char getMortonIndex(T level) const;
 
-      /**@brief @massado can you write brief for this function*/
+      /**@brief return the (Morton indexed) child number at the node's own level.*/
       unsigned char getMortonIndex() const;
 
-      /**@brief @massado can you write brief for this function*/
+      /**@brief set the last digit (at node's level) in each component of the anchor. */
       void setMortonIndex(unsigned char child);
 
       /**@brief set the octant flag*/
       int setFlag(unsigned int w);
 
-      /**@brief @massado can you write brief for this function*/
+      /**@brief update the flag by taking bitwise-or of old value with w.*/
       int orFlag(unsigned int w);
 
       /**
