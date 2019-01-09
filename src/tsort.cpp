@@ -608,7 +608,7 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
   // If so, delete our end.
   if (rProc > 0)
     MPI_Wait(&request, &status);
-  if (rProc < nProc-1 && (*tree.end() == nextBegin || tree.end()->isAncestor(nextBegin)))
+  if (rProc < nProc-1 && (tree.back() == nextBegin || tree.back().isAncestor(nextBegin)))
     tree.pop_back();
 }
 
