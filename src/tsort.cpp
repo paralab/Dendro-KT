@@ -172,6 +172,12 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
     else
       bufferSize--;
   }
+
+  // Note the first thing that happens: Due to offsets[numChildren] being the
+  // top of the unsortedBuffer stack, the previously sorted ancestors (grandparents)
+  // are swapped in and out of the buffer, in order, without actually changing positions.
+  // Therefore a sequence of direct descendants will be stable with
+  // ancestors preceeding descendants.
 }
 
 
@@ -576,8 +582,11 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
   const LevI leafLevel = m_uiMaxDepth;
   locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
                       0, (RankI) points.size(),
-                      0, leafLevel,         //TODO is sLev 0 or 1?
+                      1, leafLevel,         //TODO is sLev 0 or 1?
                       0, TreeNode<T,D>());
+  // When (sLev,eLev)==(0,m_uiMaxDepth), nodes with level m_uiMaxDepth+1 are created.
+  // This must be leading to incorrect ancestry tests because duplicates do
+  // not always get removed properly in that case.
 
   // We have now introduced duplicate sections of subtrees at the
   // edges of the partition.
@@ -617,17 +626,19 @@ template <typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes)
 {
-  const TreeNode<T,D> *tLast = &(*tnodes.end());
+  const TreeNode<T,D> *tEnd = &(*tnodes.end());
   TreeNode<T,D> *tnCur = &(*tnodes.begin());
   size_t numUnique = 0;
 
-  while (tnCur < tLast)
+  while (tnCur < tEnd)
   {
+    // Find next leaf.
     TreeNode<T,D> *tnNext;
-    while ((tnNext = tnCur + 1) < tLast &&
+    while ((tnNext = tnCur + 1) < tEnd &&
         (*tnCur == *tnNext || tnCur->isAncestor(*tnNext)))
       tnCur++;
 
+    // Move the leaf.
     if (&tnodes[numUnique] < tnCur)
       tnodes[numUnique] = *tnCur;
     numUnique++;
