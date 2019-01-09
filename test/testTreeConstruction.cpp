@@ -169,7 +169,8 @@ void test_distTreeConstruction(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
       {
         myGlobAdjacency = false;
         if (printGlobData)
-          std::cout << "Global completeness failed, prev back nonfull (rank " << rProc << ")\n";
+          std::cout << "Global completeness failed, prev back nonfull (rank " << rProc << ")"
+                    << "  (" << prevEnd.getBase32Hex().data() << ":" << myFront.getBase32Hex().data() << ")\n";
       }
   }
 
@@ -180,6 +181,7 @@ void test_distTreeConstruction(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 
   MPI_Reduce(&myLocAdjacency, &recvLocAdjacency, 1, MPI_INT, MPI_LAND, 0, comm);
   MPI_Reduce(&myGlobAdjacency, &recvGlobAdjacency, 1, MPI_INT, MPI_LAND, 0, comm);
+  MPI_Barrier(comm);
   if (rProc == 0)
   {
     std::cout << "\n\n";
@@ -254,10 +256,10 @@ bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
             << address[l] << ", but node address == " << (int) tn.getMortonIndex(l) << "  (" << tn.getBase32Hex().data() << ")\n";
         }
       }
-      else if (printData)
-      {
-        std::cout << "Completeness not violated here. level=["<<l<<"/"<<lev<<"] (" << tn.getBase32Hex().data() << ")\n";
-      }
+      ///else if (printData)
+      ///{
+      ///  std::cout << "Completeness not violated here. level=["<<l<<"/"<<lev<<"] (" << tn.getBase32Hex().data() << ")\n";
+      ///}
     }
     // Now that we've visited this node, add 1 at this level.
     // Remember that addition propagates.
