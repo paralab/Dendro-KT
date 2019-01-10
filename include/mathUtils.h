@@ -192,6 +192,12 @@ T add(const T* v1, const T*v2,const unsigned int n, T* out);
 template <typename T>
 T subt(const T* v1, const T*v2,const unsigned int n, T* out);
 
+/**
+ @brief Compile-time computation of integer (A*pow(b,p)).
+ @author Masado Ishii
+ */
+template <typename T>
+constexpr T intPow(T b, unsigned p, T A = 1);
 
 
 #include "mathUtils.tcc"

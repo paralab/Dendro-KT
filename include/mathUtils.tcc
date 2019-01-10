@@ -241,3 +241,9 @@ T subt(const T* v1, const T*v2,const unsigned int n, T* out)
     for(unsigned int i=0;i<n;i++)
         out[i]=v1[i]-v2[i];
 }
+
+template <typename T>
+constexpr T intPow(T b, unsigned p, T A)
+{
+  return (!p ? A : intPow<T>(b, p-1, b*A));
+}

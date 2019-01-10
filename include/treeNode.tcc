@@ -1,5 +1,6 @@
 #include <array>
 #include <iomanip>
+#include "mathUtils.h"
 #if __DEBUG_TN__
 #include <assert.h>
 #endif // __DEBUG_TN__
@@ -467,6 +468,70 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim>
 
   return TreeNode<T,dim>(1, n_coords, level);
 } //end function
+
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &nodeList) const
+{
+  // The set of neighbors is a 3x3x3x... hypercube with the center deleted.
+  // We will index the neighbor cube by cycling indices so that the center is moved
+  // to the (0,0,0,...) corner, and, skipping the first item,
+  // lexicographic order takes it from there.
+  //
+  // Shift: delta_ref = (delta_physical + 3) % 3
+  //        delta_physical = ((delta_ref + 1) % 3) - 1
+  //        -1 <--> [2]    +1 <--> [1]    0 <--> [0]
+
+  const unsigned int level = getLevel();
+
+  std::array<bool, 2*dim> dimUsable;   // | Cache the results of boundary tests.
+  std::array<T, 2*dim> nAxis;          // | Outer: dimension. Inner: offset. [0]:+1, [1]:-1.
+
+  // Check both ends of each axis for domain boundary.
+  #pragma unroll(dim)
+  for (int d = 0; d < dim; d++)
+  {
+    dimUsable[2*d + 0] = getNeighbour1d(m_uiCoords[d], level, +1, nAxis[2*d + 0]);
+    dimUsable[2*d + 1] = getNeighbour1d(m_uiCoords[d], level, -1, nAxis[2*d + 1]);
+  }
+
+  // Precompute strides for sizes of sub-faces.
+  std::array<int, dim> stride;
+  stride[0] = 1;
+  for (int d = 1; d < dim; d++)
+    stride[d] = stride[d-1]*3;
+  
+  //TODO is there a more efficient way than BigO(dx3^d) per call? Such as just BigTheta(3^d)?
+
+  // For each neighbor, compose the address and append to nodeList.
+  for (int neighbourIdx = 1; neighbourIdx < intPow(3,dim); neighbourIdx++)
+  {
+    bool isNeighbourUsable = true;
+    std::array<T,dim> n_coords;
+
+    int remainder = neighbourIdx;
+    for (int d = dim-1; d >= 0; d--)  // Large to small.
+    {
+      char delta_ref = (remainder < stride[d] ? 0 : remainder < 2*stride[d] ? 1 : 2);
+      switch(delta_ref)
+      {
+        case 0: n_coords[d] = m_uiCoords[d];
+            break;
+        case 1: n_coords[d] = nAxis[2*d + 0];   isNeighbourUsable = dimUsable[2*d + 0];
+            break;
+        case 2: n_coords[d] = nAxis[2*d + 1];   isNeighbourUsable = dimUsable[2*d + 1];
+            break;
+      }
+      if (!isNeighbourUsable)
+        break;
+
+      remainder = remainder - delta_ref * stride[d];
+    }
+
+    if (isNeighbourUsable)
+      nodeList.push_back(TreeNode<T,dim>(1, n_coords, level));
+  }
+}  // end function()
 
 
 // ================= End Pseudo-getters ====================== //

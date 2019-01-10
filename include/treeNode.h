@@ -201,6 +201,11 @@ namespace ot {
         */
       TreeNode getNeighbour(unsigned int d, signed char offset) const;
 
+      /**
+        @brief Append in-bounds neighbors of node to node list.
+        @author Masado Ishii
+       */
+      void appendAllNeighbours(std::vector<TreeNode> &nodeList) const;
 
     };
 
