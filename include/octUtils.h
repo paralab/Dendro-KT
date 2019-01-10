@@ -54,6 +54,24 @@ namespace ot
     }
 
     /**
+     * @author Masado Ishii
+     * @brief  Separate a list of TreeNodes into separate vectors by level.
+     */
+    template <typename T, unsigned int dim>
+    inline std::vector<std::vector<ot::TreeNode<T,dim>>>
+        stratifyTree(const std::vector<ot::TreeNode<T,dim>> &tree)
+    {
+      std::vector<std::vector<ot::TreeNode<T,dim>>> treeLevels;
+
+      treeLevels.resize(m_uiMaxDepth + 1);
+
+      for (ot::TreeNode<T,dim> tn : tree)
+        treeLevels[tn.getLevel()].push_back(tn);
+
+      return treeLevels;
+    }
+
+    /**
      * @brief perform slicing operation on k trees.
      * @param[in] in: input k-tree
      * @param[out] out: sliced k-tree

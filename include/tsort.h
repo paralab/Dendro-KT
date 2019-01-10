@@ -178,6 +178,14 @@ struct SFC_Tree
   //   - Removal is done in a single pass in-place. The vector may be shrunk.
   static void locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes);
 
+
+  // -------------------------------------------------------------
+
+  /**
+   * @brief Create auxiliary octants in bottom-up order to close the 2:1-balancing constraint.
+   */
+  static void propagateNeighbours(std::vector<TreeNode<T,D>> &tree);
+
 };
 
 // Template instantiations.

@@ -10,6 +10,7 @@
  */
 
 #include "tsort.h"
+#include "octUtils.h"
 
 
 namespace ot
@@ -648,6 +649,48 @@ SFC_Tree<T,D>:: locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes)
 
   tnodes.resize(numUnique);
 }
+
+
+//
+// propagateNeighbours()
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
+{
+  std::vector<std::vector<TreeNode<T,D>>> treeLevels = stratifyTree(srcNodes);
+  srcNodes.clear();
+
+  // Bottom-up traversal using stratified levels.
+  for (unsigned int l = m_uiMaxDepth; l > 0; l--)
+  {
+    const unsigned int lp = l-1;  // Parent level.
+    for (const TreeNode<T,D> &tn : treeLevels[l])
+    {
+      // Append neighbors of parent.
+      TreeNode<T,D> tnParent = tn.getParent();
+      treeLevels[lp].push_back(tnParent);
+      tnParent.appendAllNeighbours(treeLevels[lp]);
+
+      /* Might need to intermittently remove duplicates... */
+    }
+
+    // TODO Consider more efficient algorithms for removing duplicates from lp level.
+    locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, 0);
+    locRemoveDuplicates(treeLevels[lp]);
+  }
+
+  // Reserve space before concatenating all the levels.
+  size_t newSize = 0;
+  for (const std::vector<TreeNode<T,D>> &trLev : treeLevels)
+    newSize += trLev.size();
+  srcNodes.reserve(newSize);
+
+  // Concatenate all the levels.
+  for (const std::vector<TreeNode<T,D>> &trLev : treeLevels)
+    srcNodes.insert(srcNodes.end(), trLev.begin(), trLev.end());
+}
+
 
 
 } // namspace ot
