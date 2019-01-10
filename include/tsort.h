@@ -116,11 +116,15 @@ struct SFC_Tree
   //     (like the returned data is ordered) and so `outSplitters' should be
   //     monotonically increasing; whereas in Dendro4 SFC_bucketing(), the splitters
   //     are in permuted order.
+  //
+  //   - The size of outSplitters is 2+numChildren, which are splitters for
+  //     1+numChildren buckets. The leading bucket holds ancestors and the
+  //     remaining buckets are for children.
   static void SFC_bucketing(TreeNode<T,D> *points,
                           RankI begin, RankI end,
                           LevI lev,
                           RotI pRot,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters);
+                          std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters);
 
 
   // Notes:

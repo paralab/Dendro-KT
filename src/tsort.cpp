@@ -36,10 +36,10 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
   constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
 
   // Reorder the buckets on sLev (current level).
-  std::array<RankI, numChildren+1> tempSplitters;
+  std::array<RankI, numChildren+2> tempSplitters;
   SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters);
-  // The array `tempSplitters' has numChildren+1 slots, which includes the
-  // beginning, middles, and end of the range of children.
+  // The array `tempSplitters' has numChildren+2 slots, which includes the
+  // beginning, middles, and end of the range of children, and ancestors at front.
 
   // Lookup tables to apply rotations.
   const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
@@ -61,11 +61,11 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
       ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
       RotI cRot = orientLookup[child];
 
-      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] <= 1)
+      if (tempSplitters[child_sfc+2] - tempSplitters[child_sfc+1] <= 1)
         continue;
 
       locTreeSort(points,
-          tempSplitters[child_sfc], tempSplitters[child_sfc+1],
+          tempSplitters[child_sfc+1], tempSplitters[child_sfc+2],
           sLev+1, eLev,
           cRot);
     }
@@ -84,7 +84,7 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
                           RankI begin, RankI end,
                           LevI lev,
                           RotI pRot,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters)
+                          std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters)
 {
   // ==
   // Reorder the points by child number at level `lev', in the order
@@ -121,6 +121,9 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
   // while the `offsets' and `bucketEnds` arrays are indexed in Morton order
   // (for easy lookup using TreeNode.getMortonIndex()).
   //
+  // Note that outSplitters indexing is additionally offset by 1 so that
+  // the ancestor bucket is first, between [0th and 1st) markers.
+  //
   std::array<RankI, numChildren+1> offsets, bucketEnds;  // Last idx represents ancestors.
   offsets[numChildren] = begin;
   bucketEnds[numChildren] = begin + countAncestors;
@@ -137,13 +140,13 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
   for ( ; child_sfc < numChildren; child_sfc++)
   {
     ChildI child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
-    outSplitters[child_sfc] = accum;
+    outSplitters[child_sfc+1] = accum;
     offsets[child] = accum;           // Start of bucket. Moving marker.
     accum += counts[child];
     bucketEnds[child] = accum;        // End of bucket. Fixed marker.
   }
-  outSplitters[child_sfc] = accum;  // Should be the end.
-  outSplitters[0] = begin;          // Bucket for 0th child (SFC order) contains ancestors too.
+  outSplitters[child_sfc+1] = accum;  // Should be the end.
+  outSplitters[0] = begin;          // Bucket for 0th child (SFC order) is at index 1, this index 0 contains only ancestors.
 
   // Prepare for the in-place movement phase by copying each offsets[] pointee
   // to the rotation buffer. This frees up the slots to be valid destinations.
@@ -458,7 +461,7 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
 
     // Refine the current orthant/bucket by sorting the sub-buckets.
     // Get splitters for sub-buckets.
-    std::array<RankI, numChildren+1> childSplitters;
+    std::array<RankI, numChildren+2> childSplitters;
     if (front.begin < front.end)
       SFC_bucketing(points, front.begin, front.end, front.lev, front.rot_id, childSplitters);
     else
@@ -472,7 +475,7 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
       ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
       RotI cRot = orientLookup[child];
       BucketInfo<RankI> childBucket =
-          {cRot, front.lev+1, childSplitters[child_sfc], childSplitters[child_sfc+1]};
+          {cRot, front.lev+1, childSplitters[child_sfc+1], childSplitters[child_sfc+2]};
 
       bftQueue.push_back(childBucket);
     }
@@ -504,10 +507,10 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
   using TreeNode = TreeNode<T,D>;
 
   // Reorder the buckets on sLev (current level).
-  std::array<RankI, numChildren+1> tempSplitters;
+  std::array<RankI, numChildren+2> tempSplitters;
   SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters);
-  // The array `tempSplitters' has numChildren+1 slots, which includes the
-  // beginning, middles, and end of the range of children.
+  // The array `tempSplitters' has numChildren+2 slots, which includes the
+  // beginning, middles, and end of the range of children, and ancestors are in front.
 
   // Lookup tables to apply rotations.
   const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
@@ -530,13 +533,13 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
       RotI cRot = orientLookup[child];
       cNode.setMortonIndex(child);
 
-      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc] > maxPtsPerRegion)
+      if (tempSplitters[child_sfc+2] - tempSplitters[child_sfc+1] > maxPtsPerRegion)
       {
         // Recursively build a complete sub-tree out of this bucket's points.
         // Use the splitters to specify ranges for the next level of recursion.
         locTreeConstruction(
             points, tree, maxPtsPerRegion,
-            tempSplitters[child_sfc], tempSplitters[child_sfc+1],
+            tempSplitters[child_sfc+1], tempSplitters[child_sfc+2],
             sLev+1, eLev,
             cRot,
             cNode);
