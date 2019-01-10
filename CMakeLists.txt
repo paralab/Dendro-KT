@@ -199,5 +199,8 @@ add_executable(tstTreeConstruction ${SRC_FILES})
 target_include_directories(tstTreeConstruction PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstTreeConstruction dendroKT ${MPI_LIBRARIES} m)
 
-
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeBalancing.cpp)
+add_executable(tstTreeBalancing ${SRC_FILES})
+target_include_directories(tstTreeBalancing PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstTreeBalancing dendroKT ${MPI_LIBRARIES} m)
 

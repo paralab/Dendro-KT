@@ -661,10 +661,15 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
   std::vector<std::vector<TreeNode<T,D>>> treeLevels = stratifyTree(srcNodes);
   srcNodes.clear();
 
+  std::cout << "Starting at        level " << m_uiMaxDepth << ", level size \t " << treeLevels[m_uiMaxDepth].size() << "\n";
+
   // Bottom-up traversal using stratified levels.
   for (unsigned int l = m_uiMaxDepth; l > 0; l--)
   {
     const unsigned int lp = l-1;  // Parent level.
+
+    const size_t oldLevelSize = treeLevels[lp].size();
+
     for (const TreeNode<T,D> &tn : treeLevels[l])
     {
       // Append neighbors of parent.
@@ -678,6 +683,9 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
     // TODO Consider more efficient algorithms for removing duplicates from lp level.
     locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, 0);
     locRemoveDuplicates(treeLevels[lp]);
+
+    const size_t newLevelSize = treeLevels[lp].size();
+    std::cout << "Finished adding to level " << lp << ", level size \t " << oldLevelSize << "\t -> " << newLevelSize << "\n";
   }
 
   // Reserve space before concatenating all the levels.
