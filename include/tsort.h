@@ -182,6 +182,10 @@ struct SFC_Tree
   //   - Removal is done in a single pass in-place. The vector may be shrunk.
   static void locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes);
 
+  // Notes:
+  //   - Nodes only removed if strictly equal to other nodes. Ancestors retained.
+  static void locRemoveDuplicatesStrict(std::vector<TreeNode<T,D>> &tnodes);
+
 
   // -------------------------------------------------------------
 

@@ -654,6 +654,34 @@ SFC_Tree<T,D>:: locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes)
 }
 
 
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,D>> &tnodes)
+{
+  const TreeNode<T,D> *tEnd = &(*tnodes.end());
+  TreeNode<T,D> *tnCur = &(*tnodes.begin());
+  size_t numUnique = 0;
+
+  while (tnCur < tEnd)
+  {
+    // Find next leaf.
+    TreeNode<T,D> *tnNext;
+    while ((tnNext = tnCur + 1) < tEnd &&
+        (*tnCur == *tnNext))  // Strict equality only; ancestors retained.
+      tnCur++;
+
+    // Move the leaf.
+    if (&tnodes[numUnique] < tnCur)
+      tnodes[numUnique] = *tnCur;
+    numUnique++;
+
+    tnCur++;
+  }
+
+  tnodes.resize(numUnique);
+}
+
+
 //
 // propagateNeighbours()
 //
