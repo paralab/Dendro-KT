@@ -190,6 +190,20 @@ struct SFC_Tree
    */
   static void propagateNeighbours(std::vector<TreeNode<T,D>> &tree);
 
+  // Notes:
+  //   - Constructs a tree based on distribution of points, then balances and completes.
+  //   - Initializes tree with balanced complete tree.
+  static void locTreeBalancing(std::vector<TreeNode<T,D>> &points,
+                               std::vector<TreeNode<T,D>> &tree,
+                               RankI maxPtsPerRegion);
+
+  static void distTreeBalancing(std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
+                                   RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm);
+
+
 };
 
 // Template instantiations.

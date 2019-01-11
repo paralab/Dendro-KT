@@ -664,7 +664,7 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
   std::vector<std::vector<TreeNode<T,D>>> treeLevels = stratifyTree(srcNodes);
   srcNodes.clear();
 
-  std::cout << "Starting at        level " << m_uiMaxDepth << ", level size \t " << treeLevels[m_uiMaxDepth].size() << "\n";
+  ///std::cout << "Starting at        level " << m_uiMaxDepth << ", level size \t " << treeLevels[m_uiMaxDepth].size() << "\n";  //DEBUG
 
   // Bottom-up traversal using stratified levels.
   for (unsigned int l = m_uiMaxDepth; l > 0; l--)
@@ -687,8 +687,8 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
     locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, 0);
     locRemoveDuplicates(treeLevels[lp]);
 
-    const size_t newLevelSize = treeLevels[lp].size();
-    std::cout << "Finished adding to level " << lp << ", level size \t " << oldLevelSize << "\t -> " << newLevelSize << "\n";
+    ///const size_t newLevelSize = treeLevels[lp].size();
+    ///std::cout << "Finished adding to level " << lp << ", level size \t " << oldLevelSize << "\t -> " << newLevelSize << "\n";  // DEBUG
   }
 
   // Reserve space before concatenating all the levels.
@@ -701,6 +701,55 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
   for (const std::vector<TreeNode<T,D>> &trLev : treeLevels)
     srcNodes.insert(srcNodes.end(), trLev.begin(), trLev.end());
 }
+
+
+//
+// locTreeBalancing()
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: locTreeBalancing(std::vector<TreeNode<T,D>> &points,
+                                 std::vector<TreeNode<T,D>> &tree,
+                                 RankI maxPtsPerRegion)
+{
+  const LevI leafLevel = m_uiMaxDepth;
+
+  locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
+                      0, (RankI) points.size(),
+                      1, leafLevel,         //TODO is sLev 0 or 1?
+                      0, TreeNode<T,D>());
+
+  propagateNeighbours(tree);
+
+  std::vector<TreeNode<T,D>> newTree;
+  locTreeConstruction(&(*tree.begin()), newTree, 1,
+                      0, (RankI) tree.size(),
+                      1, leafLevel,         //TODO is sLev 0 or 1?
+                      0, TreeNode<T,D>());
+
+  tree = newTree;
+}
+
+
+//
+// distTreeBalancing()
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
+                                   RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm)
+{
+  distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
+  propagateNeighbours(tree);
+  std::vector<TreeNode<T,D>> newTree;
+  distTreeConstruction(tree, newTree, 1, loadFlexibility, comm);
+
+  tree = newTree;
+}
+
 
 
 
