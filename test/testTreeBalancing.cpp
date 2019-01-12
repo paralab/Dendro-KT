@@ -438,6 +438,7 @@ struct BalanceSearch
       }
     }
 
+    return true;
   }
 };
 
