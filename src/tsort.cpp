@@ -16,7 +16,6 @@
 namespace ot
 {
 
-
 //
 // locTreeSort()
 //
@@ -89,8 +88,6 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
   // ==
   // Reorder the points by child number at level `lev', in the order
   // of the SFC, and yield the positions of the splitters.
-  //
-  // Higher-level nodes will be counted in the bucket for 0th children (SFC order).
   // ==
 
   using TreeNode = TreeNode<T,D>;
@@ -183,6 +180,66 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
   // Therefore a sequence of direct descendants will be stable with
   // ancestors preceeding descendants.
 }
+
+template<typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: SFC_locateBuckets(const TreeNode<T,D> *points,
+                          RankI begin, RankI end,
+                          LevI lev,
+                          RotI pRot,
+                          std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters)
+{
+  // ==
+  // Reorder the points by child number at level `lev', in the order
+  // of the SFC, and yield the positions of the splitters.
+  // ==
+
+  using TreeNode = TreeNode<T,D>;
+  constexpr char numChildren = TreeNode::numChildren;
+  constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  //
+  // Count the number of points in each bucket,
+  // indexed by (Morton) child number.
+  std::array<int, numChildren> counts;
+  counts.fill(0);
+  int countAncestors = 0;   // Special bucket to ensure ancestors precede descendants.
+  /// for (const TreeNode &tn : inp)
+  for (const TreeNode *tn = points + begin; tn < points + end; tn++)
+  {
+    if (tn->getLevel() < lev)
+      countAncestors++;
+    else
+      counts[tn->getMortonIndex(lev)]++;
+  }
+
+  //
+  // Compute offsets of buckets in permuted SFC order.
+  // Conceptually:
+  //   1. Permute counts;  2. offsets=scan(counts);  3. Un-permute offsets.
+  //
+  // The `outSplitters' array is indexed in SFC order (to match final output).
+  //
+  // Note that outSplitters indexing is additionally offset by 1 so that
+  // the ancestor bucket is first, between [0th and 1st) markers.
+  //
+  RankI accum = begin + countAncestors;                  // Ancestors belong in front.
+
+  // Logically permute: Scan the bucket-counts in the order of the SFC.
+  // Since we want to map [SFC_rank]-->Morton_rank,
+  // use the "left" columns of rotations[], aka `rot_perm'.
+  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  ChildI child_sfc = 0;
+  for ( ; child_sfc < numChildren; child_sfc++)
+  {
+    ChildI child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
+    outSplitters[child_sfc+1] = accum;
+    accum += counts[child];
+  }
+  outSplitters[child_sfc+1] = accum;  // Should be the end.
+  outSplitters[0] = begin;          // Bucket for 0th child (SFC order) is at index 1, this index 0 contains only ancestors.
+}
+
 
 
 template<typename T, unsigned int D>

@@ -25,6 +25,9 @@ bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData);
+
+template <typename T, unsigned int D>
+bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool printData);
 // ...........................................................................
 
 
@@ -97,6 +100,8 @@ void test_locTreeBalancing(int numPoints)
 
   checkLocalCompleteness<T,dim>(points, tree, true, true);
 
+  std::cout << "Balancing constraint " << (checkBalancingConstraint(tree, false) ? "succeeded" : "FAILED") << "\n";
+
   // Make sure there is something there.
   std::cout << "Final.... points.size() == " << points.size() << "  tree.size() == " << tree.size() << "\n";
 
@@ -109,8 +114,6 @@ void test_locTreeBalancing(int numPoints)
   ///for (const TreeNode &tn : tree)
   ///  std::cout << tn.getBase32Hex().data() << "\n";
   ///std::cout << "      -----|\n";
-
-  //TODO checkBalancingConstraint(tree);
 }
 
 
@@ -241,10 +244,10 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
     std::cout << "Global adjacency " << (recvGlobAdjacency ? "succeeded" : "FAILED") << "\n";
   }
 
+  //TODO checkBalancingConstraint(tree);
+
   // Make sure there is something there.
   std::cout << "Final.... (rank " << rProc << ") points.size() == " << points.size() << "  tree.size() == " << treePart.size() << "\n";
-
-  //TODO checkBalancingConstraint(tree);
 }
 
 
@@ -390,6 +393,111 @@ bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
 //------------------------
 
 
+template <typename TN>
+struct BalanceSearch
+{
+  std::vector<int> ancCountStack;
+  bool success;
+
+  BalanceSearch() { ancCountStack.resize(m_uiMaxDepth+2, 0); success = true; }
+
+  // tree1 is the source tree.
+  // tree2 is the neighbor list derived from the source tree.
+  bool operator() (const TN *tree1, const std::array<ot::RankI, TN::numChildren+2> &split1,
+                   const TN *tree2, const std::array<ot::RankI, TN::numChildren+2> &split2,
+                   ot::LevI level)
+  {
+    if (!success)
+      return false;
+
+    if (split1[1] - split1[0] > 0)  // Leaf of the source tree as an ancestor.
+    {
+      // Since the source tree only stores leaves, the other buckets should be empty.
+      // Also we assume that the source tree contains no duplicates.
+      ot::LevI sourceLeafLevel = tree1[split1[0]].getLevel();
+      assert(sourceLeafLevel == level-1);
+
+      // Downward-facing component of the balancing criterion:
+      //   An existing neighbor should be no higher than 1 level above.
+      for (const TN *t2It = tree2 + split2[0]; t2It < tree2 + split2[TN::numChildren+1]; t2It++)
+      {
+        if (t2It->getLevel() - sourceLeafLevel > 1)
+        {
+          return success = false;
+        }
+      }
+    }
+    else
+    {
+      // Upward-facing component of the balancing criterion:
+      //   An existing neighbor should be beneath no more than 1 ancestor (parent).
+      ancCountStack[level] = ancCountStack[level-1] + (split2[1] - split2[0]);
+      if (ancCountStack[level] > 1)
+      {
+        return success = false;
+      }
+    }
+
+  }
+};
+
+
+//
+// checkBalancingConstraint()
+//
+// Notes:
+//   - Assumes that TreeNode::appendAllNeighbours() works.
+//
+template <typename T, unsigned int D>
+bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool printData)
+{
+  std::vector<ot::TreeNode<T,D>> nList;
+  for (const ot::TreeNode<T,D> &tn : tree)
+    tn.appendAllNeighbours(nList);
+
+  ot::SFC_Tree<T,D>::locTreeSort(&(*nList.begin()),
+                                 0, (unsigned int) nList.size(),
+                                 1, m_uiMaxDepth,
+                                 0);
+  ot::SFC_Tree<T,D>::locRemoveDuplicatesStrict(nList);
+
+  if (printData)
+  {
+    std::cout << "Begin tree:\n";
+    for (const ot::TreeNode<T,D> &tn : tree)
+      std::cout << tn.getBase32Hex().data() << "\n";
+    std::cout << "End tree.\n\n";
+
+    std::cout << "Begin neighbors:\n";
+    for (const ot::TreeNode<T,D> &tn : nList)
+      std::cout << tn.getBase32Hex().data() << "\n";
+    std::cout << "End neighbors.\n\n";
+  }
+
+  // Now nList is a list of unique neighbors (different levels considered distinct).
+  // Since it is sorted in the same order as tree (presumably tree was sorted),
+  // searching can be accomplished in a single pass comparison (almost).
+  // 
+  // nList represents neighbors which may or may not exist in the tree.
+  // (The completess property would ensure that an ancestor or descendant of
+  // every element of nList appears in tree, but we can test the balancing
+  // constraint without assuming completeness.) The balancing constraint succeeds
+  // iff, for every node in tree, any possible ancestor or descendant of that node
+  // that does appear in nList differs in level by no more than 1.
+  //
+  // As a consequence, if the balancing criterion is met, then each node in tree
+  // will have no more than three levels of matches (parent, self, and/or children) in nList.
+
+  BalanceSearch<ot::TreeNode<T,D>> inspector;
+  ot::SFC_Tree<T,D>::dualTraversal(&(*tree.begin()), 0, (ot::RankI) tree.size(),
+                                   &(*nList.begin()), 0, (ot::RankI) nList.size(),
+                                   1, m_uiMaxDepth,
+                                   0,
+                                   inspector);
+
+  return inspector.success;
+}
+
 
 
 
@@ -404,8 +512,8 @@ int main(int argc, char* argv[])
 
   ///test_propagateNeighbours(ptsPerProc);
 
-  ///test_locTreeBalancing(ptsPerProc);
-  test_distTreeBalancing(ptsPerProc, MPI_COMM_WORLD);
+  test_locTreeBalancing(ptsPerProc);
+  ///test_distTreeBalancing(ptsPerProc, MPI_COMM_WORLD);
 
   MPI_Finalize();
 

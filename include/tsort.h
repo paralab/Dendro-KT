@@ -95,6 +95,18 @@ template <typename T, unsigned int D>
 struct SFC_Tree
 {
 
+  /**
+   * @author Masado Ishii
+   * @brief Depth-first pre-order traversal on two trees simultaneously.
+   * @tparam VisitAction: Callable as bool visit(tree1, splitters1, tree2, splitters2, level); If returns false, then traversal will go back up a level.
+   */
+  template <typename VisitAction>
+  static void dualTraversal(const TreeNode<T,D> *tree1, RankI b1, RankI e1,
+                            const TreeNode<T,D> *tree2, RankI b2, RankI e2,
+                            LevI sLev, LevI eLev,
+                            RotI pRot,
+                            VisitAction visit);
+
   // Notes:
   //   - This method operates in-place and returns buckets at level eLev.
   //     The members of each BucketInfo object can be used to further
@@ -121,6 +133,15 @@ struct SFC_Tree
   //     1+numChildren buckets. The leading bucket holds ancestors and the
   //     remaining buckets are for children.
   static void SFC_bucketing(TreeNode<T,D> *points,
+                          RankI begin, RankI end,
+                          LevI lev,
+                          RotI pRot,
+                          std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters);
+
+  // Notes:
+  //   - Same parameters as SFC_bucketing, except does not move points.
+  //   - This method is read only.
+  static void SFC_locateBuckets(const TreeNode<T,D> *points,
                           RankI begin, RankI end,
                           LevI lev,
                           RotI pRot,
@@ -216,5 +237,7 @@ template struct SFC_Tree<unsigned int, 3>;
 template struct SFC_Tree<unsigned int, 4>;
 
 } // namespace ot
+
+#include "tsort.tcc"
 
 #endif // DENDRO_KT_SFC_TREE_H
