@@ -399,10 +399,17 @@ template <typename TN>
 struct BalanceSearch
 {
   std::vector<int> ancCountStack;
+  std::vector<ot::RankI> ancRefStack;
   bool success;
   bool printData;
 
-  BalanceSearch() { ancCountStack.resize(m_uiMaxDepth+2, 0); success = true; printData = false; }
+  BalanceSearch()
+  {
+    ancCountStack.resize(m_uiMaxDepth+2, 0);
+    ancRefStack.resize(m_uiMaxDepth+2, 0);
+    success = true;
+    printData = false;
+  }
 
   // tree1 is the source tree.
   // tree2 is the neighbor list derived from the source tree.
@@ -445,6 +452,7 @@ struct BalanceSearch
       // Upward-facing component of the balancing criterion:
       //   An existing neighbor should be beneath no more than 1 ancestor (parent).
       ancCountStack[level] = ancCountStack[level-1] + (split2[1] - split2[0]);
+      ancRefStack[level] = (split2[1] > split2[0] ? split2[0] : ancRefStack[level-1]);
       if (printData)
       {
         std::cout << "'Upward-facing' branch.\n";
@@ -454,8 +462,9 @@ struct BalanceSearch
       {
         if (printData)
         {
-          std::cout << "Ancestor hypothetical neighbor:  "
-              << tree2[split2[1]-1].getBase32Hex().data() << "\n";
+          std::cout << "Ancestor hypothetical neighbors:  "
+              << tree2[ancRefStack[level-1]].getBase32Hex().data() << "  "
+              << tree2[ancRefStack[level]].getBase32Hex().data() << "\n";
           std::cout << "Existing descendants:\n";
           for (const TN *t1It = tree1 + split1[1]; t1It < tree1 + split1[TN::numChildren+1]; t1It++)
             std::cout << t1It->getBase32Hex().data() << "\n";
