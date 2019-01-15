@@ -17,7 +17,7 @@ SFC_Tree<T,D>::dualTraversal(const TreeNode<T,D> *tree1, RankI b1, RankI e1,
                              const TreeNode<T,D> *tree2, RankI b2, RankI e2,
                              LevI sLev, LevI eLev,
                              RotI pRot,
-                             VisitAction visit)
+                             VisitAction &visit)
 {
   constexpr char numChildren = TreeNode<T,D>::numChildren;
   constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].

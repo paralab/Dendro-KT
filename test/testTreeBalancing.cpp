@@ -80,10 +80,11 @@ void test_propagateNeighbours(int numPoints)
 //------------------------
 // test_locTreeBalancing()
 //------------------------
+template <unsigned int dim>
 void test_locTreeBalancing(int numPoints)
 {
   using T = unsigned int;
-  const unsigned int dim = 4;
+  /// const unsigned int dim = 4;
   const unsigned int numChildren = 1u << dim;
   using TreeNode = ot::TreeNode<T,dim>;
 
@@ -100,7 +101,8 @@ void test_locTreeBalancing(int numPoints)
 
   checkLocalCompleteness<T,dim>(points, tree, true, true);
 
-  std::cout << "Balancing constraint " << (checkBalancingConstraint(tree, false) ? "succeeded" : "FAILED") << "\n";
+  bool balanceSuccess = checkBalancingConstraint(tree, true);
+  std::cout << "Balancing constraint " << (balanceSuccess ? "succeeded" : "FAILED") << "\n";
 
   // Make sure there is something there.
   std::cout << "Final.... points.size() == " << points.size() << "  tree.size() == " << tree.size() << "\n";
@@ -398,8 +400,9 @@ struct BalanceSearch
 {
   std::vector<int> ancCountStack;
   bool success;
+  bool printData;
 
-  BalanceSearch() { ancCountStack.resize(m_uiMaxDepth+2, 0); success = true; }
+  BalanceSearch() { ancCountStack.resize(m_uiMaxDepth+2, 0); success = true; printData = false; }
 
   // tree1 is the source tree.
   // tree2 is the neighbor list derived from the source tree.
@@ -417,10 +420,20 @@ struct BalanceSearch
       ot::LevI sourceLeafLevel = tree1[split1[0]].getLevel();
       assert(sourceLeafLevel == level-1);
 
+      if (printData)
+      {
+        std::cout << "'Downward-facing' branch.\n";
+        std::cout << "sourceLeaf:  " << tree1[split1[0]].getBase32Hex().data() << "\n";
+        std::cout << "descendant hypothetical neighbors:\n";
+      }
+
       // Downward-facing component of the balancing criterion:
-      //   An existing neighbor should be no higher than 1 level above.
+      //   An existing neighbor should be no higher than 1 level above a hypothetical neighbor.
       for (const TN *t2It = tree2 + split2[0]; t2It < tree2 + split2[TN::numChildren+1]; t2It++)
       {
+        if (printData)
+          std::cout << "\t" << t2It->getBase32Hex().data() << "\n";
+
         if (t2It->getLevel() - sourceLeafLevel > 1)
         {
           return success = false;
@@ -432,8 +445,21 @@ struct BalanceSearch
       // Upward-facing component of the balancing criterion:
       //   An existing neighbor should be beneath no more than 1 ancestor (parent).
       ancCountStack[level] = ancCountStack[level-1] + (split2[1] - split2[0]);
+      if (printData)
+      {
+        std::cout << "'Upward-facing' branch.\n";
+        std::cout << "ancCount[" << level << "] == " << ancCountStack[level] << "\n";
+      }
       if (ancCountStack[level] > 1)
       {
+        if (printData)
+        {
+          std::cout << "Ancestor hypothetical neighbor:  "
+              << tree2[split2[1]-1].getBase32Hex().data() << "\n";
+          std::cout << "Existing descendants:\n";
+          for (const TN *t1It = tree1 + split1[1]; t1It < tree1 + split1[TN::numChildren+1]; t1It++)
+            std::cout << t1It->getBase32Hex().data() << "\n";
+        }
         return success = false;
       }
     }
@@ -490,6 +516,7 @@ bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool p
   // will have no more than three levels of matches (parent, self, and/or children) in nList.
 
   BalanceSearch<ot::TreeNode<T,D>> inspector;
+  inspector.printData = printData;
   ot::SFC_Tree<T,D>::dualTraversal(&(*tree.begin()), 0, (ot::RankI) tree.size(),
                                    &(*nList.begin()), 0, (ot::RankI) nList.size(),
                                    1, m_uiMaxDepth,
@@ -499,6 +526,34 @@ bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool p
   return inspector.success;
 }
 
+
+template <unsigned int dim>
+void
+testTheTest()
+{
+  using T = unsigned int;
+  /// const unsigned int dim = 4;
+  const unsigned int numChildren = 1u << dim;
+  using TreeNode = ot::TreeNode<T,dim>;
+
+  _InitializeHcurve(dim);
+
+  std::vector<TreeNode> unbalancedTree;
+
+  TreeNode rootNode;
+  TreeNode d0   = rootNode.getFirstChildMorton();
+  TreeNode d100 = d0.getNeighbour(0, 1).getFirstChildMorton().getFirstChildMorton();
+
+  unbalancedTree.push_back(d0);
+  unbalancedTree.push_back(d100);
+  std::cout << "(dim == " << dim << ")\n";
+  /// for (const TreeNode &tn : unbalancedTree)
+  ///   std::cout << "\t" << tn.getBase32Hex().data() << "\n";
+
+  bool balanceSuccess = checkBalancingConstraint(unbalancedTree, true);
+  std::cout << "Balancing constraint " << (balanceSuccess ? "succeeded" : "FAILED") << "\n";
+  std::cout << "\n";
+}
 
 
 
@@ -513,7 +568,12 @@ int main(int argc, char* argv[])
 
   ///test_propagateNeighbours(ptsPerProc);
 
-  test_locTreeBalancing(ptsPerProc);
+  ///testTheTest<2>();
+  ///testTheTest<3>();
+  ///testTheTest<4>();
+
+  test_locTreeBalancing<2>(ptsPerProc);
+  ///test_locTreeBalancing<4>(ptsPerProc);
   ///test_distTreeBalancing(ptsPerProc, MPI_COMM_WORLD);
 
   MPI_Finalize();

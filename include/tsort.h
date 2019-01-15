@@ -105,7 +105,7 @@ struct SFC_Tree
                             const TreeNode<T,D> *tree2, RankI b2, RankI e2,
                             LevI sLev, LevI eLev,
                             RotI pRot,
-                            VisitAction visit);
+                            VisitAction &visit);
 
   // Notes:
   //   - This method operates in-place and returns buckets at level eLev.
