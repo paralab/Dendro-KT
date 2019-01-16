@@ -35,15 +35,21 @@ namespace ot
         std::random_device rd;
         std::mt19937_64 gen(rd());
         //gen.seed(1331);             // Uncomment for deterministic testing.
-        std::uniform_int_distribution<T> distCoord(0, maxCoord);
-        std::uniform_int_distribution<T> distLevel(1, m_uiMaxDepth);
+        /// std::uniform_int_distribution<T> distCoord(0, maxCoord);
+        std::normal_distribution<double> distCoord((1u << m_uiMaxDepth) / 2, (1u << m_uiMaxDepth) / 100);
+        std::uniform_int_distribution<T> distLevel(m_uiMaxDepth, m_uiMaxDepth);
+
+        double coordClampLow = 0;
+        double coordClampHi = (1u << m_uiMaxDepth);
 
         // Add points sequentially.
         for (int ii = 0; ii < numPoints; ii++)
         {
             for (T &u : uiCoords)
             {
-                u = distCoord(gen);
+                double dc = distCoord(gen);
+                dc = (dc < coordClampLow ? coordClampLow : dc > coordClampHi ? coordClampHi : dc);
+                u = (T) dc;
             }
             //ot::TreeNode<T,dim> tn(uiCoords, leafLevel);
             ot::TreeNode<T,dim> tn(uiCoords, distLevel(gen));
