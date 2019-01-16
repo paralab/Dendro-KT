@@ -10,6 +10,8 @@ namespace ot
 //
 // dualTraversal()
 //
+// Note: This is an inefficient implementation - I think the same can be
+//       accomplished in a single pass using a rotation stack with better complexity.
 template <typename T, unsigned int D>
 template <typename VisitAction>
 void

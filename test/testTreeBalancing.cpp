@@ -483,6 +483,7 @@ struct BalanceSearch
 //
 // Notes:
 //   - Assumes that TreeNode::appendAllNeighbours() works.
+//   - This version assumes that the tree is complete.
 //
 template <typename T, unsigned int D>
 bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool printData)
@@ -515,24 +516,43 @@ bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool p
   // searching can be accomplished in a single pass comparison (almost).
   // 
   // nList represents neighbors which may or may not exist in the tree.
-  // (The completess property would ensure that an ancestor or descendant of
-  // every element of nList appears in tree, but we can test the balancing
-  // constraint without assuming completeness.) The balancing constraint succeeds
-  // iff, for every node in tree, any possible ancestor or descendant of that node
-  // that does appear in nList differs in level by no more than 1.
+  // The balancing constraint is satisfied iff, for each x in tree and y in nList
+  // such that (x == y or x.isAncestor(y)), we have (x == y or x.isParent(y)).
   //
-  // As a consequence, if the balancing criterion is met, then each node in tree
-  // will have no more than three levels of matches (parent, self, and/or children) in nList.
+  // By assuming that the tree is complete, we avoid needing a rotation stack
+  // to traverse the domain, and we can finish the balancing check in
+  // a single pass of both tree and nList.
 
-  BalanceSearch<ot::TreeNode<T,D>> inspector;
-  inspector.printData = printData;
-  ot::SFC_Tree<T,D>::dualTraversal(&(*tree.begin()), 0, (ot::RankI) tree.size(),
-                                   &(*nList.begin()), 0, (ot::RankI) nList.size(),
-                                   1, m_uiMaxDepth,
-                                   0,
-                                   inspector);
+  if (printData)
+    std::cout << "Finish balancing check - interleaved.\n";
 
-  return inspector.success;
+  typename std::vector<ot::TreeNode<T,D>>::const_iterator nPtr = nList.begin();
+  typename std::vector<ot::TreeNode<T,D>>::const_iterator const nEnd = nList.end();
+  for (const ot::TreeNode<T,D> &tn : tree)
+  {
+    if (printData)
+      std::cout << tn.getBase32Hex().data() << "\n";
+
+    while (nPtr != nEnd && nPtr->isAncestor(tn))
+    {
+      if (printData)
+        std::cout << "\t\t" << nPtr->getBase32Hex().data() << " (ancestor)\n";
+      nPtr++;
+    }
+
+    ot::LevI tnLevel = tn.getLevel();
+
+    while (nPtr != nEnd && (tn == *nPtr || tn.isAncestor(*nPtr)))
+    {
+      if (printData)
+        std::cout << "\t\t" << nPtr->getBase32Hex().data() << "\n";
+      if (nPtr->getLevel() - tnLevel > 1)
+        return false;
+      nPtr++;
+    }
+  }
+
+  return true;
 }
 
 

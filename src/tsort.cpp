@@ -804,6 +804,12 @@ SFC_Tree<T,D>:: locTreeBalancing(std::vector<TreeNode<T,D>> &points,
                       1, leafLevel,         //TODO is sLev 0 or 1?
                       0, TreeNode<T,D>());
 
+  /// //DEBUG
+  /// std::cout << "Original tree:\n";
+  /// for (const TreeNode<T,D> &tn : tree)
+  ///   std::cout << "\t" << tn.getBase32Hex().data() << "\n";
+  /// std::cout << "\n";
+
   propagateNeighbours(tree);
 
   std::vector<TreeNode<T,D>> newTree;
