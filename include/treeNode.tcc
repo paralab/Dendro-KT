@@ -213,6 +213,12 @@ inline unsigned int TreeNode<T,dim>::getLevel() const {
   return (m_uiLevel & MAX_LEVEL);
 }
 
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T,dim>::setLevel(unsigned int lev) {
+  m_uiLevel = (lev & MAX_LEVEL);
+}
+
 template <typename T, unsigned int dim>
 inline unsigned int TreeNode<T,dim>::getFlag() const {
     return m_uiLevel;
@@ -225,6 +231,15 @@ inline T TreeNode<T,dim>::getX(int d) const {
 #endif
     return m_uiCoords[d];
 }
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T,dim>::setX(int d, T coord) {
+#if __DEBUG_TN__
+  assert(0 <= d && d < dim);
+#endif
+  m_uiCoords[d] = coord;
+}
+
 
 template <typename T, unsigned int dim>
 inline unsigned char TreeNode<T,dim>::getMortonIndex(T level) const

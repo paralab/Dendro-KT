@@ -144,6 +144,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/tsort.h
                   include/treeNode.h
                   include/treeNode.tcc
+                  IO/vtk/include/oct2vtk.h
                   )
 
 set(DENDRO_KT_SRC src/binUtils.cpp
@@ -153,11 +154,13 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/hcurvedata.cpp
                   src/tsort.cpp
                   src/treeNode.cpp
+                  IO/vtk/src/oct2vtk.cpp
                   )
 
 
 add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/include)
 target_include_directories(dendroKT PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(dendroKT ${MPI_LIBRARIES} m)
 
@@ -203,4 +206,9 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeBalancing.cpp)
 add_executable(tstTreeBalancing ${SRC_FILES})
 target_include_directories(tstTreeBalancing PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstTreeBalancing dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeVtu.cpp)
+add_executable(tstTreeVtu ${SRC_FILES})
+target_include_directories(tstTreeVtu PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstTreeVtu dendroKT ${MPI_LIBRARIES} m)
 

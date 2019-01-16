@@ -102,11 +102,18 @@ namespace ot {
       /**@brief return the level of the octant*/
       unsigned int getLevel() const;
 
+      /**@brief set the level of the octant*/
+      void setLevel(unsigned int lev);
+
       /**@brief return the flag set by setFlag function (flag sotored in the m_uiLevel)*/
       unsigned int getFlag() const;
 
       /**@brief return the coordinates of the dth dimention*/
       T getX(int d) const;
+
+      // This gives write access to coordinates.
+      /**@brief set the coordinate in the dth dimension*/
+      void setX(int d, T coord);
 
       /**@brief get the coordinates of the octant
        * @param[out]: coppied coordinates*/

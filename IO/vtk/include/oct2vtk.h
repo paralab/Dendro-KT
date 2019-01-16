@@ -26,8 +26,8 @@
 
 
 
-#include "TreeNode.h"
-#include "mesh.h"
+#include "treeNode.h"
+/// #include "mesh.h"
 #include <iostream>
 #include <fstream>
 #include "mpi.h"
@@ -240,69 +240,70 @@ namespace io
 
 
 
-        /**
-         *@breif Writes the given mesh to a binary vtk (legacy format) file.
-         * @param [in] pMesh: input mesh
-         * @param [in] fPrefix: vtk file prefix
-         * @param [in] numVars: Number of vertex point variables.
-         * @param [in] varNames: list of variable names
-         * @param [in] vars: double ** pointer to the varaibles.
-         * */
-        void mesh2vtk(const ot::Mesh *pMesh, const char *fPrefix,unsigned int numFieldData,const char** filedDataNames,double * filedData,unsigned int numPointdata, const char **pointDataNames, double **pointData);
+///         /**
+///          *@breif Writes the given mesh to a binary vtk (legacy format) file.
+///          * @param [in] pMesh: input mesh
+///          * @param [in] fPrefix: vtk file prefix
+///          * @param [in] numVars: Number of vertex point variables.
+///          * @param [in] varNames: list of variable names
+///          * @param [in] vars: double ** pointer to the varaibles.
+///          * */
+///         void mesh2vtk(const ot::Mesh *pMesh, const char *fPrefix,unsigned int numFieldData,const char** filedDataNames,double * filedData,unsigned int numPointdata, const char **pointDataNames, double **pointData);
 
-        /**
-        *@breif Writes the given mesh to a binary vtu (in xml format) file.
-        * @param [in] pMesh: input mesh
-        * @param [in] fPrefix: vtk file prefix
-        * @param [in] numVars: Number of vertex point variables.
-        * @param [in] varNames: list of variable names
-        * @param [in] vars: double ** pointer to the varaibles.
-        * */
-        void mesh2vtu(const ot::Mesh *pMesh, const char *fPrefix,unsigned int numFieldData,const char** filedDataNames,const double * filedData,unsigned int numPointdata, const char **pointDataNames, const double **pointData);
+///         /**
+///         *@breif Writes the given mesh to a binary vtu (in xml format) file.
+///         * @param [in] pMesh: input mesh
+///         * @param [in] fPrefix: vtk file prefix
+///         * @param [in] numVars: Number of vertex point variables.
+///         * @param [in] varNames: list of variable names
+///         * @param [in] vars: double ** pointer to the varaibles.
+///         * */
+///         void mesh2vtu(const ot::Mesh *pMesh, const char *fPrefix,unsigned int numFieldData,const char** filedDataNames,const double * filedData,unsigned int numPointdata, const char **pointDataNames, const double **pointData);
 
 
         /**
         *@breif Writes the given octree to a binary vtu (in xml format) file.
-        * @param [in] pNodes: input nodes
+        * @param [in] pNodes: input nodes (must be 2- or 3-dimensional).
         * @param [in] fPrefix: vtk file prefix
         * @param [in] comm : mpi communicator.
         * */
-        void oct2vtu(const ot::TreeNode *pNodes,const unsigned int nSize,const char* fPrefix, MPI_Comm comm);
+        template <typename T, unsigned int D>
+        void oct2vtu(const ot::TreeNode<T,D> *pNodes,const unsigned int nSize,const char* fPrefix, MPI_Comm comm);
 
 
-        /**
-        *@breif Writes the given mesh to a binary vtu (in xml format) file (Note that this will write only the coarse octree. ).
-        * @param [in] pMesh: input mesh
-        * @param [in] fPrefix: vtk file prefix
-        * @param [in] numVars: Number of vertex point variables.
-        * @param [in] varNames: list of variable names
-        * @param [in] vars: double ** pointer to the varaibles.
-        * */
-        void mesh2vtuCoarse(const ot::Mesh *pMesh, const char *fPrefix,unsigned int numFieldData,const char** filedDataNames,const double * filedData,unsigned int numPointdata, const char **pointDataNames, const double **pointData);
+///         /**
+///         *@breif Writes the given mesh to a binary vtu (in xml format) file (Note that this will write only the coarse octree. ).
+///         * @param [in] pMesh: input mesh
+///         * @param [in] fPrefix: vtk file prefix
+///         * @param [in] numVars: Number of vertex point variables.
+///         * @param [in] varNames: list of variable names
+///         * @param [in] vars: double ** pointer to the varaibles.
+///         * */
+///         void mesh2vtuCoarse(const ot::Mesh *pMesh, const char *fPrefix,unsigned int numFieldData,const char** filedDataNames,const double * filedData,unsigned int numPointdata, const char **pointDataNames, const double **pointData);
 
-        /**
-        *@breif Writes the given mesh to a binary vtu (in xml format) file (Note that this will write only the coarse octree. ).
-        * @param [in] pMesh: input mesh
-        * @param [in] fPrefix: vtk file prefix
-        * @param [in] numVars: Number of vertex point variables.
-        * @param [in] varNames: list of variable names
-        * @param [in] vars: double ** pointer to the varaibles.
-        * */
-        void mesh2vtuFine(const ot::Mesh *pMesh, const char *fPrefix,unsigned int numFieldData,const char** filedDataNames,const double * filedData,unsigned int numPointdata, const char **pointDataNames, const double **pointData);
+///         /**
+///         *@breif Writes the given mesh to a binary vtu (in xml format) file (Note that this will write only the coarse octree. ).
+///         * @param [in] pMesh: input mesh
+///         * @param [in] fPrefix: vtk file prefix
+///         * @param [in] numVars: Number of vertex point variables.
+///         * @param [in] varNames: list of variable names
+///         * @param [in] vars: double ** pointer to the varaibles.
+///         * */
+///         void mesh2vtuFine(const ot::Mesh *pMesh, const char *fPrefix,unsigned int numFieldData,const char** filedDataNames,const double * filedData,unsigned int numPointdata, const char **pointDataNames, const double **pointData);
         
         
-        /**
-         * @brief computes the wavelet coefficients for specified varIDs and write them and write them along with the mesh. 
-         * @param [in] mesh: input mesh
-         * @param [in] zippedVec zip version of the variable array. 
-         * @param [in] unzippedVec: unzip version of the variable array. 
-         * @param [in] varIds: variable IDs to compute the wavelets on
-         * @param [in] numVars: number of variables
-         * @param [in] fileName: output file name
-         *
-         */
-        
-        void waveletsToVTU(ot::Mesh* mesh,const double ** zippedVec, const double **unzippedVec,const unsigned int * varIds,const unsigned int numVars,const char* fileName);
+///         /**
+///          * @brief computes the wavelet coefficients for specified varIDs and write them and write them along with the mesh. 
+///          * @param [in] mesh: input mesh
+///          * @param [in] zippedVec zip version of the variable array. 
+///          * @param [in] unzippedVec: unzip version of the variable array. 
+///          * @param [in] varIds: variable IDs to compute the wavelets on
+///          * @param [in] numVars: number of variables
+///          * @param [in] fileName: output file name
+///          *
+///          */
+///         
+///         void waveletsToVTU(ot::Mesh* mesh,const double ** zippedVec, const double **unzippedVec,const unsigned int * varIds,const unsigned int numVars,const char* fileName);
         
 
 

@@ -71,6 +71,22 @@ namespace ot
       return treeLevels;
     }
 
+
+    /**
+     * @author Masado Ishii
+     * @brief  Add, remove, or permute dimensions from one TreeNode to another TreeNode.
+     */
+    template <typename T, unsigned int sdim, unsigned int ddim>
+    inline void permuteDims(unsigned int nDims,
+        const ot::TreeNode<T,sdim> &srcNode, unsigned int *srcDims,
+        ot::TreeNode<T,ddim> &dstNode, unsigned int *dstDims)
+    {
+      dstNode.setLevel(srcNode.getLevel());
+      for (unsigned int dIdx = 0; dIdx < nDims; dIdx++)
+        dstNode.setX(dstDims[dIdx], srcNode.getX(srcDims[dIdx]));
+    }
+
+
     /**
      * @brief perform slicing operation on k trees.
      * @param[in] in: input k-tree
@@ -88,10 +104,41 @@ namespace ot
          for(unsigned int i=0;i<numNodes;i++)
          {
              if(fabs(in[i].getX(sDim)-sliceVal)<=tolerance)
-                 out[i].push_back(in[i]);
+                 out.push_back(in[i]);
          }
 
 
+     }
+
+     /**
+      * @author Masado Ishii
+      * @brief perform a slicing operation and also lower the dimension.
+      * @pre template parameter dim must be greater than 1.
+      */
+     template <typename T, unsigned int dim>
+     void projectSliceKTree(const ot::TreeNode<T,dim> *in, std::vector<ot::TreeNode<T, dim-1>> &out,
+         unsigned int numNodes, unsigned int sliceDim, T sliceVal, double tolerance=1e-6)
+     {
+       std::vector<ot::TreeNode<T,dim>> sliceVector;
+       sliceKTree(in, sliceVector, numNodes, sliceDim, sliceVal, tolerance);
+
+       // Lower the dimension.
+       unsigned int selectDimSrc[dim-1];
+       unsigned int selectDimDst[dim-1];
+       #pragma unroll (dim-1)
+       for (unsigned int dIdx = 0; dIdx < dim-1; dIdx++)
+       {
+         selectDimSrc[dIdx] = (dIdx < sliceDim ? dIdx : dIdx+1);
+         selectDimDst[dIdx] = dIdx;
+       }
+
+       out.clear();
+       ot::TreeNode<T, dim-1> tempNode;
+       for (const ot::TreeNode<T,dim> &sliceNode : sliceVector)
+       {
+         permuteDims<T, dim, dim-1>(dim-1, sliceNode, selectDimSrc, tempNode, selectDimDst);
+         out.push_back(tempNode);
+       }
      }
 
 
