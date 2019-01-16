@@ -56,16 +56,26 @@ void test_distOutputTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 
   // Since dim==4 and we can only output octrees of dim 3 (or less?) to vtu,
   // use the slicing operator.
+  unsigned int treeDepth = 0;
+  for (const TreeNode &tn : treePart)
+  {
+    treeDepth = (tn.getLevel() > treeDepth ? tn.getLevel() : treeDepth);
+  }
+  unsigned int timeStep = 1u << (m_uiMaxDepth - treeDepth);
+  const char dimNames[] = "XYZT";
   for (unsigned int d = 0; d < dim; d++)
   {
-    // Single slice value.
-    std::vector<ot::TreeNode<T,3>> slice3D;
-    projectSliceKTree(&(*treePart.begin()), slice3D, (unsigned int) treePart.size(), d, (T) ((1 << m_uiMaxDepth) / 2), 1e-6);
+    // Many slices, like a time series.
+    for (unsigned int tIdx = 0, t = 0; t < (1u << m_uiMaxDepth); tIdx++, t += timeStep)
+    {
+      std::vector<ot::TreeNode<T,3>> slice3D;
+      projectSliceKTree(&(*treePart.begin()), slice3D, (unsigned int) treePart.size(), d, (T) t, 1e-6);
 
-    // Output to file with oct2vtu().
-    char fPrefix[] =  "                    ";
-    sprintf(fPrefix,  "output/testSlice-d%u", d);
-    io::vtk::oct2vtu(&(*slice3D.begin()), (unsigned int) slice3D.size(), fPrefix, comm);
+      // Output to file with oct2vtu().
+      char fPrefix[] =  "                                           ";  // beware buffer overflow.
+      sprintf(fPrefix,  "output/testSlice-%c-t%u", dimNames[d], tIdx);
+      io::vtk::oct2vtu(&(*slice3D.begin()), (unsigned int) slice3D.size(), fPrefix, comm);
+    }
   }
 }
 
