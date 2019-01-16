@@ -101,7 +101,7 @@ void test_locTreeBalancing(int numPoints)
 
   checkLocalCompleteness<T,dim>(points, tree, true, true);
 
-  bool balanceSuccess = checkBalancingConstraint(tree, true);
+  bool balanceSuccess = checkBalancingConstraint(tree, false);
   std::cout << "Balancing constraint " << (balanceSuccess ? "succeeded" : "FAILED") << "\n";
 
   // Make sure there is something there.
@@ -395,89 +395,6 @@ bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
 //------------------------
 
 
-template <typename TN>
-struct BalanceSearch
-{
-  std::vector<int> ancCountStack;
-  std::vector<ot::RankI> ancRefStack;
-  bool success;
-  bool printData;
-
-  BalanceSearch()
-  {
-    ancCountStack.resize(m_uiMaxDepth+2, 0);
-    ancRefStack.resize(m_uiMaxDepth+2, 0);
-    success = true;
-    printData = false;
-  }
-
-  // tree1 is the source tree.
-  // tree2 is the neighbor list derived from the source tree.
-  bool operator() (const TN *tree1, const std::array<ot::RankI, TN::numChildren+2> &split1,
-                   const TN *tree2, const std::array<ot::RankI, TN::numChildren+2> &split2,
-                   ot::LevI level)
-  {
-    if (!success)
-      return false;
-
-    if (split1[1] - split1[0] > 0)  // Leaf of the source tree as an ancestor.
-    {
-      // Since the source tree only stores leaves, the other buckets should be empty.
-      // Also we assume that the source tree contains no duplicates.
-      ot::LevI sourceLeafLevel = tree1[split1[0]].getLevel();
-      assert(sourceLeafLevel == level-1);
-
-      if (printData)
-      {
-        std::cout << "'Downward-facing' branch.\n";
-        std::cout << "sourceLeaf:  " << tree1[split1[0]].getBase32Hex().data() << "\n";
-        std::cout << "descendant hypothetical neighbors:\n";
-      }
-
-      // Downward-facing component of the balancing criterion:
-      //   An existing neighbor should be no higher than 1 level above a hypothetical neighbor.
-      for (const TN *t2It = tree2 + split2[0]; t2It < tree2 + split2[TN::numChildren+1]; t2It++)
-      {
-        if (printData)
-          std::cout << "\t" << t2It->getBase32Hex().data() << "\n";
-
-        if (t2It->getLevel() - sourceLeafLevel > 1)
-        {
-          return success = false;
-        }
-      }
-    }
-    else
-    {
-      // Upward-facing component of the balancing criterion:
-      //   An existing neighbor should be beneath no more than 1 ancestor (parent).
-      ancCountStack[level] = ancCountStack[level-1] + (split2[1] - split2[0]);
-      ancRefStack[level] = (split2[1] > split2[0] ? split2[0] : ancRefStack[level-1]);
-      if (printData)
-      {
-        std::cout << "'Upward-facing' branch.\n";
-        std::cout << "ancCount[" << level << "] == " << ancCountStack[level] << "\n";
-      }
-      if (ancCountStack[level] > 1)
-      {
-        if (printData)
-        {
-          std::cout << "Ancestor hypothetical neighbors:  "
-              << tree2[ancRefStack[level-1]].getBase32Hex().data() << "  "
-              << tree2[ancRefStack[level]].getBase32Hex().data() << "\n";
-          std::cout << "Existing descendants:\n";
-          for (const TN *t1It = tree1 + split1[1]; t1It < tree1 + split1[TN::numChildren+1]; t1It++)
-            std::cout << t1It->getBase32Hex().data() << "\n";
-        }
-        return success = false;
-      }
-    }
-
-    return true;
-  }
-};
-
-
 //
 // checkBalancingConstraint()
 //
@@ -601,8 +518,7 @@ int main(int argc, char* argv[])
   ///testTheTest<3>();
   ///testTheTest<4>();
 
-  test_locTreeBalancing<2>(ptsPerProc);
-  ///test_locTreeBalancing<4>(ptsPerProc);
+  test_locTreeBalancing<4>(ptsPerProc);
   ///test_distTreeBalancing(ptsPerProc, MPI_COMM_WORLD);
 
   MPI_Finalize();

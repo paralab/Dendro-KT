@@ -95,18 +95,6 @@ template <typename T, unsigned int D>
 struct SFC_Tree
 {
 
-  /**
-   * @author Masado Ishii
-   * @brief Depth-first pre-order traversal on two trees simultaneously.
-   * @tparam VisitAction: Callable as bool visit(tree1, splitters1, tree2, splitters2, level); If returns false, then traversal will go back up a level.
-   */
-  template <typename VisitAction>
-  static void dualTraversal(const TreeNode<T,D> *tree1, RankI b1, RankI e1,
-                            const TreeNode<T,D> *tree2, RankI b2, RankI e2,
-                            LevI sLev, LevI eLev,
-                            RotI pRot,
-                            VisitAction &visit);
-
   // Notes:
   //   - This method operates in-place and returns buckets at level eLev.
   //     The members of each BucketInfo object can be used to further
