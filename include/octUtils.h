@@ -103,13 +103,13 @@ namespace ot
      * @param[in] tolernace: tolerance value for slice extraction.
      * */
      template<typename T, unsigned int dim>
-     void sliceKTree(const ot::TreeNode<T,dim> * in,std::vector<ot::TreeNode<T,dim>> & out,unsigned int numNodes, unsigned int sDim, T sliceVal,double tolerance=1e-6)
+     void sliceKTree(const ot::TreeNode<T,dim> * in,std::vector<ot::TreeNode<T,dim>> & out,unsigned int numNodes, unsigned int sDim, T sliceVal)
      {
 
          out.clear();
          for(unsigned int i=0;i<numNodes;i++)
          {
-             if(fabs(in[i].getX(sDim)-sliceVal)<=tolerance)
+             if(in[i].minX(sDim) <= sliceVal && sliceVal <= in[i].maxX(sDim))
                  out.push_back(in[i]);
          }
 
@@ -123,10 +123,10 @@ namespace ot
       */
      template <typename T, unsigned int dim>
      void projectSliceKTree(const ot::TreeNode<T,dim> *in, std::vector<ot::TreeNode<T, dim-1>> &out,
-         unsigned int numNodes, unsigned int sliceDim, T sliceVal, double tolerance=1e-6)
+         unsigned int numNodes, unsigned int sliceDim, T sliceVal)
      {
        std::vector<ot::TreeNode<T,dim>> sliceVector;
-       sliceKTree(in, sliceVector, numNodes, sliceDim, sliceVal, tolerance);
+       sliceKTree(in, sliceVector, numNodes, sliceDim, sliceVal);
 
        // Lower the dimension.
        unsigned int selectDimSrc[dim-1];

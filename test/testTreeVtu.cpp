@@ -63,13 +63,14 @@ void test_distOutputTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   }
   unsigned int timeStep = 1u << (m_uiMaxDepth - treeDepth);
   const char dimNames[] = "XYZT";
+  std::cout << "Output files will be placed in the directory 'output'.\n";
   for (unsigned int d = 0; d < dim; d++)
   {
     // Many slices, like a time series.
     for (unsigned int tIdx = 0, t = 0; t < (1u << m_uiMaxDepth); tIdx++, t += timeStep)
     {
       std::vector<ot::TreeNode<T,3>> slice3D;
-      projectSliceKTree(&(*treePart.begin()), slice3D, (unsigned int) treePart.size(), d, (T) t, 1e-6);
+      projectSliceKTree(&(*treePart.begin()), slice3D, (unsigned int) treePart.size(), d, (T) t);
 
       // Output to file with oct2vtu().
       char fPrefix[] =  "                                           ";  // beware buffer overflow.
