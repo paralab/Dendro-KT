@@ -40,6 +40,7 @@
 
 #include <array>
 #include <set>
+#include <stack>
 #include <iostream>
 #include <stdio.h>
 #include <assert.h>
@@ -284,34 +285,84 @@ void refinement_operator(int rank, AxBits &out_loc, PhysOrient<K> &out_orient)
 }
 
 
-//TODO use std::set to tabulate the closure of refined orientations.
+
+/// //
+/// // generate_unique_orientations()
+/// //
+/// // Note: A recursive depth-first implementation reaches stack overflow on K==7.
+/// //
+/// template <int K>
+/// void generate_unique_orientations(std::set<PhysOrient<K>> &uniq_orient_set,
+///                              PhysOrient<K> p = PhysOrient<K>::identity())
+/// {
+///   const int numChildren = 1 << K;
+///   bool is_new_element = uniq_orient_set.insert(p).second;
+/// #if __DEBUG__
+///   std::cout << "Inserting " << p << ": " << (is_new_element ? "NEW" : "old") << "\n";
+/// #endif
+///   if (is_new_element)
+///   {
+///     for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
+///     {
+/// #if __DEBUG__
+///       std::cout << "child_sfc==" << child_sfc << "\n";
+/// #endif
+///       AxBits unused_loc;
+///       PhysOrient<K> child_orient;
+///       refinement_operator<K>(child_sfc, unused_loc, child_orient);  // Could cache this.
+///       child_orient = p.apply(child_orient);
+///       generate_unique_orientations(uniq_orient_set, child_orient);
+///     }
+///   }
+/// }
 
 
+//
+// generate_unique_orientations()
+//
+// Note: This version also uses a depth-first traversal but uses a
+//       dynamically allocated stack.
+//
+// Results:               K |  2   3    4     5     6       7        8
+//           # orientations |  4  24  192  1920  2340  322560  5160960
+//
+//           Growth is pow(2,K)*factorial(K).
+//           It took about 30 minutes to run with K==8.
+//
 template <int K>
-int generate_unique_orientations(std::set<PhysOrient<K>> &uniq_orient_set,
-                             PhysOrient<K> p = PhysOrient<K>::identity())
+void generate_unique_orientations(std::set<PhysOrient<K>> &uniq_orient_set)
 {
+  using PCh = std::pair<PhysOrient<K>, int>;
   const int numChildren = 1 << K;
-  bool is_new_element = uniq_orient_set.insert(p).second;
-#if __DEBUG__
-  std::cout << "Inserting " << p << ": " << (is_new_element ? "NEW" : "old") << "\n";
-#endif
-  if (is_new_element)
+
+  std::stack<PCh> stack;
+  PhysOrient<K> orient = PhysOrient<K>::identity();
+
+  do
   {
-    for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    AxBits unused_loc;
+
+    bool is_new_element = uniq_orient_set.insert(orient).second;
+    if (is_new_element)
     {
-#if __DEBUG__
-      std::cout << "child_sfc==" << child_sfc << "\n";
-#endif
-      AxBits unused_loc;
-      PhysOrient<K> child_orient;
-      refinement_operator<K>(child_sfc, unused_loc, child_orient);  // Could cache this.
-      child_orient = p.apply(child_orient);
-      generate_unique_orientations(uniq_orient_set, child_orient);
+      stack.push(PCh(orient, 0));
+      refinement_operator<K>(0, unused_loc, orient);
+      orient = stack.top().first.apply(orient);
+    }
+    else if (!stack.empty())
+    {
+      int & child_sfc = stack.top().second;
+      child_sfc++;
+      if (child_sfc < numChildren)
+      {
+        refinement_operator<K>(child_sfc, unused_loc, orient);
+        orient = stack.top().first.apply(orient);
+      }
+      else
+        stack.pop();
     }
   }
-
-  return uniq_orient_set.size();
+  while (!stack.empty());
 }
 
 
@@ -384,9 +435,9 @@ int main(int arc, char* argv[])
   printf("dim == %d, #orientations == %d\n", 2, count_unique_orientations<2>());
   printf("dim == %d, #orientations == %d\n", 3, count_unique_orientations<3>());
   printf("dim == %d, #orientations == %d\n", 4, count_unique_orientations<4>());
-  printf("dim == %d, #orientations == %d\n", 5, count_unique_orientations<5>());
-  printf("dim == %d, #orientations == %d\n", 6, count_unique_orientations<6>());
-  printf("dim == %d, #orientations == %d\n", 7, count_unique_orientations<7>());
+  /// printf("dim == %d, #orientations == %d\n", 5, count_unique_orientations<5>());
+  /// printf("dim == %d, #orientations == %d\n", 6, count_unique_orientations<6>());
+  /// printf("dim == %d, #orientations == %d\n", 7, count_unique_orientations<7>());
   printf("dim == %d, #orientations == %d\n", 8, count_unique_orientations<8>());
 
   return 0;
@@ -469,6 +520,7 @@ void haverkort_5D_table()
 template <int K>
 int count_unique_orientations()
 {
-  std::set<hilbert::PhysOrient<K>> unused_set;
-  return hilbert::generate_unique_orientations(unused_set);
+  std::set<hilbert::PhysOrient<K>> orientations;
+  hilbert::generate_unique_orientations(orientations);
+  return orientations.size();
 }
