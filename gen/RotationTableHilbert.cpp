@@ -436,7 +436,7 @@ void refinement_operator(int rank, AxBits &out_loc, PhysOrient<K> &out_orient)
 // Results:               K |  2   3    4     5     6       7        8
 //           # orientations |  4  24  192  1920  2340  322560  5160960
 //
-//           Growth is pow(2,K)*factorial(K).
+//           Growth is pow(2,K-1)*factorial(K).
 //
 //           Running K==8 using std::set and operator<() took about 30 minutes.
 //           Running K==8 using std::unordered_map and Hash{string} took about 12 minutes.
@@ -516,7 +516,7 @@ std::unordered_map<unsigned int, int>
  * @param htable pointer to the `HILBERT_TABLE' array, which contains orientation indices of children.
  */
 template <int K>
-void generate_rotation_table(char *rotations, char *htable)
+void generate_rotation_table(char *rotations, unsigned int *htable)
 {
   const int numChildren = 1 << K;
 
@@ -650,8 +650,8 @@ int main(int arc, char* argv[])
 
   test_fill_tables<2>();
   test_fill_tables<3>();
-  /// test_fill_tables<4>();
-  /// test_fill_tables<5>();
+  test_fill_tables<4>();
+  test_fill_tables<5>();
 
   return 0;
 }
@@ -742,12 +742,12 @@ template <int K>
 void test_fill_tables()
 {
   const int numChildren = 1 << K;
-  const int numOrientations = intFactorial<int>(K) * intPow<int>(2, K);
+  const int numOrientations = intFactorial<int>(K) * intPow<int>(2, K-1);
 
   char rotations[2*numChildren*numOrientations];
-  char htable[numChildren*numOrientations];
+  unsigned int htable[numChildren*numOrientations];
 
-  std::cout << "dim == " << K << ". Starting to fill tables...\n";
+  std::cout << "dim == " << K << ". Filling tables...\n";
 
   hilbert::generate_rotation_table<K>(rotations, htable);
 
@@ -773,7 +773,7 @@ void test_fill_tables()
   {
     #pragma unroll(numChildren)
     for (int ch = 0; ch < numChildren; ch++)
-      printf("%5d", htable[r*numChildren + ch]);
+      printf("%5u", htable[r*numChildren + ch]);
     std::cout << "\n";
   }
 
