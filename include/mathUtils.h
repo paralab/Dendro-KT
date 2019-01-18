@@ -199,6 +199,12 @@ T subt(const T* v1, const T*v2,const unsigned int n, T* out);
 template <typename T>
 constexpr T intPow(T b, unsigned p, T A = 1);
 
+/**
+ @brief Compile-time computation of factorial "f!".
+ @author Masado Ishii
+ */
+template <typename T>
+constexpr T intFactorial(T f, T A = 1);
 
 #include "mathUtils.tcc"
 

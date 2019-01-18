@@ -247,3 +247,9 @@ constexpr T intPow(T b, unsigned p, T A)
 {
   return (!p ? A : intPow<T>(b, p-1, b*A));
 }
+
+template <typename T>
+constexpr T intFactorial(T f, T A)
+{
+  return (f <= 1 ? A : intFactorial<T>(f-1, f*A));
+}

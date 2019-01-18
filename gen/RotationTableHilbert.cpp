@@ -55,6 +55,72 @@ void hexadecimal_string(std::array<int, K> h, char *c);
 // .....................................................
 
 
+//
+// ++++++ Copy-pasted from other Dendro src, remove when integrated ++++++ //
+//
+template <typename T>
+constexpr T intPow(T b, unsigned p, T A = 1)
+{
+  return (!p ? A : intPow<T>(b, p-1, b*A));
+}
+
+// ++++++ These should be moved into Dendro when integrated         ++++++
+//
+template <typename T>
+constexpr T intFactorial(T f, T A = 1)
+{
+  return (f <= 1 ? A : intFactorial<T>(f-1, f*A));
+}
+
+/// template <typename T, int K> 
+/// void lehmerEncode(T *permutation)
+/// {
+///   const T choice = *permutation;
+///   #pragma unroll(K)
+///   for (int i = 0; i < K; i++)
+///   {
+///     permutation++
+///     *permutation -= (
+///   }
+/// }
+
+//
+// lehmerEncode() / lehmerDecode()
+//
+// Lehmer, D.H. (1960), "Teaching combinatorial tricks to a computer",
+//    Proc. Sympos. Appl. Math. Combinatorial Analysis, Amer. Math. Soc., 10: 179–193
+//
+// https://en.wikipedia.org/wiki/Lehmer_code
+//
+template <typename T, int K>
+struct LehmerCode
+{
+  static unsigned int encode(T *permutation)
+  {
+    // L_N(x) === #{y \in B | y < x} === x - #{y \in A | y < x}.
+    //
+    // Lower addr                    Higher addr
+    // Higher codes                  Lower codes
+    //               0      K     N
+    //               AAAAAAxBBBBBB
+
+    unsigned int subcode = LehmerCode<T,K-1>::encode(permutation + 1);
+    T digit = 0;
+    #pragma unroll(K-1)
+    for (int i = 1; i < K; i++)
+      digit += (permutation[0] > permutation[i]);
+    return intFactorial<unsigned int>(K-1) * digit + subcode;
+  }
+};
+
+template <typename T>
+struct LehmerCode<T,1>
+{
+  static unsigned int encode(T *permutation) { return 0; }
+};
+// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ //
+
+
 namespace hilbert
 {
 
@@ -429,7 +495,7 @@ void generate_rotation_table(char *rotations, char *htable)
 //
 // binary_string():
 //   Convert a binary number to a string of characters.
-// 
+//
 // The buffer c must have at least (K+1) space,
 // for K characters and the null byte.
 //
@@ -467,13 +533,16 @@ int main(int arc, char* argv[])
   /// haverkort_5D_table();
 
   /// printf("dim == %d, #orientations == %d\n", 1, count_unique_orientations<1>());
-  printf("dim == %d, #orientations == %d\n", 2, count_unique_orientations<2>());
-  printf("dim == %d, #orientations == %d\n", 3, count_unique_orientations<3>());
-  printf("dim == %d, #orientations == %d\n", 4, count_unique_orientations<4>());
+  /// printf("dim == %d, #orientations == %d\n", 2, count_unique_orientations<2>());
+  /// printf("dim == %d, #orientations == %d\n", 3, count_unique_orientations<3>());
+  /// printf("dim == %d, #orientations == %d\n", 4, count_unique_orientations<4>());
   /// printf("dim == %d, #orientations == %d\n", 5, count_unique_orientations<5>());
   /// printf("dim == %d, #orientations == %d\n", 6, count_unique_orientations<6>());
   /// printf("dim == %d, #orientations == %d\n", 7, count_unique_orientations<7>());
-  printf("dim == %d, #orientations == %d\n", 8, count_unique_orientations<8>());
+  /// printf("dim == %d, #orientations == %d\n", 8, count_unique_orientations<8>());
+
+  unsigned int permutation[7] = {1, 5, 0, 6, 3, 4, 2};
+  std::cout << LehmerCode<unsigned int, 7>::encode(permutation) << "\n";
 
   return 0;
 }
