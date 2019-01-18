@@ -33,7 +33,9 @@
  * (Dendro), for use as in Fernando and Sundar's algorithm.
  */
 
-#define __DEBUG__ 1
+#ifndef __DEBUG__
+#define __DEBUG__ 0
+#endif
 
 
 #include <array>
@@ -41,6 +43,15 @@
 #include <iostream>
 #include <stdio.h>
 #include <assert.h>
+
+
+// .....................................................
+void binary_string(unsigned char b, char *c, int K);
+
+template <int K>
+void hexadecimal_string(std::array<int, K> h, char *c);
+// .....................................................
+
 
 namespace hilbert
 {
@@ -64,6 +75,12 @@ namespace hilbert
 // If more than 8 dimensions are needed, change this to something bigger.
 using AxBits = unsigned char;
 
+#if __DEBUG__
+template <int K> class PhysOrient;
+template <int K>
+std::ostream & operator<<(std::ostream &os, const PhysOrient<K> &po);
+#endif
+
 //
 // PhysOrient:
 //   Representation of the physical distinctions between a given orientation
@@ -72,6 +89,11 @@ using AxBits = unsigned char;
 template <int K>
 struct PhysOrient
 {
+private:
+  AxBits permute(AxBits coords) const;
+  AxBits reflect(AxBits coords) const;
+
+public:
   std::array<int, K> a;    // Haverkort uses 'a' for permutation of axes. i gets a[i].
   AxBits m;                // Haverkort uses 'm' for reflection vector.
 
@@ -107,25 +129,42 @@ struct PhysOrient
   // applied to the results of refinement. (Local-coords to global-coords.)
   AxBits apply(AxBits location) const;        // Group action.
   PhysOrient apply(PhysOrient orient) const;  // Group multiplication.
+
+#if __DEBUG__
+  friend std::ostream & operator<< <> (std::ostream &os, const PhysOrient &po);
+#endif
+
 };
+
+template <int K>
+AxBits PhysOrient<K>::permute(AxBits coords) const
+{
+  // Remember that the lowest bit has index K-1 in Haverkort's notation.
+
+  // Permutation. Recall, axis `i' gets axis `a[i]`.
+  AxBits tr_coords = 0;
+  for (int ii = 0; ii < K; ii++)
+  {
+    tr_coords <<= 1;
+    tr_coords |= ((coords >> (K-1 - a[ii])) & 1u);
+  }
+
+  return tr_coords;
+}
+
+
+template <int K>
+AxBits PhysOrient<K>::reflect(AxBits coords) const
+{
+  // Reflection.
+  return coords ^ m;
+}
+
 
 template <int K>
 AxBits PhysOrient<K>::apply(AxBits location) const
 {
-  // Remember that the lowest bit has index K-1 in Haverkort's notation.
-
-  // 1. Permutation. Recall, axis `i' gets axis `a[i]`.
-  AxBits tr_location = 0;
-  for (int ii = 0; ii < K; ii++)
-  {
-    tr_location <<= 1;
-    tr_location |= ((location >> (K-1 - a[ii])) & 1u);
-  }
-
-  // 2. Reflection.
-  tr_location ^= m;
-
-  return tr_location;
+  return reflect(permute(location));
 }
 
 template <int K>
@@ -153,11 +192,29 @@ PhysOrient<K> PhysOrient<K>::apply(PhysOrient<K> orient) const
   }
 
   // Transform and multiply reflections: M(AmA~)
-  AxBits conjugate_m = apply(orient.m);
+  AxBits conjugate_m = permute(orient.m);
   tr_orient.m = m ^ conjugate_m;
 
   return tr_orient;
 }
+
+
+
+#if __DEBUG__
+template <int K>
+std::ostream & operator<<(std::ostream &os, const PhysOrient<K> &po)
+{
+  char s[K+1];
+
+  hexadecimal_string<K>(po.a, s);
+  os << "{" << s << ", ";
+
+  binary_string(po.m, s, K);
+  std::cout << s << "}";
+
+  return os;
+}
+#endif
 
 
 //
@@ -236,13 +293,20 @@ int generate_unique_orientations(std::set<PhysOrient<K>> &uniq_orient_set,
 {
   const int numChildren = 1 << K;
   bool is_new_element = uniq_orient_set.insert(p).second;
+#if __DEBUG__
+  std::cout << "Inserting " << p << ": " << (is_new_element ? "NEW" : "old") << "\n";
+#endif
   if (is_new_element)
   {
     for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
+#if __DEBUG__
+      std::cout << "child_sfc==" << child_sfc << "\n";
+#endif
       AxBits unused_loc;
       PhysOrient<K> child_orient;
-      refinement_operator<K>(child_sfc, unused_loc, child_orient);
+      refinement_operator<K>(child_sfc, unused_loc, child_orient);  // Could cache this.
+      child_orient = p.apply(child_orient);
       generate_unique_orientations(uniq_orient_set, child_orient);
     }
   }
@@ -316,7 +380,7 @@ int main(int arc, char* argv[])
 {
   /// haverkort_5D_table();
 
-  printf("dim == %d, #orientations == %d\n", 1, count_unique_orientations<1>());
+  /// printf("dim == %d, #orientations == %d\n", 1, count_unique_orientations<1>());
   printf("dim == %d, #orientations == %d\n", 2, count_unique_orientations<2>());
   printf("dim == %d, #orientations == %d\n", 3, count_unique_orientations<3>());
   printf("dim == %d, #orientations == %d\n", 4, count_unique_orientations<4>());
