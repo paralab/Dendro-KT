@@ -102,8 +102,7 @@ struct PhysOrient
   }
 
   // To produce children from parents, parent orientation should be
-  // applied to the results of refinement.
-  //TODO
+  // applied to the results of refinement. (Local-coords to global-coords.)
   AxBits apply(AxBits location) const;        // Group action.
   PhysOrient apply(PhysOrient orient) const;  // Group multiplication.
 };
@@ -135,13 +134,27 @@ PhysOrient<K> PhysOrient<K>::apply(PhysOrient<K> orient) const
   // preferred form, which is (reflection)(permutation).
   //   (MA)(ma) = MAm(A~)(A)a = M(AmA~)(Aa)
   //
+  // (This object is represented by the left hand uppercase letters,
+  // and the parameter `orient' is represented by the right hand
+  // lowercase letters. Actions are applied to whatever is on the right.)
   PhysOrient<K> tr_orient;
 
   // Multiply permutations: Aa
-  // TODO
+  // Let s be a string on which a acts. By definition, (a*s)[i] = s[a[i]].
+  // Let A and a be two permutations. Then
+  //     ((A*a)*s)[i] = (A*(a*s))[i] = (a*s)[A[i]] = s[a[A[i]]].
+  // Therefore (A*a) is defined by
+  //     (A*a)[i] = a[A[i]].
+  for (int ii = 0; ii < K; ii++)
+  {
+    tr_orient.a[ii] = orient.a[a[ii]];
+  }
 
   // Transform and multiply reflections: M(AmA~)
-  // TODO
+  AxBits conjugate_m = apply(orient.m);
+  tr_orient.m = m ^ conjugate_m;
+
+  return tr_orient;
 }
 
 
@@ -243,11 +256,29 @@ void hexadecimal_string(std::array<int, K> h, char *c)
 }
 
 
+
+// ...........................................
+// Declarations for tests.
+// ...........................................
+void haverkort_5D_table();
+// ...........................................
+
 //
-// main():
-//   Test the correctness of our methods.
+// main()
 //
 int main(int arc, char* argv[])
+{
+  /// haverkort_5D_table();
+
+  return 0;
+}
+
+
+
+//
+// haverkort_5D_table()
+//
+void haverkort_5D_table()
 {
   const int K = 5;
   const int N = 1<<K;
@@ -278,14 +309,7 @@ int main(int arc, char* argv[])
 
     std::cout << '\n';
   }
-
-
-  return 0;
 }
-
-
-
-
 
 // Compare with 5D table, given by Haverkort:
 // rank   loc.   permutation  inv. permutation  refl.
