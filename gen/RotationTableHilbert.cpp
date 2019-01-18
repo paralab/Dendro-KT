@@ -40,6 +40,7 @@
 
 #include <array>
 #include <set>
+#include <unordered_map>
 #include <stack>
 #include <iostream>
 #include <stdio.h>
@@ -76,8 +77,10 @@ namespace hilbert
 // If more than 8 dimensions are needed, change this to something bigger.
 using AxBits = unsigned char;
 
-#if __DEBUG__
+// Forward declaration.
 template <int K> class PhysOrient;
+
+#if __DEBUG__
 template <int K>
 std::ostream & operator<<(std::ostream &os, const PhysOrient<K> &po);
 #endif
@@ -125,6 +128,20 @@ public:
   {
     return a < that.a || (a == that.a && m < that.m);
   }
+
+  bool operator== (const PhysOrient &that) const
+  {
+    return a == that.a && m == that.m;
+  }
+
+  // Custom hash for associative containers.
+  struct Hash
+  {
+    std::size_t operator() (PhysOrient<K> const& po) const noexcept
+    {
+      return std::hash<std::string>{}(std::string((const char*) &po, sizeof(PhysOrient<K>)));
+    }
+  };
 
   // To produce children from parents, parent orientation should be
   // applied to the results of refinement. (Local-coords to global-coords.)
@@ -327,22 +344,38 @@ void refinement_operator(int rank, AxBits &out_loc, PhysOrient<K> &out_orient)
 //           # orientations |  4  24  192  1920  2340  322560  5160960
 //
 //           Growth is pow(2,K)*factorial(K).
-//           It took about 30 minutes to run with K==8.
+//
+//           Running K==8 using std::set and operator<() took about 30 minutes.
+//           Running K==8 using std::unordered_map and Hash{} took about 12 minutes.
 //
 template <int K>
-void generate_unique_orientations(std::set<PhysOrient<K>> &uniq_orient_set)
+std::unordered_map<PhysOrient<K>, int, typename PhysOrient<K>::Hash>
+    generate_unique_orientations()
 {
+
   using PCh = std::pair<PhysOrient<K>, int>;
+  using PCount = std::pair<PhysOrient<K>, int>;
   const int numChildren = 1 << K;
+
+  std::unordered_map<PhysOrient<K>, int, typename PhysOrient<K>::Hash> uniq_orient_set;
 
   std::stack<PCh> stack;
   PhysOrient<K> orient = PhysOrient<K>::identity();
+
+  int counter = 0;
 
   do
   {
     AxBits unused_loc;
 
-    bool is_new_element = uniq_orient_set.insert(orient).second;
+    auto foundIt = uniq_orient_set.find(orient);
+    /// int hitVal;
+    bool is_new_element = (foundIt == uniq_orient_set.end());
+    if (is_new_element)
+      uniq_orient_set.insert(PCount(orient, counter++));
+    /// else
+    ///   hitVal = foundIt->second;
+
     if (is_new_element)
     {
       stack.push(PCh(orient, 0));
@@ -363,6 +396,8 @@ void generate_unique_orientations(std::set<PhysOrient<K>> &uniq_orient_set)
     }
   }
   while (!stack.empty());
+
+  return uniq_orient_set;
 }
 
 
@@ -520,7 +555,6 @@ void haverkort_5D_table()
 template <int K>
 int count_unique_orientations()
 {
-  std::set<hilbert::PhysOrient<K>> orientations;
-  hilbert::generate_unique_orientations(orientations);
+  auto orientations = hilbert::generate_unique_orientations<K>();
   return orientations.size();
 }
