@@ -57,7 +57,7 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
       // According to Dendro4 TreeNode.tcc:199 they are.
       // (There are possibly inconsistencies in the old code...?
       // Don't worry, we can regenerate the table later.)
-      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      ChildI child = rot_perm[child_sfc];
       RotI cRot = orientLookup[child];
 
       if (tempSplitters[child_sfc+2] - tempSplitters[child_sfc+1] <= 1)
@@ -136,7 +136,7 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
   ChildI child_sfc = 0;
   for ( ; child_sfc < numChildren; child_sfc++)
   {
-    ChildI child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
+    ChildI child = rot_perm[child_sfc];
     outSplitters[child_sfc+1] = accum;
     offsets[child] = accum;           // Start of bucket. Moving marker.
     accum += counts[child];
@@ -232,7 +232,7 @@ SFC_Tree<T,D>:: SFC_locateBuckets(const TreeNode<T,D> *points,
   ChildI child_sfc = 0;
   for ( ; child_sfc < numChildren; child_sfc++)
   {
-    ChildI child = rot_perm[child_sfc] - '0';  // Decode from human-readable ASCII.
+    ChildI child = rot_perm[child_sfc];
     outSplitters[child_sfc+1] = accum;
     accum += counts[child];
   }
@@ -529,7 +529,7 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
     const RotI * const orientLookup = &HILBERT_TABLE[front.rot_id*numChildren];
     for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
-      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      ChildI child = rot_perm[child_sfc];
       RotI cRot = orientLookup[child];
       BucketInfo<RankI> childBucket =
           {cRot, front.lev+1, childSplitters[child_sfc+1], childSplitters[child_sfc+2]};
@@ -586,7 +586,7 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
       // According to Dendro4 TreeNode.tcc:199 they are.
       // (There are possibly inconsistencies in the old code...?
       // Don't worry, we can regenerate the table later.)
-      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      ChildI child = rot_perm[child_sfc];
       RotI cRot = orientLookup[child];
       cNode.setMortonIndex(child);
 
@@ -612,7 +612,7 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
   {
     for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
-      ChildI child = rot_perm[child_sfc] - '0';     // Decode from human-readable ASCII.
+      ChildI child = rot_perm[child_sfc];
       cNode.setMortonIndex(child);
       tree.push_back(cNode);
     }

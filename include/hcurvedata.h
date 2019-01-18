@@ -40,6 +40,10 @@ constexpr int _KD_ROTATIONS_SIZE(int pDim)
   //     2x more children (increases columns)
   return (pDim == 1 ? 2*2*1 : 2*2*pDim*_KD_ROTATIONS_SIZE(pDim-1));
 }
+constexpr int _KD_HILBERT_TABLE_SIZE(int pDim)
+{
+  return (pDim == 1 ? 2*1 : 2*2*pDim*_KD_HILBERT_TABLE_SIZE(pDim-1));
+}
 
 
 extern int* HILBERT_TABLE;

@@ -36,6 +36,7 @@ option(MANUAL_BLAS_LAPACK "configure BLAS and LAPACK Manually" OFF)
 option(DENDRO_VTK_BINARY "write vtk/vtu files in binary mode " ON)
 option(DENDRO_VTK_ZLIB_COMPRES "write vtk/vtu files in binary mode with zlib compression (only compatible with binary mode) " OFF)
 option(BUILD_WITH_PETSC " build dendro with PETSC " OFF)
+option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" OFF)
 
 set(KWAY 128 CACHE INT 128)
 set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
@@ -129,6 +130,7 @@ endif()
 set(DENDRO_KT_INC include/dendro.h
                   include/dtypes.h
                   include/hcurvedata.h
+                  include/KDhcurvedata_decl.h
                   include/binUtils.h
                   include/colors.h
                   include/mathUtils.h
@@ -151,7 +153,8 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/octUtils.cpp
                   src/parUtils.cpp
                   src/point.cpp
-                  src/hcurvedata.cpp
+                  src/KDhcurvedata.cpp
+                  src/KDhcurvedata_DATA.cpp
                   src/tsort.cpp
                   src/treeNode.cpp
                   IO/vtk/src/oct2vtk.cpp
