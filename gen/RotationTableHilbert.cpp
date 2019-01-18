@@ -207,12 +207,12 @@ public:
   PhysOrient apply(PhysOrient orient) const;  // Group multiplication.
 
   // Can be used to index the space of all possible orientations.
-  unsigned int lehmanEncode()
+  unsigned int lehmerEncode() const
   {
     return (((unsigned int) LehmerCode<int, K>::encode(a.data())) << K) | m;
   }
 
-  static PhysOrient lehmanDecode(unsigned int code)
+  static PhysOrient lehmerDecode(unsigned int code)
   {
     PhysOrient po;
     LehmerCode<int, K>::decode(code >> K, po.a.data());
@@ -237,7 +237,7 @@ public:
   {
     std::size_t operator() (PhysOrient<K> const& po) const noexcept
     {
-      return std::hash<std::string>{}(std::string((const char*) &po, sizeof(PhysOrient<K>)));
+      return std::hash<unsigned int>{}(po.lehmerEncode());
     }
   };
 
@@ -439,18 +439,30 @@ void refinement_operator(int rank, AxBits &out_loc, PhysOrient<K> &out_orient)
 //           Growth is pow(2,K)*factorial(K).
 //
 //           Running K==8 using std::set and operator<() took about 30 minutes.
-//           Running K==8 using std::unordered_map and Hash{} took about 12 minutes.
+//           Running K==8 using std::unordered_map and Hash{string} took about 12 minutes.
+//           Running K==8 using std::unordered_map and Hash{lehmerEncode()} took about 8 minutes.
 //
 template <int K>
-std::unordered_map<PhysOrient<K>, int, typename PhysOrient<K>::Hash>
+std::unordered_map<unsigned int, int>
     generate_unique_orientations()
 {
+  using LCode = unsigned int;
 
   using PCh = std::pair<PhysOrient<K>, int>;
-  using PCount = std::pair<PhysOrient<K>, int>;
+  using PCount = std::pair<LCode, int>;
   const int numChildren = 1 << K;
 
-  std::unordered_map<PhysOrient<K>, int, typename PhysOrient<K>::Hash> uniq_orient_set;
+  // Cache level-1 refinement.
+  PhysOrient<K> child_orient_cache[numChildren];
+  for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
+  {
+    AxBits unused_loc;
+    refinement_operator<K>(child_sfc,
+                           unused_loc,
+                           child_orient_cache[child_sfc]);
+  }
+
+  std::unordered_map<LCode, int> uniq_orient_set;
 
   std::stack<PCh> stack;
   PhysOrient<K> orient = PhysOrient<K>::identity();
@@ -461,18 +473,21 @@ std::unordered_map<PhysOrient<K>, int, typename PhysOrient<K>::Hash>
   {
     AxBits unused_loc;
 
-    auto foundIt = uniq_orient_set.find(orient);
+    LCode lcode = orient.lehmerEncode();
+    auto insertion_attempt = uniq_orient_set.insert(PCount(lcode, counter));
+    auto foundIt = insertion_attempt.first;
+    bool is_new_element = insertion_attempt.second;
     /// int hitVal;
-    bool is_new_element = (foundIt == uniq_orient_set.end());
     if (is_new_element)
-      uniq_orient_set.insert(PCount(orient, counter++));
+      counter++;
     /// else
     ///   hitVal = foundIt->second;
 
     if (is_new_element)
     {
       stack.push(PCh(orient, 0));
-      refinement_operator<K>(0, unused_loc, orient);
+      /// refinement_operator<K>(0, unused_loc, orient);
+      orient = child_orient_cache[0];
       orient = stack.top().first.apply(orient);
     }
     else if (!stack.empty())
@@ -481,7 +496,8 @@ std::unordered_map<PhysOrient<K>, int, typename PhysOrient<K>::Hash>
       child_sfc++;
       if (child_sfc < numChildren)
       {
-        refinement_operator<K>(child_sfc, unused_loc, orient);
+        /// refinement_operator<K>(child_sfc, unused_loc, orient);
+        orient = child_orient_cache[child_sfc];
         orient = stack.top().first.apply(orient);
       }
       else
@@ -495,6 +511,7 @@ std::unordered_map<PhysOrient<K>, int, typename PhysOrient<K>::Hash>
 
 
 /**
+ * @brief Fills preallocated rotation tables with the rotation lookup data.
  * @param rotations pointer to the `rotations' array, which contains permuted child numbers.
  * @param htable pointer to the `HILBERT_TABLE' array, which contains orientation indices of children.
  */
@@ -503,15 +520,61 @@ void generate_rotation_table(char *rotations, char *htable)
 {
   const int numChildren = 1 << K;
 
-  // Left set of columns maps SFC-based child# to Morton-based child#.
-  // Right set of columns maps Morton-based child# to SFC-based child#.
+  // Left set of columns will map SFC-based child# to Morton-based child#.
+  // Right set of columns will map Morton-based child# to SFC-based child#.
   const int sfc2morton = 0;
   const int morton2sfc = numChildren;
-
   const int rotations_row_sz = 2*numChildren;
+
   const int htable_row_sz = numChildren;
 
-  //TODO compute generate_unique_orientations() and use as a lookup table.
+  // uniq_orientations is a mapping from orientation code to table rank.
+  // (The rank is determined by a depth-first refining traversal).
+  using LCode = unsigned int;
+  const std::unordered_map<LCode, int> uniq_orientations = generate_unique_orientations<K>();
+
+  // Cache level-1 refinement.
+  AxBits child_offset_cache[numChildren];
+  PhysOrient<K> child_orient_cache[numChildren];
+  for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
+  {
+    refinement_operator<K>(child_sfc,
+                           child_offset_cache[child_sfc],
+                           child_orient_cache[child_sfc]);
+  }
+
+  // Get child information for each element
+  // by first applying parent orientation to refined-child orientations,
+  // then looking up ranks of child orientations in uniq_orientations.
+  for (std::pair<LCode, int> parent : uniq_orientations)
+  {
+    const LCode &parent_lcode = parent.first;
+    const int &parent_rank = parent.second;
+    const PhysOrient<K> parent_orient = PhysOrient<K>::lehmerDecode(parent_lcode);
+
+    for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      AxBits child_offset = child_offset_cache[child_sfc];         // aka Morton-based child#.
+      PhysOrient<K> child_orient = child_orient_cache[child_sfc];
+      // Right now child_offset and child_orient are relative
+      // to parent's coordinate frame.
+
+      // Convert to global coordinates with apply().
+      child_offset = parent_orient.apply(child_offset);
+      child_orient = parent_orient.apply(child_orient);
+
+      // Search to get table row number corresponding to child.
+#if __DEBUG__
+      assert(uniq_orientations.find(child_orient.lehmerEncode()) != uniq_orientations.end());
+#endif
+      int child_rank = uniq_orientations.find(child_orient.lehmerEncode())->second;
+
+      // Update tables.
+      rotations[parent_rank*rotations_row_sz + sfc2morton + child_sfc] = '0' + child_offset;
+      rotations[parent_rank*rotations_row_sz + morton2sfc + child_offset] = '0' + child_sfc;
+      htable[parent_rank*htable_row_sz + child_offset] = child_rank;
+    }
+  }
 }
 
 
@@ -550,6 +613,9 @@ void haverkort_5D_table();
 
 template <int K>
 int count_unique_orientations();
+
+template <int K>
+void test_fill_tables();
 // ...........................................
 
 //
@@ -581,6 +647,11 @@ int main(int arc, char* argv[])
   /// for (unsigned x : decoded)
   ///   std::cout << x << " ";
   /// std::cout << "\n";
+
+  test_fill_tables<2>();
+  test_fill_tables<3>();
+  /// test_fill_tables<4>();
+  /// test_fill_tables<5>();
 
   return 0;
 }
@@ -664,4 +735,47 @@ int count_unique_orientations()
 {
   auto orientations = hilbert::generate_unique_orientations<K>();
   return orientations.size();
+}
+
+
+template <int K>
+void test_fill_tables()
+{
+  const int numChildren = 1 << K;
+  const int numOrientations = intFactorial<int>(K) * intPow<int>(2, K);
+
+  char rotations[2*numChildren*numOrientations];
+  char htable[numChildren*numOrientations];
+
+  std::cout << "dim == " << K << ". Starting to fill tables...\n";
+
+  hilbert::generate_rotation_table<K>(rotations, htable);
+
+  std::cout << "Rotations:\n";
+  for (int r = 0; r < numOrientations; r++)
+  {
+    #pragma unroll(numChildren)
+    for (int ch = 0; ch < numChildren; ch++)
+      std::cout << rotations[r * 2*numChildren + ch];
+
+    std::cout << "  ";
+
+    #pragma unroll(numChildren)
+    for (int ch = 0; ch < numChildren; ch++)
+      std::cout << rotations[r * 2*numChildren + numChildren + ch];
+
+    std::cout << "\n";
+  }
+  std::cout << "\n";
+
+  std::cout << "HTable:\n";
+  for (int r = 0; r < numOrientations; r++)
+  {
+    #pragma unroll(numChildren)
+    for (int ch = 0; ch < numChildren; ch++)
+      printf("%5d", htable[r*numChildren + ch]);
+    std::cout << "\n";
+  }
+
+  std::cout << "\n\n";
 }
