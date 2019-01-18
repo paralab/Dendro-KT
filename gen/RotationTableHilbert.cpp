@@ -201,6 +201,26 @@ public:
     return p;
   }
 
+  // To produce children from parents, parent orientation should be
+  // applied to the results of refinement. (Local-coords to global-coords.)
+  AxBits apply(AxBits location) const;        // Group action.
+  PhysOrient apply(PhysOrient orient) const;  // Group multiplication.
+
+  // Can be used to index the space of all possible orientations.
+  unsigned int lehmanEncode()
+  {
+    return (((unsigned int) LehmerCode<int, K>::encode(a.data())) << K) | m;
+  }
+
+  static PhysOrient lehmanDecode(unsigned int code)
+  {
+    PhysOrient po;
+    LehmerCode<int, K>::decode(code >> K, po.a.data());
+    po.m = code & ((1u << K) - 1);
+    return po;
+  }
+
+
   // Total order defined by lexicographic comparison.
   bool operator< (const PhysOrient &that) const
   {
@@ -220,11 +240,6 @@ public:
       return std::hash<std::string>{}(std::string((const char*) &po, sizeof(PhysOrient<K>)));
     }
   };
-
-  // To produce children from parents, parent orientation should be
-  // applied to the results of refinement. (Local-coords to global-coords.)
-  AxBits apply(AxBits location) const;        // Group action.
-  PhysOrient apply(PhysOrient orient) const;  // Group multiplication.
 
 #if __DEBUG__
   friend std::ostream & operator<< <> (std::ostream &os, const PhysOrient &po);
@@ -553,19 +568,19 @@ int main(int arc, char* argv[])
   /// printf("dim == %d, #orientations == %d\n", 7, count_unique_orientations<7>());
   /// printf("dim == %d, #orientations == %d\n", 8, count_unique_orientations<8>());
 
-  const std::array<unsigned int, 7> permutation = {1, 5, 0, 6, 3, 4, 2};
-  std::array<unsigned int, 7> decoded;
-  const unsigned int code = LehmerCode<unsigned int, 7>::encode(permutation.data());
-  LehmerCode<unsigned int, 7>::decode(code, decoded.data());
-  std::cout << "Input:    ";
-  for (unsigned x : permutation)
-    std::cout << x << " ";
-  std::cout << "\n";
-  std::cout << "Encoding: " << code << "\n";
-  std::cout << "Decoded:  ";
-  for (unsigned x : decoded)
-    std::cout << x << " ";
-  std::cout << "\n";
+  /// const std::array<unsigned int, 7> permutation = {1, 5, 0, 6, 3, 4, 2};
+  /// std::array<unsigned int, 7> decoded;
+  /// const unsigned int code = LehmerCode<unsigned int, 7>::encode(permutation.data());
+  /// LehmerCode<unsigned int, 7>::decode(code, decoded.data());
+  /// std::cout << "Input:    ";
+  /// for (unsigned x : permutation)
+  ///   std::cout << x << " ";
+  /// std::cout << "\n";
+  /// std::cout << "Encoding: " << code << "\n";
+  /// std::cout << "Decoded:  ";
+  /// for (unsigned x : decoded)
+  ///   std::cout << x << " ";
+  /// std::cout << "\n";
 
   return 0;
 }
