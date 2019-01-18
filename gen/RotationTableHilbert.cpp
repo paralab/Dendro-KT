@@ -37,7 +37,9 @@
 
 
 #include <array>
+#include <set>
 #include <iostream>
+#include <stdio.h>
 #include <assert.h>
 
 namespace hilbert
@@ -228,6 +230,47 @@ void refinement_operator(int rank, AxBits &out_loc, PhysOrient<K> &out_orient)
 //TODO use std::set to tabulate the closure of refined orientations.
 
 
+template <int K>
+int generate_unique_orientations(std::set<PhysOrient<K>> &uniq_orient_set,
+                             PhysOrient<K> p = PhysOrient<K>::identity())
+{
+  const int numChildren = 1 << K;
+  bool is_new_element = uniq_orient_set.insert(p).second;
+  if (is_new_element)
+  {
+    for (int child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      AxBits unused_loc;
+      PhysOrient<K> child_orient;
+      refinement_operator<K>(child_sfc, unused_loc, child_orient);
+      generate_unique_orientations(uniq_orient_set, child_orient);
+    }
+  }
+
+  return uniq_orient_set.size();
+}
+
+
+/**
+ * @param rotations pointer to the `rotations' array, which contains permuted child numbers.
+ * @param htable pointer to the `HILBERT_TABLE' array, which contains orientation indices of children.
+ */
+template <int K>
+void generate_rotation_table(char *rotations, char *htable)
+{
+  const int numChildren = 1 << K;
+
+  // Left set of columns maps SFC-based child# to Morton-based child#.
+  // Right set of columns maps Morton-based child# to SFC-based child#.
+  const int sfc2morton = 0;
+  const int morton2sfc = numChildren;
+
+  const int rotations_row_sz = 2*numChildren;
+  const int htable_row_sz = numChildren;
+
+  //TODO compute generate_unique_orientations() and use as a lookup table.
+}
+
 
 }  // namespace hilbert.
 
@@ -261,6 +304,9 @@ void hexadecimal_string(std::array<int, K> h, char *c)
 // Declarations for tests.
 // ...........................................
 void haverkort_5D_table();
+
+template <int K>
+int count_unique_orientations();
 // ...........................................
 
 //
@@ -269,6 +315,15 @@ void haverkort_5D_table();
 int main(int arc, char* argv[])
 {
   /// haverkort_5D_table();
+
+  printf("dim == %d, #orientations == %d\n", 1, count_unique_orientations<1>());
+  printf("dim == %d, #orientations == %d\n", 2, count_unique_orientations<2>());
+  printf("dim == %d, #orientations == %d\n", 3, count_unique_orientations<3>());
+  printf("dim == %d, #orientations == %d\n", 4, count_unique_orientations<4>());
+  printf("dim == %d, #orientations == %d\n", 5, count_unique_orientations<5>());
+  printf("dim == %d, #orientations == %d\n", 6, count_unique_orientations<6>());
+  printf("dim == %d, #orientations == %d\n", 7, count_unique_orientations<7>());
+  printf("dim == %d, #orientations == %d\n", 8, count_unique_orientations<8>());
 
   return 0;
 }
@@ -345,3 +400,11 @@ void haverkort_5D_table()
 // 11101  10011  43201        34210             10010 
 // 11110  10001  32104        32104             10010 
 // 11111  10000  43210        43210             10001 
+
+
+template <int K>
+int count_unique_orientations()
+{
+  std::set<hilbert::PhysOrient<K>> unused_set;
+  return hilbert::generate_unique_orientations(unused_set);
+}
