@@ -85,7 +85,7 @@ constexpr T intFactorial(T f, T A = 1)
 /// }
 
 //
-// lehmerEncode() / lehmerDecode()
+// LehmerCode - encode/decode
 //
 // Lehmer, D.H. (1960), "Teaching combinatorial tricks to a computer",
 //    Proc. Sympos. Appl. Math. Combinatorial Analysis, Amer. Math. Soc., 10: 179–193
@@ -95,7 +95,7 @@ constexpr T intFactorial(T f, T A = 1)
 template <typename T, int K>
 struct LehmerCode
 {
-  static unsigned int encode(T *permutation)
+  static unsigned int encode(const T *permutation)
   {
     // L_N(x) === #{y \in B | y < x} === x - #{y \in A | y < x}.
     //
@@ -111,12 +111,24 @@ struct LehmerCode
       digit += (permutation[0] > permutation[i]);
     return intFactorial<unsigned int>(K-1) * digit + subcode;
   }
+
+  static void decode(unsigned int code, T *out_perm)
+  {
+    const unsigned int stride = intFactorial<unsigned int>(K-1);
+    T digit = code / stride;
+    out_perm[0] = digit;
+    LehmerCode<T,K-1>::decode(code - digit*stride, out_perm + 1);
+    #pragma unroll(K-1)
+    for (int i = 1; i < K; i++)
+      out_perm[i] += (out_perm[i] >= digit);
+  }
 };
 
 template <typename T>
 struct LehmerCode<T,1>
 {
-  static unsigned int encode(T *permutation) { return 0; }
+  static unsigned int encode(const T *permutation) { return 0; }
+  static void decode(unsigned int code, T *out_perm) { *out_perm = 0; }
 };
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ //
 
@@ -541,8 +553,19 @@ int main(int arc, char* argv[])
   /// printf("dim == %d, #orientations == %d\n", 7, count_unique_orientations<7>());
   /// printf("dim == %d, #orientations == %d\n", 8, count_unique_orientations<8>());
 
-  unsigned int permutation[7] = {1, 5, 0, 6, 3, 4, 2};
-  std::cout << LehmerCode<unsigned int, 7>::encode(permutation) << "\n";
+  const std::array<unsigned int, 7> permutation = {1, 5, 0, 6, 3, 4, 2};
+  std::array<unsigned int, 7> decoded;
+  const unsigned int code = LehmerCode<unsigned int, 7>::encode(permutation.data());
+  LehmerCode<unsigned int, 7>::decode(code, decoded.data());
+  std::cout << "Input:    ";
+  for (unsigned x : permutation)
+    std::cout << x << " ";
+  std::cout << "\n";
+  std::cout << "Encoding: " << code << "\n";
+  std::cout << "Decoded:  ";
+  for (unsigned x : decoded)
+    std::cout << x << " ";
+  std::cout << "\n";
 
   return 0;
 }
