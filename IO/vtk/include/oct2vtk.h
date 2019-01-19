@@ -57,6 +57,7 @@ namespace io
         }
 
 
+#ifdef DENDRO_VTU_ZLIB
         static int vtk_write_compressed (FILE * vtkfile, char *numeric_data,size_t byte_length)
         {
             int                 retval, fseek1, fseek2;
@@ -162,6 +163,7 @@ namespace io
             }
             return 0;
         }
+#endif
 
 
         static int vtk_write_binary (FILE * vtkfile, char *numeric_data, size_t byte_length)

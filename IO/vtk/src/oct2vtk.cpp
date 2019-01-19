@@ -1586,7 +1586,7 @@ namespace io
 #ifdef DENDRO_VTU_ASCII
             for(unsigned int ele=0;ele<nSize;ele++) {
                 sz = 1u << (m_uiMaxDepth - pNodes[ele].getLevel());
-                assert((sz % eleOrder) == 0);
+                /// assert((sz % eleOrder) == 0);    // @masado: eleOrder was not defined, but I think it would be 1 anyway.
                 std::array<T,D> eleCoords;
                 pNodes[ele].getAnchor(eleCoords);
                 if (D < 3)
