@@ -17,6 +17,7 @@
 
 #include "../include/hcurvedata.h"
 #include "../include/KDhcurvedata_decl.h"
+#include <assert.h>
 
 char* rotations;
 int* HILBERT_TABLE;
@@ -58,3 +59,16 @@ void _InitializeHcurve(int pDim)
 #endif
 }
 
+void _DestroyHcurve()
+{
+  if (rotations != NULL)
+  {
+    delete [] rotations;
+    rotations = NULL;
+  }
+  if (HILBERT_TABLE != NULL)
+  {
+    delete [] HILBERT_TABLE;
+    HILBERT_TABLE = NULL;
+  }
+}

@@ -56,6 +56,7 @@ extern unsigned int rotationStackPointer;
 
 void _InitializeHcurve(int pDim);
 
+void _DestroyHcurve();
 
 
 

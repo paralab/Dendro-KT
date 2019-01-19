@@ -184,6 +184,11 @@ if(BUILD_WITH_PETSC)
     target_link_libraries(dendroKT PUBLIC ${PETSC_LIBRARIES})
 endif()
 
+if(HILBERT_ORDERING)
+  add_definitions(-DHILBERT_ORDERING)
+endif()
+
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testConstruct.cpp)
 add_executable(tstConstruct ${SRC_FILES})
 target_include_directories(tstConstruct PUBLIC ${MPI_INCLUDE_PATH})
@@ -214,4 +219,9 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeVtu.cpp)
 add_executable(tstTreeVtu ${SRC_FILES})
 target_include_directories(tstTreeVtu PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstTreeVtu dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testHCurveTable.cpp)
+add_executable(tstHCurveTable ${SRC_FILES})
+target_include_directories(tstHCurveTable PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstHCurveTable dendroKT ${MPI_LIBRARIES} m)
 
