@@ -350,15 +350,23 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getAncestor(unsigned int ancLev) const {
 
 template <typename T, unsigned int dim>
 inline TreeNode<T,dim> TreeNode<T,dim>::getFirstChildMorton() const {
+  return getChildMorton(0);
+}
+
+template <typename T, unsigned int dim>
+inline TreeNode<T,dim> TreeNode<T,dim>::getChildMorton(unsigned char child) const {
   const T mask = ~((1u << (m_uiMaxDepth - m_uiLevel)) - 1);
   TreeNode<T,dim> m = *this;
 #pragma unroll(dim)
   for (int d = 0; d < dim; d++)
     m.m_uiCoords[d] &= mask;      // Clear anything below parent bit.
   m.m_uiLevel++;
+
+  m.setMortonIndex(child);
   
   return m;
 }
+
 
 /**
   @brief Get min (inclusive lower bound) for a single dimension.

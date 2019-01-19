@@ -182,6 +182,9 @@ namespace ot {
       /**@brief return the smallest (in morton id) of this octant */
       TreeNode getFirstChildMorton() const;
 
+      /**@brief return a child of this octant with the given child number.*/
+      TreeNode getChildMorton(unsigned char child) const;
+
       /**@brief max coord of the d dimention*/
       T minX(int d) const;
 

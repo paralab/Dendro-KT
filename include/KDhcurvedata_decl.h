@@ -9,7 +9,6 @@
 #include "hcurvedata.h"
 
 #include <cstring>
-#include <iostream>
 
 template <int pDim>
 struct HilbertData
@@ -22,9 +21,6 @@ struct HilbertData
 template <int pDim>
 void HilbertData<pDim>::copyData(char * &rotations, int * &HILBERT_TABLE)
 {
-  std::cout << "sizeof(m_rotations)==" << sizeof(m_rotations) << "\n";
-  std::cout << "sizeof(m_HILBERT_TABLE)==" << sizeof(m_HILBERT_TABLE) << "\n";
-
   rotations = new char[sizeof(m_rotations)];
   memcpy(rotations, m_rotations, sizeof(m_rotations));
 
