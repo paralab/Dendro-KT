@@ -14,37 +14,82 @@
 
 
 //
+// checkAdjacency()
+//
+template <unsigned int K, typename T = unsigned int>
+bool checkAdjacency(const ot::TreeNode<T,K> &t1, const ot::TreeNode<T,K> &t2, const unsigned int eLev)
+{
+  const unsigned int dist = 1u << (m_uiMaxDepth - eLev);
+
+  // Check each dimension coordinate one by one.
+  bool success = true;
+  bool foundMvDim = false;
+  for (int d = 0; d < K; d++)
+  {
+    unsigned int px = t1.getX(d), cx = t2.getX(d);
+    unsigned diff = (cx > px ? cx - px : px - cx);
+    if (diff == dist && foundMvDim)
+      success = false;
+    else if (diff == dist)
+      foundMvDim = true;
+    else if (diff > dist)
+      success = false;
+  }
+  return (success && foundMvDim);
+}
+
+
+
+//
 // depthFirstTraversal()
 //
 template <unsigned int K, typename T = unsigned int, bool printData = false>
-void depthFirstTraversal(std::vector<ot::TreeNode<T,K>> &ordering,
-                         unsigned int eLev,
-                         ot::TreeNode<T,K> parent = ot::TreeNode<T,K>{},
-                         unsigned int pRot = 0)
+bool depthFirstTraversal(unsigned int eLev,
+                         ot::TreeNode<T,K> parent,
+                         unsigned int pRot,
+                         ot::TreeNode<T,K> &prevLeaf,
+                         bool &isInitialized)
 {
   const int numChildren = ot::TreeNode<T,K>::numChildren;
 
   if (parent.getLevel() > eLev)
-    return;
+    return true;
 
   if (parent.getLevel() == eLev)  // 'Leaf' of the traversal.
   {
     if (printData)
       std::cout << "\t\t\t" << parent.getBase32Hex().data() << "\n";
-    ordering.push_back(parent);
+
+    //  Check prev and parent (leaves) are adjacent. // 
+    if (isInitialized)
+    {
+      bool success = checkAdjacency(prevLeaf, parent, eLev);
+      prevLeaf = parent;
+      return success;
+    }
+    else
+    {
+      prevLeaf = parent;
+      isInitialized = true;
+      return true;
+    }
   }
 
   else
   {
     if (printData)
       std::cout << "(intrnl) " << parent.getBase32Hex().data() << "\n";
+    bool success = true;
     for (unsigned char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
       unsigned char child = rotations[pRot * 2*numChildren + child_sfc];
       unsigned int cRot = HILBERT_TABLE[pRot * numChildren + child];
       ot::TreeNode<T,K> cNode = parent.getChildMorton(child);
-      depthFirstTraversal<K,T>(ordering, eLev, cNode, cRot);
+      if (!depthFirstTraversal<K,T>(eLev, cNode, cRot,
+          prevLeaf, isInitialized))
+        return false;
     }
+    return true;
   }
 }
 
@@ -57,54 +102,18 @@ void test_depthFirstTraversal(unsigned int eLev)
   _InitializeHcurve(K);
 
   using T = unsigned int;
-  std::vector<ot::TreeNode<T,K>> ordering;
-  depthFirstTraversal<K,T,printData>(ordering, eLev);
+  std::pair<ot::TreeNode<T,K>, bool> prev_struct(ot::TreeNode<T,K>{}, false);
 
-  const unsigned int dist = 1u << (m_uiMaxDepth - eLev);
+  bool success = depthFirstTraversal<K,T,printData>(eLev, ot::TreeNode<T,K>{}, 0,
+      prev_struct.first, prev_struct.second);
 
-  // Check spatial adjacency.
-  typename std::vector<ot::TreeNode<T,K>>::const_iterator prev, cur;
-  prev = ordering.begin();
-  cur = prev+1;
-
-  bool success = true;
-  while (cur < ordering.end())
-  {
-    // Check each dimension coordinate one by one.
-    bool foundMvDim = false;
-    for (int d = 0; d < K; d++)
-    {
-      unsigned int cx = cur->getX(d), px = prev->getX(d);
-      unsigned diff = (cx > px ? cx - px : px - cx);
-      if (diff == dist && foundMvDim)
-        success = false;
-      else if (diff == dist)
-        foundMvDim = true;
-      else if (diff > dist)
-        success = false;
-    }
-    if (!success || !foundMvDim)
-    {
-      success = false;
-      break;
-    }
-
-    prev++;
-    cur++;
-  }
   if (success)
   {
     std::cout << "Adjacency test succeeded.\n";
   }
   else
   {
-    std::cout << "Adjacency test failed with elements "
-              << (prev - ordering.begin())
-              << " - "
-              << (cur - ordering.begin())
-              << "\n";
-    std::cout << prev->getBase32Hex().data() << " ... ";
-    std::cout << cur->getBase32Hex().data() << "\n";
+    std::cout << "Adjacency test FAILED.\n";
   }
 
   _DestroyHcurve();
