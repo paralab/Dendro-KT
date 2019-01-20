@@ -39,20 +39,45 @@ bool checkAdjacency(const ot::TreeNode<T,K> &t1, const ot::TreeNode<T,K> &t2, co
 }
 
 
+template <typename T, unsigned int K>
+struct SelectAll
+{
+  bool operator() (const ot::TreeNode<T,K> &tn) const { return true; }
+};
+
+template <typename T, unsigned int K>
+struct SelectSlice
+{
+  unsigned int d;
+  T val;
+
+  bool operator() (const ot::TreeNode<T,K> &tn) const
+  {
+    return tn.minX(d) <= val && val <= tn.maxX(d);
+  }
+};
+
 
 //
 // depthFirstTraversal()
 //
-template <unsigned int K, typename T = unsigned int, bool printData = false>
+template <unsigned int K,
+            typename T = unsigned int,
+            typename S = SelectAll<T,K>,
+            bool printData = false>
 bool depthFirstTraversal(unsigned int eLev,
                          ot::TreeNode<T,K> parent,
                          unsigned int pRot,
+                         const S &selector,
                          ot::TreeNode<T,K> &prevLeaf,
                          bool &isInitialized)
 {
   const int numChildren = ot::TreeNode<T,K>::numChildren;
 
   if (parent.getLevel() > eLev)
+    return true;
+
+  if (!selector(parent))
     return true;
 
   if (parent.getLevel() == eLev)  // 'Leaf' of the traversal.
@@ -79,14 +104,16 @@ bool depthFirstTraversal(unsigned int eLev,
   {
     if (printData)
       std::cout << "(intrnl) " << parent.getBase32Hex().data() << "\n";
-    bool success = true;
     for (unsigned char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
       unsigned char child = rotations[pRot * 2*numChildren + child_sfc];
       unsigned int cRot = HILBERT_TABLE[pRot * numChildren + child];
       ot::TreeNode<T,K> cNode = parent.getChildMorton(child);
-      if (!depthFirstTraversal<K,T>(eLev, cNode, cRot,
-          prevLeaf, isInitialized))
+      if (printData)
+        std::cout << "\t\t\t\t(p) " << parent.getBase32Hex().data() << "   (c) " << cNode.getBase32Hex().data() << "\n";
+      if (!depthFirstTraversal<K,T,S,printData>(eLev, cNode, cRot,
+            selector,
+            prevLeaf, isInitialized))
         return false;
     }
     return true;
@@ -104,7 +131,10 @@ void test_depthFirstTraversal(unsigned int eLev)
   using T = unsigned int;
   std::pair<ot::TreeNode<T,K>, bool> prev_struct(ot::TreeNode<T,K>{}, false);
 
-  bool success = depthFirstTraversal<K,T,printData>(eLev, ot::TreeNode<T,K>{}, 0,
+  SelectAll<T,K> selector;
+
+  bool success = depthFirstTraversal<K,T,SelectAll<T,K>,printData>(eLev, ot::TreeNode<T,K>{}, 0,
+      selector,
       prev_struct.first, prev_struct.second);
 
   if (success)
@@ -119,6 +149,56 @@ void test_depthFirstTraversal(unsigned int eLev)
   _DestroyHcurve();
 }
 
+
+//
+// test_depthFirstTraversalSlices()
+//
+template <unsigned int K, bool printData = false>
+void test_depthFirstTraversalSlices(unsigned int eLev)
+{
+  _InitializeHcurve(K);
+
+  using T = unsigned int;
+  SelectSlice<T,K> selector;
+
+  bool success = true;
+
+  const unsigned int dist = 1u << (m_uiMaxDepth - eLev);
+  const unsigned int sv[2] = {0, (1u << m_uiMaxDepth) - dist/2};
+  for (unsigned int d = 0; d < K; d++)
+  {
+    for (int ii = 0; ii < 2; ii++)
+    {
+      selector.d = d;
+      selector.val = sv[ii];
+
+      if (printData)
+        std::cout << "-- [ii==" << ii << "] Slice d" << d << " @ " << sv[ii] << "\n";
+
+      std::pair<ot::TreeNode<T,K>, bool> prev_struct(ot::TreeNode<T,K>{}, false);
+
+      success = depthFirstTraversal<K,T,SelectSlice<T,K>,printData>(eLev, ot::TreeNode<T,K>{}, 0,
+          selector,
+          prev_struct.first, prev_struct.second);
+
+      if (!success)
+        break;
+    }
+    if (!success)
+      break;
+  }
+
+  if (success)
+  {
+    std::cout << "Adjacency test succeeded.\n";
+  }
+  else
+  {
+    std::cout << "Adjacency test FAILED.\n";
+  }
+
+  _DestroyHcurve();
+}
 
 
 //
@@ -160,9 +240,13 @@ int main(int argc, char *argv[])
   /// printTableData<3>();  std::cout << "\n\n";
   /// printTableData<4>();  std::cout << "\n\n";
 
-  test_depthFirstTraversal<2>(8);  std::cout << "\n";
-  test_depthFirstTraversal<3>(7);  std::cout << "\n";
-  test_depthFirstTraversal<4>(4);  std::cout << "\n";
+  /// std::cout << "dim==2  ";  test_depthFirstTraversal<2, true>(2);  std::cout << "\n";
+  /// std::cout << "dim==3  ";  test_depthFirstTraversal<3>(8);  std::cout << "\n";
+  /// std::cout << "dim==4  ";  test_depthFirstTraversal<4>(6);  std::cout << "\n";
+
+  std::cout << "dim==2  ";  test_depthFirstTraversalSlices<2,false>(4);  std::cout << "\n";
+  std::cout << "dim==3  ";  test_depthFirstTraversalSlices<3,true>(2);  std::cout << "\n";
+  /// std::cout << "dim==4  ";  test_depthFirstTraversalSlices<4,true>(4);  std::cout << "\n";
 
   return 0;
 }
