@@ -20,7 +20,7 @@
 
 // ...........................................................................
 template <typename T, unsigned int D>
-bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
+bool checkLocalCompletenessMorton(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData);
@@ -58,7 +58,7 @@ void test_locTreeConstruction(int numPoints)
       0,
       TreeNode());
 
-  checkLocalCompleteness<T,dim>(points, tree, true, true);
+  checkLocalCompletenessMorton<T,dim>(points, tree, true, true);
 }
 
 
@@ -99,7 +99,7 @@ void test_distTreeConstruction(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   std::cerr << "Finished distTreeConstruction().\n\n";
 
   // Local adjacency test. Ignore messages about unaccounted points.
-  int myLocAdjacency = checkLocalCompleteness<T,dim>(points, treePart, false, false);
+  int myLocAdjacency = checkLocalCompletenessMorton<T,dim>(points, treePart, false, false);
 
   const bool printGlobData = true;
 
@@ -194,10 +194,10 @@ void test_distTreeConstruction(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 
 
 // ----------------------
-// checkLocalCompleteness
+// checkLocalCompletenessMorton
 // ----------------------
 template <typename T, unsigned int D>
-bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
+bool checkLocalCompletenessMorton(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData)

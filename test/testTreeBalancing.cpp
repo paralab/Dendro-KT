@@ -18,10 +18,26 @@
 #include <assert.h>
 #include <mpi.h>
 
+#include <iostream>
+#include <fstream>
 
 // ...........................................................................
+template <typename T, int Base, unsigned int L>
+struct DigitString;
+using DType = int;
+
 template <typename T, unsigned int D>
-bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
+bool checkLocalCompleteness(const std::vector<ot::TreeNode<T,D>> &tree,
+                            bool entireTree,
+                            bool printData,
+                            DigitString<DType, (1<<D), 32> &counter);
+
+template <typename T, unsigned int D, bool printData>
+bool checkPointsContainedInorder(const std::vector<ot::TreeNode<T,D>> &points,
+                                 const std::vector<ot::TreeNode<T,D>> &tree);
+
+template <typename T, unsigned int D>
+bool checkLocalCompletenessMorton(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData);
@@ -99,23 +115,20 @@ void test_locTreeBalancing(int numPoints)
 
   ot::SFC_Tree<T,dim>::locTreeBalancing(points, tree, maxPtsPerRegion);
 
-  checkLocalCompleteness<T,dim>(points, tree, true, true);
+  bool pointSuccess = checkPointsContainedInorder<T,dim,true>(points, tree);
+  std::cout << "<dim==" << dim << "> Point check " << (pointSuccess ? "succeeded" : "FAILED") << "\n";
+
+  DigitString<DType, numChildren, 32> counter = DigitString<DType, numChildren, 32>::zero();
+  bool completenessSuccess = checkLocalCompleteness<T,dim>(tree, true, false, counter);
+  std::cout << "<dim==" << dim << "> Completeness constraint " << (completenessSuccess ? "succeeded" : "FAILED") << "\n";
 
   bool balanceSuccess = checkBalancingConstraint(tree, false);
-  std::cout << "Balancing constraint " << (balanceSuccess ? "succeeded" : "FAILED") << "\n";
+  std::cout << "<dim==" << dim << "> Balancing constraint " << (balanceSuccess ? "succeeded" : "FAILED") << "\n";
 
   // Make sure there is something there.
   std::cout << "Final.... points.size() == " << points.size() << "  tree.size() == " << tree.size() << "\n";
 
-  ///std::cout << "Points:      |-----\n";
-  ///for (const TreeNode &tn : points)
-  ///  std::cout << tn.getBase32Hex().data() << "\n";
-  ///std::cout << "        -----|\n";
-
-  ///std::cout << "Tree:      |-----\n";
-  ///for (const TreeNode &tn : tree)
-  ///  std::cout << tn.getBase32Hex().data() << "\n";
-  ///std::cout << "      -----|\n";
+  _DestroyHcurve();
 }
 
 
@@ -155,7 +168,7 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   std::cerr << "Finished distTreeBalancing().\n\n";
 
   // Local adjacency test. Ignore messages about unaccounted points.
-  int myLocAdjacency = checkLocalCompleteness<T,dim>(points, treePart, false, false);
+  int myLocAdjacency = checkLocalCompletenessMorton<T,dim>(points, treePart, false, false);
 
   const bool printGlobData = true;
 
@@ -253,12 +266,187 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 }
 
 
+template <typename T, int Base, unsigned int L>
+struct DigitString
+{
+  std::array<T,L> digits;
+
+  static DigitString zero()
+  {
+    DigitString ret;
+    #pragma unroll(L)
+    for (unsigned int p = 0; p < L; p++)
+      ret.digits[p] = 0;
+    return ret;
+  }
+
+  void add(const DigitString &other)
+  {
+    #pragma unroll(L)
+    for (unsigned int p = 0; p < L; p++)
+      addToPlace(p, other.digits[p]);
+  }
+
+  void addToPlace(unsigned int p, T val)
+  {
+    assert(p < L);
+    val = val % Base;
+    do
+    {
+      digits[p] += val;
+      val = (digits[p] >= Base);
+      if (val)
+        digits[p] -= Base;
+    }
+    while (++p < L && val);
+  }
+
+  unsigned int lowestNonzero() const
+  {
+    for (unsigned int p = 0; p < L; p++)
+      if (digits[p])
+        return p;
+    return L;
+  }
+
+  void print(std::ostream &out, unsigned int loPlace, unsigned int hiPlace) const
+  {
+    for (unsigned int p = hiPlace; hiPlace >= p && p >= loPlace; p--)  // workaround for unsigned decrementing
+      out << digits[p] << " ";
+  }
+};
+
+//
+// checkLocalCompleteness()
+//
+// Notes:
+//   - This method sums up the volume occupied by all the nodes of the tree.
+//   - Additionally, checks that each subtree occupies the proper volume.
+//     (Assuming that the tree is sorted, contains only leaves, and no duplicates.)
+//     Because of this, if `entireTree' is set to false, the counter will be
+//     initialized based on what would be the immediate predecessor of the
+//     first listed node in a partition.
+//   - Assumes that level 0 corresponds to root, so total volume should be 1 at root level.
+//
+template <typename T, unsigned int D>
+bool checkLocalCompleteness(const std::vector<ot::TreeNode<T,D>> &tree,
+                            bool entireTree,
+                            bool printData,
+                            DigitString<DType, (1<<D), 32> &counter)
+{
+  const int numChildren = 1<<D;
+  if (!entireTree)
+  {
+    counter = DigitString<DType, (1<<D), 32>::zero();
+    int pRot = 0;
+    for (unsigned int l = 0; l <= m_uiMaxDepth; l++)
+    {
+      unsigned char child = tree.front().getMortonIndex(l);
+      unsigned char child_sfc = rotations[pRot * 2*numChildren + numChildren + child];
+      counter.digits[m_uiMaxDepth - l] = child_sfc;    // A 0-based index is also a predecessor count.
+      pRot = HILBERT_TABLE[pRot * numChildren + child];
+    }
+  }
+
+  // Sum the tree volume.
+  // Check that before moving to a higher level, the lower levels are so-far complete.
+  unsigned int lev = (entireTree ? 0 : tree.front().getLevel());
+  for (const ot::TreeNode<T,D> &tn : tree)
+  {
+    if (printData)
+    {
+      counter.print(std::cout, 0, m_uiMaxDepth);
+      std::cout << "  \t ++ " << tn.getBase32Hex().data() << "\n";
+    }
+
+    if (lev > (lev = tn.getLevel()) && (m_uiMaxDepth - counter.lowestNonzero()) > lev)
+      return false;
+    counter.addToPlace(m_uiMaxDepth - lev, 1);
+  }
+  if (entireTree)
+    return (counter.lowestNonzero() == m_uiMaxDepth &&
+           counter.digits[m_uiMaxDepth] == 1);
+  else
+    return true;
+}
+
+
+template <typename T, unsigned int D, bool printData>
+bool checkPointsContainedInorder(const std::vector<ot::TreeNode<T,D>> &points,
+                                 const std::vector<ot::TreeNode<T,D>> &tree)
+{
+  int lev = 0, prevLev = 0;
+  typename std::vector<ot::TreeNode<T,D>>::const_iterator pIt = points.begin();
+  const char continueStr[] = "  ";
+  const char expandStr[]   = " [_]";
+  const char newBlockStr[] = "__";
+  const int beginTextPos = 40;
+  std::streamsize oldWidth = std::cout.width();
+  if (printData)
+    std::cout << "    (Buckets)                           (Points)\n";
+
+  for (const ot::TreeNode<T,D> tn : tree)
+  {
+    prevLev = lev;
+    lev = tn.getLevel();
+
+    // Print buckets.
+    if (printData)
+    {
+      if (lev != prevLev)
+      {
+        for (int ii = 0; ii < lev; ii++)
+          std::cout << continueStr;
+        std::cout << "\n";
+      }
+
+      for (int ii = 0; ii < lev; ii++)
+        std::cout << continueStr;
+      std::cout << expandStr << "    " << tn.getBase32Hex().data() << "\n";
+    }
+
+    // Print points.
+    while (tn.isAncestor(pIt->getDFD()) || tn == pIt->getDFD())
+    {
+      if (printData)
+      {
+        for (int ii = 0; ii < lev; ii++)
+          std::cout << continueStr;
+        
+        std::cout << std::setw(beginTextPos - 2*lev) << ' '
+                  << std::setw(oldWidth) << pIt->getBase32Hex().data()
+                  << "\n";
+      }
+
+      pIt++;
+    }
+  }
+
+  bool success = (pIt == points.end());
+
+  // Print any remaining points.
+  if (printData)
+    while (pIt != points.end())
+    {
+      for (int ii = 0; ii < lev; ii++)
+        std::cout << continueStr;
+        
+      std::cout << std::setw(beginTextPos - 2*lev) << ' '
+                << std::setw(oldWidth) << pIt->getBase32Hex().data()
+                << "\n";
+      pIt++;
+    }
+
+  return success;
+}
+
+
 
 // ----------------------
-// checkLocalCompleteness
+// checkLocalCompletenessMorton
 // ----------------------
 template <typename T, unsigned int D>
-bool checkLocalCompleteness(std::vector<ot::TreeNode<T,D>> &points,
+bool checkLocalCompletenessMorton(std::vector<ot::TreeNode<T,D>> &points,
                             std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData)
@@ -518,7 +706,7 @@ int main(int argc, char* argv[])
   ///testTheTest<3>();
   ///testTheTest<4>();
 
-  test_locTreeBalancing<4>(ptsPerProc);
+  test_locTreeBalancing<2>(ptsPerProc);
   ///test_distTreeBalancing(ptsPerProc, MPI_COMM_WORLD);
 
   MPI_Finalize();
