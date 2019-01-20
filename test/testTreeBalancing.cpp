@@ -109,21 +109,23 @@ void test_locTreeBalancing(int numPoints)
   std::vector<TreeNode> points = ot::getPts<T,dim>(numPoints);
   std::vector<TreeNode> tree;
 
-  const unsigned int maxPtsPerRegion = 8;
+  // Note: In order for the point check to succeed,
+  // the points must be totally sorted, so this needs to be 1.
+  const unsigned int maxPtsPerRegion = 1;
 
   const T leafLevel = m_uiMaxDepth;
 
   ot::SFC_Tree<T,dim>::locTreeBalancing(points, tree, maxPtsPerRegion);
 
-  bool pointSuccess = checkPointsContainedInorder<T,dim,true>(points, tree);
-  std::cout << "<dim==" << dim << "> Point check " << (pointSuccess ? "succeeded" : "FAILED") << "\n";
+  bool pointSuccess = checkPointsContainedInorder<T,dim,false>(points, tree);
+  std::cout << "<dim==" << dim << "> Point check             " << (pointSuccess ? "succeeded" : "FAILED") << "\n";
 
   DigitString<DType, numChildren, 32> counter = DigitString<DType, numChildren, 32>::zero();
   bool completenessSuccess = checkLocalCompleteness<T,dim>(tree, true, false, counter);
   std::cout << "<dim==" << dim << "> Completeness constraint " << (completenessSuccess ? "succeeded" : "FAILED") << "\n";
 
   bool balanceSuccess = checkBalancingConstraint(tree, false);
-  std::cout << "<dim==" << dim << "> Balancing constraint " << (balanceSuccess ? "succeeded" : "FAILED") << "\n";
+  std::cout << "<dim==" << dim << "> Balancing constraint    " << (balanceSuccess ? "succeeded" : "FAILED") << "\n";
 
   // Make sure there is something there.
   std::cout << "Final.... points.size() == " << points.size() << "  tree.size() == " << tree.size() << "\n";
@@ -707,6 +709,8 @@ int main(int argc, char* argv[])
   ///testTheTest<4>();
 
   test_locTreeBalancing<2>(ptsPerProc);
+  test_locTreeBalancing<3>(ptsPerProc);
+  test_locTreeBalancing<4>(ptsPerProc);
   ///test_distTreeBalancing(ptsPerProc, MPI_COMM_WORLD);
 
   MPI_Finalize();
