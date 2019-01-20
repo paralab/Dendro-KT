@@ -159,7 +159,8 @@ void test_depthFirstTraversalSlices(unsigned int eLev)
   _InitializeHcurve(K);
 
   using T = unsigned int;
-  SelectSlice<T,K> selector;
+  SelectSlice<T,K> selector{0, 0};
+  const unsigned int sliceVal = 0;    // The 'extradimensionality' property (Haverkort, 2012) is only required to hold for facets that include the origin.
 
   bool success = true;
 
@@ -167,23 +168,18 @@ void test_depthFirstTraversalSlices(unsigned int eLev)
   const unsigned int sv[2] = {0, (1u << m_uiMaxDepth) - dist/2};
   for (unsigned int d = 0; d < K; d++)
   {
-    for (int ii = 0; ii < 2; ii++)
-    {
-      selector.d = d;
-      selector.val = sv[ii];
+    selector.d = d;
+    selector.val = sliceVal;
 
-      if (printData)
-        std::cout << "-- [ii==" << ii << "] Slice d" << d << " @ " << sv[ii] << "\n";
+    if (printData)
+      std::cout << "-- Slice d" << d << " @ " << sliceVal << "\n";
 
-      std::pair<ot::TreeNode<T,K>, bool> prev_struct(ot::TreeNode<T,K>{}, false);
+    std::pair<ot::TreeNode<T,K>, bool> prev_struct(ot::TreeNode<T,K>{}, false);
 
-      success = depthFirstTraversal<K,T,SelectSlice<T,K>,printData>(eLev, ot::TreeNode<T,K>{}, 0,
-          selector,
-          prev_struct.first, prev_struct.second);
+    success = depthFirstTraversal<K,T,SelectSlice<T,K>,printData>(eLev, ot::TreeNode<T,K>{}, 0,
+        selector,
+        prev_struct.first, prev_struct.second);
 
-      if (!success)
-        break;
-    }
     if (!success)
       break;
   }
@@ -236,6 +232,10 @@ int main(int argc, char *argv[])
 {
   /* Do MPI stuff here if needed. */
 
+  long argval = 0;
+  if (argc > 1)
+    argval = strtol(argv[1], NULL, 0);
+
   /// printTableData<2>();  std::cout << "\n\n";
   /// printTableData<3>();  std::cout << "\n\n";
   /// printTableData<4>();  std::cout << "\n\n";
@@ -244,9 +244,10 @@ int main(int argc, char *argv[])
   /// std::cout << "dim==3  ";  test_depthFirstTraversal<3>(8);  std::cout << "\n";
   /// std::cout << "dim==4  ";  test_depthFirstTraversal<4>(6);  std::cout << "\n";
 
-  std::cout << "dim==2  ";  test_depthFirstTraversalSlices<2,false>(4);  std::cout << "\n";
-  std::cout << "dim==3  ";  test_depthFirstTraversalSlices<3,true>(2);  std::cout << "\n";
-  /// std::cout << "dim==4  ";  test_depthFirstTraversalSlices<4,true>(4);  std::cout << "\n";
+  int eLev = (argval > 0 ? argval : 4 );
+  std::cout << "dim==2  ";  test_depthFirstTraversalSlices<2,false>(eLev);  std::cout << "\n";
+  std::cout << "dim==3  ";  test_depthFirstTraversalSlices<3,false>(eLev);  std::cout << "\n";
+  std::cout << "dim==4  ";  test_depthFirstTraversalSlices<4,false>(eLev);  std::cout << "\n";
 
   return 0;
 }
