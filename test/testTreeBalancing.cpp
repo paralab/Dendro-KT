@@ -294,8 +294,8 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 
   MPI_Reduce(&myLocCompleteness, &recvLocCompleteness, 1, MPI_INT, MPI_LAND, 0, comm);
   MPI_Reduce(&myGlobCompleteness, &recvGlobCompleteness, 1, MPI_INT, MPI_LAND, 0, comm);
-
   std::cout.flush();
+
   MPI_Barrier(comm);
   if (rProc == 0)
   {
@@ -334,11 +334,12 @@ bool checkLocalCompleteness(const std::vector<ot::TreeNode<T,D>> &tree,
   const int numChildren = 1<<D;
   if (!entireTree)
   {
+    const ot::TreeNode<T,D> &treeFront = tree.front();
     init = DigitString<DType, (1<<D), 32>::zero();
     int pRot = 0;
-    for (unsigned int l = 0; l <= m_uiMaxDepth; l++)
+    for (unsigned int l = 0; l <= treeFront.getLevel(); l++)
     {
-      unsigned char child = tree.front().getMortonIndex(l);
+      unsigned char child = treeFront.getMortonIndex(l);
       unsigned char child_sfc = rotations[pRot * 2*numChildren + numChildren + child];
       init.digits[m_uiMaxDepth - l] = child_sfc;    // A 0-based index is also a predecessor count.
       pRot = HILBERT_TABLE[pRot * numChildren + child];
