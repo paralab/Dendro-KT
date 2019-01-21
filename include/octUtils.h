@@ -33,8 +33,8 @@ namespace ot
 
         // Set up random number generator.
         std::random_device rd;
-        std::mt19937_64 gen(rd());
-        //gen.seed(1331);             // Uncomment for deterministic testing.
+        std::mt19937_64 gen(rd());    // 1. Use this for random/pseudorandom testing.
+        /// std::mt19937_64 gen(1331);    // 2. Use this for deterministic testing.
         /// std::uniform_int_distribution<T> distCoord(0, maxCoord);
         std::normal_distribution<double> distCoord((1u << m_uiMaxDepth) / 2, (1u << m_uiMaxDepth) / 100);
         std::uniform_int_distribution<T> distLevel(m_uiMaxDepth, m_uiMaxDepth);

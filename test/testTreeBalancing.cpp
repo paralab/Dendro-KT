@@ -408,7 +408,7 @@ bool checkPointsContainedInorder(const std::vector<ot::TreeNode<T,D>> &points,
     }
 
     // Print points.
-    while (tn.isAncestor(pIt->getDFD()) || tn == pIt->getDFD())
+    while (pIt != points.end() && (tn.isAncestor(pIt->getDFD()) || tn == pIt->getDFD()))
     {
       if (printData)
       {
