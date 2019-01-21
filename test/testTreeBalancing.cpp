@@ -30,7 +30,8 @@ template <typename T, unsigned int D>
 bool checkLocalCompleteness(const std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData,
-                            DigitString<DType, (1<<D), 32> &counter);
+                            DigitString<DType, (1<<D), 32> &counter,
+                            DigitString<DType, (1<<D), 32> &init);
 
 template <typename T, unsigned int D, bool printData>
 bool checkPointsContainedInorder(const std::vector<ot::TreeNode<T,D>> &points,
@@ -45,6 +46,70 @@ bool checkLocalCompletenessMorton(std::vector<ot::TreeNode<T,D>> &points,
 template <typename T, unsigned int D>
 bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool printData);
 // ...........................................................................
+
+
+//
+// struct DigitString
+//
+template <typename T, int Base, unsigned int L>
+struct DigitString
+{
+  std::array<T,L> digits;
+
+  static DigitString zero()
+  {
+    DigitString ret;
+    #pragma unroll(L)
+    for (unsigned int p = 0; p < L; p++)
+      ret.digits[p] = 0;
+    return ret;
+  }
+
+  void add(const DigitString &other)
+  {
+    #pragma unroll(L)
+    for (unsigned int p = 0; p < L; p++)
+      addToPlace(p, other.digits[p]);
+  }
+
+  void addToPlace(unsigned int p, T val)
+  {
+    assert(p < L);
+    val = val % Base;
+    do
+    {
+      digits[p] += val;
+      val = (digits[p] >= Base);
+      if (val)
+        digits[p] -= Base;
+    }
+    while (++p < L && val);
+  }
+
+  unsigned int lowestNonzero() const
+  {
+    for (unsigned int p = 0; p < L; p++)
+      if (digits[p])
+        return p;
+    return L;
+  }
+
+  bool operator== (const DigitString &other) const
+  {
+    return digits == other.digits;
+  }
+
+  bool operator!= (const DigitString &other) const
+  {
+    return digits != other.digits;
+  }
+
+  void print(std::ostream &out, unsigned int loPlace, unsigned int hiPlace) const
+  {
+    for (unsigned int p = hiPlace; hiPlace >= p && p >= loPlace; p--)  // workaround for unsigned decrementing
+      out << digits[p] << " ";
+  }
+};
 
 
 
@@ -120,8 +185,9 @@ void test_locTreeBalancing(int numPoints)
   bool pointSuccess = checkPointsContainedInorder<T,dim,false>(points, tree);
   std::cout << "<dim==" << dim << "> Point check             " << (pointSuccess ? "succeeded" : "FAILED") << "\n";
 
-  DigitString<DType, numChildren, 32> counter = DigitString<DType, numChildren, 32>::zero();
-  bool completenessSuccess = checkLocalCompleteness<T,dim>(tree, true, false, counter);
+  auto counter = DigitString<DType, numChildren, 32>::zero();
+  auto unused_init = counter;
+  bool completenessSuccess = checkLocalCompleteness<T,dim>(tree, true, false, counter, unused_init);
   std::cout << "<dim==" << dim << "> Completeness constraint " << (completenessSuccess ? "succeeded" : "FAILED") << "\n";
 
   bool balanceSuccess = checkBalancingConstraint(tree, false);
@@ -135,13 +201,14 @@ void test_locTreeBalancing(int numPoints)
 
 
 //------------------------
-// test_distTreeConstruction()
+// test_distTreeBalancing()
 //
 // Notes:
-//   - For this test we expect the local and global adjacency criteria to succeed.
-//   - However we expect the points-in-buckets criterion to probably fail, since
-//     buckets are redistributed again after points are partitioned.
+//   - For this test we expect the local and global completion criteria to succeed.
+//   - For now we cannot check the balancing because we need a way to distribute
+//     the neighbor list properly.
 //------------------------
+template <unsigned int dim>
 void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 {
   int nProc, rProc;
@@ -149,7 +216,6 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   MPI_Comm_rank(comm, &rProc);
 
   using T = unsigned int;
-  const unsigned int dim = 4;
   const unsigned int numChildren = 1u << dim;
   using TreeNode = ot::TreeNode<T,dim>;
 
@@ -165,158 +231,86 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   const T leafLevel = m_uiMaxDepth;
   const T firstVariableLevel = 1;      // Not sure about this whole root thing...
 
-  std::cerr << "Starting distTreeBalancing()...\n";
+  std::cerr << "Starting distTreeBalancing()...  ";
   ot::SFC_Tree<T,dim>::distTreeBalancing(points, treePart, maxPtsPerRegion, loadFlexibility, comm);
-  std::cerr << "Finished distTreeBalancing().\n\n";
+  std::cerr << "Finished distTreeBalancing().\n";
 
-  // Local adjacency test. Ignore messages about unaccounted points.
-  int myLocAdjacency = checkLocalCompletenessMorton<T,dim>(points, treePart, false, false);
+  DigitString<DType, (1<<dim), 32> counter, init, recvCounter;
+  counter = init = DigitString<DType, (1<<dim), 32>::zero();
+  int myLocCompleteness = checkLocalCompleteness<T,dim>(treePart, false, false, counter, init);
 
   const bool printGlobData = true;
 
-  int myGlobAdjacency = true;
+  int myGlobCompleteness = true;
 
   // Exchange left to right to test adjacency.
-  TreeNode prevEnd;
   MPI_Request request;
   MPI_Status status;
   if (rProc < nProc-1)
-    par::Mpi_Isend<TreeNode>(&treePart.back(), 1, rProc+1, 0, comm, &request);
+    par::Mpi_Isend<DType>(counter.digits.data(), 32, rProc+1, 0, comm, &request);
   if (rProc > 0)
-    par::Mpi_Recv<TreeNode>(&prevEnd, 1, rProc-1, 0, comm, &status);
-  
+    par::Mpi_Recv<DType>(recvCounter.digits.data(), 32, rProc-1, 0, comm, &status);
+
   // Completeness at boundaries.
   if (rProc == 0)
   {
-    const TreeNode &tn = treePart.front();
-    for (int l = firstVariableLevel; l <= tn.getLevel(); l++)
-      if (tn.getMortonIndex(l) != 0)
-      {
-        myGlobAdjacency = false;
-        if (printGlobData)
-          std::cout << "Global completeness failed, bdry start (rank " << rProc << ")\n";
-      }
+    if (init != DigitString<DType, (1<<dim), 32>::zero())
+    {
+      myGlobCompleteness = false;
+      if (printGlobData)
+        std::cout << "Global completeness failed, bdry start (rank " << rProc << ")\n";
+    }
   }
   if (rProc == nProc - 1)
   {
-    const TreeNode &tn = treePart.back();
-    for (int l = firstVariableLevel; l <= tn.getLevel(); l++)   // < not <=, since level should be 0?
-      if (tn.getMortonIndex(l) != numChildren - 1)
-      {
-        myGlobAdjacency = false;
-        if (printGlobData)
-          std::cout << "Global completeness failed, bdry end (rank " << rProc << ")"
-                    << "  (index[" << l << "] == " << (int) tn.getMortonIndex(l) << ")\n";
-      }
+    if (!(counter.lowestNonzero() == m_uiMaxDepth && counter.digits[m_uiMaxDepth] == 1))
+    {
+      myGlobCompleteness = false;
+      if (printGlobData)
+        std::cout << "Global completeness failed, bdry end (rank " << rProc << ")\n";
+    }
   }
 
   // Inter-processor adjacency.
-  //TODO there is probably a clever bitwise Morton-adjacency test. make a class member function.
   if (rProc > 0)
   {
     // Verify that our beginning is adjacent to previous end.
-    const TreeNode &myFront = treePart.front();
-    int l_match = 0;
-    while (l_match <= m_uiMaxDepth && myFront.getMortonIndex(l_match) == prevEnd.getMortonIndex(l_match))
-      l_match++;
-
-    if (myFront.getMortonIndex(l_match) != 1 + prevEnd.getMortonIndex(l_match))
+    if (recvCounter != init)
     {
-      myGlobAdjacency = false;
+      myGlobCompleteness = false;
       if (printGlobData)
-        std::cout << "Global completeness failed, digit increment (rank " << rProc << ")\n";
+        std::cout << "Global completeness failed (rank " << rProc << ")\n";
     }
-
-    for (int l = l_match + 1; l <= myFront.getLevel(); l++)
-      if (myFront.getMortonIndex(l) != 0)
-      {
-        myGlobAdjacency = false;
-        if (printGlobData)
-          std::cout << "Global completeness failed, local front nonzero (rank " << rProc << ")\n";
-      }
-
-    for (int l = l_match + 1; l <= prevEnd.getLevel(); l++)
-      if (prevEnd.getMortonIndex(l) != numChildren - 1)
-      {
-        myGlobAdjacency = false;
-        if (printGlobData)
-          std::cout << "Global completeness failed, prev back nonfull (rank " << rProc << ")"
-                    << "  (" << prevEnd.getBase32Hex().data() << ":" << myFront.getBase32Hex().data() << ")\n";
-      }
   }
+
+  // Make sure there is something there.
+  if (printGlobData)
+    std::cout << "Final.... (rank " << rProc << ") points.size() == " << points.size() << "  tree.size() == " << treePart.size() << "\n";
 
   if (rProc < nProc-1)
     MPI_Wait(&request, &status);
 
-  int recvLocAdjacency, recvGlobAdjacency;
+  int recvLocCompleteness, recvGlobCompleteness;
 
-  MPI_Reduce(&myLocAdjacency, &recvLocAdjacency, 1, MPI_INT, MPI_LAND, 0, comm);
-  MPI_Reduce(&myGlobAdjacency, &recvGlobAdjacency, 1, MPI_INT, MPI_LAND, 0, comm);
+  MPI_Reduce(&myLocCompleteness, &recvLocCompleteness, 1, MPI_INT, MPI_LAND, 0, comm);
+  MPI_Reduce(&myGlobCompleteness, &recvGlobCompleteness, 1, MPI_INT, MPI_LAND, 0, comm);
+
+  std::cout.flush();
   MPI_Barrier(comm);
   if (rProc == 0)
   {
     std::cout << "\n\n";
     std::cout << "--------------------------------------------------\n";
-    std::cout << "Local adjacencies " << (recvLocAdjacency ? "succeeded" : "FAILED") << "\n";
-    std::cout << "Global adjacency " << (recvGlobAdjacency ? "succeeded" : "FAILED") << "\n";
+    std::cout << "Local adjacencies " << (recvLocCompleteness ? "all succeeded" : "SOME FAILED") << "\n";
+    std::cout << "Global adjacency " << (recvGlobCompleteness ? "all succeeded" : "SOME FAILED") << "\n";
   }
 
-  //TODO checkBalancingConstraint(tree);
+  //TODO checkBalancingConstraint(tree);  // TODO first need to compute minimal complete tree, and modify balancing test to partition the neighbor list.
 
-  // Make sure there is something there.
-  std::cout << "Final.... (rank " << rProc << ") points.size() == " << points.size() << "  tree.size() == " << treePart.size() << "\n";
+  _DestroyHcurve();
 }
 
 
-template <typename T, int Base, unsigned int L>
-struct DigitString
-{
-  std::array<T,L> digits;
-
-  static DigitString zero()
-  {
-    DigitString ret;
-    #pragma unroll(L)
-    for (unsigned int p = 0; p < L; p++)
-      ret.digits[p] = 0;
-    return ret;
-  }
-
-  void add(const DigitString &other)
-  {
-    #pragma unroll(L)
-    for (unsigned int p = 0; p < L; p++)
-      addToPlace(p, other.digits[p]);
-  }
-
-  void addToPlace(unsigned int p, T val)
-  {
-    assert(p < L);
-    val = val % Base;
-    do
-    {
-      digits[p] += val;
-      val = (digits[p] >= Base);
-      if (val)
-        digits[p] -= Base;
-    }
-    while (++p < L && val);
-  }
-
-  unsigned int lowestNonzero() const
-  {
-    for (unsigned int p = 0; p < L; p++)
-      if (digits[p])
-        return p;
-    return L;
-  }
-
-  void print(std::ostream &out, unsigned int loPlace, unsigned int hiPlace) const
-  {
-    for (unsigned int p = hiPlace; hiPlace >= p && p >= loPlace; p--)  // workaround for unsigned decrementing
-      out << digits[p] << " ";
-  }
-};
 
 //
 // checkLocalCompleteness()
@@ -334,20 +328,23 @@ template <typename T, unsigned int D>
 bool checkLocalCompleteness(const std::vector<ot::TreeNode<T,D>> &tree,
                             bool entireTree,
                             bool printData,
-                            DigitString<DType, (1<<D), 32> &counter)
+                            DigitString<DType, (1<<D), 32> &counter,
+                            DigitString<DType, (1<<D), 32> &init)
 {
   const int numChildren = 1<<D;
   if (!entireTree)
   {
-    counter = DigitString<DType, (1<<D), 32>::zero();
+    init = DigitString<DType, (1<<D), 32>::zero();
     int pRot = 0;
     for (unsigned int l = 0; l <= m_uiMaxDepth; l++)
     {
       unsigned char child = tree.front().getMortonIndex(l);
       unsigned char child_sfc = rotations[pRot * 2*numChildren + numChildren + child];
-      counter.digits[m_uiMaxDepth - l] = child_sfc;    // A 0-based index is also a predecessor count.
+      init.digits[m_uiMaxDepth - l] = child_sfc;    // A 0-based index is also a predecessor count.
       pRot = HILBERT_TABLE[pRot * numChildren + child];
     }
+
+    counter = init;
   }
 
   // Sum the tree volume.
@@ -414,7 +411,7 @@ bool checkPointsContainedInorder(const std::vector<ot::TreeNode<T,D>> &points,
       {
         for (int ii = 0; ii < lev; ii++)
           std::cout << continueStr;
-        
+
         std::cout << std::setw(beginTextPos - 2*lev) << ' '
                   << std::setw(oldWidth) << pIt->getBase32Hex().data()
                   << "\n";
@@ -432,7 +429,7 @@ bool checkPointsContainedInorder(const std::vector<ot::TreeNode<T,D>> &points,
     {
       for (int ii = 0; ii < lev; ii++)
         std::cout << continueStr;
-        
+
       std::cout << std::setw(beginTextPos - 2*lev) << ' '
                 << std::setw(oldWidth) << pIt->getBase32Hex().data()
                 << "\n";
@@ -545,7 +542,7 @@ bool checkLocalCompletenessMorton(std::vector<ot::TreeNode<T,D>> &points,
       {
         for (int ii = 0; ii < lev; ii++)
           std::cout << continueStr;
-        
+
         std::cout << std::setw(beginTextPos - 2*lev) << ' '
                   << std::setw(oldWidth) << pIt->getBase32Hex().data()
                   << "\n";
@@ -621,7 +618,7 @@ bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool p
   // Now nList is a list of unique neighbors (different levels considered distinct).
   // Since it is sorted in the same order as tree (presumably tree was sorted),
   // searching can be accomplished in a single pass comparison (almost).
-  // 
+  //
   // nList represents neighbors which may or may not exist in the tree.
   // The balancing constraint is satisfied iff, for each x in tree and y in nList
   // such that (x == y or x.isAncestor(y)), we have (x == y or x.isParent(y)).
@@ -708,10 +705,11 @@ int main(int argc, char* argv[])
   ///testTheTest<3>();
   ///testTheTest<4>();
 
-  test_locTreeBalancing<2>(ptsPerProc);
-  test_locTreeBalancing<3>(ptsPerProc);
-  test_locTreeBalancing<4>(ptsPerProc);
-  ///test_distTreeBalancing(ptsPerProc, MPI_COMM_WORLD);
+  ///test_locTreeBalancing<2>(ptsPerProc);
+  ///test_locTreeBalancing<3>(ptsPerProc);
+  ///test_locTreeBalancing<4>(ptsPerProc);
+
+  test_distTreeBalancing<2>(ptsPerProc, MPI_COMM_WORLD);
 
   MPI_Finalize();
 
