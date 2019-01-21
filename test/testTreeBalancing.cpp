@@ -243,58 +243,85 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 
   int myGlobCompleteness = true;
 
-  // Exchange left to right to test adjacency.
-  MPI_Request request;
-  MPI_Status status;
-  if (rProc < nProc-1)
-    par::Mpi_Isend<DType>(counter.digits.data(), 32, rProc+1, 0, comm, &request);
-  if (rProc > 0)
-    par::Mpi_Recv<DType>(recvCounter.digits.data(), 32, rProc-1, 0, comm, &status);
+  // Find nonempty 'neighbor' processors.
+  ot::RankI treePartSize = treePart.size();
+  std::vector<ot::RankI> treePartSizes(nProc, 0);
+  par::Mpi_Allgather<ot::RankI>(&treePartSize, &(*treePartSizes.begin()), 1, comm);
 
-  // Completeness at boundaries.
-  if (rProc == 0)
+  if (treePartSize > 0)
   {
-    if (init != DigitString<DType, (1<<dim), 32>::zero())
-    {
-      myGlobCompleteness = false;
-      if (printGlobData)
-        std::cout << "Global completeness failed, bdry start (rank " << rProc << ")\n";
-    }
-  }
-  if (rProc == nProc - 1)
-  {
-    if (!(counter.lowestNonzero() == m_uiMaxDepth && counter.digits[m_uiMaxDepth] == 1))
-    {
-      myGlobCompleteness = false;
-      if (printGlobData)
-        std::cout << "Global completeness failed, bdry end (rank " << rProc << ")\n";
-    }
-  }
 
-  // Inter-processor adjacency.
-  if (rProc > 0)
-  {
-    // Verify that our beginning is adjacent to previous end.
-    if (recvCounter != init)
+    int nonemptyPrev = rProc - 1;
+    int nonemptyNext = rProc + 1;
+    while (nonemptyPrev >= 0 && treePartSizes[nonemptyPrev] == 0)
+      nonemptyPrev--;
+    while (nonemptyNext < nProc && treePartSizes[nonemptyNext] == 0)
+      nonemptyNext++;
+
+    // Exchange left to right to test adjacency.
+    MPI_Request request;
+    MPI_Status status;
+    if (nonemptyNext < nProc)
+      par::Mpi_Isend<DType>(counter.digits.data(), 32, nonemptyNext, 0, comm, &request);
+    if (nonemptyPrev >= 0)
+      par::Mpi_Recv<DType>(recvCounter.digits.data(), 32, nonemptyPrev, 0, comm, &status);
+
+    // Completeness at boundaries.
+    if (nonemptyPrev < 0)
     {
-      myGlobCompleteness = false;
-      if (printGlobData)
-        std::cout << "Global completeness failed (rank " << rProc << ")\n";
+      if (init != DigitString<DType, (1<<dim), 32>::zero())
+      {
+        myGlobCompleteness = false;
+        if (printGlobData)
+          std::cout << "Global completeness failed, bdry start (rank " << rProc << ")\n";
+      }
     }
+    if (nonemptyNext >= nProc)
+    {
+      if (!(counter.lowestNonzero() == m_uiMaxDepth && counter.digits[m_uiMaxDepth] == 1))
+      {
+        myGlobCompleteness = false;
+        if (printGlobData)
+          std::cout << "Global completeness failed, bdry end (rank " << rProc << ")\n";
+      }
+    }
+
+    // Inter-processor adjacency.
+    if (nonemptyPrev >= 0)
+    {
+      // Verify that our beginning is adjacent to previous end.
+      if (recvCounter != init)
+      {
+        myGlobCompleteness = false;
+        if (printGlobData)
+          std::cout << "Global completeness failed (rank " << rProc << ")\n";
+      }
+    }
+
+    if (nonemptyNext < nProc)
+      MPI_Wait(&request, &status);
   }
 
   // Make sure there is something there.
   if (printGlobData)
     std::cout << "Final.... (rank " << rProc << ") points.size() == " << points.size() << "  tree.size() == " << treePart.size() << "\n";
 
-  if (rProc < nProc-1)
-    MPI_Wait(&request, &status);
-
   int recvLocCompleteness, recvGlobCompleteness;
 
   MPI_Reduce(&myLocCompleteness, &recvLocCompleteness, 1, MPI_INT, MPI_LAND, 0, comm);
   MPI_Reduce(&myGlobCompleteness, &recvGlobCompleteness, 1, MPI_INT, MPI_LAND, 0, comm);
   std::cout.flush();
+
+  /// for (int p = 0; p < nProc; p++)
+  /// {
+  ///   MPI_Barrier(comm);
+  ///   if (rProc == p)
+  ///   {
+  ///     std::cout << "Rank " << rProc << "\n";
+  ///     for (TreeNode tn : treePart)
+  ///      std::cout << tn.getBase32Hex().data() << "\n";
+  ///   }
+  /// }
 
   MPI_Barrier(comm);
   if (rProc == 0)
