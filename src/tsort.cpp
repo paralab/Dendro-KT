@@ -248,6 +248,10 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
   // The heavy lifting to globally sort/partition.
   distTreePartition(points, loadFlexibility, comm);
 
@@ -297,7 +301,6 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
     return;
   }
 
-
   using TreeNode = TreeNode<T,D>;
   constexpr char numChildren = TreeNode::numChildren;
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
@@ -327,12 +330,15 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   // Remark: Due to the no-runaway clause, we are not guaranteed
   // that bftQueue actually holds `initNumBuckets' buckets.
 
+  //TODO remove
+  ///fprintf(stderr, "<%d> points.size()==%d, q.size()==%d\n", rProc, (int) points.size(), (int) bftQueue.q.size());
+
   //
   // Phase 2: Count bucket sizes, communicate bucket sizes,
   //   test load balance, select buckets and refine, repeat.
 
   RankI sizeG, sizeL = points.size();
-  sizeG = sizeL;   // Proxy for summing, to test with one proc.
+  /// sizeG = sizeL;   // Proxy for summing, to test with one proc.
   par::Mpi_Allreduce<RankI>(&sizeL, &sizeG, 1, MPI_SUM, comm);
 
 
@@ -373,7 +379,7 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
     for (BucketInfo<RankI> b : bftQueue.leading())
       bktCountsL.push_back(b.end - b.begin);
     bktCountsG.resize(bktCountsL.size());
-    bktCountsG = bktCountsL;              // Proxy for summing, to test with one proc.
+    /// bktCountsG = bktCountsL;              // Proxy for summing, to test with one proc.
     par::Mpi_Allreduce<RankI>(&(*bktCountsL.begin()), &(*bktCountsG.begin()), (int) bktCountsL.size(), MPI_SUM, comm);
 
     // Compute ranks, test load balance, and collect buckets for refinement.
@@ -435,6 +441,9 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
     treeBFTNextLevel(&(*points.begin()), bftQueue.q);
 
     blkNumBkt = numChildren;  // After the first level, blocks result from refining a single bucket.
+
+    //TODO remove
+    ///fprintf(stderr, "<%d> pendingSplitterIdx.size()==%d, bftQueue.size()==%d\n", rProc, (int) pendingSplitterIdx.size(), (int) bftQueue.q.size());
   }
 
   /// // DEBUG: print out all the points.
@@ -523,6 +532,9 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
       SFC_bucketing(points, front.begin, front.end, front.lev, front.rot_id, childSplitters);
     else
       childSplitters.fill(front.begin);  // Don't need to sort an empty selection, it's just empty.
+
+    // Put 'ancestor' points in the first child's bucket.
+    childSplitters[1] = childSplitters[0];
 
     // Enqueue our children in the next level.
     const ChildI * const rot_perm = &rotations[front.rot_id*rotOffset + 0*numChildren];
@@ -833,6 +845,10 @@ SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
                                    double loadFlexibility,
                                    MPI_Comm comm)
 {
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
   distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
   propagateNeighbours(tree);
   std::vector<TreeNode<T,D>> newTree;
