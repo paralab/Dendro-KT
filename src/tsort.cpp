@@ -330,9 +330,6 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   // Remark: Due to the no-runaway clause, we are not guaranteed
   // that bftQueue actually holds `initNumBuckets' buckets.
 
-  //TODO remove
-  ///fprintf(stderr, "<%d> points.size()==%d, q.size()==%d\n", rProc, (int) points.size(), (int) bftQueue.q.size());
-
   //
   // Phase 2: Count bucket sizes, communicate bucket sizes,
   //   test load balance, select buckets and refine, repeat.
@@ -441,9 +438,6 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
     treeBFTNextLevel(&(*points.begin()), bftQueue.q);
 
     blkNumBkt = numChildren;  // After the first level, blocks result from refining a single bucket.
-
-    //TODO remove
-    ///fprintf(stderr, "<%d> pendingSplitterIdx.size()==%d, bftQueue.size()==%d\n", rProc, (int) pendingSplitterIdx.size(), (int) bftQueue.q.size());
   }
 
   /// // DEBUG: print out all the points.
@@ -669,29 +663,37 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
   // perform another global sort, removing duplicates locally, and then
   // eliminate at most one duplicate from the end of each processor's partition.
 
-  //TODO Technically we can end up with a processor holding only duplicates,
-  //and it will later be emptied. Is this fine?
-
   distTreeSort(tree, loadFlexibility, comm);
   locRemoveDuplicates(tree);
 
-  // At this point, the end of our portion of the tree is possibly a duplicate of,
-  // or an ancestor of, the beginning of the next processors portion of the tree.
+  // Some processors could end up being empty, so exclude them from communicator.
+  MPI_Comm nonemptys;
+  MPI_Comm_split(comm, (tree.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
 
-  // Exchange to test if our end is a duplicate.
-  TreeNode<T,D> nextBegin;
-  MPI_Request request;
-  MPI_Status status;
-  if (rProc > 0)
-    par::Mpi_Isend<TreeNode<T,D>>(&(*tree.begin()), 1, rProc-1, 0, comm, &request);
-  if (rProc < nProc-1)
-    par::Mpi_Recv<TreeNode<T,D>>(&nextBegin, 1, rProc+1, 0, comm, &status);
+  if (tree.size() > 0)
+  {
+    int nNE, rNE;
+    MPI_Comm_rank(nonemptys, &rNE);
+    MPI_Comm_size(nonemptys, &nNE);
 
-  // If so, delete our end.
-  if (rProc > 0)
-    MPI_Wait(&request, &status);
-  if (rProc < nProc-1 && (tree.back() == nextBegin || tree.back().isAncestor(nextBegin)))
-    tree.pop_back();
+    // At this point, the end of our portion of the tree is possibly a duplicate of,
+    // or an ancestor of, the beginning of the next processors portion of the tree.
+
+    // Exchange to test if our end is a duplicate.
+    TreeNode<T,D> nextBegin;
+    MPI_Request request;
+    MPI_Status status;
+    if (rNE > 0)
+      par::Mpi_Isend<TreeNode<T,D>>(&(*tree.begin()), 1, rNE-1, 0, nonemptys, &request);
+    if (rNE < nNE-1)
+      par::Mpi_Recv<TreeNode<T,D>>(&nextBegin, 1, rNE+1, 0, nonemptys, &status);
+
+    // If so, delete our end.
+    if (rNE > 0)
+      MPI_Wait(&request, &status);
+    if (rNE < nNE-1 && (tree.back() == nextBegin || tree.back().isAncestor(nextBegin)))
+      tree.pop_back();
+  }
 }
 
 

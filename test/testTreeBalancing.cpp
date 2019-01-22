@@ -243,31 +243,26 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 
   int myGlobCompleteness = true;
 
-  // Find nonempty 'neighbor' processors.
-  ot::RankI treePartSize = treePart.size();
-  std::vector<ot::RankI> treePartSizes(nProc, 0);
-  par::Mpi_Allgather<ot::RankI>(&treePartSize, &(*treePartSizes.begin()), 1, comm);
+  // Some processors could end up being empty, so exclude them from communicator.
+  MPI_Comm nonemptys;
+  MPI_Comm_split(comm, (treePart.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
 
-  if (treePartSize > 0)
+  if (treePart.size() > 0)
   {
-
-    int nonemptyPrev = rProc - 1;
-    int nonemptyNext = rProc + 1;
-    while (nonemptyPrev >= 0 && treePartSizes[nonemptyPrev] == 0)
-      nonemptyPrev--;
-    while (nonemptyNext < nProc && treePartSizes[nonemptyNext] == 0)
-      nonemptyNext++;
+    int nNE, rNE;
+    MPI_Comm_rank(nonemptys, &rNE);
+    MPI_Comm_size(nonemptys, &nNE);
 
     // Exchange left to right to test adjacency.
     MPI_Request request;
     MPI_Status status;
-    if (nonemptyNext < nProc)
-      par::Mpi_Isend<DType>(counter.digits.data(), 32, nonemptyNext, 0, comm, &request);
-    if (nonemptyPrev >= 0)
-      par::Mpi_Recv<DType>(recvCounter.digits.data(), 32, nonemptyPrev, 0, comm, &status);
+    if (rNE+1 < nNE)
+      par::Mpi_Isend<DType>(counter.digits.data(), 32, rNE+1, 0, nonemptys, &request);
+    if (rNE-1 >= 0)
+      par::Mpi_Recv<DType>(recvCounter.digits.data(), 32, rNE-1, 0, nonemptys, &status);
 
     // Completeness at boundaries.
-    if (nonemptyPrev < 0)
+    if (rNE-1 < 0)
     {
       if (init != DigitString<DType, (1<<dim), 32>::zero())
       {
@@ -276,7 +271,7 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
           std::cout << "Global completeness failed, bdry start (rank " << rProc << ")\n";
       }
     }
-    if (nonemptyNext >= nProc)
+    if (rNE+1 >= nNE)
     {
       if (!(counter.lowestNonzero() == m_uiMaxDepth && counter.digits[m_uiMaxDepth] == 1))
       {
@@ -287,7 +282,7 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
     }
 
     // Inter-processor adjacency.
-    if (nonemptyPrev >= 0)
+    if (rNE-1 >= 0)
     {
       // Verify that our beginning is adjacent to previous end.
       if (recvCounter != init)
@@ -298,7 +293,7 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
       }
     }
 
-    if (nonemptyNext < nProc)
+    if (rNE+1 < nNE)
       MPI_Wait(&request, &status);
   }
 
@@ -311,17 +306,6 @@ void test_distTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   MPI_Reduce(&myLocCompleteness, &recvLocCompleteness, 1, MPI_INT, MPI_LAND, 0, comm);
   MPI_Reduce(&myGlobCompleteness, &recvGlobCompleteness, 1, MPI_INT, MPI_LAND, 0, comm);
   std::cout.flush();
-
-  /// for (int p = 0; p < nProc; p++)
-  /// {
-  ///   MPI_Barrier(comm);
-  ///   if (rProc == p)
-  ///   {
-  ///     std::cout << "Rank " << rProc << "\n";
-  ///     for (TreeNode tn : treePart)
-  ///      std::cout << tn.getBase32Hex().data() << "\n";
-  ///   }
-  /// }
 
   MPI_Barrier(comm);
   if (rProc == 0)
@@ -358,6 +342,9 @@ bool checkLocalCompleteness(const std::vector<ot::TreeNode<T,D>> &tree,
                             DigitString<DType, (1<<D), 32> &counter,
                             DigitString<DType, (1<<D), 32> &init)
 {
+  if (tree.size() == 0)
+    return true;
+
   const int numChildren = 1<<D;
   if (!entireTree)
   {
