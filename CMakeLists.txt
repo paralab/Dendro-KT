@@ -225,3 +225,8 @@ add_executable(tstHCurveTable ${SRC_FILES})
 target_include_directories(tstHCurveTable PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstHCurveTable dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testMovingBall.cpp)
+add_executable(tstMovingBall ${SRC_FILES})
+target_include_directories(tstMovingBall PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstMovingBall dendroKT ${MPI_LIBRARIES} m)
+
