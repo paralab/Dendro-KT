@@ -144,6 +144,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/parUtils.h
                   include/parUtils.tcc
                   include/tsort.h
+                  include/tsearchCmpx.h
                   include/treeNode.h
                   include/treeNode.tcc
                   IO/vtk/include/oct2vtk.h
@@ -156,6 +157,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/KDhcurvedata.cpp
                   src/KDhcurvedata_DATA.cpp
                   src/tsort.cpp
+                  src/tsearchCmpx.cpp
                   src/treeNode.cpp
                   IO/vtk/src/oct2vtk.cpp
                   )
@@ -229,4 +231,9 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testMovingBall.cpp)
 add_executable(tstMovingBall ${SRC_FILES})
 target_include_directories(tstMovingBall PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstMovingBall dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTSearchCmpx.cpp)
+add_executable(tstTSearchCmpx ${SRC_FILES})
+target_include_directories(tstTSearchCmpx PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstTSearchCmpx dendroKT ${MPI_LIBRARIES} m)
 
