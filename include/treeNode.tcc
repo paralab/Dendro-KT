@@ -278,6 +278,21 @@ inline void TreeNode<T,dim>::setMortonIndex(unsigned char child)
 }
 
 template <typename T, unsigned int dim>
+inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &other)
+{
+  unsigned int depth_rt = m_uiMaxDepth;
+  #pragma unroll(dim)
+  for (int d = 0; d < dim; d++)
+  {
+    unsigned int diff = other.m_uiCoords[d] ^ m_uiCoords[d];
+    // Using log2 gives the index of the highest '1'. We want one above that.
+    unsigned int depth = m_uiMaxDepth - log2((diff << 1) | 1u);
+    depth_rt = (depth < depth_rt ? depth : depth_rt);  // Minimum of depths.
+  }
+  return depth_rt;
+}
+
+template <typename T, unsigned int dim>
 inline int TreeNode<T,dim>::getAnchor(std::array<T,dim> &xyz) const {
     xyz = m_uiCoords;
     return 1;

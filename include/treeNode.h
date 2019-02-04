@@ -128,6 +128,9 @@ namespace ot {
       /**@brief set the last digit (at node's level) in each component of the anchor. */
       void setMortonIndex(unsigned char child);
 
+      /**@brief Returns the greatest depth at which the other node shares an ancestor.*/
+      unsigned int getCommonAncestorDepth(const TreeNode &other);
+
       /**@brief set the octant flag*/
       int setFlag(unsigned int w);
 
