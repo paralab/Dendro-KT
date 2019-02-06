@@ -96,9 +96,7 @@ struct SFC_Tree
 {
 
   // Notes:
-  //   - This method operates in-place and returns buckets at level eLev.
-  //     The members of each BucketInfo object can be used to further
-  //     refine the bucket.
+  //   - This method operates in-place.
   //   - From sLev to eLev INCLUSIVE
   static void locTreeSort(TreeNode<T,D> *points,
                           RankI begin, RankI end,
@@ -107,6 +105,13 @@ struct SFC_Tree
                           RotI pRot);            // Initial rotation, use 0 if sLev is 1.
 
 
+  template <typename Companion>
+  static void locTreeSort(TreeNode<T,D> *points,
+                          Companion *companions,
+                          RankI begin, RankI end,
+                          LevI sLev,
+                          LevI eLev,
+                          RotI pRot);            // Initial rotation, use 0 if sLev is 1.
 
   // Notes:
   //   - outSplitters contains both the start and end of children at level `lev'
@@ -127,8 +132,20 @@ struct SFC_Tree
                           std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters);
 
   // Notes:
+  //   - Same as above except shuffles a parallel companion array along with the TreeNodes.
+  template <typename Companion>
+  static void SFC_bucketing(TreeNode<T,D> *points,
+                            Companion *companions,
+                          RankI begin, RankI end,
+                          LevI lev,
+                          RotI pRot,
+                          std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters);
+
+
+  // Notes:
   //   - Same parameters as SFC_bucketing, except does not move points.
   //   - This method is read only.
+  //   TODO insert this method in both versions of SFC_bucketing to remove duplicate code.
   static void SFC_locateBuckets(const TreeNode<T,D> *points,
                           RankI begin, RankI end,
                           LevI lev,

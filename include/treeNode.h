@@ -172,6 +172,15 @@ namespace ot {
         */
       TreeNode getDLD() const;
 
+      /**
+       * @brief returns the number of level `level' faces which the anchor intersects.
+       * @description The result is a number between 0 and dim.
+       *              A node is always aligned at its own level, so calling
+       *              getNumAlignedFaces(this->getLevel()) will return dim.
+       *              A way to test for domain boundaries is to use level 0.
+       */
+      unsigned int getNumAlignedFaces(unsigned int level);
+
       /**@brief returns true if *(this) octant is root. false otherwise*/
       bool isRoot() const;
 

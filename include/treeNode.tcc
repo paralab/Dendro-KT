@@ -572,6 +572,17 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
 }  // end function()
 
 
+template <typename T, unsigned int dim>
+inline unsigned int TreeNode<T,dim>::getNumAlignedFaces(unsigned int level)
+{
+  unsigned int ret = 0;
+  #pragma unroll(dim)
+  for (int d = 0; d < dim; d++)
+    ret += !(m_uiCoords[d] << (level+1));
+  return ret;
+}
+
+
 // ================= End Pseudo-getters ====================== //
 
 // ================= Begin is-tests ============================ //
