@@ -12,6 +12,9 @@
 #include "treeNode.h"
 #include "hcurvedata.h"
 #include "parUtils.h"
+#include "binUtils.h"
+
+#include <iostream>
 
 #include <mpi.h>
 #include <vector>
@@ -63,6 +66,8 @@ namespace ot {
   class TNPoint : public TreeNode<T,dim>
   {
     public:
+      enum IsSelected { No, Maybe, Yes };
+
       /**
        * @brief Constructs a node at the extreme "lower-left" corner of the domain.
        */
@@ -90,27 +95,40 @@ namespace ot {
       /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the object using the assignment operator.*/
       TNPoint & operator = (TNPoint const  & other);
 
-      unsigned char get_isSelected() { return m_isSelected; }
-      void set_isSelected(unsigned char isSelected) { m_isSelected = isSelected; }
+      IsSelected get_isSelected() { return m_isSelected; }
+      void set_isSelected(IsSelected isSelected) { m_isSelected = isSelected; }
 
       CellType<dim> get_cellType();
 
+      /**@brief Get the deepest cell such that the point is not on the boundary of the cell. */
+      TreeNode<T,dim> getFinestOpenContainer();
+
     protected:
       // Data members.
-      /// CellType<dim> m_cellType;   // Can infer cell type from coordinates and level.
-      unsigned char m_isSelected;
+      IsSelected m_isSelected;
   };
 
 
-  namespace util {
-    //TODO define separate functions for counting, depending on whether the order is higher than 1 or not.
-  }//namespace ot::util
 
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
-    RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+    RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+    {
+      if (order <= 2)
+        return countCGNodes_lowOrder(start, end, order);
+      else
+        return countCGNodes_highOrder(start, end, order);
+    }
 
+    private:
+      /**@brief For order 1 or 2, alignment of points means we can count duplicates at node site to resolve duplicates/hanging nodes. */
+      RankI countCGNodes_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+
+      /**@brief For order > 2, alignment might not hold. However, we can use the fact that order > 2
+                to take advantage of locality of k'-face interior nodes of differing levels to
+                resolve duplicates/hanging nodes using a small buffer. */
+      RankI countCGNodes_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
   }; // struct SFC_NodeSort
 
 

@@ -57,6 +57,11 @@ namespace binOp{
     */
   int getPrevHighestPowerOfTwo(unsigned int n);
 
+  /**
+    @brief Finds the 0-based index of the least-significant 1, starting from least significant bits.
+    @author Masado Ishii
+    */
+  unsigned int lowestOnePos(unsigned int num);
 
   /**@brief sets the i^th bit on the value val*/
   template <typename T>

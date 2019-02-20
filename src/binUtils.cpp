@@ -85,6 +85,17 @@ namespace binOp {
     return  (v >> 1);
   }
 
+  unsigned int lowestOnePos(unsigned int num)
+  {
+    assert(num);
+    unsigned int pos = 0;
+    while (!(num & 1u))
+    {
+      num >>= 1u;
+      pos++;
+    }
+    return pos;
+  }
 
 
 

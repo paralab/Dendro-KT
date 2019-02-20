@@ -180,26 +180,6 @@ int main(int argc, char * argv[])
   const unsigned int order = 4;
 
   /// //
-  /// // Test mathUtils intCombinations()
-  /// //
-  /// printf("5 choose ... %u %u %u %u %u %u\n",
-  ///     intCombination(5u,0u),
-  ///     intCombination(5u,1u),
-  ///     intCombination(5u,2u),
-  ///     intCombination(5u,3u),
-  ///     intCombination(5u,4u),
-  ///     intCombination(5u,5u));
-  /// unsigned int dummy;
-  /// printf("Sum 5 choose ... %u %u %u %u %u %u\n",
-  ///     intCombinationSum(5u,0u, dummy),
-  ///     intCombinationSum(5u,1u, dummy),
-  ///     intCombinationSum(5u,2u, dummy),
-  ///     intCombinationSum(5u,3u, dummy),
-  ///     intCombinationSum(5u,4u, dummy),
-  ///     intCombinationSum(5u,5u, dummy));
-
-
-  /// //
   /// //Test CellType and TNPoint
   /// //
   /// // Height 1
@@ -210,14 +190,21 @@ int main(int argc, char * argv[])
   ///       testCellType.get_dim_flag(),
   ///       std::bitset<dim>(testCellType.get_orient_flag()).to_string().c_str());
   /// }
-  /// // Height 3
-  /// {
-  ///   ot::TNPoint<T,dim> testPoint({1, 1, 4}, m_uiMaxDepth - 3);
-  ///   ot::CellType<dim> testCellType = testPoint.get_cellType();
-  ///   printf("({1,1,4}, 3) --> dim: %u  orient: %s\n",
-  ///       testCellType.get_dim_flag(),
-  ///       std::bitset<dim>(testCellType.get_orient_flag()).to_string().c_str());
-  /// }
+  // Height 3
+  {
+    ot::TNPoint<T,dim> testPoint({(1u<<9) + 1, (1u<<9) + 1, (1u<<9) + 6}, m_uiMaxDepth - 0);
+    ot::CellType<dim> testCellType = testPoint.get_cellType();
+    printf("({(1u<<9) + 1,(1u<<9) + 1,(1u<<9) + 6}, 0) --> dim: %u  orient: %s\n",
+        testCellType.get_dim_flag(),
+        std::bitset<dim>(testCellType.get_orient_flag()).to_string().c_str());
+
+    std::cout << "Point as TreeNode: Level [" << testPoint.getLevel() << "/" << m_uiMaxDepth << "]  "
+              << testPoint.getBase32Hex().data() << "\n";
+
+    ot::TreeNode<T,dim> testContainer = testPoint.getFinestOpenContainer();
+    std::cout << "Container: Level [" << testContainer.getLevel() << "/" << m_uiMaxDepth << "]  "
+              << testContainer.getBase32Hex().data() << "\n";
+  }
 
 
   //TODO actually execute the counting methods.

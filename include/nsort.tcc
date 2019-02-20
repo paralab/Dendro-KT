@@ -6,11 +6,13 @@
 
 namespace ot {
 
-      /**
-       * @brief Constructs a node at the extreme "lower-left" corner of the domain.
-       */
+  // ============================ Begin: TNPoint === //
+
+  /**
+   * @brief Constructs a node at the extreme "lower-left" corner of the domain.
+   */
   template <typename T, unsigned int dim>
-  TNPoint<T,dim>::TNPoint() : TreeNode<T,dim>(), m_isSelected(false)
+  TNPoint<T,dim>::TNPoint() : TreeNode<T,dim>(), m_isSelected(Maybe)
   { }
 
   /**
@@ -21,7 +23,7 @@ namespace ot {
     */
   template <typename T, unsigned int dim>
   TNPoint<T,dim>::TNPoint (const std::array<T,dim> coords, unsigned int level) :
-      TreeNode<T,dim>(0, coords, level), m_isSelected(false)
+      TreeNode<T,dim>(0, coords, level), m_isSelected(Maybe)
   { }
 
   /**@brief Copy constructor */
@@ -38,7 +40,7 @@ namespace ot {
   */
   template <typename T, unsigned int dim>
   TNPoint<T,dim>::TNPoint (const int dummy, const std::array<T,dim> coords, unsigned int level) :
-      TreeNode<T,dim>(dummy, coords, level), m_isSelected(false)
+      TreeNode<T,dim>(dummy, coords, level), m_isSelected(Maybe)
   { }
 
   /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the object using the assignment operator.*/
@@ -74,5 +76,66 @@ namespace ot {
 
     return cellType;
   }
+
+  template <typename T, unsigned int dim>
+  TreeNode<T,dim> TNPoint<T,dim>::getFinestOpenContainer()
+  {
+    assert(!isTouchingDomainBoundary());  // When we bucket we need to set aside boundary points first.
+
+    //
+    // A node is on a boundary at level lev iff any coordinates have only zeros
+    // for all bits strictly deeper than lev. Take the contrapositive:
+    // A node is NOT on a boundary at level lev iff all coordinates have at least
+    // one nonzero bit strictly deeper than lev. We need the deepest such level.
+    // To get the deepest such level, find the deepest nonzero bit in each
+    // coordinate, and take the coarsest of finest levels.
+    // 
+    using TreeNode = TreeNode<T,dim>;
+    unsigned int coarsestFinestHeight = 0;
+    for (int d = 0; d < dim; d++)
+    {
+      unsigned int finestHeightDim = binOp::lowestOnePos(TreeNode::m_uiCoords[d]);
+      std::cout << "Found height " << finestHeightDim << "\n";
+      // Maximum height is minimum depth.
+      if (finestHeightDim > coarsestFinestHeight)
+        coarsestFinestHeight = finestHeightDim;
+    }
+    std::cout << "Final height is " << coarsestFinestHeight << "\n";
+    unsigned int level = m_uiMaxDepth - coarsestFinestHeight; // Convert to depth.
+    level--;                           // Nonzero bit needs to be strictly deeper.
+
+    // Use the non-dummy overload so that the coordinates get clipped.
+    return TreeNode(TreeNode::m_uiCoords, level);
+  }
+
+  // ============================ End: TNPoint ============================ //
+
+
+  // ============================ Begin: SFC_NodeSort ============================ //
+
+  //
+  // SFC_NodeSort::countCGNodes_lowOrder()
+  //
+  template <typename T, unsigned int dim>
+  RankI SFC_NodeSort<T,dim>::countCGNodes_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  {
+    RankI totalCount = 0u;
+    //TODO
+
+    return totalCount;
+  }
+
+
+  //
+  // SFC_NodeSort::countCGNodes_highOrder()
+  //
+  template <typename T, unsigned int dim>
+  RankI SFC_NodeSort<T,dim>::countCGNodes_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  {
+    //TODO
+    return 0;
+  }
+
+  // ============================ End: SFC_NodeSort ============================ //
 
 }//namespace ot
