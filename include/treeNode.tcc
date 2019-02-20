@@ -573,13 +573,24 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
 
 
 template <typename T, unsigned int dim>
-inline unsigned int TreeNode<T,dim>::getNumAlignedFaces(unsigned int level)
+inline unsigned int TreeNode<T,dim>::getNumAlignedFaces(unsigned int level) const
 {
   unsigned int ret = 0;
   #pragma unroll(dim)
   for (int d = 0; d < dim; d++)
     ret += !(m_uiCoords[d] << (level+1));
   return ret;
+}
+
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::isTouchingDomainBoundary() const
+{
+  const unsigned int domainMask = (1u << m_uiMaxDepth) - 1;
+  const unsigned int len = 1u << (m_uiMaxDepth - m_uiLevel);
+  for (int d = 0; d < dim; d++)
+    if (!(m_uiCoords[d] & domainMask) || !((m_uiCoords[d] + len) & domainMask))
+      return true;
+  return false;
 }
 
 

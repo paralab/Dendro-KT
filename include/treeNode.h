@@ -179,7 +179,9 @@ namespace ot {
        *              getNumAlignedFaces(this->getLevel()) will return dim.
        *              A way to test for domain boundaries is to use level 0.
        */
-      unsigned int getNumAlignedFaces(unsigned int level);
+      unsigned int getNumAlignedFaces(unsigned int level) const;
+
+      bool isTouchingDomainBoundary() const;
 
       /**@brief returns true if *(this) octant is root. false otherwise*/
       bool isRoot() const;
