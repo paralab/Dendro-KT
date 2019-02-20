@@ -123,7 +123,7 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
     if (offsets[bucketId] < bucketEnds[bucketId])
     {
       unsortedBuffer[bufferSize] = points[offsets[bucketId]];  // Copy TreeNode.
-      unsortedBuffer[bufferSize] = companions[offsets[buckketId]];
+      unsortedBuffer[bufferSize] = companions[offsets[bucketId]];
       bufferSize++;
     }
   }
