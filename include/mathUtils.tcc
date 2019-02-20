@@ -253,3 +253,28 @@ constexpr T intFactorial(T f, T A)
 {
   return (f <= 1 ? A : intFactorial<T>(f-1, f*A));
 }
+
+
+// Note: No special handling for integer overflow, we hope n and k are small.
+template <typename T>
+constexpr T intCombination(T n, T k, T p, T q)
+{
+  return (k <= 0 ? p / q : intCombination<T>(n, k-1, p * (n-k+1), q * k));
+}
+
+
+template <typename T>
+T intCombinationSum(T n, T k, T &combo)
+{
+  T accum = 0;
+  combo = 1;
+  for (T kk = 1; kk <= k; kk++)
+  {
+    accum += combo;
+    combo = combo * (n-kk+1) / kk;
+  }
+  return accum;
+}
+
+
+

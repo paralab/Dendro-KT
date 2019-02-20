@@ -144,6 +144,8 @@ set(DENDRO_KT_INC include/dendro.h
                   include/parUtils.h
                   include/parUtils.tcc
                   include/tsort.h
+                  include/nsort.h
+                  include/nsort.tcc
                   include/tsearchCmpx.h
                   include/treeNode.h
                   include/treeNode.tcc
@@ -157,6 +159,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/KDhcurvedata.cpp
                   src/KDhcurvedata_DATA.cpp
                   src/tsort.cpp
+                  src/nsort.cpp
                   src/tsearchCmpx.cpp
                   src/treeNode.cpp
                   IO/vtk/src/oct2vtk.cpp

@@ -206,6 +206,23 @@ constexpr T intPow(T b, unsigned p, T A = 1);
 template <typename T>
 constexpr T intFactorial(T f, T A = 1);
 
+/**
+ @brief Compile-time computation of combination "n choose k".
+ @note Computes numerator and denominator separately; these could get large, so n and k should be small or T should be large.
+ @author Masado Ishii
+ */
+template <typename T>
+constexpr T intCombination(T n, T k, T p = 1, T q = 1);
+
+/**
+ @brief Prefix sum of binomial coefficients "n choose k'" up to k'==k-1. (Exclusive prefix sum).
+ @author Masado Ishii
+ @note Assumes that 0 <= k <= n.
+ */
+template <typename T>
+T intCombinationSum(T n, T k, T &combo);
+
+
 #include "mathUtils.tcc"
 
 
