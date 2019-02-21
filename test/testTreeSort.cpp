@@ -30,7 +30,8 @@ void test_locTreeSort()
 
   _InitializeHcurve(dim);
 
-  const T leafLevel = m_uiMaxDepth;
+  // const T leafLevel = m_uiMaxDepth;
+  const T sLev = 1, eLev = 4;
 
   //const int numPoints = 10000;
   const int numPoints = 1000;
@@ -46,12 +47,13 @@ void test_locTreeSort()
   std::cout << "Begin Adding Points.\n";
   std::cout << "=============================\n";
 
-  std::vector<TreeNode> points = ot::getPts<T,dim>(numPoints);
+  /// std::vector<TreeNode> points = ot::getPts<T,dim>(numPoints);
+  std::vector<TreeNode> points = ot::getPts<T,dim>(numPoints, sLev, eLev);
 
   for (const TreeNode &tn : points)
   {
     topOctCount_start[tn.getMortonIndex(0)]++;
-    botOctCount_start[tn.getMortonIndex(leafLevel)]++;
+    botOctCount_start[tn.getMortonIndex(eLev)]++;
   }
 
   for (int ii = 0; ii < TreeNode::numChildren; ii++)
@@ -66,8 +68,8 @@ void test_locTreeSort()
 
   // Sort them with locTreeSort().
   ///std::vector<ot::TreeNode<T,dim>> sortedPoints;
-  ///ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), &(*points.end()), sortedPoints, 0, leafLevel, 0);
-  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), 0, points.size(), 0, leafLevel, 0);
+  ///ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), &(*points.end()), sortedPoints, 0, eLev, 0);
+  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), 0, points.size(), 0, eLev, 0);
 
   std::vector<ot::TreeNode<T,dim>> &sortedPoints = points;
 
@@ -81,7 +83,7 @@ void test_locTreeSort()
   {
     std::cout << tn << " \t " << tn.getBase32Hex().data() << '\n';
     topOctCount_end[tn.getMortonIndex(0)]++;
-    botOctCount_end[tn.getMortonIndex(leafLevel)]++;
+    botOctCount_end[tn.getMortonIndex(eLev)]++;
   }
 
   std::cout << "=============================\n";
@@ -343,11 +345,11 @@ int main(int argc, char* argv[])
   if (argc > 1)
     ptsPerProc = strtol(argv[1], NULL, 0);
 
-  //test_locTreeSort();
+  test_locTreeSort();
 
   //test_distTreeSort(ptsPerProc, MPI_COMM_WORLD);
 
-  test_locTreeConstruction(ptsPerProc);
+  //test_locTreeConstruction(ptsPerProc);
 
   MPI_Finalize();
 

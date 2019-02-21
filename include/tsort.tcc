@@ -123,7 +123,7 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
     if (offsets[bucketId] < bucketEnds[bucketId])
     {
       unsortedBuffer[bufferSize] = points[offsets[bucketId]];  // Copy TreeNode.
-      unsortedBuffer[bufferSize] = companions[offsets[bucketId]];
+      unsortedBufferComp[bufferSize] = companions[offsets[bucketId]];
       bufferSize++;
     }
   }
@@ -148,6 +148,113 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
       bufferSize--;
   }
 }
+
+
+
+
+template <typename T, unsigned int D>
+template <class KeyFun, typename PointType, typename KeyType>
+void
+SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
+                          RankI begin, RankI end,
+                          LevI lev,
+                          RotI pRot,
+                          KeyFun keyfun,
+                          bool ancestorsFirst,
+                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          RankI &outAncStart,
+                          RankI &outAncEnd)
+{
+  //TODO use outAncStart and outAncEnd
+
+  using TreeNode = TreeNode<T,D>;
+  constexpr char numChildren = TreeNode::numChildren;
+  constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  std::array<int, numChildren> counts;
+  counts.fill(0);
+  int countAncestors = 0;   // Special bucket to ensure ancestors bucketed properly.
+  for (const PointType *pt = points + begin; pt < points + end; pt++)
+  {
+    const KeyType &tn = keyfun(*pt);
+    if (tn.getLevel() < lev)
+      countAncestors++;
+    else
+      counts[tn.getMortonIndex(lev)]++;
+  }
+
+  std::array<RankI, numChildren+1> offsets, bucketEnds;  // Last idx represents ancestors.
+  RankI accum;
+  if (ancestorsFirst)
+    accum = begin + countAncestors;                  // Ancestors belong in front.
+  else
+    accum = begin;
+
+  /// const int a1 = (ancestorsFirst ? 1 : 0); // OLD, used when sibling and ancestor splitters were combined in one array.
+
+  std::array<TreeNode, numChildren+1> unsortedBuffer;
+  int bufferSize = 0;
+
+  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  ChildI child_sfc = 0;
+  for ( ; child_sfc < numChildren; child_sfc++)
+  {
+    ChildI child = rot_perm[child_sfc];
+    outSplitters[child_sfc] = accum;
+    offsets[child] = accum;           // Start of bucket. Moving marker.
+    accum += counts[child];
+    bucketEnds[child] = accum;        // End of bucket. Fixed marker.
+  }
+  outSplitters[child_sfc] = accum;  // Should be the end of siblings..
+
+  if (ancestorsFirst)
+  {
+    offsets[numChildren] = begin;
+    bucketEnds[numChildren] = begin + countAncestors;
+    outAncStart = begin;
+    outAncEnd = begin + countAncestors;
+  }
+  else
+  {
+    offsets[numChildren] = accum;
+    bucketEnds[numChildren] = accum + countAncestors;
+    outAncStart = accum;
+    outAncEnd = accum + countAncestors;
+  }
+
+
+  // -- Movement phase. -- //
+
+  for (char bucketId = 0; bucketId <= numChildren; bucketId++)
+  {
+    if (offsets[bucketId] < bucketEnds[bucketId])
+    {
+      unsortedBuffer[bufferSize] = points[offsets[bucketId]];  // Copy TreeNode.
+      bufferSize++;
+    }
+  }
+
+  while (bufferSize > 0)
+  {
+    TreeNode *bufferTop = &unsortedBuffer[bufferSize-1];
+    unsigned char destBucket
+      = (bufferTop->getLevel() < lev) ? numChildren : bufferTop->getMortonIndex(lev);
+    // destBucket is used to index into offsets[] and bucketEnds[], for which
+    // ancestors are represented in [numChildren] regardless of `ancestorsFirst'.
+
+    points[offsets[destBucket]] = *bufferTop;  // Set down the TreeNode.
+    offsets[destBucket]++;
+
+    if (offsets[destBucket] < bucketEnds[destBucket])
+    {
+      *bufferTop = points[offsets[destBucket]];    // Copy TreeNode.
+    }
+    else
+      bufferSize--;
+  }
+
+}
+
 
 
 

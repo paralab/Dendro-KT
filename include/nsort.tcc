@@ -201,6 +201,20 @@ namespace ot {
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::countCGNodes_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
+    //
+    // The low-order counting method is based on counting number of points per spatial location.
+    // If there are points from two levels, then points from the higher level are non-hanging;
+    // pick one of them as the representative (isSelected=Yes). The points from the lower
+    // level are hanging and can be discarded (isSelected=No). If there are points all
+    // from the same level, they are non-hanging iff we count pow(2,dim-cdim) instances, where
+    // cdim is the dimension of the cell to which the points are interior. For example, in
+    // a 4D domain, vertex-interior nodes (cdim==0) should come in sets of 16 instances per location,
+    // while 3face-interior nodes (aka octant-interior nodes, cdim==3), should come in pairs
+    // of instances per location. 
+    //
+    // Given a spatial location, it is assumed that either all the instances generated for that location
+    // are present on this processor, or none of them are.
+    //
     RankI totalCount = 0u;
     //TODO
 

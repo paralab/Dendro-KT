@@ -22,7 +22,7 @@ namespace ot
      * @param[in] numPoints: number of treeNodes need to be generated.
      * */
     template <typename T, unsigned int dim>
-    inline std::vector<ot::TreeNode<T,dim>> getPts(unsigned int numPoints)
+    inline std::vector<ot::TreeNode<T,dim>> getPts(unsigned int numPoints, unsigned int sLev = m_uiMaxDepth, unsigned int eLev = m_uiMaxDepth)
     {
         std::vector<ot::TreeNode<T,dim>> points;
         std::array<T,dim> uiCoords;
@@ -36,8 +36,8 @@ namespace ot
         std::mt19937_64 gen(rd());    // 1. Use this for random/pseudorandom testing.
         /// std::mt19937_64 gen(1331);    // 2. Use this for deterministic testing.
         /// std::uniform_int_distribution<T> distCoord(0, maxCoord);
-        std::normal_distribution<double> distCoord((1u << m_uiMaxDepth) / 2, (1u << m_uiMaxDepth) / 100);
-        std::uniform_int_distribution<T> distLevel(m_uiMaxDepth, m_uiMaxDepth);
+        std::normal_distribution<double> distCoord((1u << m_uiMaxDepth) / 2, (1u << m_uiMaxDepth) / 25);
+        std::uniform_int_distribution<T> distLevel(sLev, eLev);
 
         double coordClampLow = 0;
         double coordClampHi = (1u << m_uiMaxDepth);
