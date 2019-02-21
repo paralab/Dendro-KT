@@ -209,31 +209,13 @@ int main(int argc, char * argv[])
 
   {
     ot::Element<T,dim> e({5u << (m_uiMaxDepth-4), 2u << (m_uiMaxDepth-4), 1u << (m_uiMaxDepth-4)}, 4);
-    std::vector<ot::TNPoint<T,dim>> nodes1;
-    std::vector<ot::TNPoint<T,dim>> nodes2;
-    e.appendExteriorNodes(4, nodes1);
-    e.appendExteriorNodes_ScrapeVolume(4, nodes2);
+    std::vector<ot::TNPoint<T,dim>> nodes;
+    e.appendInteriorNodes(4, nodes);
+    e.appendExteriorNodes(4, nodes);
 
-    std::cout << "Node lists are "
-              << (nodes1 == nodes2 ? "Equal." : "NOT EQUAL")
-              << "\n";
-    std::cout << "\n";
-    std::cout << "Node list sizes are "
-              << "nodes1.size() == " << nodes1.size() << "\t"
-              << "nodes2.size() == " << nodes2.size() << "\t"
-              << (nodes1.size() == nodes2.size() ? "Equal." : "NOT EQUAL")
-              << "\n";
-    std::cout << "\n";
-
-    std::cout << "nodes1 \t nodes2\n";
-    for (int ii = 0; ii < nodes1.size(); ii++)
-    {
-      std::cout << "\t" << nodes1[ii].getBase32Hex(8).data() << " \t" << nodes2[ii].getBase32Hex(8).data() << "\n";
-    }
-
-    /// std::cout << "Nodes of\n\t" << e.getBase32Hex().data() << "\n\t----------\n";
-    /// for (auto n : nodes)
-    ///   std::cout << "\t" << n.getBase32Hex(8).data() << "\n";
+    std::cout << "Nodes of\n\t" << e.getBase32Hex().data() << "\n\t----------\n";
+    for (auto n : nodes)
+      std::cout << "\t" << n.getBase32Hex(8).data() << "\n";
   }
 
 

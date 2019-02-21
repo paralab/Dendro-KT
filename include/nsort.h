@@ -121,10 +121,6 @@ namespace ot {
       void appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
       void appendInteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
       void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
-
-      // This method has a straightforward implementation. Use it to test the other appendExteriorNodes().
-      // This method is probably faster for low order than the other one.
-      void appendExteriorNodes_ScrapeVolume(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
   };
 
 
