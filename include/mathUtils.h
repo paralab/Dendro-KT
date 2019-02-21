@@ -223,6 +223,17 @@ template <typename T>
 T intCombinationSum(T n, T k, T &combo);
 
 
+/**
+ @brief Increments an array of numbers as if they are digits in a base B number.
+ @description The reason for writing this is to traverse multidimensional lattices
+     without using nested for-loops; for example, when the dimension is a template parameter.
+ @author Masado Ishii
+ */
+template <typename T, unsigned int L>
+void incrementBaseB(T B, std::array<T,L> &digits);
+
+
+
 #include "mathUtils.tcc"
 
 

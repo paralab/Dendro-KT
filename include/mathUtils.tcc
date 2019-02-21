@@ -277,4 +277,16 @@ T intCombinationSum(T n, T k, T &combo)
 }
 
 
+template <typename T, unsigned int L>
+void incrementBaseB(T B, std::array<T,L> &digits)
+{
+  unsigned int l = 0;
+  do
+  {
+    digits[l]++;
+    if (digits[l] == B)
+      digits[l] = 0;
+  }
+  while (digits[l] == 0 && (l++, l < L));
+}
 

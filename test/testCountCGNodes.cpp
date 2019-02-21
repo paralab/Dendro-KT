@@ -190,21 +190,33 @@ int main(int argc, char * argv[])
   ///       testCellType.get_dim_flag(),
   ///       std::bitset<dim>(testCellType.get_orient_flag()).to_string().c_str());
   /// }
-  // Height 3
+  /// // Height 3
+  /// {
+  ///   ot::TNPoint<T,dim> testPoint({(1u<<9) + 1, (1u<<9) + 1, (1u<<9) + 6}, m_uiMaxDepth - 0);
+  ///   ot::CellType<dim> testCellType = testPoint.get_cellType();
+  ///   printf("({(1u<<9) + 1,(1u<<9) + 1,(1u<<9) + 6}, 0) --> dim: %u  orient: %s\n",
+  ///       testCellType.get_dim_flag(),
+  ///       std::bitset<dim>(testCellType.get_orient_flag()).to_string().c_str());
+
+  ///   std::cout << "Point as TreeNode: Level [" << testPoint.getLevel() << "/" << m_uiMaxDepth << "]  "
+  ///             << testPoint.getBase32Hex().data() << "\n";
+
+  ///   ot::TreeNode<T,dim> testContainer = testPoint.getFinestOpenContainer();
+  ///   std::cout << "Container: Level [" << testContainer.getLevel() << "/" << m_uiMaxDepth << "]  "
+  ///             << testContainer.getBase32Hex().data() << "\n";
+  /// }
+
+
   {
-    ot::TNPoint<T,dim> testPoint({(1u<<9) + 1, (1u<<9) + 1, (1u<<9) + 6}, m_uiMaxDepth - 0);
-    ot::CellType<dim> testCellType = testPoint.get_cellType();
-    printf("({(1u<<9) + 1,(1u<<9) + 1,(1u<<9) + 6}, 0) --> dim: %u  orient: %s\n",
-        testCellType.get_dim_flag(),
-        std::bitset<dim>(testCellType.get_orient_flag()).to_string().c_str());
+    ot::Element<T,dim> e({5u << (m_uiMaxDepth-4), 2u << (m_uiMaxDepth-4), 1u << (m_uiMaxDepth-4)}, 4);
+    std::vector<ot::TNPoint<T,dim>> nodes;
+    e.appendNodes(1, nodes);  // Tested with order in {1,2,3}.
 
-    std::cout << "Point as TreeNode: Level [" << testPoint.getLevel() << "/" << m_uiMaxDepth << "]  "
-              << testPoint.getBase32Hex().data() << "\n";
-
-    ot::TreeNode<T,dim> testContainer = testPoint.getFinestOpenContainer();
-    std::cout << "Container: Level [" << testContainer.getLevel() << "/" << m_uiMaxDepth << "]  "
-              << testContainer.getBase32Hex().data() << "\n";
+    std::cout << "Nodes of\n\t" << e.getBase32Hex().data() << "\n\t----------\n";
+    for (auto n : nodes)
+      std::cout << "\t" << n.getBase32Hex(8).data() << "\n";
   }
+
 
 
   //TODO actually execute the counting methods.

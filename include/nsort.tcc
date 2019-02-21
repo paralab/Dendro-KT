@@ -95,12 +95,10 @@ namespace ot {
     for (int d = 0; d < dim; d++)
     {
       unsigned int finestHeightDim = binOp::lowestOnePos(TreeNode::m_uiCoords[d]);
-      std::cout << "Found height " << finestHeightDim << "\n";
       // Maximum height is minimum depth.
       if (finestHeightDim > coarsestFinestHeight)
         coarsestFinestHeight = finestHeightDim;
     }
-    std::cout << "Final height is " << coarsestFinestHeight << "\n";
     unsigned int level = m_uiMaxDepth - coarsestFinestHeight; // Convert to depth.
     level--;                           // Nonzero bit needs to be strictly deeper.
 
@@ -109,6 +107,34 @@ namespace ot {
   }
 
   // ============================ End: TNPoint ============================ //
+
+
+  // ============================ Begin: SFC_NodeSort ============================ //
+
+  template <typename T, unsigned int dim>
+  void Element<T,dim>::appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList)
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+
+    const unsigned int numNodes = intPow(order+1, dim);
+
+    std::array<unsigned int, dim> nodeIndices;
+    nodeIndices.fill(0);
+    for (unsigned int node = 0; node < numNodes; node++)
+    {
+      std::array<T,dim> nodeCoords;
+      #pragma unroll(dim)
+      for (int d = 0; d < dim; d++)
+        nodeCoords[d] = len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
+      nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
+
+      incrementBaseB<unsigned int, dim>(order+1, nodeIndices);
+    }
+  }
+
+  // ============================ End: TNPoint ============================ //
+
 
 
   // ============================ Begin: SFC_NodeSort ============================ //

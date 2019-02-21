@@ -140,7 +140,7 @@ namespace ot {
       /**
        @author Masado Ishii
         */
-      std::array<char, MAX_LEVEL+1> getBase32Hex() const;
+      std::array<char, MAX_LEVEL+1> getBase32Hex(unsigned int lev = 0) const;
 
       /**
         @author Rahul Sampath

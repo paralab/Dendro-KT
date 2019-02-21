@@ -109,6 +109,16 @@ namespace ot {
   };
 
 
+  template <typename T, unsigned int dim>
+  class Element : public TreeNode<T,dim>
+  {
+    public:
+      using TreeNode<T,dim>::TreeNode;
+      using TreeNode<T,dim>::operator=;
+
+      void appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList);
+  };
+
 
   template <typename T, unsigned int dim>
   struct SFC_NodeSort

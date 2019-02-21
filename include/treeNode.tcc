@@ -311,19 +311,22 @@ inline int TreeNode<T,dim>::orFlag(unsigned int w) {
 }
 
 template <typename T, unsigned int dim>
-inline std::array<char, MAX_LEVEL+1> TreeNode<T,dim>::getBase32Hex() const
+inline std::array<char, MAX_LEVEL+1> TreeNode<T,dim>::getBase32Hex(unsigned int lev) const
 {
+  if (!lev)
+    lev = m_uiLevel;
+
   // https://en.wikipedia.org/wiki/Base32#base32hex
   const char base32hex[] = "0123456789ABCDEFGHIJKLMNOPQRSTUV";
   std::array<char, MAX_LEVEL+1> str;
   // It is assumed that MAX_LEVEL == m_uiMaxDepth + 1.
   /// for (int ii = 0; ii <= m_uiMaxDepth; ii++)
-  for (int ii = 0; ii <= m_uiLevel; ii++)
+  for (int ii = 0; ii <= lev; ii++)
   {
     str[ii] = base32hex[getMortonIndex(ii)];
   }
   /// str[m_uiMaxDepth+1] = '\0';
-  str[m_uiLevel+1] = '\0';
+  str[lev+1] = '\0';
   return str;
 }
 
