@@ -68,6 +68,8 @@ namespace ot {
     public:
       enum IsSelected { No, Maybe, Yes };
 
+      using TreeNode<T,dim>::operator==;
+
       /**
        * @brief Constructs a node at the extreme "lower-left" corner of the domain.
        */
@@ -95,13 +97,13 @@ namespace ot {
       /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the object using the assignment operator.*/
       TNPoint & operator = (TNPoint const  & other);
 
-      IsSelected get_isSelected() { return m_isSelected; }
+      IsSelected get_isSelected() const { return m_isSelected; }
       void set_isSelected(IsSelected isSelected) { m_isSelected = isSelected; }
 
-      CellType<dim> get_cellType();
+      CellType<dim> get_cellType() const;
 
       /**@brief Get the deepest cell such that the point is not on the boundary of the cell. */
-      TreeNode<T,dim> getFinestOpenContainer();
+      TreeNode<T,dim> getFinestOpenContainer() const;
 
     protected:
       // Data members.
@@ -116,7 +118,13 @@ namespace ot {
       using TreeNode<T,dim>::TreeNode;
       using TreeNode<T,dim>::operator=;
 
-      void appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList);
+      void appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
+      void appendInteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
+      void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
+
+      // This method has a straightforward implementation. Use it to test the other appendExteriorNodes().
+      // This method is probably faster for low order than the other one.
+      void appendExteriorNodes_ScrapeVolume(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
   };
 
 

@@ -54,7 +54,7 @@ namespace ot {
 
   /**@brief Infer the type (dimension and orientation) of cell this point is interior to, from coordinates and level. */
   template <typename T, unsigned int dim>
-  CellType<dim> TNPoint<T,dim>::get_cellType()
+  CellType<dim> TNPoint<T,dim>::get_cellType() const
   {
     using TreeNode = TreeNode<T,dim>;
     const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
@@ -78,7 +78,7 @@ namespace ot {
   }
 
   template <typename T, unsigned int dim>
-  TreeNode<T,dim> TNPoint<T,dim>::getFinestOpenContainer()
+  TreeNode<T,dim> TNPoint<T,dim>::getFinestOpenContainer() const
   {
     assert(!isTouchingDomainBoundary());  // When we bucket we need to set aside boundary points first.
 
@@ -112,7 +112,7 @@ namespace ot {
   // ============================ Begin: SFC_NodeSort ============================ //
 
   template <typename T, unsigned int dim>
-  void Element<T,dim>::appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList)
+  void Element<T,dim>::appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
   {
     using TreeNode = TreeNode<T,dim>;
     const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
@@ -129,8 +129,116 @@ namespace ot {
         nodeCoords[d] = len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
       nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
 
-      incrementBaseB<unsigned int, dim>(order+1, nodeIndices);
+      incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }
+  }
+
+
+  template <typename T, unsigned int dim>
+  void Element<T,dim>::appendInteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
+  {
+    // Basically the same thing as appendNodes (same dimension of volume, if nonempty),
+    // just use (order-1) instead of (order+1), and shift indices by 1.
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+
+    const unsigned int numNodes = intPow(order-1, dim);
+
+    std::array<unsigned int, dim> nodeIndices;
+    nodeIndices.fill(0);
+    for (unsigned int node = 0; node < numNodes; node++)
+    {
+      std::array<T,dim> nodeCoords;
+      #pragma unroll(dim)
+      for (int d = 0; d < dim; d++)
+        nodeCoords[d] = len * (nodeIndices[d]+1) / order  +  TreeNode::m_uiCoords[d];
+      nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
+
+      incrementBaseB<unsigned int, dim>(nodeIndices, order-1);
+    }
+  }
+
+  template <typename T, unsigned int dim>
+  void Element<T,dim>::appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+
+    // Outer for-loop: Dimensions of faces.
+    // Inner for-loop: Linearized lattice traversal of entire face of current dimension.
+    enum Sides {Neg = 0, Pos = 1, Interior = 2, NUM_SIDES = 3};
+    std::array<unsigned char, dim> currentFace;
+    currentFace.fill(Neg);
+    const unsigned int numFaces = intPow(3, dim) - 1;  // Last one would be dim-interior.
+
+    for (int faceIdx = 0; faceIdx < numFaces; faceIdx++)
+    {
+      // Prepare for virtual iteration (we need to remap axes).
+      //
+      // The entries in currentFace that are Interior signify the lattice loop variables.
+      // The number of entries that are Interior is the dimension of the face.
+      unsigned char faceDim = 0;
+      unsigned char axisMap[dim-1];                     // Enough for "(dim-1)"-faces or lower.
+      std::array<T,dim> nodeCoords;
+      for (int d = 0; d < dim; d++)
+        if (currentFace[d] == Interior)
+        {
+          axisMap[faceDim++] = d;
+          nodeCoords[d] = TreeNode::m_uiCoords[d];  // Will get overwritten per node.
+        }
+        else
+          nodeCoords[d] = TreeNode::m_uiCoords[d]  +  len * currentFace[d];   // Face offset won't be modified.
+
+      // Virtual iteration (vd) over the current (faceDim)-face using axisMap.
+      std::array<unsigned int, dim> nodeIndices;     // As long as we have enough digits it's fine.
+      nodeIndices.fill(0);
+      unsigned int numNodes = intPow(order-1, faceDim);  // See, we still only use faceDim digits.
+      for (int node = 0; node < numNodes; node++)
+      {
+        for (int vd = 0; vd < faceDim; vd++)
+        {
+          int d = axisMap[vd];   // The actual axis.
+          nodeCoords[d] = len * (nodeIndices[vd]+1) / order  +  TreeNode::m_uiCoords[d];
+        }
+        nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
+  
+        incrementBaseB<unsigned int, dim>(nodeIndices, order-1);
+      }
+      incrementBaseB<unsigned char,dim>(currentFace, NUM_SIDES);
+    }
+  }
+
+  template <typename T, unsigned int dim>
+  void Element<T,dim>::appendExteriorNodes_ScrapeVolume(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
+  {
+    // Duplicated the appendNodes() function, and then caused every interior node to be thrown away.
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+
+    const unsigned int numNodes = intPow(order+1, dim);
+
+    std::array<unsigned int, dim> nodeIndices;
+    nodeIndices.fill(0);
+    for (unsigned int node = 0; node < numNodes; node++)
+    {
+      // For exterior, need at least one of the entries in nodeIndices to be 0 or order.
+      if (std::count(nodeIndices.begin(), nodeIndices.end(), 0) == 0 &&
+          std::count(nodeIndices.begin(), nodeIndices.end(), order) == 0)
+      {
+        /*skip.*/
+      }
+      else
+      {
+        std::array<T,dim> nodeCoords;
+        #pragma unroll(dim)
+        for (int d = 0; d < dim; d++)
+          nodeCoords[d] = len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
+        nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
+      }
+
+      incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
+    }
+
   }
 
   // ============================ End: TNPoint ============================ //

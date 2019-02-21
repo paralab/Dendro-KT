@@ -278,9 +278,9 @@ T intCombinationSum(T n, T k, T &combo)
 
 
 template <typename T, unsigned int L>
-void incrementBaseB(T B, std::array<T,L> &digits)
+void incrementBaseB(std::array<T,L> &digits, T B, unsigned int lstart)
 {
-  unsigned int l = 0;
+  unsigned int l = lstart;
   do
   {
     digits[l]++;

@@ -230,7 +230,7 @@ T intCombinationSum(T n, T k, T &combo);
  @author Masado Ishii
  */
 template <typename T, unsigned int L>
-void incrementBaseB(T B, std::array<T,L> &digits);
+void incrementBaseB(std::array<T,L> &digits, T B, unsigned int lstart = 0);
 
 
 
