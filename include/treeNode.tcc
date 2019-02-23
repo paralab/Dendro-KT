@@ -596,6 +596,16 @@ inline bool TreeNode<T,dim>::isTouchingDomainBoundary() const
   return false;
 }
 
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::isOnDomainBoundary() const
+{
+  const unsigned int domainMask = (1u << m_uiMaxDepth) - 1;
+  for (int d = 0; d < dim; d++)
+    if (!(m_uiCoords[d] & domainMask))
+      return true;
+  return false;
+}
+
 
 // ================= End Pseudo-getters ====================== //
 

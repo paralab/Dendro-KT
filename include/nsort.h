@@ -18,6 +18,7 @@
 
 #include <mpi.h>
 #include <vector>
+#include <queue>
 #include <stdio.h>
 
 namespace ot {
@@ -115,7 +116,16 @@ namespace ot {
   class Element : public TreeNode<T,dim>
   {
     public:
-      using TreeNode<T,dim>::TreeNode;
+      // Bring in parent constructors.
+      Element () : TreeNode<T,dim> () {}
+      Element (const std::array<T,dim> coords, unsigned int level) : TreeNode<T,dim> (coords, level) {}
+      Element (const Element & other) : TreeNode<T,dim> (other) {}
+      Element (const int dummy, const std::array<T,dim> coords, unsigned int level) :
+          TreeNode<T,dim> (dummy, coords, level) {}
+
+      // Constructor from TreeNode to Element.
+      Element(const TreeNode<T,dim> & other) : TreeNode<T,dim>(other) {}
+
       using TreeNode<T,dim>::operator=;
 
       void appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
@@ -127,22 +137,35 @@ namespace ot {
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
-    RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+    static RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
     {
+      RankI totalUniquePoints = 0;
+      RankI numDomBdryPoints = filterDomainBoundary(start, end);
+      /// totalUniquePoints += numDomBdryPoints;  //TODO need to sort and remove duplicates first.
+
       if (order <= 2)
-        return countCGNodes_lowOrder(start, end, order);
+        totalUniquePoints += countCGNodes_impl(resolveInterface_lowOrder, start, end - numDomBdryPoints, order);
       else
-        return countCGNodes_highOrder(start, end, order);
+        totalUniquePoints += countCGNodes_impl(resolveInterface_highOrder, start, end - numDomBdryPoints, order);
+
+      return totalUniquePoints;
     }
 
     private:
+      /**@brief Moves all domain boundary points to the end, returning the number of boundary points. */
+      static RankI filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end);
+
+      /**@brief Depth-first traversal: pre-order bucketing, post-order calling resolveInterface (bottom up). */
+      template<typename ResolverT>
+      static RankI countCGNodes_impl(ResolverT resolveInterface, TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+
       /**@brief For order 1 or 2, alignment of points means we can count duplicates at node site to resolve duplicates/hanging nodes. */
-      RankI countCGNodes_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+      static RankI resolveInterface_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
 
       /**@brief For order > 2, alignment might not hold. However, we can use the fact that order > 2
                 to take advantage of locality of k'-face interior nodes of differing levels to
                 resolve duplicates/hanging nodes using a small buffer. */
-      RankI countCGNodes_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+      static RankI resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
   }; // struct SFC_NodeSort
 
 

@@ -80,7 +80,7 @@ namespace ot {
   template <typename T, unsigned int dim>
   TreeNode<T,dim> TNPoint<T,dim>::getFinestOpenContainer() const
   {
-    assert(!isTouchingDomainBoundary());  // When we bucket we need to set aside boundary points first.
+    assert((!TreeNode<T,dim>::isOnDomainBoundary()));  // When we bucket we need to set aside boundary points first.
 
     //
     // A node is on a boundary at level lev iff any coordinates have only zeros
@@ -195,11 +195,91 @@ namespace ot {
 
   // ============================ Begin: SFC_NodeSort ============================ //
 
+
+  template <typename T, unsigned int dim>
+  struct ParentOfContainer
+  {
+    // PointType == TNPoint<T,dim>    KeyType == TreeNode<T,dim>
+    TreeNode<T,dim> operator()(const TNPoint<T,dim> &pt) { return pt.getFinestOpenContainer(); }
+  };
+
+  /// template <class KeyFun, typename PointType, typename KeyType>
+  /// static void SFC_bucketing_impl(PointType *points,
+  ///                         RankI begin, RankI end,
+  ///                         LevI lev,
+  ///                         RotI pRot,
+  ///                         KeyFun keyfun,
+  ///                         bool ancestorsFirst,
+  ///                         std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+  ///                         RankI &outAncStart,
+  ///                         RankI &outAncEnd);
+
+
+  
+  template <typename T, unsigned int dim>
+  RankI SFC_NodeSort<T,dim>::filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end)
+  {
+    using TNP = TNPoint<T,dim>;
+
+    // Counting phase.
+    RankI numDomBdryPoints = 0;
+    std::queue<TNP *> segSplitters;
+    std::vector<TNP> bdryPts;
+    for (TNP *iter = start; iter < end; iter++)
+    {
+      if (iter->isOnDomainBoundary())
+      {
+        numDomBdryPoints++;
+        segSplitters.push(iter);
+        /// iter->set_isSelected(TNP::Yes);  // TODO Can't set every duplicate to selected.
+        bdryPts.push_back(*iter);
+      }
+    }
+
+    // Movement phase.
+    TNP *writepoint;
+    if (!segSplitters.empty())
+      writepoint = segSplitters.front();
+    while (!segSplitters.empty())
+    {
+      const TNP * const readstart = segSplitters.front() + 1;
+      segSplitters.pop();
+      const TNP * const readstop = (!segSplitters.empty() ? segSplitters.front() : end);
+      // Shift the next segment of non-boundary points.
+      for (const TNP *readpoint = readstart; readpoint < readstop; readpoint++)
+        *(writepoint++) = *readpoint;
+    }
+
+    for (const TNP &bdryPt : bdryPts)
+    {
+      *(writepoint++) = bdryPt;
+    }
+
+    return numDomBdryPoints;
+  }
+
   //
-  // SFC_NodeSort::countCGNodes_lowOrder()
+  // SFC_NodeSort::countCGNodes_impl()
   //
   template <typename T, unsigned int dim>
-  RankI SFC_NodeSort<T,dim>::countCGNodes_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  template<typename ResolverT>
+  RankI SFC_NodeSort<T,dim>::countCGNodes_impl(
+      ResolverT resolveInterface,
+      TNPoint<T,dim> *start, TNPoint<T,dim> *end,
+      unsigned int order)
+  {
+
+    //TODO
+    return 0;
+  }
+
+
+
+  //
+  // SFC_NodeSort::resolveInterface_lowOrder()
+  //
+  template <typename T, unsigned int dim>
+  RankI SFC_NodeSort<T,dim>::resolveInterface_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
     //
     // The low-order counting method is based on counting number of points per spatial location.
@@ -223,10 +303,10 @@ namespace ot {
 
 
   //
-  // SFC_NodeSort::countCGNodes_highOrder()
+  // SFC_NodeSort::resolveInterface_highOrder()
   //
   template <typename T, unsigned int dim>
-  RankI SFC_NodeSort<T,dim>::countCGNodes_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  RankI SFC_NodeSort<T,dim>::resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
     //TODO
     return 0;

@@ -181,7 +181,11 @@ namespace ot {
        */
       unsigned int getNumAlignedFaces(unsigned int level) const;
 
+      /** @returns true iff the intersection between orthant exterior and domain boundary is nonempty. */
       bool isTouchingDomainBoundary() const;
+
+      /** @returns true iff the orthant anchor is on the domain boundary. */
+      bool isOnDomainBoundary() const;
 
       /**@brief returns true if *(this) octant is root. false otherwise*/
       bool isRoot() const;
