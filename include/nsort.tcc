@@ -212,31 +212,6 @@ namespace ot {
 
 
   //
-  // SFC_NodeSort::scanForDuplicates()
-  //
-  template <typename T, unsigned int dim>
-  void SFC_NodeSort<T,dim>::scanForDuplicates(
-      TNPoint<T,dim> *start, TNPoint<T,dim> *end,
-      TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &next, unsigned int &numDups)
-  {
-    std::array<T,dim> first_coords, other_coords;
-    start->getAnchor(first_coords);
-    next = start + 1;
-    firstCoarsest = start;
-    numDups = 1;  // Something other than 0.
-    while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
-    {
-      if (next->getLevel() < firstCoarsest->getLevel())
-        firstCoarsest = next;
-      if (numDups && next->getLevel() != firstCoarsest->getLevel())
-        numDups = 0;
-      next++;
-    }
-    if (numDups)
-      numDups = next - start;
-  }
-
-  //
   // SFC_NodeSort::countCGNodes()
   //
   template <typename T, unsigned int dim>
@@ -343,31 +318,104 @@ namespace ot {
 
 
   //
-  // SFC_NodeSort::bucketByHyperplane()
+  // SFC_NodeSort::locTreeSortAsPoints()
+  //
+  template<typename T, unsigned int dim>
+  void
+  SFC_NodeSort<T,dim>:: locTreeSortAsPoints(TNPoint<T,dim> *points,
+                            RankI begin, RankI end,
+                            LevI sLev,
+                            LevI eLev,
+                            RotI pRot)
+  {
+    using TNP = TNPoint<T,dim>;
+    constexpr char numChildren = TreeNode<T,dim>::numChildren;
+    constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+    // Lookup tables to apply rotations.
+    const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+    const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+    if (end <= begin) { return; }
+
+    // Reorder the buckets on sLev (current level).
+    std::array<RankI, numChildren+1> tempSplitters;
+    RankI unused_ancStart, unused_ancEnd;
+    SFC_Tree<T,dim>::template SFC_bucketing_impl<KeyFunIdentity_Pt<TNP>, TNP, TNP>(
+        points, begin, end, sLev, pRot,
+        KeyFunIdentity_Pt<TNP>(), false, true,
+        tempSplitters,
+        unused_ancStart, unused_ancEnd);
+
+    if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+    {
+      // Recurse.
+      // Use the splitters to specify ranges for the next level of recursion.
+      for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+      {
+        // Check for empty or singleton bucket.
+        if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
+          continue;
+
+        ChildI child = rot_perm[child_sfc];
+        RotI cRot = orientLookup[child];
+
+        // Check for identical coordinates.
+        bool allIdentical = true;
+        std::array<T,dim> first_coords;
+        points[tempSplitters[child_sfc+0]].getAnchor(first_coords);
+        for (RankI srchIdentical = tempSplitters[child_sfc+0] + 1;
+            srchIdentical < tempSplitters[child_sfc+1];
+            srchIdentical++)
+        {
+          std::array<T,dim> other_coords;
+          points[srchIdentical].getAnchor(other_coords);
+          if (other_coords != first_coords)
+          {
+            allIdentical = false;
+            break;
+          }
+        }
+
+        if (!allIdentical)
+        {
+          locTreeSortAsPoints(points,
+              tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+              sLev+1, eLev,
+              cRot);
+        }
+        else
+        {
+          /* We could arrange them by level, but don't have to. */
+        }
+      }
+    }
+  }// end function()
+
+
+  //
+  // SFC_NodeSort::scanForDuplicates()
   //
   template <typename T, unsigned int dim>
-  void SFC_NodeSort<T,dim>::bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, std::array<RankI,dim+1> &hSplitters)
+  void SFC_NodeSort<T,dim>::scanForDuplicates(
+      TNPoint<T,dim> *start, TNPoint<T,dim> *end,
+      TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &next, unsigned int &numDups)
   {
-    // Compute offsets before moving points.
-    std::array<RankI, dim> hCounts, hOffsets;
-    hCounts.fill(0);
-    for (TNPoint<T,dim> *pIter = start; pIter < end; pIter++)
-      hCounts[pIter->get_firstIncidentHyperplane()]++;
-    RankI accum = 0;
-    for (int d = 0; d < dim; d++)
+    std::array<T,dim> first_coords, other_coords;
+    start->getAnchor(first_coords);
+    next = start + 1;
+    firstCoarsest = start;
+    numDups = 1;  // Something other than 0.
+    while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
     {
-      hOffsets[d] = accum;
-      hSplitters[d] = accum;
-      accum += hCounts[d];
+      if (next->getLevel() < firstCoarsest->getLevel())
+        firstCoarsest = next;
+      if (numDups && next->getLevel() != firstCoarsest->getLevel())
+        numDups = 0;
+      next++;
     }
-    hSplitters[dim] = accum;
-
-    // Move points with a full size buffer.
-    std::vector<TNPoint<T,dim>> buffer(end - start);
-    for (TNPoint<T,dim> *pIter = start; pIter < end; pIter++)
-      buffer[hOffsets[pIter->get_firstIncidentHyperplane()]++] = *pIter;
-    for (auto &&pt : buffer)
-      *(start++) = pt;
+    if (numDups)
+      numDups = next - start;
   }
 
 
@@ -464,81 +512,32 @@ namespace ot {
 
 
   //
-  // SFC_NodeSort::locTreeSortAsPoints()
+  // SFC_NodeSort::bucketByHyperplane()
   //
-  template<typename T, unsigned int dim>
-  void
-  SFC_NodeSort<T,dim>:: locTreeSortAsPoints(TNPoint<T,dim> *points,
-                            RankI begin, RankI end,
-                            LevI sLev,
-                            LevI eLev,
-                            RotI pRot)
+  template <typename T, unsigned int dim>
+  void SFC_NodeSort<T,dim>::bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, std::array<RankI,dim+1> &hSplitters)
   {
-    using TNP = TNPoint<T,dim>;
-    constexpr char numChildren = TreeNode<T,dim>::numChildren;
-    constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
-
-    // Lookup tables to apply rotations.
-    const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-    const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
-
-    if (end <= begin) { return; }
-
-    // Reorder the buckets on sLev (current level).
-    std::array<RankI, numChildren+1> tempSplitters;
-    RankI unused_ancStart, unused_ancEnd;
-    SFC_Tree<T,dim>::template SFC_bucketing_impl<KeyFunIdentity_Pt<TNP>, TNP, TNP>(
-        points, begin, end, sLev, pRot,
-        KeyFunIdentity_Pt<TNP>(), false, true,
-        tempSplitters,
-        unused_ancStart, unused_ancEnd);
-
-    if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+    // Compute offsets before moving points.
+    std::array<RankI, dim> hCounts, hOffsets;
+    hCounts.fill(0);
+    for (TNPoint<T,dim> *pIter = start; pIter < end; pIter++)
+      hCounts[pIter->get_firstIncidentHyperplane()]++;
+    RankI accum = 0;
+    for (int d = 0; d < dim; d++)
     {
-      // Recurse.
-      // Use the splitters to specify ranges for the next level of recursion.
-      for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
-      {
-        // Check for empty or singleton bucket.
-        if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
-          continue;
-
-        ChildI child = rot_perm[child_sfc];
-        RotI cRot = orientLookup[child];
-
-        // Check for identical coordinates.
-        bool allIdentical = true;
-        std::array<T,dim> first_coords;
-        points[tempSplitters[child_sfc+0]].getAnchor(first_coords);
-        for (RankI srchIdentical = tempSplitters[child_sfc+0] + 1;
-            srchIdentical < tempSplitters[child_sfc+1];
-            srchIdentical++)
-        {
-          std::array<T,dim> other_coords;
-          points[srchIdentical].getAnchor(other_coords);
-          if (other_coords != first_coords)
-          {
-            allIdentical = false;
-            break;
-          }
-        }
-
-        if (!allIdentical)
-        {
-          locTreeSortAsPoints(points,
-              tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
-              sLev+1, eLev,
-              cRot);
-        }
-        else
-        {
-          /* We could arrange them by level, but don't have to. */
-        }
-      }
+      hOffsets[d] = accum;
+      hSplitters[d] = accum;
+      accum += hCounts[d];
     }
-  }// end function()
+    hSplitters[dim] = accum;
 
-
+    // Move points with a full size buffer.
+    std::vector<TNPoint<T,dim>> buffer(end - start);
+    for (TNPoint<T,dim> *pIter = start; pIter < end; pIter++)
+      buffer[hOffsets[pIter->get_firstIncidentHyperplane()]++] = *pIter;
+    for (auto &&pt : buffer)
+      *(start++) = pt;
+  }
 
 
   //
