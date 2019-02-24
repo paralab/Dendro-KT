@@ -50,9 +50,6 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
   {
     // Recurse.
     // Use the splitters to specify ranges for the next level of recursion.
-    // While at first it might seem wasteful that we keep sorting the
-    // ancestors and they don't move, in reality there are few ancestors,
-    // so it (probably) doesn't matter that much.
     for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
       // Columns of HILBERT_TABLE are indexed by the Morton rank.
@@ -74,12 +71,6 @@ SFC_Tree<T,D>:: locTreeSort(TreeNode<T,D> *points,
 }// end function()
 
 
-template <typename T, unsigned int D>
-struct KeyFunIdentity
-{
-  const TreeNode<T,D> &operator()(const TreeNode<T,D> &tn) { return tn; }
-};
-
 
 //
 // SFC_bucketing()
@@ -99,9 +90,9 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
 
   //TODO transfer the comments to the fully configurable templated version of this method.
 
-  SFC_bucketing_impl<KeyFunIdentity<T,D>, TreeNode<T,D>, TreeNode<T,D>>(
+  SFC_bucketing_impl<KeyFunIdentity_TN<T,D>, TreeNode<T,D>, TreeNode<T,D>>(
       points, begin, end, lev, pRot,
-      KeyFunIdentity<T,D>(), false /*true*/,
+      KeyFunIdentity_TN<T,D>(), true, true,
       outSplitters,
       outAncStart, outAncEnd);
 

@@ -137,34 +137,52 @@ namespace ot {
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
-    static RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
-    {
-      RankI totalUniquePoints = 0;
-      RankI numDomBdryPoints = filterDomainBoundary(start, end);
-      /// totalUniquePoints += numDomBdryPoints;  //TODO need to sort and remove duplicates first.
+    /**
+     * @brief Count all unique, nonhanging nodes in/on the domain.
+     */
+    static RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
 
-      if (order <= 2)
-        totalUniquePoints += countCGNodes_impl(resolveInterface_lowOrder, start, end - numDomBdryPoints, order);
-      else
-        totalUniquePoints += countCGNodes_impl(resolveInterface_highOrder, start, end - numDomBdryPoints, order);
-
-      return totalUniquePoints;
-    }
+    /**
+     * @brief Sorts points `as points', meaning by coordinate first. NOTE: Doesn't enforce any ordering among points with identical coordinates.
+     */
+    static void locTreeSortAsPoints(TNPoint<T,dim> *points, RankI begin, RankI end, LevI sLev, LevI eLev, RotI pRot);
 
     private:
+
+      /**
+       * @brief Count the number of duplicate coordinate locations, if all are at the same level, or yield 0 if there are mixed levels.
+       * @param [in] start The start of the scan.
+       * @param [in] end Scan won't enter end.
+       * @param [out] firstCoarsest The first duplicate, or if there are mixed levels, the first with the coarser level.
+       * @param [out] next The next element that was not scanned. Future scans can pick up from here.
+       * @param [out] numDups If all same level, the number of duplicates. If mixed levels, 0.
+       * @note Assumes that start < end.
+       */
+      static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &next, unsigned int &numDups);
+
       /**@brief Moves all domain boundary points to the end, returning the number of boundary points. */
       static RankI filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end);
 
-      /**@brief Depth-first traversal: pre-order bucketing, post-order calling resolveInterface (bottom up). */
+      /**
+       * @brief Depth-first traversal: pre-order bucketing, post-order calling resolveInterface (bottom up).
+       * @param sLev The level to separate children into sibiling buckets.
+       * @param pRot The SFC orientation of the parent (containing) region.
+       */
       template<typename ResolverT>
-      static RankI countCGNodes_impl(ResolverT resolveInterface, TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+      static RankI countCGNodes_impl(ResolverT resolveInterface, TNPoint<T,dim> *start, TNPoint<T,dim> *end, LevI sLev, RotI pRot, unsigned int order);
 
-      /**@brief For order 1 or 2, alignment of points means we can count duplicates at node site to resolve duplicates/hanging nodes. */
+      /**
+       * @brief For order 1 or 2, alignment of points means we can count duplicates at node site to resolve duplicates/hanging nodes.
+       * @note Assumes the points are already sorted -- as points, such that all points with same coordinates appear together, regardless of level.
+       */
       static RankI resolveInterface_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
 
-      /**@brief For order > 2, alignment might not hold. However, we can use the fact that order > 2
-                to take advantage of locality of k'-face interior nodes of differing levels to
-                resolve duplicates/hanging nodes using a small buffer. */
+      /**
+       * @brief For order > 2, alignment might not hold. However, we can use the fact that order > 2
+       *        to take advantage of locality of k'-face interior nodes of differing levels to
+       *        resolve duplicates/hanging nodes using a small buffer.
+       * @note Assumes the points are already sorted -- as points, such that all points with same coordinates appear together, regardless of level.
+       */
       static RankI resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
   }; // struct SFC_NodeSort
 

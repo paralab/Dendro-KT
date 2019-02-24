@@ -90,6 +90,20 @@ struct BarrierQueue
   { if (b > 0) { val = q[0]; q.erase(q.begin()); } return (b > 0 ? b-- : 0); }
 };
 
+template <typename T, unsigned int D>
+struct KeyFunIdentity_TN
+{
+  const TreeNode<T,D> &operator()(const TreeNode<T,D> &tn) { return tn; }
+};
+
+template <typename PointType>
+struct KeyFunIdentity_Pt
+{
+  const PointType &operator()(const PointType &pt) { return pt; }
+};
+
+
+
 
 template <typename T, unsigned int D>
 struct SFC_Tree
@@ -103,7 +117,6 @@ struct SFC_Tree
                           LevI sLev,
                           LevI eLev,
                           RotI pRot);            // Initial rotation, use 0 if sLev is 1.
-
 
   template <typename Companion>
   static void locTreeSort(TreeNode<T,D> *points,
@@ -157,6 +170,7 @@ struct SFC_Tree
                           LevI lev,
                           RotI pRot,
                           KeyFun keyfun,
+                          bool separateAncestors,
                           bool ancestorsFirst,
                           std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
                           RankI &outAncStart,

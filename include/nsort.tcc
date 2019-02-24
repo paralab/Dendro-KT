@@ -89,7 +89,7 @@ namespace ot {
     // one nonzero bit strictly deeper than lev. We need the deepest such level.
     // To get the deepest such level, find the deepest nonzero bit in each
     // coordinate, and take the coarsest of finest levels.
-    // 
+    //
     using TreeNode = TreeNode<T,dim>;
     unsigned int coarsestFinestHeight = 0;
     for (int d = 0; d < dim; d++)
@@ -196,26 +196,92 @@ namespace ot {
   // ============================ Begin: SFC_NodeSort ============================ //
 
 
+  //
+  // SFC_NodeSort::scanForDuplicates()
+  //
   template <typename T, unsigned int dim>
-  struct ParentOfContainer
+  void SFC_NodeSort<T,dim>::scanForDuplicates(
+      TNPoint<T,dim> *start, TNPoint<T,dim> *end,
+      TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &next, unsigned int &numDups)
   {
-    // PointType == TNPoint<T,dim>    KeyType == TreeNode<T,dim>
-    TreeNode<T,dim> operator()(const TNPoint<T,dim> &pt) { return pt.getFinestOpenContainer(); }
-  };
+    std::array<T,dim> first_coords, other_coords;
+    start->getAnchor(first_coords);
+    next = start + 1;
+    firstCoarsest = start;
+    numDups = 1;  // Something other than 0.
+    while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
+    {
+      if (next->getLevel() < firstCoarsest->getLevel())
+        firstCoarsest = next;
+      if (numDups && next->getLevel() != firstCoarsest->getLevel())
+        numDups = 0;
+      next++;
+    }
+    if (numDups)
+      numDups = next - start;
+  }
 
-  /// template <class KeyFun, typename PointType, typename KeyType>
-  /// static void SFC_bucketing_impl(PointType *points,
-  ///                         RankI begin, RankI end,
-  ///                         LevI lev,
-  ///                         RotI pRot,
-  ///                         KeyFun keyfun,
-  ///                         bool ancestorsFirst,
-  ///                         std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
-  ///                         RankI &outAncStart,
-  ///                         RankI &outAncEnd);
+  //
+  // SFC_NodeSort::countCGNodes()
+  //
+  template <typename T, unsigned int dim>
+  RankI SFC_NodeSort<T,dim>::countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  {
+    using TNP = TNPoint<T,dim>;
+    constexpr char numChildren = TreeNode<T,dim>::numChildren;
+    RankI totalUniquePoints = 0;
+    RankI numDomBdryPoints = filterDomainBoundary(start, end);
+
+    //
+    // Sort the domain boundary points. Root-1 level requires special handling.
+    //
+    std::array<RankI, numChildren+1> rootSplitters;
+    RankI unused_ancStart, unused_ancEnd;
+    SFC_Tree<T,dim>::template SFC_bucketing_impl<KeyFunIdentity_Pt<TNP>, TNP, TNP>(
+        end-numDomBdryPoints, 0, numDomBdryPoints, 0, 0,
+        KeyFunIdentity_Pt<TNP>(), false, true,
+        rootSplitters,
+        unused_ancStart, unused_ancEnd);
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      if (rootSplitters[child_sfc+1] - rootSplitters[child_sfc+0] <= 1)
+        continue;
+
+      locTreeSortAsPoints(
+          end-numDomBdryPoints, rootSplitters[child_sfc+0], rootSplitters[child_sfc+1],
+          1, m_uiMaxDepth, 0);    // Re-use the 0th rotation for each 'root'.
+    }
+
+    //
+    // Count the domain boundary points.
+    //
+    for (TNP *bdryIter = end - numDomBdryPoints; bdryIter < end; bdryIter++)
+      bdryIter->set_isSelected(TNP::No);
+    RankI numUniqBdryPoints = 0;
+    TNP *bdryIter = end - numDomBdryPoints;
+    TNP *firstCoarsest;
+    unsigned int unused_numDups;
+    while (bdryIter < end)
+    {
+      scanForDuplicates(bdryIter, end, firstCoarsest, bdryIter, unused_numDups);
+      firstCoarsest->set_isSelected(TNP::Yes);
+      numUniqBdryPoints++;
+    }
+
+    totalUniquePoints += numUniqBdryPoints;
+
+    //
+    // Bottom-up counting interior points
+    //
+    if (order <= 2)
+      totalUniquePoints += countCGNodes_impl(resolveInterface_lowOrder, start, end - numDomBdryPoints, 1, 0, order);
+    else
+      totalUniquePoints += countCGNodes_impl(resolveInterface_highOrder, start, end - numDomBdryPoints, 1, 0, order);
+
+    return totalUniquePoints;
+  }
 
 
-  
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end)
   {
@@ -258,6 +324,16 @@ namespace ot {
     return numDomBdryPoints;
   }
 
+
+  template <typename T, unsigned int dim>
+  struct ParentOfContainer
+  {
+    // PointType == TNPoint<T,dim>    KeyType == TreeNode<T,dim>
+    TreeNode<T,dim> operator()(const TNPoint<T,dim> &pt) { return pt.getFinestOpenContainer(); }
+  };
+
+
+
   //
   // SFC_NodeSort::countCGNodes_impl()
   //
@@ -266,12 +342,105 @@ namespace ot {
   RankI SFC_NodeSort<T,dim>::countCGNodes_impl(
       ResolverT resolveInterface,
       TNPoint<T,dim> *start, TNPoint<T,dim> *end,
+      LevI sLev, RotI pRot,
       unsigned int order)
   {
+    // Pseudocode:
+    //
+    // Bucket points using the keyfun ParentOfContainer, and ancestors after sibilings.
+    //   Points on our own interface end up in our `ancestor' bucket. We'll reconsider these later.
+    //   Other points fall into the interiors of our children.
+    // Recursively, for each child:
+    //   Look up sfc rotation for child.
+    //   Call countCGNodes_impl() on that child.
+    //     The interfaces within all children are now resolved.
+    // Reconsider our own interface.
+    //   `Bucket' points on our interface, not by child, but by which hyperplane they reside on.
+    //     Apply the test greedily, so that intersections have a consistent hyperplane choice.
+    //   For each hyperplane:
+    //     Sort the points (as points) in the SFC ordering, using ourselves as parent.
+    //     Call resolveInterface() on the points in the hyperplane.
 
     //TODO
     return 0;
   }
+
+
+  //
+  // SFC_NodeSort::locTreeSortAsPoints()
+  //
+  template<typename T, unsigned int dim>
+  void
+  SFC_NodeSort<T,dim>:: locTreeSortAsPoints(TNPoint<T,dim> *points,
+                            RankI begin, RankI end,
+                            LevI sLev,
+                            LevI eLev,
+                            RotI pRot)
+  {
+    using TNP = TNPoint<T,dim>;
+    constexpr char numChildren = TreeNode<T,dim>::numChildren;
+    constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+    // Lookup tables to apply rotations.
+    const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+    const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+    if (end <= begin) { return; }
+
+    // Reorder the buckets on sLev (current level).
+    std::array<RankI, numChildren+1> tempSplitters;
+    RankI unused_ancStart, unused_ancEnd;
+    SFC_Tree<T,dim>::template SFC_bucketing_impl<KeyFunIdentity_Pt<TNP>, TNP, TNP>(
+        points, begin, end, sLev, pRot,
+        KeyFunIdentity_Pt<TNP>(), false, true,
+        tempSplitters,
+        unused_ancStart, unused_ancEnd);
+
+    if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+    {
+      // Recurse.
+      // Use the splitters to specify ranges for the next level of recursion.
+      for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+      {
+        ChildI child = rot_perm[child_sfc];
+        RotI cRot = orientLookup[child];
+
+        // Check for empty or singleton bucket.
+        if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
+          continue;
+
+        // Check for identical coordinates.
+        bool allIdentical = true;
+        std::array<T,dim> first_coords;
+        points[tempSplitters[child_sfc+0]].getAnchor(first_coords);
+        for (RankI srchIdentical = tempSplitters[child_sfc+0] + 1;
+            srchIdentical < tempSplitters[child_sfc+1];
+            srchIdentical++)
+        {
+          std::array<T,dim> other_coords;
+          points[srchIdentical].getAnchor(other_coords);
+          if (other_coords != first_coords)
+          {
+            allIdentical = false;
+            break;
+          }
+        }
+
+        if (!allIdentical)
+        {
+          locTreeSortAsPoints(points,
+              tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+              sLev+1, eLev,
+              cRot);
+        }
+        else
+        {
+          /* We could arrange them by level, but don't have to. */
+        }
+      }
+    }
+  }// end function()
+
 
 
 
@@ -290,7 +459,7 @@ namespace ot {
     // cdim is the dimension of the cell to which the points are interior. For example, in
     // a 4D domain, vertex-interior nodes (cdim==0) should come in sets of 16 instances per location,
     // while 3face-interior nodes (aka octant-interior nodes, cdim==3), should come in pairs
-    // of instances per location. 
+    // of instances per location.
     //
     // Given a spatial location, it is assumed that either all the instances generated for that location
     // are present on this processor, or none of them are.

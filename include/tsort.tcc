@@ -160,13 +160,12 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
                           LevI lev,
                           RotI pRot,
                           KeyFun keyfun,
+                          bool separateAncestors,
                           bool ancestorsFirst,
                           std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd)
 {
-  //TODO use outAncStart and outAncEnd
-
   using TreeNode = TreeNode<T,D>;
   constexpr char numChildren = TreeNode::numChildren;
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
@@ -177,7 +176,7 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
   for (const PointType *pt = points + begin; pt < points + end; pt++)
   {
     const KeyType &tn = keyfun(*pt);
-    if (tn.getLevel() < lev)
+    if (separateAncestors && tn.getLevel() < lev)
       countAncestors++;
     else
       counts[tn.getMortonIndex(lev)]++;
@@ -192,7 +191,7 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
 
   /// const int a1 = (ancestorsFirst ? 1 : 0); // OLD, used when sibling and ancestor splitters were combined in one array.
 
-  std::array<TreeNode, numChildren+1> unsortedBuffer;
+  std::array<PointType, numChildren+1> unsortedBuffer;
   int bufferSize = 0;
 
   const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
@@ -236,9 +235,9 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
 
   while (bufferSize > 0)
   {
-    TreeNode *bufferTop = &unsortedBuffer[bufferSize-1];
+    PointType *bufferTop = &unsortedBuffer[bufferSize-1];
     unsigned char destBucket
-      = (bufferTop->getLevel() < lev) ? numChildren : bufferTop->getMortonIndex(lev);
+      = (separateAncestors && bufferTop->getLevel() < lev) ? numChildren : bufferTop->getMortonIndex(lev);
     // destBucket is used to index into offsets[] and bucketEnds[], for which
     // ancestors are represented in [numChildren] regardless of `ancestorsFirst'.
 

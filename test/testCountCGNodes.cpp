@@ -174,14 +174,11 @@ struct Example3
 
 int main(int argc, char * argv[])
 {
-
-  // _InitializeHcurve(dim);
-  // _DestroyHcurve();
-
   constexpr unsigned int dim = 3;
   const unsigned int endL = 7;
   const unsigned int order = 4;
 
+  _InitializeHcurve(dim);
 
 ///  {
 ///    ot::Element<T,dim> e({5u << (m_uiMaxDepth-4), 2u << (m_uiMaxDepth-4), 1u << (m_uiMaxDepth-4)}, 4);
@@ -227,6 +224,8 @@ int main(int argc, char * argv[])
   ot::RankI numUniqueNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeList.begin()), &(*nodeList.end()), order);
 
   printf("Example1: Algorithm says # points == %u.\n", numUniqueNodes);
+
+  _DestroyHcurve();
 
   return 0;
 }
