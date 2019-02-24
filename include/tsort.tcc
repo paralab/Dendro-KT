@@ -237,7 +237,7 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
   {
     PointType *bufferTop = &unsortedBuffer[bufferSize-1];
     unsigned char destBucket
-      = (separateAncestors && bufferTop->getLevel() < lev) ? numChildren : bufferTop->getMortonIndex(lev);
+      = (separateAncestors && keyfun(*bufferTop).getLevel() < lev) ? numChildren : keyfun(*bufferTop).getMortonIndex(lev);
     // destBucket is used to index into offsets[] and bucketEnds[], for which
     // ancestors are represented in [numChildren] regardless of `ancestorsFirst'.
 
