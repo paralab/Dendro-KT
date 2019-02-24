@@ -574,31 +574,17 @@ namespace ot {
       scanForDuplicates(ptIter, end, firstCoarsest, ptIter, numDups);
       if (!numDups)   // Signifies mixed levels. We have a winner.
       {
-        /// std::cout << "Mixed Levels!\n";
         firstCoarsest->set_isSelected(TNP::Yes);
         totalCount++;
       }
       else            // All same level and cell type. Test whether hanging or not.
       {
-        /// std::cout << "<----\n";
         unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
         unsigned int expectedDups = 1u << (dim - cdim);
-        /// std::cout << firstCoarsest->getBase32Hex(5).data()
-        ///     << "(" << firstCoarsest->getFinestOpenContainer().getBase32Hex().data() << ")"
-        ///     << ":  \t";
-        /// std::cout << (int) cdim << "\t";
-        /// std::cout << std::bitset<dim>(firstCoarsest->get_cellType().get_orient_flag()).to_string() << "\t";
-        /// std::cout << "numDups==" << numDups << "\t";
         if (numDups == expectedDups)
         {
           firstCoarsest->set_isSelected(TNP::Yes);
           totalCount++;
-          /// std::cout << "Not hanging!\n";
-          /// std::cout << "\n";
-        }
-        else
-        {
-          /// std::cout << "Hanging!\n";
         }
       }
     }
@@ -613,7 +599,81 @@ namespace ot {
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
-    //TODO
+    //
+    // The high-order counting method (order>=3) cannot assume that a winning node
+    // will co-occur with finer level nodes in the same exact coordinate location.
+    //
+    // Instead, we have to consider open k'-faces (k'-cells), which generally
+    // contain multiple nodal locations. We say an open k'-cell is present when
+    // an incident node of the same level is present. If an open k'cell is present,
+    // it is non-hanging iff its parent open k'-cell is not present.
+    //
+    // # Locality property.
+    // This algorithm relies on the `non-reentrant' property of SFC's visitng cells.
+    // A corollary of non-reentrancy to K-cells (embedding dimension) is that,
+    // once the SFC has entered a k'-face of some level and orientation, it must
+    // finish traversing the entire k'-face before entering another k'-face of
+    // the same dimension and orientaton and of *coarser or equal level*.
+    // The SFC is allowed to enter another k'-face of finer level, but once
+    // it has reached the finest level in a region, it cannot enter
+    // a k'-face of finer level. Therefore, considering a finer k'-face in
+    // a possibly mixed-level k'-cell, the SFC length of the k'-face is bounded
+    // by a function of order and dimension only.
+    //
+    // # Overlap property.
+    // This algorithm further relies on the order being 3 or higher. Given an
+    // open k'-cell that is present, if its parent k'-cell is also present,
+    // then at least one k'-cell-interior node from the parent level must
+    // fall within the interior of the child k'-cell. This means we can detect
+    // the parent's node while traversing the child k'-face.
+    //
+    // # Algorithm.
+    // Combining the properties of SFC locality and high-order parent/child overlap,
+    // we can determine for each k'-cell whether it is hanging or not, during a single
+    // pass of the interface nodes by using a constant-sized buffer. (The buffer
+    // size is a function of dimension and order, which for the current purpose
+    // are constants).
+    //
+    // - Maintain a table with one row per cell type (cell dimension, orientation).
+    //   Each row has a current cell level and identity (represented as a TreeNode
+    //   in conjunction with the row number==orientation), a current selection status
+    //   (Yes/No/Maybe), and a list of pointers to pending ("Maybe") nodes.
+    //   - If the row has status "Yes" or "No" then there are no pending nodes.
+    //
+    // - Iterate through all unique locations in the interface. For each one,
+    //   get the cell type of the point and use it to look up the appropriate row
+    //   in the table. Take one of the following branches:
+    //   - If the point is contained in the row's current cell identity:
+    //     - If the point has coarser level than the row cell:
+    //       - Set: pt.isSelected=Yes
+    //       - If (row.isSelected == Maybe)  //(can be Maybe or No, but not Yes)
+    //         - Set all pending points to: isSelected=No, and remove them.
+    //         - Set: row.isSelected=No
+    //     - Elif the point has finer level than the row cell:
+    //       - Set: pt.isSelected=No
+    //       - If (row.isSelected == Maybe)  //(can really only be Maybe, not No or Yes)
+    //         - Set all pending points to: isSelected=Yes, and remove them.
+    //         - Set: row cell identity to pt.cell
+    //         - Set: row.isSelected=No
+    //     - Else, the point has same level as row cell:
+    //       - If (row.isSelected != Maybe):
+    //         - Set: pt.isSelected=(row.isSelected)
+    //       - Else, (row.isSelected == Maybe):
+    //         - Append pointer to pt into row.
+    //
+    //   - Else, the point is NOT contained in the row's current cell identity:
+    //     - If (row.isSelected == Maybe):
+    //       - Set all pending points to: isSelected=Yes, and remove them.
+    //     - Set: row identity to pt.cell
+    //     - Set: row.isSelected=Maybe
+    //     - Append pointer to pt into row.
+    //
+    // - When we reach the end of the interface, set all remaining pending nodes
+    //   to: isSelected=Yes.
+    //
+
+
+
     return 0;
   }
 
