@@ -52,10 +52,10 @@ namespace ot {
   }
 
   template <typename T, unsigned int dim>
-  unsigned char TNPoint<T,dim>::get_firstIncidentHyperplane() const
+  unsigned char TNPoint<T,dim>::get_firstIncidentHyperplane(unsigned int hlev) const
   {
     using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+    const unsigned int len = 1u << (m_uiMaxDepth - hlev);
     const unsigned int interiorMask = len - 1;
 
     for (int d = 0; d < dim; d++)
@@ -494,9 +494,9 @@ namespace ot {
           order);
     }
 
-    // Process own interface.
+    // Process own interface. (In this case hlev == sLev).
     std::array<RankI, dim+1> hSplitters;
-    bucketByHyperplane(start + ancStart, start + ancEnd, hSplitters);
+    bucketByHyperplane(start + ancStart, start + ancEnd, sLev, hSplitters);
     for (int d = 0; d < dim; d++)
     {
       locTreeSortAsPoints(
@@ -515,13 +515,13 @@ namespace ot {
   // SFC_NodeSort::bucketByHyperplane()
   //
   template <typename T, unsigned int dim>
-  void SFC_NodeSort<T,dim>::bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, std::array<RankI,dim+1> &hSplitters)
+  void SFC_NodeSort<T,dim>::bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int hlev, std::array<RankI,dim+1> &hSplitters)
   {
     // Compute offsets before moving points.
     std::array<RankI, dim> hCounts, hOffsets;
     hCounts.fill(0);
     for (TNPoint<T,dim> *pIter = start; pIter < end; pIter++)
-      hCounts[pIter->get_firstIncidentHyperplane()]++;
+      hCounts[pIter->get_firstIncidentHyperplane(hlev)]++;
     RankI accum = 0;
     for (int d = 0; d < dim; d++)
     {
@@ -534,7 +534,7 @@ namespace ot {
     // Move points with a full size buffer.
     std::vector<TNPoint<T,dim>> buffer(end - start);
     for (TNPoint<T,dim> *pIter = start; pIter < end; pIter++)
-      buffer[hOffsets[pIter->get_firstIncidentHyperplane()]++] = *pIter;
+      buffer[hOffsets[pIter->get_firstIncidentHyperplane(hlev)]++] = *pIter;
     for (auto &&pt : buffer)
       *(start++) = pt;
   }
@@ -574,17 +574,31 @@ namespace ot {
       scanForDuplicates(ptIter, end, firstCoarsest, ptIter, numDups);
       if (!numDups)   // Signifies mixed levels. We have a winner.
       {
+        /// std::cout << "Mixed Levels!\n";
         firstCoarsest->set_isSelected(TNP::Yes);
         totalCount++;
       }
       else            // All same level and cell type. Test whether hanging or not.
       {
+        /// std::cout << "<----\n";
         unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
         unsigned int expectedDups = 1u << (dim - cdim);
+        std::cout << firstCoarsest->getBase32Hex(5).data()
+            << "(" << firstCoarsest->getFinestOpenContainer().getBase32Hex().data() << ")"
+            << ":  \t";
+        std::cout << (int) cdim << "\t";
+        std::cout << std::bitset<dim>(firstCoarsest->get_cellType().get_orient_flag()).to_string() << "\t";
+        std::cout << "numDups==" << numDups << "\t";
         if (numDups == expectedDups)
         {
           firstCoarsest->set_isSelected(TNP::Yes);
           totalCount++;
+          /// std::cout << "Not hanging!\n";
+          std::cout << "\n";
+        }
+        else
+        {
+          std::cout << "Hanging!\n";
         }
       }
     }

@@ -15,6 +15,7 @@
 #include "binUtils.h"
 
 #include <iostream>
+#include <bitset>
 
 #include <mpi.h>
 #include <vector>
@@ -103,11 +104,12 @@ namespace ot {
       void set_isSelected(IsSelected isSelected) { m_isSelected = isSelected; }
 
       /**
-       * @brief If the point is not (dim)-cell interior, then it is incident on
-       * at least one (closed) (dim-1)-face. Returns the index of the one with
-       * the smallest index, or dim if the point is (dim)-cell interior.
+       * @brief The point may be incident on one or more grid lines (hyperplanes) at coarseness level `hlev'.
+       *   If so, this method returns the smallest-indexed such hyperplane.
+       *   A hyperplane is indexed by the normal axis.
+       *   If the point is not incident on any of the grid hyperplanes, then the method returns dim.
        */
-      unsigned char get_firstIncidentHyperplane() const;
+      unsigned char get_firstIncidentHyperplane(unsigned int hlev) const;
 
       CellType<dim> get_cellType() const;
 
@@ -174,7 +176,7 @@ namespace ot {
       static RankI filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end);
 
       /** @brief Breaks up an interface into the component hyperplanes. */
-      static void bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, std::array<RankI,dim+1> &hSplitters);
+      static void bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int hlev, std::array<RankI,dim+1> &hSplitters);
 
       /**
        * @brief Depth-first traversal: pre-order bucketing, post-order calling resolveInterface (bottom up).
