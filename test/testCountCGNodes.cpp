@@ -174,9 +174,9 @@ struct Example3
 
 int main(int argc, char * argv[])
 {
-  constexpr unsigned int dim = 3;
-  const unsigned int endL = 5;
-  const unsigned int order = 1;
+  constexpr unsigned int dim = 4;
+  const unsigned int endL = 4;
+  const unsigned int order = 2;
 
   _InitializeHcurve(dim);
 
@@ -227,6 +227,11 @@ int main(int argc, char * argv[])
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
   }
+  /// for (auto &&n : nodeListExterior)
+  /// {
+  ///   if (!n.isOnDomainBoundary())
+  ///     std::cout << n.getFinestOpenContainer().getBase32Hex().data() << "\n";
+  /// }
   numUniqueInteriorNodes = nodeListInterior.size();
   numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;

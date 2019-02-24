@@ -408,10 +408,10 @@ namespace ot {
     numDups = 1;  // Something other than 0.
     while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
     {
-      if (next->getLevel() < firstCoarsest->getLevel())
-        firstCoarsest = next;
       if (numDups && next->getLevel() != firstCoarsest->getLevel())
         numDups = 0;
+      if (next->getLevel() < firstCoarsest->getLevel())
+        firstCoarsest = next;
       next++;
     }
     if (numDups)
@@ -583,22 +583,22 @@ namespace ot {
         /// std::cout << "<----\n";
         unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
         unsigned int expectedDups = 1u << (dim - cdim);
-        std::cout << firstCoarsest->getBase32Hex(5).data()
-            << "(" << firstCoarsest->getFinestOpenContainer().getBase32Hex().data() << ")"
-            << ":  \t";
-        std::cout << (int) cdim << "\t";
-        std::cout << std::bitset<dim>(firstCoarsest->get_cellType().get_orient_flag()).to_string() << "\t";
-        std::cout << "numDups==" << numDups << "\t";
+        /// std::cout << firstCoarsest->getBase32Hex(5).data()
+        ///     << "(" << firstCoarsest->getFinestOpenContainer().getBase32Hex().data() << ")"
+        ///     << ":  \t";
+        /// std::cout << (int) cdim << "\t";
+        /// std::cout << std::bitset<dim>(firstCoarsest->get_cellType().get_orient_flag()).to_string() << "\t";
+        /// std::cout << "numDups==" << numDups << "\t";
         if (numDups == expectedDups)
         {
           firstCoarsest->set_isSelected(TNP::Yes);
           totalCount++;
           /// std::cout << "Not hanging!\n";
-          std::cout << "\n";
+          /// std::cout << "\n";
         }
         else
         {
-          std::cout << "Hanging!\n";
+          /// std::cout << "Hanging!\n";
         }
       }
     }
