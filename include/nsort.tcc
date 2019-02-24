@@ -51,6 +51,21 @@ namespace ot {
     m_isSelected = other.m_isSelected;
   }
 
+  template <typename T, unsigned int dim>
+  unsigned char TNPoint<T,dim>::get_firstIncidentHyperplane() const
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+    const unsigned int interiorMask = len - 1;
+
+    for (int d = 0; d < dim; d++)
+    {
+      bool axisIsInVolume = TreeNode::m_uiCoords[d] & interiorMask;
+      if (!axisIsInVolume)   // Then the point is on the hyperplane face normal to this axis.
+        return d;
+    }
+    return dim;
+  }
 
   /**@brief Infer the type (dimension and orientation) of cell this point is interior to, from coordinates and level. */
   template <typename T, unsigned int dim>
@@ -232,7 +247,7 @@ namespace ot {
     RankI totalUniquePoints = 0;
     RankI numDomBdryPoints = filterDomainBoundary(start, end);
 
-    //
+
     // Sort the domain boundary points. Root-1 level requires special handling.
     //
     std::array<RankI, numChildren+1> rootSplitters;
@@ -252,7 +267,7 @@ namespace ot {
           1, m_uiMaxDepth, 0);    // Re-use the 0th rotation for each 'root'.
     }
 
-    //
+
     // Count the domain boundary points.
     //
     for (TNP *bdryIter = end - numDomBdryPoints; bdryIter < end; bdryIter++)
@@ -270,7 +285,7 @@ namespace ot {
 
     totalUniquePoints += numUniqBdryPoints;
 
-    //
+
     // Bottom-up counting interior points
     //
     if (order <= 2)
@@ -282,6 +297,9 @@ namespace ot {
   }
 
 
+  //
+  // SFC_NodeSort::filterDomainBoundary()
+  //
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end)
   {
@@ -297,7 +315,6 @@ namespace ot {
       {
         numDomBdryPoints++;
         segSplitters.push(iter);
-        /// iter->set_isSelected(TNP::Yes);  // TODO Can't set every duplicate to selected.
         bdryPts.push_back(*iter);
       }
     }
@@ -325,13 +342,41 @@ namespace ot {
   }
 
 
+  //
+  // SFC_NodeSort::bucketByHyperplane()
+  //
+  template <typename T, unsigned int dim>
+  void SFC_NodeSort<T,dim>::bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, std::array<RankI,dim+1> &hSplitters)
+  {
+    // Compute offsets before moving points.
+    std::array<RankI, dim> hCounts, hOffsets;
+    hCounts.fill(0);
+    for (TNPoint<T,dim> *pIter = start; pIter < end; pIter++)
+      hCounts[pIter->get_firstIncidentHyperplane()]++;
+    RankI accum = 0;
+    for (int d = 0; d < dim; d++)
+    {
+      hOffsets[d] = accum;
+      hSplitters[d] = accum;
+      accum += hCounts[d];
+    }
+    hSplitters[dim] = accum;
+
+    // Move points with a full size buffer.
+    std::vector<TNPoint<T,dim>> buffer(end - start);
+    for (TNPoint<T,dim> *pIter = start; pIter < end; pIter++)
+      buffer[hOffsets[pIter->get_firstIncidentHyperplane()]++] = *pIter;
+    for (auto &&pt : buffer)
+      *(start++) = pt;
+  }
+
+
   template <typename T, unsigned int dim>
   struct ParentOfContainer
   {
     // PointType == TNPoint<T,dim>    KeyType == TreeNode<T,dim>
     TreeNode<T,dim> operator()(const TNPoint<T,dim> &pt) { return pt.getFinestOpenContainer(); }
   };
-
 
 
   //
@@ -345,7 +390,7 @@ namespace ot {
       LevI sLev, RotI pRot,
       unsigned int order)
   {
-    // Pseudocode:
+    // Algorithm:
     //
     // Bucket points using the keyfun ParentOfContainer, and ancestors after sibilings.
     //   Points on our own interface end up in our `ancestor' bucket. We'll reconsider these later.
@@ -361,8 +406,60 @@ namespace ot {
     //     Sort the points (as points) in the SFC ordering, using ourselves as parent.
     //     Call resolveInterface() on the points in the hyperplane.
 
-    //TODO
-    return 0;
+    using TNP = TNPoint<T,dim>;
+    using TreeNode = TreeNode<T,dim>;
+    constexpr char numChildren = TreeNode::numChildren;
+    constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+    // Lookup tables to apply rotations.
+    const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+    const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+    if (!(start < end))
+      return 0;
+
+    RankI numUniqPoints = 0;
+
+    // Reorder the buckets on sLev (current level).
+    std::array<RankI, numChildren+1> tempSplitters;
+    RankI ancStart, ancEnd;
+    SFC_Tree<T,dim>::template SFC_bucketing_impl<ParentOfContainer<T,dim>, TNP, TreeNode>(
+        start, 0, end-start, sLev, pRot,
+        ParentOfContainer<T,dim>(), true, false,
+        tempSplitters,
+        ancStart, ancEnd);
+
+    // Recurse.
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      // Check for empty or singleton bucket.
+      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
+        continue;
+
+      ChildI child = rot_perm[child_sfc];
+      RotI cRot = orientLookup[child];
+
+      numUniqPoints += countCGNodes_impl<ResolverT>(
+          resolveInterface,
+          start + tempSplitters[child_sfc+0], start + tempSplitters[child_sfc+1],
+          sLev+1, cRot,
+          order);
+    }
+
+    // Process own interface.
+    std::array<RankI, dim+1> hSplitters;
+    bucketByHyperplane(start + ancStart, start + ancEnd, hSplitters);
+    for (int d = 0; d < dim; d++)
+    {
+      locTreeSortAsPoints(
+          start + ancStart, hSplitters[d], hSplitters[d+1],
+          sLev, m_uiMaxDepth, pRot);
+
+      // The actual counting happens here.
+      numUniqPoints += resolveInterface(start + ancStart + hSplitters[d], start + ancStart + hSplitters[d+1], order);
+    }
+
+    return numUniqPoints;
   }
 
 
@@ -402,12 +499,12 @@ namespace ot {
       // Use the splitters to specify ranges for the next level of recursion.
       for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
       {
-        ChildI child = rot_perm[child_sfc];
-        RotI cRot = orientLookup[child];
-
         // Check for empty or singleton bucket.
         if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
           continue;
+
+        ChildI child = rot_perm[child_sfc];
+        RotI cRot = orientLookup[child];
 
         // Check for identical coordinates.
         bool allIdentical = true;
@@ -464,7 +561,7 @@ namespace ot {
     // Given a spatial location, it is assumed that either all the instances generated for that location
     // are present on this processor, or none of them are.
     //
-    RankI totalCount = 0u;
+    RankI totalCount = 0;
     //TODO
 
     return totalCount;

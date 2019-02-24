@@ -62,6 +62,7 @@ namespace ot {
       static const FlagType m_mask = (1u << m_shift) - 1;
   };
 
+
   /**@brief TreeNode + extra attributes to keep track of node uniqueness. */
   template <typename T, unsigned int dim>
   class TNPoint : public TreeNode<T,dim>
@@ -101,6 +102,13 @@ namespace ot {
       IsSelected get_isSelected() const { return m_isSelected; }
       void set_isSelected(IsSelected isSelected) { m_isSelected = isSelected; }
 
+      /**
+       * @brief If the point is not (dim)-cell interior, then it is incident on
+       * at least one (closed) (dim-1)-face. Returns the index of the one with
+       * the smallest index, or dim if the point is (dim)-cell interior.
+       */
+      unsigned char get_firstIncidentHyperplane() const;
+
       CellType<dim> get_cellType() const;
 
       /**@brief Get the deepest cell such that the point is not on the boundary of the cell. */
@@ -139,6 +147,8 @@ namespace ot {
   {
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain.
+     * @note Assumes none of the points are (dim)-cell interior points.
+     *   To achieve this, use Element::appendExteriorNodes() and Element::appendInteriorNodes() separately.
      */
     static RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
 
@@ -160,8 +170,11 @@ namespace ot {
        */
       static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &next, unsigned int &numDups);
 
-      /**@brief Moves all domain boundary points to the end, returning the number of boundary points. */
+      /** @brief Moves all domain boundary points to the end, returning the number of boundary points. */
       static RankI filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end);
+
+      /** @brief Breaks up an interface into the component hyperplanes. */
+      static void bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, std::array<RankI,dim+1> &hSplitters);
 
       /**
        * @brief Depth-first traversal: pre-order bucketing, post-order calling resolveInterface (bottom up).
