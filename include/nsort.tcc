@@ -561,8 +561,34 @@ namespace ot {
     // Given a spatial location, it is assumed that either all the instances generated for that location
     // are present on this processor, or none of them are.
     //
+    using TNP = TNPoint<T,dim>;
+
+    for (TNP *ptIter = start; ptIter < end; ptIter++)
+      ptIter->set_isSelected(TNP::No);
+
     RankI totalCount = 0;
-    //TODO
+    TNP *ptIter = start;
+    TNP *firstCoarsest;
+    unsigned int numDups;
+    while (ptIter < end)
+    {
+      scanForDuplicates(ptIter, end, firstCoarsest, ptIter, numDups);
+      if (!numDups)   // Signifies mixed levels. We have a winner.
+      {
+        firstCoarsest->set_isSelected(TNP::Yes);
+        totalCount++;
+      }
+      else            // All same level and cell type. Test whether hanging or not.
+      {
+        unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
+        unsigned int expectedDups = 1u << (dim - cdim);
+        if (numDups == expectedDups)
+        {
+          firstCoarsest->set_isSelected(TNP::Yes);
+          totalCount++;
+        }
+      }
+    }
 
     return totalCount;
   }

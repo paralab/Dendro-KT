@@ -175,8 +175,8 @@ struct Example3
 int main(int argc, char * argv[])
 {
   constexpr unsigned int dim = 3;
-  const unsigned int endL = 7;
-  const unsigned int order = 4;
+  const unsigned int endL = 5;
+  const unsigned int order = 1;
 
   _InitializeHcurve(dim);
 
@@ -192,10 +192,14 @@ int main(int argc, char * argv[])
 ///  }
 
 
-  //TODO actually execute the counting methods.
   unsigned int numPoints;
   Tree<dim> tree;
-  NodeList<dim> nodeList;
+  NodeList<dim> nodeListExterior;
+  NodeList<dim> nodeListInterior;
+
+  ot::RankI numUniqueInteriorNodes;
+  ot::RankI numUniqueExteriorNodes;
+  ot::RankI numUniqueNodes;
 
   // -------------
 
@@ -216,14 +220,50 @@ int main(int argc, char * argv[])
 
   // -------------
 
+  // Example1
   Example1<dim>::fill_tree(endL, tree);
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
+    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
   }
-  ot::RankI numUniqueNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeList.begin()), &(*nodeList.end()), order);
+  numUniqueInteriorNodes = nodeListInterior.size();
+  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
+  numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
+  printf("Example1: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
+  tree.clear();
+  nodeListInterior.clear();
+  nodeListExterior.clear();
 
-  printf("Example1: Algorithm says # points == %u.\n", numUniqueNodes);
+  // Example2
+  Example2<dim>::fill_tree(endL, tree);
+  for (const ot::TreeNode<T,dim> &tn : tree)
+  {
+    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
+  }
+  numUniqueInteriorNodes = nodeListInterior.size();
+  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
+  numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
+  printf("Example2: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
+  tree.clear();
+  nodeListInterior.clear();
+  nodeListExterior.clear();
+
+  // Example3
+  Example3<dim>::fill_tree(endL, tree);
+  for (const ot::TreeNode<T,dim> &tn : tree)
+  {
+    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
+  }
+  numUniqueInteriorNodes = nodeListInterior.size();
+  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
+  numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
+  printf("Example3: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
+  tree.clear();
+  nodeListInterior.clear();
+  nodeListExterior.clear();
 
   _DestroyHcurve();
 
