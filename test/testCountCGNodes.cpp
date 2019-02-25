@@ -175,7 +175,7 @@ struct Example3
 int main(int argc, char * argv[])
 {
   constexpr unsigned int dim = 2;
-  const unsigned int endL = 2;
+  const unsigned int endL = 3;
   const unsigned int order = 3;
 
   _InitializeHcurve(dim);

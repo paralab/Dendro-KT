@@ -686,6 +686,8 @@ namespace ot {
     // then at least one k'-cell-interior node from the parent level must
     // fall within the interior of the child k'-cell. This means we can detect
     // the parent's node while traversing the child k'-face.
+    // *** TODO TODO TODO ***
+    // This is false as stated. Need to use boundary propagation.
     //
     // # Algorithm.
     // Combining the properties of SFC locality and high-order parent/child overlap,
@@ -775,6 +777,8 @@ namespace ot {
 
     RankI totalCount = 0;
 
+    std::cout << "\n";
+
     // Iterate over all unique points.
     while (start < end)
     {
@@ -788,10 +792,13 @@ namespace ot {
       unsigned char cOrient = start->get_cellType().get_orient_flag();
       kFaceStatus &row = statusTbl[cOrient];
 
-      /// std::cout << std::bitset<dim>(cOrient).to_string() << "\t"
-      ///     << row.m_cellIdentity.getBase32Hex().data() << "\t"
-      ///     << (row.m_isSelected == TNP::Yes ? "Yes" : row.m_isSelected == TNP::No ? "No" : "Maybe") << "\t"
-      ///     << "Num pending nodes == " << row.m_pendingNodes.size() << "\n";
+      std::cout
+          << "(" << start->getLevel() << ") " << start->getBase32Hex(8).data() << "\t"
+          << std::bitset<dim>(cOrient).to_string() << "\t"
+          << (row.m_isInitialized ? "Init'd" : "UNINIT") << "\t"
+          << row.m_cellIdentity.getBase32Hex().data() << "\t"
+          << (row.m_isSelected == TNP::Yes ? "Yes" : row.m_isSelected == TNP::No ? "No" : "Maybe") << "\t"
+          << "Num pending nodes == " << row.m_pendingNodes.size() << "\n";
 
       if (!row.m_isInitialized)
       {
