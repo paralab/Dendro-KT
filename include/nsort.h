@@ -117,7 +117,14 @@ namespace ot {
        */
       unsigned char get_firstIncidentHyperplane(unsigned int hlev) const;
 
+      /**@brief Get type of cell to which point is interior, at native level. */
       CellType<dim> get_cellType() const;
+
+      /**@brief Get type of cell to which point is interior, at parent of native level. */
+      CellType<dim> get_cellTypeOnParent() const;
+
+      /**@brief Get type of cell to which point is interior, at arbitrary level. */
+      CellType<dim> get_cellType(LevI lev) const;
 
       /**@brief Get the deepest cell such that the point is not on the boundary of the cell. */
       TreeNode<T,dim> getFinestOpenContainer() const;

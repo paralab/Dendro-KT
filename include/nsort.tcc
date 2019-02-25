@@ -86,8 +86,20 @@ namespace ot {
   template <typename T, unsigned int dim>
   CellType<dim> TNPoint<T,dim>::get_cellType() const
   {
+    return get_cellType(TreeNode<T,dim>::m_uiLevel);
+  }
+
+  template <typename T, unsigned int dim>
+  CellType<dim> TNPoint<T,dim>::get_cellTypeOnParent() const
+  {
+    return get_cellType(TreeNode<T,dim>::m_uiLevel - 1);
+  }
+
+  template <typename T, unsigned int dim>
+  CellType<dim> TNPoint<T,dim>::get_cellType(LevI lev) const
+  {
     using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+    const unsigned int len = 1u << (m_uiMaxDepth - lev);
     const unsigned int interiorMask = len - 1;
 
     unsigned char cellDim = 0u;
@@ -663,31 +675,37 @@ namespace ot {
     // The high-order counting method (order>=3) cannot assume that a winning node
     // will co-occur with finer level nodes in the same exact coordinate location.
     //
-    // Instead, we have to consider open k'-faces (k'-cells), which generally
-    // contain multiple nodal locations. We say an open k'-cell is present when
-    // an incident node of the same level is present. If an open k'cell is present,
+    // Instead, we have to consider open k-faces (k-cells), which generally
+    // contain multiple nodal locations. We say an open k-cell is present when
+    // an incident node of the same level is present. If an open k-cell is present,
     // it is non-hanging iff its parent open k'-cell is not present.
     //
     // # Locality property.
     // This algorithm relies on the `non-reentrant' property of SFC's visitng cells.
     // A corollary of non-reentrancy to K-cells (embedding dimension) is that,
-    // once the SFC has entered a k'-face of some level and orientation, it must
-    // finish traversing the entire k'-face before entering another k'-face of
+    // once the SFC has entered a k-face of some level and orientation, it must
+    // finish traversing the entire k-face before entering another k-face of
     // the same dimension and orientaton and of *coarser or equal level*.
-    // The SFC is allowed to enter another k'-face of finer level, but once
+    // The SFC is allowed to enter another k-face of finer level, but once
     // it has reached the finest level in a region, it cannot enter
-    // a k'-face of finer level. Therefore, considering a finer k'-face in
-    // a possibly mixed-level k'-cell, the SFC length of the k'-face is bounded
+    // a k-face of finer level. Therefore, considering a finer k-face in
+    // a possibly mixed-level k-cell, the SFC length of the k-face is bounded
     // by a function of order and dimension only.
     //
     // # Overlap property.
-    // This algorithm further relies on the order being 3 or higher. Given an
-    // open k'-cell that is present, if its parent k'-cell is also present,
-    // then at least one k'-cell-interior node from the parent level must
-    // fall within the interior of the child k'-cell. This means we can detect
-    // the parent's node while traversing the child k'-face.
-    // *** TODO TODO TODO ***
-    // This is false as stated. Need to use boundary propagation.
+    // This algorithm further relies on the order being 3 or higher.
+    // Given an open k-cell C that is present, there are two cases.
+    // - Case A: The parent P of the k-cell C has dimension k (C is `noncrossing').
+    // - Case B: The parent P of the k-cell C has dimension k' > k (C is `crossing').
+    // In Case A (C is noncrossing), if P is present, then at least one k-cell interior
+    // node from P falls within the interior of C.
+    // In Case B (C is crossing), then C is shared by k'-cell siblings under P;
+    // if P is present, then, for each (k'-cell) child of P, at least one
+    // k'-cell interior node from P falls within that child. Furthermore,
+    // one of the k'-cell siblings under P shares the same K-cell anchor
+    // as C.
+    // --> This means we can detect the parent's node while traversing
+    //     the child k-face, by checking levels of either k- or k'-cells.
     //
     // # Algorithm.
     // Combining the properties of SFC locality and high-order parent/child overlap,
@@ -696,42 +714,46 @@ namespace ot {
     // size is a function of dimension and order, which for the current purpose
     // are constants).
     //
+    // - Keep track of what K-cell we are traversing. Exiting the K-cell at any
+    //   dimension means we must reset the rest of the state.
+    //
+    // - Keep track of which two distinct levels could be present on the k-faces
+    //   of the current K-cell. There can be at most two distinct levels.
+    //
     // - Maintain a table with one row per cell type (cell dimension, orientation).
-    //   Each row has a current cell level and identity (represented as a TreeNode
-    //   in conjunction with the row number==orientation), a current selection status
-    //   (Yes/No/Maybe), and a list of pointers to pending ("Maybe") nodes.
-    //   - If the row has status "Yes" or "No" then there are no pending nodes.
+    //   Each row is either uninitialized, or maintains the following:
+    //   - the coarsest level of point hitherto witnessed for that cell type;
+    //   - a list of pending points whose selection depends on the final coarseness of the k-face.
     //
-    // - Iterate through all unique locations in the interface. For each one,
-    //   get the cell type of the point and use it to look up the appropriate row
-    //   in the table. Take one of the following branches:
-    //   - If the point is contained in the row's current cell identity:
-    //     - If the point has coarser level than the row cell:
-    //       - Set: pt.isSelected=Yes
-    //       - If (row.isSelected == Maybe)  //(can be Maybe or No, but not Yes)
-    //         - Set all pending points to: isSelected=No, and remove them.
-    //         - Set: row.isSelected=No
-    //     - Elif the point has finer level than the row cell:
-    //       - Set: pt.isSelected=No
-    //       - If (row.isSelected == Maybe)  //(can really only be Maybe, not No or Yes)
-    //         - Set all pending points to: isSelected=Yes, and remove them.
-    //         - Set: row cell identity to pt.cell
-    //         - Set: row.isSelected=No
-    //     - Else, the point has same level as row cell:
-    //       - If (row.isSelected != Maybe):
-    //         - Set: pt.isSelected=(row.isSelected)
-    //       - Else, (row.isSelected == Maybe):
-    //         - Append pointer to pt into row.
+    // - Iterate through all unique locations in the interface:
+    //   - If the next point is contained in the current K-cell,
+    //     - Find the point's native cell type, and update the coarseness of that cell type.
+    //     - If the row becomes coarser while nodes are pending,
+    //       - Deselect all pending nodes and remove them.
     //
-    //   - Else, the point is NOT contained in the row's current cell identity:
-    //     - If (row.isSelected == Maybe):
-    //       - Set all pending points to: isSelected=Yes, and remove them.
-    //     - Set: row identity to pt.cell
-    //     - Set: row.isSelected=Maybe
-    //     - Append pointer to pt into row.
+    //     - If the two distinct levels in the K-cell are not yet known,
+    //       and the new point does not differ in level from any seen before,
+    //       - Append the point to a set of `unprocessed nodes'.
     //
-    // - When we reach the end of the interface, set all remaining pending nodes
-    //   to: isSelected=Yes.
+    //     - Elif the two distinct levels in the K-cell are not yet known,
+    //       and the new point differs in level from any seen before,
+    //       - Put the new point on hold. Update the two distinct levels.
+    //         Process all the unprocessed nodes (as defined next), then process the new point.
+    //
+    //     - Else, process the point:
+    //       - If Lev(pt) == coarserLevel,
+    //         - Set pt.isSelected := Yes.
+    //       - Elif table[pt.parentCellType()].coarsestLevel == coarserLevel,
+    //         - Set pt.isSelected := No.
+    //       - Else
+    //         - Append table.[pt.parentCellType()].pendingNodes <- pt
+    //
+    //   - Else, we are about to exit the current K-cell:
+    //     - For all rows, select all pending points and remove them.
+    //     - Reset the K-cell-wide state: Cell identity (anchor) and clear distinct levels.
+    //     - Proceed with new point.
+    //
+    // - When we reach the end of the interface, select all remaining pending nodes.
     //
 
     using TNP = TNPoint<T,dim>;
@@ -739,11 +761,21 @@ namespace ot {
     // Helper struct.
     struct kFaceStatus
     {
-      void initialize(const TreeNode<T,dim> &cellIdentity, typename TNP::IsSelected status)
+      void initialize(LevI lev)
       {
-        m_cellIdentity = cellIdentity;
-        m_isSelected = status;
         m_isInitialized = true;
+        m_curCoarseness = lev;
+      }
+
+      /** @brief Updates coarsenss and returns true if became coarser. */
+      bool updateCoarseness(LevI lev)
+      {
+        if (lev < m_curCoarseness)
+        {
+          m_curCoarseness = lev;
+          return true;
+        }
+        return false;
       }
 
       RankI selectAndRemovePending()
@@ -767,19 +799,20 @@ namespace ot {
 
       // Data members.
       bool m_isInitialized = false;
-      TreeNode<T,dim> m_cellIdentity;
-      typename TNP::IsSelected m_isSelected;
+      LevI m_curCoarseness;
       std::vector<TNP *> m_pendingNodes;
     };
 
     // Initialize table. //TODO make this table re-usable across function calls.
+    int numLevelsWitnessed = 0;
+    TreeNode<T,dim> currentKCell;
+    LevI finerLevel;       // finerLevel and coarserLevel have meaning when
+    LevI coarserLevel;     //   numLevelsWitnessed becomes 2, else see currentKCell.
     std::vector<kFaceStatus> statusTbl(1u << dim);   // Enough for all possible orientation indices.
+    std::vector<TNP *> unprocessedNodes;
 
     RankI totalCount = 0;
 
-    std::cout << "\n";
-
-    // Iterate over all unique points.
     while (start < end)
     {
       // Get the next unique location (and cell type, using level as proxy).
@@ -788,67 +821,104 @@ namespace ot {
         (next++)->set_isSelected(TNP::No);
       start->set_isSelected(TNP::No);
 
-      // Look up appropriate row.
-      unsigned char cOrient = start->get_cellType().get_orient_flag();
-      kFaceStatus &row = statusTbl[cOrient];
+      const unsigned char nCellType = start->get_cellType().get_orient_flag();
+      const unsigned char pCellType = start->get_cellTypeOnParent().get_orient_flag();
+      kFaceStatus &nRow = statusTbl[nCellType];
+      kFaceStatus &pRow = statusTbl[pCellType];
 
-      std::cout
-          << "(" << start->getLevel() << ") " << start->getBase32Hex(8).data() << "\t"
-          << std::bitset<dim>(cOrient).to_string() << "\t"
-          << (row.m_isInitialized ? "Init'd" : "UNINIT") << "\t"
-          << row.m_cellIdentity.getBase32Hex().data() << "\t"
-          << (row.m_isSelected == TNP::Yes ? "Yes" : row.m_isSelected == TNP::No ? "No" : "Maybe") << "\t"
-          << "Num pending nodes == " << row.m_pendingNodes.size() << "\n";
-
-      if (!row.m_isInitialized)
+      // First initialization of state for new K-cell.
+      if (numLevelsWitnessed == 0 || !currentKCell.isAncestor(start->getDFD()))
       {
-        row.initialize(start->getCell(), TNP::Maybe);
-        row.m_pendingNodes.push_back(start);
-      }
+        // If only saw a single level, they are all non-hanging.
+        totalCount += unprocessedNodes.size();
+        for (TNP * &pt : unprocessedNodes)
+          pt->set_isSelected(TNP::Yes);
+        unprocessedNodes.clear();
 
-          // Stay in same cell.
-      else if (row.m_cellIdentity.isAncestor(start->getDFD()))
-      {
-        if (start->getLevel() < row.m_cellIdentity.getLevel())  // Coarser.
-        {
-          start->set_isSelected(TNP::Yes);
-          totalCount++;
-          row.deselectAndRemovePending();
-          row.m_isSelected = TNP::No;
-        }
-        else if (start->getLevel() > row.m_cellIdentity.getLevel())  // Finer.
-        {
-          /// start->set_isSelected(TNP::No);   // Already set during dups init.
+        // Else, we probably have some pending nodes to clean up.
+        for (kFaceStatus &row : statusTbl)
           totalCount += row.selectAndRemovePending();
-          row.initialize(start->getCell(), TNP::No);
-          /// std::cout << "Hanging: \t" << start->getBase32Hex().data() << " \t " << start->getBase32Hex(5).data() << "\n";
-        }
-        else
+
+        // Initialize state to traverse new K-cell.
+        currentKCell = start->getCell();
+        numLevelsWitnessed = 1;
+      }
+
+      // Second initialization of state for new K-cell.
+      if (numLevelsWitnessed == 1)
+      {
+        if (start->getLevel() < currentKCell.getLevel())
         {
-          if (row.m_isSelected == TNP::Maybe)
-            row.m_pendingNodes.push_back(start);
-          else
-          {
-            start->set_isSelected(row.m_isSelected);
-            totalCount += (row.m_isSelected == TNP::Yes);
-          }
+          coarserLevel = start->getLevel();
+          finerLevel = currentKCell.getLevel();
+          numLevelsWitnessed = 2;
+        }
+        else if (start->getLevel() > currentKCell.getLevel())
+        {
+          coarserLevel = currentKCell.getLevel();
+          finerLevel = start->getLevel();
+          numLevelsWitnessed = 2;
+          currentKCell = start->getCell();
         }
       }
 
-          // Move on to new cell.
+      // Enqueue node for later writing from pRow.
+      unprocessedNodes.push_back(start);
+
+      // Read from current node to update nRow.
+      if (nRow.m_isInitialized)
+      {
+        if (nRow.updateCoarseness(start->getLevel()))
+          nRow.deselectAndRemovePending();
+      }
       else
       {
-        totalCount += row.selectAndRemovePending();
-        row.initialize(start->getCell(), TNP::Maybe);
-        row.m_pendingNodes.push_back(start);
+        nRow.initialize(start->getLevel());
+      }
+
+      // Process all recently added nodes.
+      if (numLevelsWitnessed == 2)
+      {
+        for (TNP * &pt : unprocessedNodes)
+        {
+          if (pt->getLevel() == coarserLevel)
+          {
+            pt->set_isSelected(TNP::Yes);
+            totalCount++;
+          }
+          else if (pRow.m_curCoarseness == coarserLevel)
+          {
+            pt->set_isSelected(TNP::No);
+          }
+          else
+          {
+            pRow.m_pendingNodes.push_back(pt);
+          }
+        }
+        unprocessedNodes.clear();
       }
 
       start = next;
     }
 
-    // Flush the table.
+    // Finally, flush remaining unprocessed or pending nodes in table.
+    totalCount += unprocessedNodes.size();
+    for (TNP * &pt : unprocessedNodes)
+      pt->set_isSelected(TNP::Yes);
+    unprocessedNodes.clear();
+
     for (kFaceStatus &row : statusTbl)
       totalCount += row.selectAndRemovePending();
+
+    /// std::cout << "\n";
+
+      /// std::cout
+      ///     << "(" << start->getLevel() << ") " << start->getBase32Hex(8).data() << "\t"
+      ///     << std::bitset<dim>(cOrient).to_string() << "\t"
+      ///     << (row.m_isInitialized ? "Init'd" : "UNINIT") << "\t"
+      ///     << row.m_cellIdentity.getBase32Hex().data() << "\t"
+      ///     << (row.m_isSelected == TNP::Yes ? "Yes" : row.m_isSelected == TNP::No ? "No" : "Maybe") << "\t"
+      ///     << "Num pending nodes == " << row.m_pendingNodes.size() << "\n";
 
     return totalCount;
   }
