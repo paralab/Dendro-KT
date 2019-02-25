@@ -121,6 +121,13 @@ namespace ot {
     return TreeNode(TreeNode::m_uiCoords, level);
   }
 
+  template <typename T, unsigned int dim>
+  TreeNode<T,dim> TNPoint<T,dim>::getCell() const
+  {
+    using TreeNode = TreeNode<T,dim>;
+    return TreeNode(TreeNode::m_uiCoords, TreeNode::m_uiLevel);  // Truncates coordinates to cell anchor.
+  }
+
   // ============================ End: TNPoint ============================ //
 
 
@@ -249,11 +256,11 @@ namespace ot {
       bdryIter->set_isSelected(TNP::No);
     RankI numUniqBdryPoints = 0;
     TNP *bdryIter = end - numDomBdryPoints;
-    TNP *firstCoarsest;
+    TNP *firstCoarsest, *unused_firstFinest;
     unsigned int unused_numDups;
     while (bdryIter < end)
     {
-      scanForDuplicates(bdryIter, end, firstCoarsest, bdryIter, unused_numDups);
+      scanForDuplicates(bdryIter, end, firstCoarsest, unused_firstFinest, bdryIter, unused_numDups);
       firstCoarsest->set_isSelected(TNP::Yes);
       numUniqBdryPoints++;
     }
@@ -386,7 +393,41 @@ namespace ot {
         }
         else
         {
-          /* We could arrange them by level, but don't have to. */
+          // Separate points by level. Assume at most 2 levels present,
+          // due to 2:1 balancing. The first point determines which level is preceeding.
+          const RankI segStart = tempSplitters[child_sfc+0];
+          const RankI segSize = tempSplitters[child_sfc+1] - segStart;
+          LevI firstLevel = points[segStart].getLevel();
+          RankI ptIdx = 0;
+          RankI ptOffsets[2] = {0, 0};
+          while (ptIdx < segSize)
+            if (points[segStart + (ptIdx++)].getLevel() == firstLevel)
+              ptOffsets[1]++;
+
+          if (ptOffsets[1] != 1 && ptOffsets[1] != segSize)
+          {
+            RankI ptEnds[2] = {ptOffsets[1], segSize};
+
+            TNP buffer[2];
+            ptOffsets[0]++;  // First point already in final position.
+            buffer[0] = points[segStart + ptOffsets[0]];
+            buffer[1] = points[segStart + ptOffsets[1]];
+            unsigned char bufferSize = 2;
+
+            while (bufferSize > 0)
+            {
+              TNP &bufferTop = buffer[bufferSize-1];
+              unsigned char destBucket = !(bufferTop.getLevel() == firstLevel);
+
+              points[segStart + ptOffsets[destBucket]]= bufferTop;
+              ptOffsets[destBucket]++;
+
+              if (ptOffsets[destBucket] < ptEnds[destBucket])
+                bufferTop = points[segStart + ptOffsets[destBucket]];
+              else
+                bufferSize--;
+            }
+          }
         }
       }
     }
@@ -399,12 +440,14 @@ namespace ot {
   template <typename T, unsigned int dim>
   void SFC_NodeSort<T,dim>::scanForDuplicates(
       TNPoint<T,dim> *start, TNPoint<T,dim> *end,
-      TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &next, unsigned int &numDups)
+      TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest,
+      TNPoint<T,dim> * &next, unsigned int &numDups)
   {
     std::array<T,dim> first_coords, other_coords;
     start->getAnchor(first_coords);
     next = start + 1;
     firstCoarsest = start;
+    firstFinest = start;
     numDups = 1;  // Something other than 0.
     while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
     {
@@ -412,6 +455,8 @@ namespace ot {
         numDups = 0;
       if (next->getLevel() < firstCoarsest->getLevel())
         firstCoarsest = next;
+      if (next->getLevel() > firstFinest->getLevel())
+        firstFinest = next;
       next++;
     }
     if (numDups)
@@ -567,11 +612,11 @@ namespace ot {
 
     RankI totalCount = 0;
     TNP *ptIter = start;
-    TNP *firstCoarsest;
+    TNP *firstCoarsest, *unused_firstFinest;
     unsigned int numDups;
     while (ptIter < end)
     {
-      scanForDuplicates(ptIter, end, firstCoarsest, ptIter, numDups);
+      scanForDuplicates(ptIter, end, firstCoarsest, unused_firstFinest, ptIter, numDups);
       if (!numDups)   // Signifies mixed levels. We have a winner.
       {
         firstCoarsest->set_isSelected(TNP::Yes);
@@ -672,7 +717,64 @@ namespace ot {
     //   to: isSelected=Yes.
     //
 
+    using TNP = TNPoint<T,dim>;
 
+    // Helper struct.
+    struct kFaceStatus
+    {
+      void initialize(const TreeNode<T,dim> &cellIdentity, typename TNP::IsSelected status)
+      {
+        m_cellIdentity = cellIdentity;
+        m_isSelected = status;
+        m_isInitialized = true;
+      }
+
+      void selectAndRemovePending()
+      {
+        for (TNP *pt : m_pendingNodes)
+          pt->set_isSelected(TNP::Yes);
+        m_pendingNodes.clear();
+      }
+
+      void deselectAndRemovePending()
+      {
+        for (TNP *pt : m_pendingNodes)
+          pt->set_isSelected(TNP::No);
+        m_pendingNodes.clear();
+      }
+
+      bool m_isInitialized = false;
+      TreeNode<T,dim> m_cellIdentity;
+      typename TNP::IsSelected m_isSelected;
+      std::vector<TNP *> m_pendingNodes;
+    };
+
+    // Initialize table. //TODO make this table re-usable across function calls.
+    std::vector<kFaceStatus> statusTbl(1u << dim);   // Enough for all possible orientation indices.
+
+    while (start < end)
+    {
+      // Get the next unique location.
+      TNP *firstCoarsest, *firstFinest, *next;
+      unsigned int numDups;
+      scanForDuplicates(start, end, firstCoarsest, firstFinest, next, numDups);
+      for (TNP *ptIter = start; ptIter < next; ptIter++)
+        ptIter->set_isSelected(TNP::No);
+      /// firstCoarsest->set_isSelected(TNP::Maybe);
+
+      // Look up appropriate row.
+      unsigned char cOrient = firstCoarsest->get_cellType().get_orient_flag();
+      kFaceStatus &row = statusTbl[cOrient];
+
+      if (!row.m_isInitialized)
+        row.initialize(firstFinest->getCell(), (!numDups ? TNP::No : TNP::Maybe));
+
+      // TODO we actually do need the points to be separated by level so that
+      // we get the cell type right.
+
+
+      start = next;
+    }
 
     return 0;
   }

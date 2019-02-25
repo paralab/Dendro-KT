@@ -116,6 +116,9 @@ namespace ot {
       /**@brief Get the deepest cell such that the point is not on the boundary of the cell. */
       TreeNode<T,dim> getFinestOpenContainer() const;
 
+      /** @brief Get the cell that generated this point, based on coordinates and level. */
+      TreeNode<T,dim> getCell() const;
+
     protected:
       // Data members.
       IsSelected m_isSelected;
@@ -170,7 +173,7 @@ namespace ot {
        * @param [out] numDups If all same level, the number of duplicates. If mixed levels, 0.
        * @note Assumes that start < end.
        */
-      static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &next, unsigned int &numDups);
+      static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest, TNPoint<T,dim> * &next, unsigned int &numDups);
 
       /** @brief Moves all domain boundary points to the end, returning the number of boundary points. */
       static RankI filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end);

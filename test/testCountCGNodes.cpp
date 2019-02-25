@@ -235,6 +235,8 @@ int main(int argc, char * argv[])
   numUniqueInteriorNodes = nodeListInterior.size();
   numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
+  /// for (auto &&n : nodeListExterior)
+  ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
   printf("Example1: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
   tree.clear();
   nodeListInterior.clear();
@@ -250,6 +252,8 @@ int main(int argc, char * argv[])
   numUniqueInteriorNodes = nodeListInterior.size();
   numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
+  /// for (auto &&n : nodeListExterior)
+  ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
   printf("Example2: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
   tree.clear();
   nodeListInterior.clear();
@@ -265,6 +269,8 @@ int main(int argc, char * argv[])
   numUniqueInteriorNodes = nodeListInterior.size();
   numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
+  /// for (auto &&n : nodeListExterior)
+  ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
   printf("Example3: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
   tree.clear();
   nodeListInterior.clear();
