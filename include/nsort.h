@@ -71,8 +71,6 @@ namespace ot {
     public:
       enum IsSelected { No, Maybe, Yes };
 
-      using TreeNode<T,dim>::operator==;
-
       /**
        * @brief Constructs a node at the extreme "lower-left" corner of the domain.
        */
@@ -99,6 +97,14 @@ namespace ot {
 
       /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the object using the assignment operator.*/
       TNPoint & operator = (TNPoint const  & other);
+
+
+      /** @brief Compares level and full coordinates, disregarding selection status. */
+      bool operator== (TNPoint const &that) const;
+
+      /** @brief Compares level and full coordinates, disregarding selection status. */
+      bool operator!= (TNPoint const &that) const;
+
 
       IsSelected get_isSelected() const { return m_isSelected; }
       void set_isSelected(IsSelected isSelected) { m_isSelected = isSelected; }

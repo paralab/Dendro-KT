@@ -51,6 +51,21 @@ namespace ot {
     m_isSelected = other.m_isSelected;
   }
 
+
+  template <typename T, unsigned int dim>
+  bool TNPoint<T,dim>::operator== (TNPoint const &that) const
+  {
+    std::array<T,dim> coords1, coords2;
+    return TreeNode<T,dim>::getLevel() == that.getLevel() && (TreeNode<T,dim>::getAnchor(coords1), coords1) == (that.getAnchor(coords2), coords2);
+  }
+
+  template <typename T, unsigned int dim>
+  bool TNPoint<T,dim>::operator!= (TNPoint const &that) const
+  {
+    return ! operator==(that);
+  }
+
+
   template <typename T, unsigned int dim>
   unsigned char TNPoint<T,dim>::get_firstIncidentHyperplane(unsigned int hlev) const
   {
@@ -741,7 +756,10 @@ namespace ot {
       void deselectAndRemovePending()
       {
         for (TNP *pt : m_pendingNodes)
+        {
           pt->set_isSelected(TNP::No);
+          /// std::cout << "Hanging: \t" << pt->getBase32Hex().data() << " \t " << pt->getBase32Hex(5).data() << "\n";
+        }
         m_pendingNodes.clear();
       }
 
@@ -761,13 +779,19 @@ namespace ot {
     while (start < end)
     {
       // Get the next unique location (and cell type, using level as proxy).
-      TNP *next = start;
+      TNP *next = start + 1;
       while (next < end && (*next == *start))  // Compares both coordinates and level.
         (next++)->set_isSelected(TNP::No);
+      start->set_isSelected(TNP::No);
 
       // Look up appropriate row.
       unsigned char cOrient = start->get_cellType().get_orient_flag();
       kFaceStatus &row = statusTbl[cOrient];
+
+      /// std::cout << std::bitset<dim>(cOrient).to_string() << "\t"
+      ///     << row.m_cellIdentity.getBase32Hex().data() << "\t"
+      ///     << (row.m_isSelected == TNP::Yes ? "Yes" : row.m_isSelected == TNP::No ? "No" : "Maybe") << "\t"
+      ///     << "Num pending nodes == " << row.m_pendingNodes.size() << "\n";
 
       if (!row.m_isInitialized)
       {
@@ -778,18 +802,19 @@ namespace ot {
           // Stay in same cell.
       else if (row.m_cellIdentity.isAncestor(start->getDFD()))
       {
-        if (start->getLevel() < row.m_cellIdentity.getLevel())
+        if (start->getLevel() < row.m_cellIdentity.getLevel())  // Coarser.
         {
           start->set_isSelected(TNP::Yes);
           totalCount++;
           row.deselectAndRemovePending();
           row.m_isSelected = TNP::No;
         }
-        else if (start->getLevel() > row.m_cellIdentity.getLevel())
+        else if (start->getLevel() > row.m_cellIdentity.getLevel())  // Finer.
         {
           /// start->set_isSelected(TNP::No);   // Already set during dups init.
           totalCount += row.selectAndRemovePending();
           row.initialize(start->getCell(), TNP::No);
+          /// std::cout << "Hanging: \t" << start->getBase32Hex().data() << " \t " << start->getBase32Hex(5).data() << "\n";
         }
         else
         {
