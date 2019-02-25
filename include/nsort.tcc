@@ -729,11 +729,13 @@ namespace ot {
         m_isInitialized = true;
       }
 
-      void selectAndRemovePending()
+      RankI selectAndRemovePending()
       {
+        RankI numSelected = m_pendingNodes.size();
         for (TNP *pt : m_pendingNodes)
           pt->set_isSelected(TNP::Yes);
         m_pendingNodes.clear();
+        return numSelected;
       }
 
       void deselectAndRemovePending()
@@ -743,6 +745,7 @@ namespace ot {
         m_pendingNodes.clear();
       }
 
+      // Data members.
       bool m_isInitialized = false;
       TreeNode<T,dim> m_cellIdentity;
       typename TNP::IsSelected m_isSelected;
@@ -752,31 +755,70 @@ namespace ot {
     // Initialize table. //TODO make this table re-usable across function calls.
     std::vector<kFaceStatus> statusTbl(1u << dim);   // Enough for all possible orientation indices.
 
+    RankI totalCount = 0;
+
+    // Iterate over all unique points.
     while (start < end)
     {
-      // Get the next unique location.
-      TNP *firstCoarsest, *firstFinest, *next;
-      unsigned int numDups;
-      scanForDuplicates(start, end, firstCoarsest, firstFinest, next, numDups);
-      for (TNP *ptIter = start; ptIter < next; ptIter++)
-        ptIter->set_isSelected(TNP::No);
-      /// firstCoarsest->set_isSelected(TNP::Maybe);
+      // Get the next unique location (and cell type, using level as proxy).
+      TNP *next = start;
+      while (next < end && (*next == *start))  // Compares both coordinates and level.
+        (next++)->set_isSelected(TNP::No);
 
       // Look up appropriate row.
-      unsigned char cOrient = firstCoarsest->get_cellType().get_orient_flag();
+      unsigned char cOrient = start->get_cellType().get_orient_flag();
       kFaceStatus &row = statusTbl[cOrient];
 
       if (!row.m_isInitialized)
-        row.initialize(firstFinest->getCell(), (!numDups ? TNP::No : TNP::Maybe));
+      {
+        row.initialize(start->getCell(), TNP::Maybe);
+        row.m_pendingNodes.push_back(start);
+      }
 
-      // TODO we actually do need the points to be separated by level so that
-      // we get the cell type right.
+          // Stay in same cell.
+      else if (row.m_cellIdentity.isAncestor(start->getDFD()))
+      {
+        if (start->getLevel() < row.m_cellIdentity.getLevel())
+        {
+          start->set_isSelected(TNP::Yes);
+          totalCount++;
+          row.deselectAndRemovePending();
+          row.m_isSelected = TNP::No;
+        }
+        else if (start->getLevel() > row.m_cellIdentity.getLevel())
+        {
+          /// start->set_isSelected(TNP::No);   // Already set during dups init.
+          totalCount += row.selectAndRemovePending();
+          row.initialize(start->getCell(), TNP::No);
+        }
+        else
+        {
+          if (row.m_isSelected == TNP::Maybe)
+            row.m_pendingNodes.push_back(start);
+          else
+          {
+            start->set_isSelected(row.m_isSelected);
+            totalCount += (row.m_isSelected == TNP::Yes);
+          }
+        }
+      }
 
+          // Move on to new cell.
+      else
+      {
+        totalCount += row.selectAndRemovePending();
+        row.initialize(start->getCell(), TNP::Maybe);
+        row.m_pendingNodes.push_back(start);
+      }
 
       start = next;
     }
 
-    return 0;
+    // Flush the table.
+    for (kFaceStatus &row : statusTbl)
+      totalCount += row.selectAndRemovePending();
+
+    return totalCount;
   }
 
   // ============================ End: SFC_NodeSort ============================ //
