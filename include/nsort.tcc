@@ -761,21 +761,19 @@ namespace ot {
     // Helper struct.
     struct kFaceStatus
     {
-      void initialize(LevI lev)
+      void resetCoarseness()
       {
-        m_isInitialized = true;
-        m_curCoarseness = lev;
+        m_isInitialized = false;
       }
 
-      /** @brief Updates coarsenss and returns true if became coarser. */
-      bool updateCoarseness(LevI lev)
+      /** @brief Updates coarsenss to coarser or equal level. */
+      void updateCoarseness(LevI lev)
       {
-        if (lev < m_curCoarseness)
+        if (!m_isInitialized || lev < m_curCoarseness)
         {
           m_curCoarseness = lev;
-          return true;
+          m_isInitialized = true;
         }
-        return false;
       }
 
       RankI selectAndRemovePending()
@@ -792,7 +790,6 @@ namespace ot {
         for (TNP *pt : m_pendingNodes)
         {
           pt->set_isSelected(TNP::No);
-          /// std::cout << "Hanging: \t" << pt->getBase32Hex().data() << " \t " << pt->getBase32Hex(5).data() << "\n";
         }
         m_pendingNodes.clear();
       }
@@ -822,9 +819,7 @@ namespace ot {
       start->set_isSelected(TNP::No);
 
       const unsigned char nCellType = start->get_cellType().get_orient_flag();
-      const unsigned char pCellType = start->get_cellTypeOnParent().get_orient_flag();
       kFaceStatus &nRow = statusTbl[nCellType];
-      kFaceStatus &pRow = statusTbl[pCellType];
 
       // First initialization of state for new K-cell.
       if (numLevelsWitnessed == 0 || !currentKCell.isAncestor(start->getDFD()))
@@ -835,9 +830,12 @@ namespace ot {
           pt->set_isSelected(TNP::Yes);
         unprocessedNodes.clear();
 
-        // Else, we probably have some pending nodes to clean up.
+        // We probably have some pending nodes to clean up.
         for (kFaceStatus &row : statusTbl)
+        {
           totalCount += row.selectAndRemovePending();
+          row.resetCoarseness();
+        }
 
         // Initialize state to traverse new K-cell.
         currentKCell = start->getCell();
@@ -862,31 +860,28 @@ namespace ot {
         }
       }
 
-      // Enqueue node for later writing from pRow.
-      unprocessedNodes.push_back(start);
-
       // Read from current node to update nRow.
-      if (nRow.m_isInitialized)
-      {
-        if (nRow.updateCoarseness(start->getLevel()))
-          nRow.deselectAndRemovePending();
-      }
-      else
-      {
-        nRow.initialize(start->getLevel());
-      }
+      nRow.updateCoarseness(start->getLevel());
+      if (numLevelsWitnessed == 2 && nRow.m_curCoarseness == coarserLevel)
+        nRow.deselectAndRemovePending();
+
+      // Enqueue node for later interaction with pRow.
+      unprocessedNodes.push_back(start);
 
       // Process all recently added nodes.
       if (numLevelsWitnessed == 2)
       {
         for (TNP * &pt : unprocessedNodes)
         {
+          const unsigned char pCellType = pt->get_cellTypeOnParent().get_orient_flag();
+          kFaceStatus &pRow = statusTbl[pCellType];
+
           if (pt->getLevel() == coarserLevel)
           {
             pt->set_isSelected(TNP::Yes);
             totalCount++;
           }
-          else if (pRow.m_curCoarseness == coarserLevel)
+          else if (pRow.m_isInitialized && pRow.m_curCoarseness == coarserLevel)
           {
             pt->set_isSelected(TNP::No);
           }
@@ -909,16 +904,6 @@ namespace ot {
 
     for (kFaceStatus &row : statusTbl)
       totalCount += row.selectAndRemovePending();
-
-    /// std::cout << "\n";
-
-      /// std::cout
-      ///     << "(" << start->getLevel() << ") " << start->getBase32Hex(8).data() << "\t"
-      ///     << std::bitset<dim>(cOrient).to_string() << "\t"
-      ///     << (row.m_isInitialized ? "Init'd" : "UNINIT") << "\t"
-      ///     << row.m_cellIdentity.getBase32Hex().data() << "\t"
-      ///     << (row.m_isSelected == TNP::Yes ? "Yes" : row.m_isSelected == TNP::No ? "No" : "Maybe") << "\t"
-      ///     << "Num pending nodes == " << row.m_pendingNodes.size() << "\n";
 
     return totalCount;
   }
