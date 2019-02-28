@@ -109,6 +109,10 @@ namespace ot {
       IsSelected get_isSelected() const { return m_isSelected; }
       void set_isSelected(IsSelected isSelected) { m_isSelected = isSelected; }
 
+      unsigned char get_numInstances() const { return m_numInstances; }
+      void set_numInstances(unsigned char numInstances) { m_numInstances = numInstances; }
+      void incrementNumInstances(char delta_numInstances = 1) { m_numInstances += delta_numInstances; }
+
       /**
        * @brief The point may be incident on one or more grid lines (hyperplanes) at coarseness level `hlev'.
        *   If so, this method returns the smallest-indexed such hyperplane.
@@ -135,6 +139,8 @@ namespace ot {
     protected:
       // Data members.
       IsSelected m_isSelected;
+      unsigned char m_numInstances = 1;
+      //TODO These members could be overlayed in a union if we are careful.
   };
 
 
@@ -165,10 +171,14 @@ namespace ot {
   {
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain.
+     * @param classify If true, perform node classification and mark them appropriately. If false,
+     *        the points are still sorted, but they are not marked - instead the number of instances
+     *        is recorded in the first instance of every duplicate bunch. If false, the return value
+     *        is meaningless.
      * @note Assumes none of the points are (dim)-cell interior points.
      *   To achieve this, use Element::appendExteriorNodes() and Element::appendInteriorNodes() separately.
      */
-    static RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+    static RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order, bool classify = true);
 
     /**
      * @brief Sorts points `as points', meaning by coordinate first. NOTE: Doesn't enforce any ordering among points with identical coordinates.
@@ -185,6 +195,7 @@ namespace ot {
        * @param [out] next The next element that was not scanned. Future scans can pick up from here.
        * @param [out] numDups If all same level, the number of duplicates. If mixed levels, 0.
        * @note Assumes that start < end.
+       * @note Assumes that the field m_numInstances has been properly initialized for all points.
        */
       static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest, TNPoint<T,dim> * &next, unsigned int &numDups);
 
@@ -205,6 +216,7 @@ namespace ot {
       /**
        * @brief For order 1 or 2, alignment of points means we can count duplicates at node site to resolve duplicates/hanging nodes.
        * @note Assumes the points are already sorted -- as points, such that all points with same coordinates appear together, regardless of level.
+       * @note Assumes that the field m_numInstances has been properly initialized for all points.
        */
       static RankI resolveInterface_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
 
@@ -215,6 +227,15 @@ namespace ot {
        * @note Assumes the points are already sorted -- as points, such that all points with same coordinates appear together, regardless of level.
        */
       static RankI resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+
+      /**
+       * @brief A ``pseudo-resolver'' method that counts literal duplicate points,
+       *        i.e. having both the same coordinates and level. Does not classify points
+       *        in any way. Also the return value is not meaningful at all.
+       * @note The reason for having this function is for a final preprocessing
+       *       stage before finding the processor-boundary nodes.
+       */
+      static RankI countInstances(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int unused_order);
   }; // struct SFC_NodeSort
 
 

@@ -249,7 +249,7 @@ namespace ot {
   // SFC_NodeSort::countCGNodes()
   //
   template <typename T, unsigned int dim>
-  RankI SFC_NodeSort<T,dim>::countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  RankI SFC_NodeSort<T,dim>::countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order, bool classify)
   {
     using TNP = TNPoint<T,dim>;
     constexpr char numChildren = TreeNode<T,dim>::numChildren;
@@ -276,31 +276,39 @@ namespace ot {
           1, m_uiMaxDepth, 0);    // Re-use the 0th rotation for each 'root'.
     }
 
-
-    // Count the domain boundary points.
-    //
-    for (TNP *bdryIter = end - numDomBdryPoints; bdryIter < end; bdryIter++)
-      bdryIter->set_isSelected(TNP::No);
-    RankI numUniqBdryPoints = 0;
-    TNP *bdryIter = end - numDomBdryPoints;
-    TNP *firstCoarsest, *unused_firstFinest;
-    unsigned int unused_numDups;
-    while (bdryIter < end)
+    // Counting/resolving/marking task.
+    if (classify)
     {
-      scanForDuplicates(bdryIter, end, firstCoarsest, unused_firstFinest, bdryIter, unused_numDups);
-      firstCoarsest->set_isSelected(TNP::Yes);
-      numUniqBdryPoints++;
+      // Count the domain boundary points.
+      //
+      for (TNP *bdryIter = end - numDomBdryPoints; bdryIter < end; bdryIter++)
+        bdryIter->set_isSelected(TNP::No);
+      RankI numUniqBdryPoints = 0;
+      TNP *bdryIter = end - numDomBdryPoints;
+      TNP *firstCoarsest, *unused_firstFinest;
+      unsigned int unused_numDups;
+      while (bdryIter < end)
+      {
+        scanForDuplicates(bdryIter, end, firstCoarsest, unused_firstFinest, bdryIter, unused_numDups);
+        firstCoarsest->set_isSelected(TNP::Yes);
+        numUniqBdryPoints++;
+      }
+
+      totalUniquePoints += numUniqBdryPoints;
+
+
+      // Bottom-up counting interior points
+      //
+      if (order <= 2)
+        totalUniquePoints += countCGNodes_impl(resolveInterface_lowOrder, start, end - numDomBdryPoints, 1, 0, order);
+      else
+        totalUniquePoints += countCGNodes_impl(resolveInterface_highOrder, start, end - numDomBdryPoints, 1, 0, order);
     }
-
-    totalUniquePoints += numUniqBdryPoints;
-
-
-    // Bottom-up counting interior points
-    //
-    if (order <= 2)
-      totalUniquePoints += countCGNodes_impl(resolveInterface_lowOrder, start, end - numDomBdryPoints, 1, 0, order);
+    // Sorting/instancing task.
     else
-      totalUniquePoints += countCGNodes_impl(resolveInterface_highOrder, start, end - numDomBdryPoints, 1, 0, order);
+    {
+      countCGNodes_impl(countInstances, start, end - numDomBdryPoints, 1, 0, order);
+    }
 
     return totalUniquePoints;
   }
@@ -475,9 +483,11 @@ namespace ot {
     next = start + 1;
     firstCoarsest = start;
     firstFinest = start;
+    unsigned char numInstances = start->get_numInstances();
     numDups = 1;  // Something other than 0.
     while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
     {
+      numInstances += next->get_numInstances();
       if (numDups && next->getLevel() != firstCoarsest->getLevel())
         numDups = 0;
       if (next->getLevel() < firstCoarsest->getLevel())
@@ -487,7 +497,7 @@ namespace ot {
       next++;
     }
     if (numDups)
-      numDups = next - start;
+      numDups = numInstances;
   }
 
 
@@ -907,6 +917,31 @@ namespace ot {
 
     return totalCount;
   }
+
+
+  //
+  // SFC_NodeSort::countInstances()
+  //
+  template <typename T, unsigned int dim>
+  RankI SFC_NodeSort<T,dim>::countInstances(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int unused_order)
+  {
+    using TNP = TNPoint<T,dim>;
+    while (start < end)
+    {
+      // Get the next unique pair (location, level).
+      unsigned char delta_numInstances = 0;
+      TNP *next = start + 1;
+      while (next < end && (*next == *start))  // Compares both coordinates and level.
+      {
+        delta_numInstances += next->get_numInstances();
+        next->set_numInstances(0);
+        next++;
+      }
+      start->incrementNumInstances(delta_numInstances);
+    }
+  }
+
+
 
   // ============================ End: SFC_NodeSort ============================ //
 
