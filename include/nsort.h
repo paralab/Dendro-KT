@@ -170,6 +170,12 @@ namespace ot {
   struct SFC_NodeSort
   {
     /**
+     * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array.
+     */
+    static RankI dist_countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order, TreeNode<T,dim> *treePartStart, MPI_Comm comm);
+
+
+    /**
      * @brief Count all unique, nonhanging nodes in/on the domain.
      * @param classify If true, perform node classification and mark them appropriately. If false,
      *        the points are still sorted, but they are not marked - instead the number of instances
@@ -236,6 +242,11 @@ namespace ot {
        *       stage before finding the processor-boundary nodes.
        */
       static RankI countInstances(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int unused_order);
+
+      /**
+       * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.
+       */
+      static std::vector<TreeNode<T,dim>> dist_bcastSplitters(TreeNode<T,dim> *start, MPI_Comm comm);
   }; // struct SFC_NodeSort
 
 

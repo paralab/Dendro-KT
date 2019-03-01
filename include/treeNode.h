@@ -220,6 +220,7 @@ namespace ot {
        @author Masado Ishii
        @tparam offsets Specify relative position as (-1,0,+1) for each dimension.
       */
+      template <bool includeDomBdry = false>
       TreeNode getNeighbour(std::array<signed char,dim> offsets) const;
 
       /**
@@ -227,13 +228,22 @@ namespace ot {
         @author Masado Ishii
         @tparam offsets Specify dimension of adjacency and relative position \ as (-1,0,+1) for that dimension.
         */
+      template <bool includeDomBdry = false>
       TreeNode getNeighbour(unsigned int d, signed char offset) const;
 
       /**
         @brief Append in-bounds neighbors of node to node list.
         @author Masado Ishii
        */
+      template <bool includeDomBdry = false>
       void appendAllNeighbours(std::vector<TreeNode> &nodeList) const;
+
+      /**
+       @brief Append in-bounds neighbours of node to node list. Considered as points, so points on the domain boundary are included.
+       @note Wrapper around appendAllNeighbours<true>().
+       @author Masado Ishii
+       */
+      void appendAllNeighboursAsPoints(std::vector<TreeNode> &nodeList) const;
 
     };
 

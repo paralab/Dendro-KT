@@ -171,26 +171,40 @@ struct Example3
 
 
 
+template<typename X>
+void distPrune(std::vector<X> &list, MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  const int listSize = list.size();
+  const int baseSeg = listSize / nProc;
+  const int remainder = listSize - baseSeg * nProc;
+  const int myStart = rProc * baseSeg + (rProc < remainder ? rProc : remainder);
+  const int mySeg = baseSeg + (rProc < remainder ? 1 : 0);
+
+  list.erase(list.begin(), list.begin() + myStart);
+  list.resize(mySeg);
+}
+
+
 
 int main(int argc, char * argv[])
 {
+  MPI_Init(&argc, &argv);
+
+  const bool RunDistributed = true;  // Switch between sequential and distributed.
+  int nProc, rProc;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rProc);
+  MPI_Comm_size(MPI_COMM_WORLD, &nProc);
+  MPI_Comm comm = MPI_COMM_WORLD;
+
   constexpr unsigned int dim = 4;
   const unsigned int endL = 3;
   const unsigned int order = 2;
 
   _InitializeHcurve(dim);
-
-///  {
-///    ot::Element<T,dim> e({5u << (m_uiMaxDepth-4), 2u << (m_uiMaxDepth-4), 1u << (m_uiMaxDepth-4)}, 4);
-///    std::vector<ot::TNPoint<T,dim>> nodes;
-///    e.appendInteriorNodes(4, nodes);
-///    e.appendExteriorNodes(4, nodes);
-///
-///    std::cout << "Nodes of\n\t" << e.getBase32Hex().data() << "\n\t----------\n";
-///    for (auto n : nodes)
-///      std::cout << "\t" << n.getBase32Hex(8).data() << "\n";
-///  }
-
 
   unsigned int numPoints;
   Tree<dim> tree;
@@ -203,25 +217,33 @@ int main(int argc, char * argv[])
 
   // -------------
 
-  numPoints = Example1<dim>::num_points(endL, order);
-  Example1<dim>::fill_tree(endL, tree);
-  printf("Example1: numPoints==%u, numElements==%lu.\n", numPoints, tree.size());
-  tree.clear();
+  if (rProc == 0)
+  {
+    numPoints = Example1<dim>::num_points(endL, order);
+    Example1<dim>::fill_tree(endL, tree);
+    printf("Example1: numPoints==%u, numElements==%lu.\n", numPoints, tree.size());
+    tree.clear();
 
-  numPoints = Example2<dim>::num_points(endL, order);
-  Example2<dim>::fill_tree(endL, tree);
-  printf("Example2: numPoints==%u, numElements==%lu.\n", numPoints, tree.size());
-  tree.clear();
+    numPoints = Example2<dim>::num_points(endL, order);
+    Example2<dim>::fill_tree(endL, tree);
+    printf("Example2: numPoints==%u, numElements==%lu.\n", numPoints, tree.size());
+    tree.clear();
 
-  numPoints = Example3<dim>::num_points(endL, order);
-  Example3<dim>::fill_tree(endL, tree);
-  printf("Example3: numPoints==%u, numElements==%lu.\n", numPoints, tree.size());
-  tree.clear();
+    numPoints = Example3<dim>::num_points(endL, order);
+    Example3<dim>::fill_tree(endL, tree);
+    printf("Example3: numPoints==%u, numElements==%lu.\n", numPoints, tree.size());
+    tree.clear();
+  }
 
   // -------------
 
   // Example1
   Example1<dim>::fill_tree(endL, tree);
+  if (RunDistributed)
+  {
+    distPrune(tree, comm);
+    ot::SFC_Tree<T,dim>::distTreeSort(tree, 0.05, comm);
+  }
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
@@ -233,7 +255,10 @@ int main(int argc, char * argv[])
   ///     std::cout << n.getFinestOpenContainer().getBase32Hex().data() << "\n";
   /// }
   numUniqueInteriorNodes = nodeListInterior.size();
-  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
+  if (RunDistributed)
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order, tree.data(), comm);
+  else
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
   /// for (auto &&n : nodeListExterior)
   ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
@@ -244,13 +269,21 @@ int main(int argc, char * argv[])
 
   // Example2
   Example2<dim>::fill_tree(endL, tree);
+  if (RunDistributed)
+  {
+    distPrune(tree, comm);
+    ot::SFC_Tree<T,dim>::distTreeSort(tree, 0.05, comm);
+  }
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
   }
   numUniqueInteriorNodes = nodeListInterior.size();
-  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
+  if (RunDistributed)
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order, tree.data(), comm);
+  else
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
   /// for (auto &&n : nodeListExterior)
   ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
@@ -261,13 +294,21 @@ int main(int argc, char * argv[])
 
   // Example3
   Example3<dim>::fill_tree(endL, tree);
+  if (RunDistributed)
+  {
+    distPrune(tree, comm);
+    ot::SFC_Tree<T,dim>::distTreeSort(tree, 0.05, comm);
+  }
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
   }
   numUniqueInteriorNodes = nodeListInterior.size();
-  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
+  if (RunDistributed)
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order, tree.data(), comm);
+  else
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
   /// for (auto &&n : nodeListExterior)
   ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
@@ -277,6 +318,8 @@ int main(int argc, char * argv[])
   nodeListExterior.clear();
 
   _DestroyHcurve();
+
+  MPI_Finalize();
 
   return 0;
 }

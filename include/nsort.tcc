@@ -158,7 +158,7 @@ namespace ot {
   // ============================ End: TNPoint ============================ //
 
 
-  // ============================ Begin: SFC_NodeSort ============================ //
+  // ============================ Begin: Element ============================ //
 
   template <typename T, unsigned int dim>
   void Element<T,dim>::appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
@@ -238,12 +238,49 @@ namespace ot {
     }
   }
 
-  // ============================ End: TNPoint ============================ //
+  // ============================ End: Element ============================ //
 
 
 
   // ============================ Begin: SFC_NodeSort ============================ //
 
+  //
+  // SFC_NodeSort::dist_countCGNodes()
+  //
+  template <typename T, unsigned int dim>
+  RankI SFC_NodeSort<T,dim>::dist_countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order, TreeNode<T,dim> *treePartStart, MPI_Comm comm)
+  {
+    // TODO TODO TODO
+
+    // 1. Call countCGNodes(classify=false) to agglomerate node instances -> node representatives.
+    // 2. For every representative, determine which processor boundaries the node is incident on,
+    //    by generating neighbor-keys and sorting them against the proc-bdry splitters.
+    // 3. Each representative is copied once per incident proc-boundary.
+    // 4. Send and receive the boundary layer nodes.
+    // 5. Finally, sort and count nodes with countCGNodes(classify=true).
+
+    int nProc, rProc;
+    MPI_Comm_rank(comm, &rProc);
+    MPI_Comm_size(comm, &nProc);
+
+    if (nProc == 1)
+      return countCGNodes(start, end, order, true);
+
+    // For sorting, counting instances.
+    countCGNodes(start, end, order, false);
+
+    std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
+
+    // For each node, if it is a proc-boundary node, 
+    //TODO
+
+    return 0;  //TODO
+
+    // TODO policy and algorithm to determine ownership of points to processors, etc.
+    // TODO once we have ownership, we then need to form the ghost node layer.
+
+    // With ownership, modify the local number, MPI_Allreduce to get global number.
+  }
 
   //
   // SFC_NodeSort::countCGNodes()
@@ -942,6 +979,25 @@ namespace ot {
   }
 
 
+  //
+  // SFC_NodeSort::dist_bcastSplitters()
+  //
+  template <typename T, unsigned int dim>
+  std::vector<TreeNode<T,dim>> SFC_NodeSort<T,dim>::dist_bcastSplitters(TreeNode<T,dim> *start, MPI_Comm comm)
+  {
+    int nProc, rProc;
+    MPI_Comm_rank(comm, &rProc);
+    MPI_Comm_size(comm, &nProc);
+
+    using TreeNode = TreeNode<T,dim>;
+    std::vector<TreeNode> splitters(nProc);
+    splitters[rProc] = *start;
+
+    for (int turn = 0; turn < nProc; turn++)
+      par::Mpi_Bcast<TreeNode>(&splitters[turn], 1, turn, comm);
+
+    return splitters;
+  }
 
   // ============================ End: SFC_NodeSort ============================ //
 

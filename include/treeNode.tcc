@@ -450,7 +450,7 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getDLD() const {
 // Helper routine for getNeighbour() methods.
 // If addr_in plus offset does not overflow boundary,  sets addr_out and returns true.
 // Otherwise, returns false without setting addr_out.
-template <typename T>
+template <typename T, bool includeDomBdry = false>
 inline bool getNeighbour1d(T addr_in,
     unsigned int level, signed char offset, T &addr_out)
 {
@@ -464,8 +464,15 @@ inline bool getNeighbour1d(T addr_in,
   }
 
   unsigned int len = (1u << (m_uiMaxDepth - level));
-  if ((offset > 0 && addr_in >= (1u << m_uiMaxDepth) - len) ||
-      (offset < 0 && addr_in < len))
+  if ( (!includeDomBdry &&
+           ((offset > 0 && addr_in >= (1u << m_uiMaxDepth) - len) ||  // Function is false if >=.
+           (offset < 0 && addr_in < len))
+       )
+       ||
+       (includeDomBdry &&
+           ((offset > 0 && addr_in > (1u << m_uiMaxDepth) - len) ||   // Function is false if >.
+           (offset < 0 && addr_in < len))
+       ) )
   {
     return false;
   }
@@ -475,10 +482,11 @@ inline bool getNeighbour1d(T addr_in,
 }
 
 template <typename T, unsigned int dim>
+template <bool includeDomBdry>
 inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(unsigned int d, signed char offset) const
 {
   T n_addr;
-  bool is_valid_neighbour = getNeighbour1d(m_uiCoords[d], getLevel(), offset, n_addr);
+  bool is_valid_neighbour = getNeighbour1d<T,includeDomBdry>(m_uiCoords[d], getLevel(), offset, n_addr);
   if (is_valid_neighbour)
   {
     std::array<T,dim> n_coords = m_uiCoords;
@@ -492,6 +500,7 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(unsigned int d, signed char
 }
 
 template <typename T, unsigned int dim>
+template <bool includeDomBdry>
 inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim> offsets) const
 {
   std::array<T,dim> n_coords = m_uiCoords;
@@ -500,7 +509,7 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim>
   #pragma unroll(dim)
   for (int d = 0; d < dim; d++)
   {
-    bool is_valid_neighbour = getNeighbour1d(n_coords[d], level, offsets[d], n_coords[d]);
+    bool is_valid_neighbour = getNeighbour1d<T,includeDomBdry>(n_coords[d], level, offsets[d], n_coords[d]);
     if (!is_valid_neighbour)
     {
       return TreeNode<T,dim>();  // Root octant.
@@ -512,6 +521,7 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim>
 
 
 template <typename T, unsigned int dim>
+template <bool includeDomBdry>
 inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &nodeList) const
 {
   // The set of neighbors is a 3x3x3x... hypercube with the center deleted.
@@ -532,8 +542,8 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
   #pragma unroll(dim)
   for (int d = 0; d < dim; d++)
   {
-    dimUsable[2*d + 0] = getNeighbour1d(m_uiCoords[d], level, +1, nAxis[2*d + 0]);
-    dimUsable[2*d + 1] = getNeighbour1d(m_uiCoords[d], level, -1, nAxis[2*d + 1]);
+    dimUsable[2*d + 0] = getNeighbour1d<T,includeDomBdry>(m_uiCoords[d], level, +1, nAxis[2*d + 0]);
+    dimUsable[2*d + 1] = getNeighbour1d<T,includeDomBdry>(m_uiCoords[d], level, -1, nAxis[2*d + 1]);
   }
 
   // Precompute strides for sizes of sub-faces.
@@ -572,6 +582,13 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
     if (isNeighbourUsable)
       nodeList.push_back(TreeNode<T,dim>(1, n_coords, level));
   }
+}  // end function()
+
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T,dim>::appendAllNeighboursAsPoints(std::vector<TreeNode<T,dim>> &nodeList) const
+{
+  appendAllNeighbours<true>(nodeList);
 }  // end function()
 
 
