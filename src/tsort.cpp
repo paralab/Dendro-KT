@@ -535,16 +535,20 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
     std::array<RankI, numChildren+1> childSplitters;
     RankI ancStart, ancEnd;
     if (front.begin < front.end)
+    {
       SFC_bucketing(points, front.begin, front.end, front.lev, front.rot_id, childSplitters, ancStart, ancEnd);
-    else
-      childSplitters.fill(front.begin);  // Don't need to sort an empty selection, it's just empty.
 
-    // Put 'ancestor' points one of the closest sibling bucket.
-    const bool ancestorsFirst = true;
-    if (ancestorsFirst)
-      childSplitters[0] = ancStart;
+      // Put 'ancestor' points one of the closest sibling bucket.
+      const bool ancestorsFirst = true;
+      if (ancestorsFirst)
+        childSplitters[0] = ancStart;
+      else
+        childSplitters[numChildren] = ancEnd;
+    }
     else
-      childSplitters[numChildren] = ancEnd;
+    {
+      childSplitters.fill(front.begin);  // Don't need to sort an empty selection, it's just empty.
+    }
 
     // Enqueue our children in the next level.
     const ChildI * const rot_perm = &rotations[front.rot_id*rotOffset + 0*numChildren];
