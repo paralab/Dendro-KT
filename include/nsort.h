@@ -69,7 +69,7 @@ namespace ot {
   class TNPoint : public TreeNode<T,dim>
   {
     public:
-      enum IsSelected { No, Maybe, Yes, Base };
+      enum IsSelected { No, Maybe, Yes };
 
       /**
        * @brief Constructs a node at the extreme "lower-left" corner of the domain.
@@ -229,7 +229,7 @@ namespace ot {
        * @param pRot The SFC orientation of the parent (containing) region.
        */
       template<typename ResolverT>
-      static RankI countCGNodes_impl(ResolverT resolveInterface, TNPoint<T,dim> *start, TNPoint<T,dim> *end, LevI sLev, RotI pRot, unsigned int order);
+      static RankI countCGNodes_impl(ResolverT &resolveInterface, TNPoint<T,dim> *start, TNPoint<T,dim> *end, LevI sLev, RotI pRot, unsigned int order);
 
       /**
        * @brief For order 1 or 2, alignment of points means we can count duplicates at node site to resolve duplicates/hanging nodes.
@@ -254,6 +254,24 @@ namespace ot {
        *       stage before finding the processor-boundary nodes.
        */
       static RankI countInstances(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int unused_order);
+
+      /**
+       * @brief A ``pseudo-resolver'' object that contributes to the scattermap state during traveral.
+       *        Also the return value is not meaningful at all. Use computeScattermap after traversal.
+       * @note This method uses TNPoint::get_isSelected() to determine non-hanging ownership
+       *       and TNPoint::get_owner() to determine boundary/destination.
+       */
+      struct resolveInterface_scattermapStruct
+      {
+        RankI operator() (TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+
+        void computeScattermap(std::vector<RankI> &outScattermap, std::vector<RankI> &outSendCounts, std::vector<RankI> &outSendOffsets);
+
+        // Iterator state.
+        RankI numOwnedPoints = 0;   // Local node index for the next scattermap entry.
+        std::vector<RankI> uniqOwnedIdx;
+        std::vector<int> destProc;
+      };
 
       /**
        * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.

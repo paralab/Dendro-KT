@@ -298,6 +298,8 @@ namespace ot {
   {
     // TODO TODO TODO
 
+    using TNP = TNPoint<T,dim>;
+
     fprintf(stderr, "\n");
 
     // TODO Ownership: The local sort is not stable. We ought to scan through the recv'd nodes again to find out which proc-ranks are represented.
@@ -324,7 +326,7 @@ namespace ot {
 
     // Compact node list (remove literal duplicates).
     RankI numUniquePoints = 0;
-    for (const TNPoint<T,dim> &pt : points)
+    for (const TNP &pt : points)
     {
       if (pt.get_numInstances() > 0)
         points[numUniquePoints++] = pt;
@@ -383,7 +385,7 @@ namespace ot {
 
     // Create the preliminary send buffer, ``share buffer.''
     // We compute the preliminary send buffer only once, so don't make a separate scatter map for it.
-    std::vector<TNPoint<T,dim>> shareBuffer;
+    std::vector<TNP> shareBuffer;
     int sendTotal = 0;
     sendOffsets.resize(nProc);
     for (int proc = 0; proc < nProc; proc++)
@@ -495,13 +497,51 @@ namespace ot {
 
     // Current ownership policy: Least-rank-processor (without the Base tag).
 
+    // TODO 2019-03-07  Today we decided that a cell-decomposition approach would
+    //   be cleaner, since don't have to deal with rounding problems.
+
     //TODO
 
+    // Can compute # of owned nodes without the scattermap. At least we can
+    // test the counting methods.
 
+    RankI numOwnedPoints = 0;
+    typename std::vector<TNP>::iterator ptIter = points.begin();
+    while (ptIter < points.end())
+    {
+      // Skip hanging nodes.
+      if (ptIter->get_isSelected() != TNP::Yes)
+      {
+        ptIter++;
+        continue;
+      }
+
+      // A node marked 'Yes' is the first instance.
+      // Examine all instances and choose the one with least rank.
+      typename std::vector<TNP>::iterator leastRank = ptIter;
+      while (*ptIter == *leastRank)  // Equality compares only coordinates and level.
+      {
+        ptIter->set_isSelected(TNP::No);
+        if (ptIter->get_owner() < leastRank->get_owner())
+          leastRank = ptIter;
+        ptIter++;
+      }
+
+      // If the chosen node is ours, select it and increment count.
+      if (leastRank->get_owner() == -1 || leastRank->get_owner() == rProc)
+      {
+        leastRank->set_isSelected(TNP::Yes);
+        numOwnedPoints++;
+      }
+    }
+    
 
     // With ownership, modify the local number, MPI_Allreduce to get global number.
 
-    return 0;  //TODO
+    RankI numCGNodes = 0;
+    par::Mpi_Allreduce(&numOwnedPoints, &numCGNodes, 1, MPI_SUM, comm);
+
+    return numCGNodes;
   }
 
 
@@ -777,7 +817,7 @@ namespace ot {
   template <typename T, unsigned int dim>
   template<typename ResolverT>
   RankI SFC_NodeSort<T,dim>::countCGNodes_impl(
-      ResolverT resolveInterface,
+      ResolverT &resolveInterface,
       TNPoint<T,dim> *start, TNPoint<T,dim> *end,
       LevI sLev, RotI pRot,
       unsigned int order)
@@ -1232,7 +1272,6 @@ namespace ot {
   // SFC_NodeSort::getProcNeighbours()
   //
   template <typename T, unsigned int dim>
-
   int SFC_NodeSort<T,dim>::getProcNeighbours(TNPoint<T,dim> pt,
       const TreeNode<T,dim> *splitters, int numSplitters,
       std::vector<int> &procNbList)
@@ -1247,6 +1286,34 @@ namespace ot {
 
     return procNbListSize - procNbListSizeOld;
   }
+
+
+  //
+  // SFC_NodeSort:: resolveInterface_scattermapStruct
+  //     operator()   (resolver)
+  //
+  template <typename T, unsigned int dim>
+  RankI SFC_NodeSort<T,dim>::resolveInterface_scattermapStruct::
+      operator() (TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  {
+    //TODO
+    return 0;
+  }
+
+  //
+  // SFC_NodeSort:: resolveInterface_scattermapStruct
+  //     computeScattermap()
+  //
+  template <typename T, unsigned int dim>
+  void SFC_NodeSort<T,dim>::resolveInterface_scattermapStruct::
+      computeScattermap(std::vector<RankI> &outScattermap, std::vector<RankI> &outSendCounts, std::vector<RankI> &outSendOffsets)
+  {
+    //TODO
+  }
+
+
+
+
 
   // ============================ End: SFC_NodeSort ============================ //
 
