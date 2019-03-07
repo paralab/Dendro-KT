@@ -29,7 +29,8 @@ namespace ot {
   /**@brief Copy constructor */
   template <typename T, unsigned int dim>
   TNPoint<T,dim>::TNPoint (const TNPoint<T,dim> & other) :
-      TreeNode<T,dim>(other), m_isSelected(other.m_isSelected)
+      TreeNode<T,dim>(other),
+      m_isSelected(other.m_isSelected), m_numInstances(other.m_numInstances), m_owner(other.m_owner)
   { }
 
   /**
@@ -49,6 +50,8 @@ namespace ot {
   {
     TreeNode<T,dim>::operator=(other);
     m_isSelected = other.m_isSelected;
+    m_numInstances = other.m_numInstances;
+    m_owner = other.m_owner;
   }
 
 
@@ -274,9 +277,15 @@ namespace ot {
     // First local pass: Don't classify, just sort and count instances.
     countCGNodes(&(*points.begin()), &(*points.end()), order, false);
 
-    // Compact node list. TODO  -- Needs changing parameter to vector so we can resize().
-    //TODO
-    
+    // Compact node list (remove literal duplicates).
+    RankI numUniquePoints = 0;
+    for (const TNPoint<T,dim> &pt : points)
+    {
+      if (pt.get_numInstances() > 0)
+        points[numUniquePoints++] = pt;
+    }
+    points.resize(numUniquePoints);
+
 
     //
     // Preliminary sharing information. Prepare to test for globally hanging nodes.
@@ -296,7 +305,6 @@ namespace ot {
     std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
     assert((splitters.size() == nProc));
     const RankI numPoints  = points.size();
-    RankI numUniquePoints = 0;
     for (RankI ptIdx = 0; ptIdx < numPoints; ptIdx++)
     {
       if (points[ptIdx].get_numInstances() > 0)  // Should always be true if we already compacted.
@@ -345,6 +353,7 @@ namespace ot {
       for (int ii = 0; ii < nodeInfo.numProcNb; ii++)
       {
         int proc = *(shareListPtr++);
+        points[nodeInfo.ptIdx].set_owner(rProc);   // Reflected in both copies, else default -1.
         shareBuffer[shareOffsets[proc]++] = points[nodeInfo.ptIdx];
       }
     }
@@ -366,23 +375,48 @@ namespace ot {
         sharedTotal += shareCounts[proc];
       }
     }
+    shareCounts.resize(numShareProc);
 
     // Preliminary receive will be into end of existing node list.
     // (This also implies shareOffsets are the same for sending and receiving,
     // up to a constant shift).
-    //TODO points.resize(numUniquePoints + sharedTotal);
+    points.resize(numUniquePoints + sharedTotal);
 
-    // Send and receive.
-    //TODO
+
+    //
+    // Send and receive. Sends and receives are symmetric.
+    //
+    std::vector<MPI_Request> requestSend(numShareProc);
+    std::vector<MPI_Request> requestRecv(numShareProc);
+    MPI_Status status;
+
+    // Sends.
+    for (int sIdx = 0; sIdx < numShareProc; sIdx++)
+      par::Mpi_Isend(shareBuffer.data() + shareOffsets[sIdx], shareCounts[sIdx], shareProc[sIdx], 0, comm, &requestSend[sIdx]);
+
+    // Recvs.
+    for (int sIdx = 0; sIdx < numShareProc; sIdx++)
+      par::Mpi_Irecv(points.data() + numUniquePoints + shareOffsets[sIdx], shareCounts[sIdx], shareProc[sIdx], 0, comm, &requestRecv[sIdx]);
+
+    // Wait for sends and receives.
+    for (int sIdx = 0; sIdx < numShareProc; sIdx++)
+    {
+      MPI_Wait(&requestSend[sIdx], &status);
+      MPI_Wait(&requestRecv[sIdx], &status);
+    }
+
 
     // Second local pass.
-    //TODO
+    RankI numNonHangingNodes = countCGNodes(&(*points.begin()), &(*points.end()), order, true);
+    fprintf(stderr, "[%d] numUniquePoints==%d, numNonHangingNodes==%d.\n",
+        (int) rProc, (int) numUniquePoints, (int) numNonHangingNodes);
+
 
     //
     // Collect non-hanging nodes, determine ownership,
     // compact node list (get_isSelected() == Yes), and update send/recv counts/offsets.
     //
-
+    //TODO
 
     return 0;  //TODO
 

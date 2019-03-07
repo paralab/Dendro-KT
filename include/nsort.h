@@ -113,6 +113,9 @@ namespace ot {
       void set_numInstances(unsigned char numInstances) { m_numInstances = numInstances; }
       void incrementNumInstances(char delta_numInstances = 1) { m_numInstances += delta_numInstances; }
 
+      int get_owner() const { return m_owner; }
+      void set_owner(int owner) { m_owner = owner; }
+
       /**
        * @brief The point may be incident on one or more grid lines (hyperplanes) at coarseness level `hlev'.
        *   If so, this method returns the smallest-indexed such hyperplane.
@@ -140,6 +143,7 @@ namespace ot {
       // Data members.
       IsSelected m_isSelected;
       unsigned char m_numInstances = 1;
+      int m_owner = -1;
       //TODO These members could be overlayed in a union if we are careful.
   };
 
@@ -261,6 +265,40 @@ namespace ot {
 }//namespace ot
 
 #include "nsort.tcc"
+
+
+namespace par {
+
+  //Forward Declaration
+  template <typename T>
+    class Mpi_datatype;
+
+      /**@brief A template specialization of the abstract class "Mpi_datatype" for communicating messages of type "ot::TNPoint".*/
+      template <typename T, unsigned int dim>
+      class Mpi_datatype< ot::TNPoint<T,dim> > {
+
+      /*@masado Omitted all the comparison/reduction operations, limited to ::value().*/
+      public:
+
+      /**@return The MPI_Datatype corresponding to the datatype "ot::TNPoint".*/
+      static MPI_Datatype value()
+      {
+        static bool         first = true;
+        static MPI_Datatype datatype;
+
+        if (first)
+        {
+          first = false;
+          MPI_Type_contiguous(sizeof(ot::TNPoint<T,dim>), MPI_BYTE, &datatype);
+          MPI_Type_commit(&datatype);
+        }
+
+        return datatype;
+      }
+
+    };
+}//end namespace par
+
 
 
 #endif//DENDRO_KT_NSORT_H
