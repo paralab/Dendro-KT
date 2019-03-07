@@ -255,6 +255,8 @@ namespace ot {
   {
     // TODO TODO TODO
 
+    fprintf(stderr, "\n");
+
     // TODO Ownership: The local sort is not stable. We ought to scan through the recv'd nodes again to find out which proc-ranks are represented.
 
     // 1. Call countCGNodes(classify=false) to agglomerate node instances -> node representatives.
@@ -295,11 +297,14 @@ namespace ot {
     std::vector<BdryNodeInfo> bdryNodeInfo;
     std::vector<int> shareLists;
 
-    std::vector<RankI> shareCounts(nProc, 0);
-    std::vector<RankI> shareOffsets;
-    std::vector<int> shareProc;
+    std::vector<RankI> sendCounts(nProc, 0);
+    std::vector<RankI> recvCounts(nProc, 0);
+
+    std::vector<RankI> sendOffsets;
+    std::vector<RankI> recvOffsets;
+    std::vector<int> sendProc;
+    std::vector<int> recvProc;
     std::vector<RankI> shareMap;
-    int numShareProc = 0;
 
     // Get neighbour information.
     std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
@@ -327,7 +332,7 @@ namespace ot {
           bdryNodeInfo.push_back({ptIdx, numProcNb});    // Record which point and how many proc-neighbours.
           for (int nb = numProcNb; nb >= 1; nb--)
           {
-            shareCounts[*(shareLists.end() - nb)]++;
+            sendCounts[*(shareLists.end() - nb)]++;
           }
         }
       }
@@ -336,17 +341,20 @@ namespace ot {
     // Create the preliminary send buffer, ``share buffer.''
     // We compute the preliminary send buffer only once, so don't make a separate scatter map for it.
     std::vector<TNPoint<T,dim>> shareBuffer;
-    int sharedTotal = 0;
-    shareOffsets.resize(nProc);
+    int sendTotal = 0;
+    sendOffsets.resize(nProc);
     for (int proc = 0; proc < nProc; proc++)
     {
-      shareOffsets[proc] = sharedTotal;
-      sharedTotal += shareCounts[proc];
+      sendOffsets[proc] = sendTotal;
+      sendTotal += sendCounts[proc];
     }
-    shareBuffer.resize(sharedTotal);
+    shareBuffer.resize(sendTotal);
 
-    // Copy into the share buffer.
-    // Note: Advances shareOffsets, so will need to recompute shareOffsets later.
+    // Determine the receive counts, via Alltoall of send counts.
+    par::Mpi_Alltoall(sendCounts.data(), recvCounts.data(), 1, comm); 
+
+    // Copy outbound data into the share buffer.
+    // Note: Advances sendOffsets, so will need to recompute sendOffsets later.
     const int *shareListPtr = &(*shareLists.begin());
     for (const BdryNodeInfo &nodeInfo : bdryNodeInfo)
     {
@@ -354,56 +362,62 @@ namespace ot {
       {
         int proc = *(shareListPtr++);
         points[nodeInfo.ptIdx].set_owner(rProc);   // Reflected in both copies, else default -1.
-        shareBuffer[shareOffsets[proc]++] = points[nodeInfo.ptIdx];
+        shareBuffer[sendOffsets[proc]++] = points[nodeInfo.ptIdx];
       }
     }
 
-    // Compact list of neighbouring processors and (re)compute share offsets.
+    // Compact lists of neighbouring processors and (re)compute share offsets.
     // Note: This should only be done after we are finished with shareLists.
-    sharedTotal = 0;
-    shareOffsets.clear();
+    int numSendProc = 0;
+    int numRecvProc = 0;
+    sendTotal = 0;
+    int recvTotal = 0;
+    sendOffsets.clear();
     for (int proc = 0; proc < nProc; proc++)
     {
-      if (shareCounts[proc] > 0)   // Discard empty counts, which includes ourselves.
+      if (sendCounts[proc] > 0)   // Discard empty counts, which includes ourselves.
       {
-        if (numShareProc < proc)
-          shareCounts[numShareProc] = shareCounts[proc];  // Compacting.
-        numShareProc++;
-
-        shareOffsets.push_back(sharedTotal);
-        shareProc.push_back(proc);
-        sharedTotal += shareCounts[proc];
+        sendCounts[numSendProc++] = sendCounts[proc];  // Compacting.
+        sendOffsets.push_back(sendTotal);
+        sendProc.push_back(proc);
+        sendTotal += sendCounts[proc];
       }
+      if (recvCounts[proc] > 0)   // Discard empty counts, which includes ourselves.
+      {
+        recvCounts[numRecvProc++] = recvCounts[proc];  // Compacting.
+        recvOffsets.push_back(recvTotal);
+        recvProc.push_back(proc);
+        recvTotal += recvCounts[proc];
+      }
+
     }
-    shareCounts.resize(numShareProc);
+    sendCounts.resize(numSendProc);
+    recvCounts.resize(numRecvProc);
 
     // Preliminary receive will be into end of existing node list.
-    // (This also implies shareOffsets are the same for sending and receiving,
-    // up to a constant shift).
-    points.resize(numUniquePoints + sharedTotal);
+    points.resize(numUniquePoints + recvTotal);
 
 
     //
-    // Send and receive. Sends and receives are symmetric.
+    // Send and receive. Sends and receives may not be symmetric.
     //
-    std::vector<MPI_Request> requestSend(numShareProc);
-    std::vector<MPI_Request> requestRecv(numShareProc);
+    std::vector<MPI_Request> requestSend(numSendProc);
+    std::vector<MPI_Request> requestRecv(numRecvProc);
     MPI_Status status;
 
-    // Sends.
-    for (int sIdx = 0; sIdx < numShareProc; sIdx++)
-      par::Mpi_Isend(shareBuffer.data() + shareOffsets[sIdx], shareCounts[sIdx], shareProc[sIdx], 0, comm, &requestSend[sIdx]);
+    // Send data.
+    for (int sIdx = 0; sIdx < numSendProc; sIdx++)
+      par::Mpi_Isend(shareBuffer.data() + sendOffsets[sIdx], sendCounts[sIdx], sendProc[sIdx], 0, comm, &requestSend[sIdx]);
 
-    // Recvs.
-    for (int sIdx = 0; sIdx < numShareProc; sIdx++)
-      par::Mpi_Irecv(points.data() + numUniquePoints + shareOffsets[sIdx], shareCounts[sIdx], shareProc[sIdx], 0, comm, &requestRecv[sIdx]);
+    // Receive data.
+    for (int rIdx = 0; rIdx < numRecvProc; rIdx++)
+      par::Mpi_Irecv(points.data() + numUniquePoints + recvOffsets[rIdx], recvCounts[rIdx], recvProc[rIdx], 0, comm, &requestRecv[rIdx]);
 
     // Wait for sends and receives.
-    for (int sIdx = 0; sIdx < numShareProc; sIdx++)
-    {
+    for (int sIdx = 0; sIdx < numSendProc; sIdx++)
       MPI_Wait(&requestSend[sIdx], &status);
-      MPI_Wait(&requestRecv[sIdx], &status);
-    }
+    for (int rIdx = 0; rIdx < numRecvProc; rIdx++)
+      MPI_Wait(&requestRecv[rIdx], &status);
 
 
     // Second local pass.
