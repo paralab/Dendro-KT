@@ -248,9 +248,11 @@ namespace ot {
   // SFC_NodeSort::dist_countCGNodes()
   //
   template <typename T, unsigned int dim>
-  RankI SFC_NodeSort<T,dim>::dist_countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order, TreeNode<T,dim> *treePartStart, MPI_Comm comm)
+  RankI SFC_NodeSort<T,dim>::dist_countCGNodes(std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart, MPI_Comm comm)
   {
     // TODO TODO TODO
+
+    // TODO Ownership: The local sort is not stable. We ought to scan through the recv'd nodes again to find out which proc-ranks are represented.
 
     // 1. Call countCGNodes(classify=false) to agglomerate node instances -> node representatives.
     // 2. For every representative, determine which processor boundaries the node is incident on,
@@ -264,15 +266,123 @@ namespace ot {
     MPI_Comm_size(comm, &nProc);
 
     if (nProc == 1)
-      return countCGNodes(start, end, order, true);
+      return countCGNodes(&(*points.begin()), &(*points.end()), order, true);
 
-    // For sorting, counting instances.
-    countCGNodes(start, end, order, false);
+    if (points.size() == 0)
+      return 0;
 
-    std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
+    // First local pass: Don't classify, just sort and count instances.
+    countCGNodes(&(*points.begin()), &(*points.end()), order, false);
 
-    // For each node, if it is a proc-boundary node, 
+    // Compact node list. TODO  -- Needs changing parameter to vector so we can resize().
     //TODO
+    
+
+    //
+    // Preliminary sharing information. Prepare to test for globally hanging nodes.
+    // For each node (unique) node, find out if it's a proc-boundary node, and who shares.
+    //
+    struct BdryNodeInfo { RankI ptIdx; int numProcNb; };
+    std::vector<BdryNodeInfo> bdryNodeInfo;
+    std::vector<int> shareLists;
+
+    std::vector<RankI> shareCounts(nProc, 0);
+    std::vector<RankI> shareOffsets;
+    std::vector<int> shareProc;
+    std::vector<RankI> shareMap;
+    int numShareProc = 0;
+
+    // Get neighbour information.
+    std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
+    assert((splitters.size() == nProc));
+    const RankI numPoints  = points.size();
+    RankI numUniquePoints = 0;
+    for (RankI ptIdx = 0; ptIdx < numPoints; ptIdx++)
+    {
+      if (points[ptIdx].get_numInstances() > 0)  // Should always be true if we already compacted.
+      {
+        numUniquePoints++;
+
+        // Concatenates list of (unique) proc neighbours to shareLists.
+        int numProcNb = getProcNeighbours(points[ptIdx], splitters.data(), nProc, shareLists);
+        //TODO test the assertion that all listed proc-neighbours in a sublist are unique.
+
+        // Remove ourselves from neighbour list.
+        if (std::remove(shareLists.end() - numProcNb, shareLists.end(), rProc) < shareLists.end())
+        {
+          shareLists.erase(shareLists.end() - 1);
+          numProcNb--;
+        }
+
+        if (numProcNb > 0)  // Shared, i.e. is a proc-boundary node.
+        {
+          bdryNodeInfo.push_back({ptIdx, numProcNb});    // Record which point and how many proc-neighbours.
+          for (int nb = numProcNb; nb >= 1; nb--)
+          {
+            shareCounts[*(shareLists.end() - nb)]++;
+          }
+        }
+      }
+    }
+
+    // Create the preliminary send buffer, ``share buffer.''
+    // We compute the preliminary send buffer only once, so don't make a separate scatter map for it.
+    std::vector<TNPoint<T,dim>> shareBuffer;
+    int sharedTotal = 0;
+    shareOffsets.resize(nProc);
+    for (int proc = 0; proc < nProc; proc++)
+    {
+      shareOffsets[proc] = sharedTotal;
+      sharedTotal += shareCounts[proc];
+    }
+    shareBuffer.resize(sharedTotal);
+
+    // Copy into the share buffer.
+    // Note: Advances shareOffsets, so will need to recompute shareOffsets later.
+    const int *shareListPtr = &(*shareLists.begin());
+    for (const BdryNodeInfo &nodeInfo : bdryNodeInfo)
+    {
+      for (int ii = 0; ii < nodeInfo.numProcNb; ii++)
+      {
+        int proc = *(shareListPtr++);
+        shareBuffer[shareOffsets[proc]++] = points[nodeInfo.ptIdx];
+      }
+    }
+
+    // Compact list of neighbouring processors and (re)compute share offsets.
+    // Note: This should only be done after we are finished with shareLists.
+    sharedTotal = 0;
+    shareOffsets.clear();
+    for (int proc = 0; proc < nProc; proc++)
+    {
+      if (shareCounts[proc] > 0)   // Discard empty counts, which includes ourselves.
+      {
+        if (numShareProc < proc)
+          shareCounts[numShareProc] = shareCounts[proc];  // Compacting.
+        numShareProc++;
+
+        shareOffsets.push_back(sharedTotal);
+        shareProc.push_back(proc);
+        sharedTotal += shareCounts[proc];
+      }
+    }
+
+    // Preliminary receive will be into end of existing node list.
+    // (This also implies shareOffsets are the same for sending and receiving,
+    // up to a constant shift).
+    //TODO points.resize(numUniquePoints + sharedTotal);
+
+    // Send and receive.
+    //TODO
+
+    // Second local pass.
+    //TODO
+
+    //
+    // Collect non-hanging nodes, determine ownership,
+    // compact node list (get_isSelected() == Yes), and update send/recv counts/offsets.
+    //
+
 
     return 0;  //TODO
 
@@ -281,6 +391,7 @@ namespace ot {
 
     // With ownership, modify the local number, MPI_Allreduce to get global number.
   }
+
 
   //
   // SFC_NodeSort::countCGNodes()
@@ -293,6 +404,8 @@ namespace ot {
     RankI totalUniquePoints = 0;
     RankI numDomBdryPoints = filterDomainBoundary(start, end);
 
+    if (!(end > start))
+      return 0;
 
     // Sort the domain boundary points. Root-1 level requires special handling.
     //
@@ -975,7 +1088,11 @@ namespace ot {
         next++;
       }
       start->incrementNumInstances(delta_numInstances);
+
+      start = next;
     }
+
+    return 0;
   }
 
 
@@ -983,7 +1100,7 @@ namespace ot {
   // SFC_NodeSort::dist_bcastSplitters()
   //
   template <typename T, unsigned int dim>
-  std::vector<TreeNode<T,dim>> SFC_NodeSort<T,dim>::dist_bcastSplitters(TreeNode<T,dim> *start, MPI_Comm comm)
+  std::vector<TreeNode<T,dim>> SFC_NodeSort<T,dim>::dist_bcastSplitters(const TreeNode<T,dim> *start, MPI_Comm comm)
   {
     int nProc, rProc;
     MPI_Comm_rank(comm, &rProc);
@@ -997,6 +1114,26 @@ namespace ot {
       par::Mpi_Bcast<TreeNode>(&splitters[turn], 1, turn, comm);
 
     return splitters;
+  }
+
+  //
+  // SFC_NodeSort::getProcNeighbours()
+  //
+  template <typename T, unsigned int dim>
+
+  int SFC_NodeSort<T,dim>::getProcNeighbours(TNPoint<T,dim> pt,
+      const TreeNode<T,dim> *splitters, int numSplitters,
+      std::vector<int> &procNbList)
+  {
+    std::vector<TreeNode<T,dim>> keyList(intPow(3,dim));    // Allocate then shrink.
+    keyList.clear();
+    pt.getDFD().appendAllNeighboursAsPoints(keyList);  // Includes domain boundary points.
+    
+    int procNbListSizeOld = procNbList.size();
+    SFC_Tree<T,dim>::getContainingBlocks(keyList.data(), 0, (int) keyList.size(), splitters, numSplitters, procNbList);
+    int procNbListSize = procNbList.size();
+
+    return procNbListSize - procNbListSizeOld;
   }
 
   // ============================ End: SFC_NodeSort ============================ //

@@ -184,6 +184,8 @@ void distPrune(std::vector<X> &list, MPI_Comm comm)
   const int myStart = rProc * baseSeg + (rProc < remainder ? rProc : remainder);
   const int mySeg = baseSeg + (rProc < remainder ? 1 : 0);
 
+  fprintf(stderr, "[%d] listSize==%d, myStart==%d, mySeg==%d\n", rProc, listSize, myStart, mySeg);
+
   list.erase(list.begin(), list.begin() + myStart);
   list.resize(mySeg);
 }
@@ -200,9 +202,11 @@ int main(int argc, char * argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &nProc);
   MPI_Comm comm = MPI_COMM_WORLD;
 
-  constexpr unsigned int dim = 4;
+  constexpr unsigned int dim = 3;
   const unsigned int endL = 3;
   const unsigned int order = 2;
+
+  double tol = 0.05;
 
   _InitializeHcurve(dim);
 
@@ -242,7 +246,7 @@ int main(int argc, char * argv[])
   if (RunDistributed)
   {
     distPrune(tree, comm);
-    ot::SFC_Tree<T,dim>::distTreeSort(tree, 0.05, comm);
+    ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
   }
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
@@ -256,7 +260,7 @@ int main(int argc, char * argv[])
   /// }
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order, tree.data(), comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
   else
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
@@ -272,7 +276,7 @@ int main(int argc, char * argv[])
   if (RunDistributed)
   {
     distPrune(tree, comm);
-    ot::SFC_Tree<T,dim>::distTreeSort(tree, 0.05, comm);
+    ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
   }
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
@@ -281,7 +285,7 @@ int main(int argc, char * argv[])
   }
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order, tree.data(), comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
   else
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
@@ -297,7 +301,7 @@ int main(int argc, char * argv[])
   if (RunDistributed)
   {
     distPrune(tree, comm);
-    ot::SFC_Tree<T,dim>::distTreeSort(tree, 0.05, comm);
+    ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
   }
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
@@ -306,7 +310,7 @@ int main(int argc, char * argv[])
   }
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order, tree.data(), comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
   else
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;

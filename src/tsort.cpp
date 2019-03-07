@@ -882,5 +882,115 @@ SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
 
 
 
+//
+// getContainingBlocks() - Used for tagging points on the processor boundary.
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
+                                  RankI begin, RankI end,
+                                  const TreeNode<T,D> *splitters,
+                                  int numSplitters,
+                                  std::vector<int> &outBlocks)
+{
+  int dummyNumPrevBlocks = 0;
+  getContainingBlocks(points,
+      begin, end,
+      splitters,
+      0, numSplitters,
+      1, 0,
+      dummyNumPrevBlocks, outBlocks);
+}
+
+namespace util {
+  void markProcNeighbour(int proc, std::vector<int> &neighbourList)
+  {
+    if (neighbourList.size() == 0 || neighbourList.back() != proc)
+      neighbourList.push_back(proc);
+  }
+}  // namespace ot::util
+
+//
+// getContainingBlocks() - recursive implementation (inorder traversal).
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
+                                  RankI begin, RankI end,
+                                  const TreeNode<T,D> *splitters,
+                                  RankI sBegin, RankI sEnd,
+                                  LevI lev, RotI pRot,
+                                  int &numPrevBlocks,
+                                  std::vector<int> &outBlocks)
+{
+  // Idea:
+  // If a bucket contains points but no splitters, the points belong to the block of the most recent splitter.
+  // If a bucket contains points and splitters, divide and conquer by refining the bucket and recursing.
+  // In an ancestor or leaf bucket, contained splitters and points are equal, so splitter <= point.
+  constexpr ChildI numChildren = TreeNode<T,D>::numChildren;
+  constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
+  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  const ChildI *rot_inv = &rotations[pRot*rotOffset + 1*numChildren];
+  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+  // Bucket points.
+  std::array<RankI, 1+numChildren> pointBuckets;
+  RankI ancStart, ancEnd;
+  SFC_bucketing(points, begin, end, lev, pRot, pointBuckets, ancStart, ancEnd);
+
+  // Count splitters.
+  std::array<RankI, numChildren> numSplittersInBucket;
+  numSplittersInBucket.fill(0);
+  RankI numAncSplitters = 0;
+  for (int s = sBegin; s < sEnd; s++)
+  {
+    if (splitters[s].getLevel() < lev)
+      numAncSplitters++;
+    else
+      numSplittersInBucket[rot_inv[splitters[s].getMortonIndex(lev)]]++;
+  }
+
+
+  // Mark any splitters in the ancestor bucket. Splitters preceed points.
+  numPrevBlocks += numAncSplitters;
+  if (numPrevBlocks > 0 && ancEnd > ancStart)
+    util::markProcNeighbour(numPrevBlocks - 1, outBlocks);
+
+  // Mark splitters in child buckets.
+  if (lev < m_uiMaxDepth)
+  {
+    for (ChildI child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      if (pointBuckets[child_sfc+1] > pointBuckets[child_sfc])
+      {
+        ChildI child = rot_perm[child_sfc];   // Get cRot in case we recurse.
+        RotI cRot = orientLookup[child];      //
+
+        if (numSplittersInBucket[child_sfc] > 0)
+          getContainingBlocks(points, pointBuckets[child_sfc], pointBuckets[child_sfc+1],
+              splitters, numPrevBlocks, numPrevBlocks + numSplittersInBucket[child_sfc],
+              lev+1, cRot,
+              numPrevBlocks, outBlocks);
+        else
+          util::markProcNeighbour(numPrevBlocks - 1, outBlocks);
+      }
+      else
+        numPrevBlocks += numSplittersInBucket[child_sfc];
+    }
+  }
+  else
+  {
+    // In leaf buckets splitters preceed points, just as in ancestor buckets.
+    for (ChildI child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      numPrevBlocks += numSplittersInBucket[child_sfc];
+      if (numPrevBlocks > 0 && pointBuckets[child_sfc+1] > pointBuckets[child_sfc])
+        util::markProcNeighbour(numPrevBlocks - 1, outBlocks);
+    }
+  }
+
+  // Emit a block id for blocks with points but not splitters.
+}
+
 
 } // namspace ot

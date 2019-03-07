@@ -170,9 +170,10 @@ namespace ot {
   struct SFC_NodeSort
   {
     /**
-     * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array.
+     * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array. Also compact node list and compute ``scatter map.''
      */
-    static RankI dist_countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order, TreeNode<T,dim> *treePartStart, MPI_Comm comm);
+    //TODO make the input a vector that can change size.
+    static RankI dist_countCGNodes(std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart, MPI_Comm comm);
 
 
     /**
@@ -246,7 +247,13 @@ namespace ot {
       /**
        * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.
        */
-      static std::vector<TreeNode<T,dim>> dist_bcastSplitters(TreeNode<T,dim> *start, MPI_Comm comm);
+      static std::vector<TreeNode<T,dim>> dist_bcastSplitters(const TreeNode<T,dim> *start, MPI_Comm comm);
+
+      /**
+       * @brief Find which processors upon which the node is incident.
+       * @description Generates keys from pt.getDFD() and then calls getContainingBlocks().
+       */
+      static int getProcNeighbours(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList);
   }; // struct SFC_NodeSort
 
 

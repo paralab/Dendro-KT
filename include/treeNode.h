@@ -240,6 +240,8 @@ namespace ot {
 
       /**
        @brief Append in-bounds neighbours of node to node list. Considered as points, so points on the domain boundary are included.
+       @note Use of level information is retained, i.e. neighbours will be at distance 1u<<(m_uiMaxDepth - level) away.
+             Call this on the DFD (deepest first descendant) if you need the finest resolution neighbours.
        @note Wrapper around appendAllNeighbours<true>().
        @author Masado Ishii
        */

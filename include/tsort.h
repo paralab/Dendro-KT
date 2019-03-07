@@ -268,6 +268,29 @@ struct SFC_Tree
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
+  // -------------------------------------------------------------
+
+  /**
+   * @brief Given partition splitters and a list of (unordered) points, finds every block that contains at least some of the points.
+   * @param splitters an array that holds the leading boundary of each block.
+   * @note Assumes that the points are at the deepest level.
+   * @note Assumes that the partition splitters are already SFC-sorted.
+   */
+  // Use this one.
+  static void getContainingBlocks(TreeNode<T,D> *points,
+                                  RankI begin, RankI end,
+                                  const TreeNode<T,D> *splitters,
+                                  int numSplitters,
+                                  std::vector<int> &outBlocks);
+
+  // Recursive implementation.
+  static void getContainingBlocks(TreeNode<T,D> *points,
+                                  RankI begin, RankI end,
+                                  const TreeNode<T,D> *splitters,
+                                  RankI sBegin, RankI sEnd,
+                                  LevI lev, RotI pRot,
+                                  int &numPrevBlocks,
+                                  std::vector<int> &outBlocks);
 
 };
 
