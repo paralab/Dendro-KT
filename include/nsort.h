@@ -139,6 +139,13 @@ namespace ot {
       /** @brief Get the cell that generated this point, based on coordinates and level. */
       TreeNode<T,dim> getCell() const;
 
+      /**
+       * @brief Append all "base nodes," i.e. if this node were hanging, the nodes in the parent that it could point to.
+       * @note The appended base nodes may not be exact. The least significant bit will have a rounding artifact. To
+       *       compare with exact nodes that should be equal, compare plus/minus the least significant bit.
+       */
+      void appendAllBaseNodes(std::vector<TNPoint> &nodeList);
+
     protected:
       // Data members.
       IsSelected m_isSelected;

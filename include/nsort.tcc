@@ -158,6 +158,49 @@ namespace ot {
     return TreeNode(TreeNode::m_uiCoords, TreeNode::m_uiLevel);  // Truncates coordinates to cell anchor.
   }
 
+  template <typename T, unsigned int dim>
+  void TNPoint<T,dim>::appendAllBaseNodes(std::vector<TNPoint> &nodeList)
+  {
+    // The base nodes are obtained by adding or subtracting `len' in every
+    // normal axis (self-boundary axis) and scaling x2 the off-anchor offset in every
+    // tangent axis (self-interior axis). Changes are only made for the
+    // parent-interior axes.
+    // In other words, scaling x2 the offset from every vertex of the cellTypeOnParent.
+    // Note: After scaling, may have rounding artifacts!
+    // Must compare within a +/- distance of the least significant bit.
+    // Will at least end up on the same interface/hyperplane, and should
+    // be very close by in SFC order.
+
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int parentLen = 1u << (m_uiMaxDepth - (TreeNode::m_uiLevel - 1));
+    const unsigned int interiorMask = parentLen - 1;
+
+    std::array<T,dim> anchor;
+    getCell().getParent().getAnchor(anchor);
+
+    std::array<unsigned char, dim> interiorAxes;
+    unsigned char celldim = 0;
+    for (int d = 0; d < dim; d++)
+    {
+      if (TreeNode::m_uiCoords[d] & interiorMask)
+        interiorAxes[celldim++] = d;
+    }
+
+    for (unsigned char vId = 0; vId < (1u << celldim); vId++)
+    {
+      TNPoint<T,dim> base(*this);
+      base.setLevel(TreeNode::m_uiLevel - 1);
+      for (int dIdx = 0; dIdx < celldim; dIdx++)
+      {
+        int d = interiorAxes[dIdx];
+        T vtxCoord = anchor[d] + (vId & (1u << dIdx) ? parentLen : 0);
+        base.setX(d, ((base.getX(d) - vtxCoord) << 1) + vtxCoord);
+      }
+
+      nodeList.push_back(base);
+    }
+  }
+
   // ============================ End: TNPoint ============================ //
 
 
