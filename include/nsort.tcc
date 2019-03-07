@@ -420,24 +420,45 @@ namespace ot {
       MPI_Wait(&requestRecv[rIdx], &status);
 
 
-    // Second local pass.
-    RankI numNonHangingNodes = countCGNodes(&(*points.begin()), &(*points.end()), order, true);
-    fprintf(stderr, "[%d] numUniquePoints==%d, numNonHangingNodes==%d.\n",
-        (int) rProc, (int) numUniquePoints, (int) numNonHangingNodes);
+    // Second local pass, classifying nodes as hanging or non-hanging.
+    countCGNodes(&(*points.begin()), &(*points.end()), order, true);
+
+    //TODO For a more sophisticated version, could sort just the new points (fewer),
+    //     then merge (faster) two sorted lists before applying the resolver.
 
 
     //
-    // Collect non-hanging nodes, determine ownership,
-    // compact node list (get_isSelected() == Yes), and update send/recv counts/offsets.
+    // Compute the scattermap.
     //
+    // > For every non-hanging ("Yes") boundary node, determine ownership.
+    // > For every hanging ("No") boundary node, insert all "base nodes" in parent cell to node list,
+    //   marking them as neither "Yes" nor "No," but as a third tag, "Base".
+    // > Sort the union of nodes according to the final desired ordering,
+    //   so that duplicates are grouped together.
+    //
+    //   > Note: The number of possible base nodes equals the number of children
+    //     who share the node, i.e. the number of duplicates from a single processor.
+    //     If we had not collapsed duplicates before sending, we could have simply
+    //     replaced sets of hanging nodes by their respective bases, rather than
+    //     appending them. (We'd still need to re-sort though.)
+    //
+    // > For every non-hanging node,
+    //   if it is a boundary node or a base of a boundary node, and if we own it,
+    //   then insert the node with all borrowers into the scattermap.
+    //   Note that borrowers might be listed more than once as we read the node list.
+    //
+    // > Compact the node list.
+    //
+
+    // Current ownership policy: Least-rank-processor (without the Base tag).
+
     //TODO
 
-    return 0;  //TODO
 
-    // TODO policy and algorithm to determine ownership of points to processors, etc.
-    // TODO once we have ownership, we then need to form the ghost node layer.
 
     // With ownership, modify the local number, MPI_Allreduce to get global number.
+
+    return 0;  //TODO
   }
 
 

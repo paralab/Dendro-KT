@@ -69,7 +69,7 @@ namespace ot {
   class TNPoint : public TreeNode<T,dim>
   {
     public:
-      enum IsSelected { No, Maybe, Yes };
+      enum IsSelected { No, Maybe, Yes, Base };
 
       /**
        * @brief Constructs a node at the extreme "lower-left" corner of the domain.
