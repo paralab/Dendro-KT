@@ -905,10 +905,11 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
 namespace util {
   void markProcNeighbour(int proc, std::vector<int> &neighbourList)
   {
-    if (neighbourList.size() == 0 || neighbourList.back() != proc)
+    if (proc == 0 || neighbourList.size() == 0 || neighbourList.back() != proc)
       neighbourList.push_back(proc);
   }
 }  // namespace ot::util
+
 
 //
 // getContainingBlocks() - recursive implementation (inorder traversal).
