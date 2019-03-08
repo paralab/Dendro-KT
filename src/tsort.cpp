@@ -899,13 +899,13 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
       splitters,
       0, numSplitters,
       1, 0,
-      dummyNumPrevBlocks, outBlocks);
+      dummyNumPrevBlocks, outBlocks.size(), outBlocks);
 }
 
 namespace util {
-  void markProcNeighbour(int proc, std::vector<int> &neighbourList)
+  void markProcNeighbour(int proc, int startSize, std::vector<int> &neighbourList)
   {
-    if (proc == 0 || neighbourList.size() == 0 || neighbourList.back() != proc)
+    if (neighbourList.size() == startSize || neighbourList.back() != proc)
       neighbourList.push_back(proc);
   }
 }  // namespace ot::util
@@ -922,6 +922,7 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
                                   RankI sBegin, RankI sEnd,
                                   LevI lev, RotI pRot,
                                   int &numPrevBlocks,
+                                  const int startSize,
                                   std::vector<int> &outBlocks)
 {
   // Idea:
@@ -955,7 +956,7 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
   // Mark any splitters in the ancestor bucket. Splitters preceed points.
   numPrevBlocks += numAncSplitters;
   if (numPrevBlocks > 0 && ancEnd > ancStart)
-    util::markProcNeighbour(numPrevBlocks - 1, outBlocks);
+    util::markProcNeighbour(numPrevBlocks - 1, startSize, outBlocks);
 
   // Mark splitters in child buckets.
   if (lev < m_uiMaxDepth)
@@ -971,9 +972,9 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
           getContainingBlocks(points, pointBuckets[child_sfc], pointBuckets[child_sfc+1],
               splitters, numPrevBlocks, numPrevBlocks + numSplittersInBucket[child_sfc],
               lev+1, cRot,
-              numPrevBlocks, outBlocks);
+              numPrevBlocks, startSize, outBlocks);
         else
-          util::markProcNeighbour(numPrevBlocks - 1, outBlocks);
+          util::markProcNeighbour(numPrevBlocks - 1, startSize, outBlocks);
       }
       else
         numPrevBlocks += numSplittersInBucket[child_sfc];
@@ -986,7 +987,7 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
     {
       numPrevBlocks += numSplittersInBucket[child_sfc];
       if (numPrevBlocks > 0 && pointBuckets[child_sfc+1] > pointBuckets[child_sfc])
-        util::markProcNeighbour(numPrevBlocks - 1, outBlocks);
+        util::markProcNeighbour(numPrevBlocks - 1, startSize, outBlocks);
     }
   }
 
