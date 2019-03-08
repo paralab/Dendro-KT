@@ -204,7 +204,7 @@ int main(int argc, char * argv[])
 
   constexpr unsigned int dim = 2;
   const unsigned int endL = 2;
-  const unsigned int order = 1;
+  const unsigned int order = 2;
 
   double tol = 0.05;
 
@@ -260,7 +260,12 @@ int main(int argc, char * argv[])
   /// }
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
+  {
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+    ot::RankI globInterior = 0;
+    par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
+    numUniqueInteriorNodes = globInterior;
+  }
   else
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
@@ -285,7 +290,12 @@ int main(int argc, char * argv[])
   }
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
+  {
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+    ot::RankI globInterior = 0;
+    par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
+    numUniqueInteriorNodes = globInterior;
+  }
   else
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
@@ -310,7 +320,12 @@ int main(int argc, char * argv[])
   }
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
+  {
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+    ot::RankI globInterior = 0;
+    par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
+    numUniqueInteriorNodes = globInterior;
+  }
   else
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
