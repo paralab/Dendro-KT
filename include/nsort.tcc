@@ -896,8 +896,8 @@ namespace ot {
     // Recurse.
     for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
-      // Check for empty or singleton bucket.
-      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
+      // Check for empty bucket.
+      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] == 0)
         continue;
 
       ChildI child = rot_perm[child_sfc];
