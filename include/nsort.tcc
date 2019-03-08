@@ -503,9 +503,10 @@ namespace ot {
     while (ptIter < points.end())
     {
       // Skip hanging nodes.
-      while (ptIter->get_isSelected() != TNP::Yes)
+      if (ptIter->get_isSelected() != TNP::Yes)
       {
         ptIter++;
+        continue;
       }
 
       // A node marked 'Yes' is the first instance.
