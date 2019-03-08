@@ -300,8 +300,6 @@ namespace ot {
 
     using TNP = TNPoint<T,dim>;
 
-    // TODO Ownership: The local sort is not stable. We ought to scan through the recv'd nodes again to find out which proc-ranks are represented.
-
     // 1. Call countCGNodes(classify=false) to agglomerate node instances -> node representatives.
     // 2. For every representative, determine which processor boundaries the node is incident on,
     //    by generating neighbor-keys and sorting them against the proc-bdry splitters.
@@ -313,8 +311,6 @@ namespace ot {
     MPI_Comm_rank(comm, &rProc);
     MPI_Comm_size(comm, &nProc);
 
-    /// fprintf(stderr, "\n");
-
     if (nProc == 1)
       return countCGNodes(&(*points.begin()), &(*points.end()), order, true);
 
@@ -323,11 +319,6 @@ namespace ot {
 
     // First local pass: Don't classify, just sort and count instances.
     countCGNodes(&(*points.begin()), &(*points.end()), order, false);
-
-    /// //TODO remove
-    /// for (const TNP &pt : points)
-    ///   fprintf(stderr, "[%d] aftrSort  numIns==%d, l==%u, coords==%s\n", rProc, pt.get_numInstances(), pt.getLevel(), pt.getBase32Hex().data());
-    /// fprintf(stderr, "[[%d]]\n\n", rProc);
 
     // Compact node list (remove literal duplicates).
     RankI numUniquePoints = 0;
@@ -365,14 +356,6 @@ namespace ot {
       int numProcNb = getProcNeighbours(points[ptIdx], splitters.data(), nProc, shareLists);
       //TODO test the assertion that all listed proc-neighbours in a sublist are unique.
 
-      /// if (rProc == 1)
-      /// {
-      ///   fprintf(stderr, "[%d]  ", rProc);
-      ///   for (int ii = 0; ii < numProcNb; ii++)
-      ///     fprintf(stderr, "  n=%d", *(shareLists.end() - numProcNb + ii));
-      ///   fprintf(stderr, "\n");
-      /// }
-
       // Remove ourselves from neighbour list.
       if (std::remove(shareLists.end() - numProcNb, shareLists.end(), rProc) < shareLists.end())
       {
@@ -405,8 +388,6 @@ namespace ot {
 
     // Determine the receive counts, via Alltoall of send counts.
     par::Mpi_Alltoall(sendCounts.data(), recvCounts.data(), 1, comm); 
-
-    /// fprintf(stderr, "[%d] sendCnts==%u %u    recvCnts==%u %u.\n", rProc, sendCounts[0], sendCounts[1], recvCounts[0], recvCounts[1]);
 
     // Copy outbound data into the share buffer.
     // Note: Advances sendOffsets, so will need to recompute sendOffsets later.
@@ -452,11 +433,6 @@ namespace ot {
     // Preliminary receive will be into end of existing node list.
     points.resize(numUniquePoints + recvTotal);
 
-    /// //TODO remove
-    /// for (const TNP &pt : shareBuffer)
-    ///   fprintf(stderr, "[%d] shBuf: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
-    /// fprintf(stderr, "[[%d]]\n\n", rProc);
-
 
     //
     // Send and receive. Sends and receives may not be symmetric.
@@ -480,20 +456,9 @@ namespace ot {
       MPI_Wait(&requestRecv[rIdx], &status);
 
 
-    /// //TODO remove
-    /// for (const TNP &pt : points)
-    ///   fprintf(stderr, "[%d] allDt: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
-    /// fprintf(stderr, "[[%d]]\n", rProc);
-
-
 
     // Second local pass, classifying nodes as hanging or non-hanging.
     countCGNodes(&(*points.begin()), &(*points.end()), order, true);
-
-    /// //TODO remove
-    /// for (const TNP &pt : points)
-    ///   fprintf(stderr, "[%d] point: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
-    /// fprintf(stderr, "[[%d]]\n", rProc);
 
 
     //TODO For a more sophisticated version, could sort just the new points (fewer),
@@ -538,10 +503,9 @@ namespace ot {
     while (ptIter < points.end())
     {
       // Skip hanging nodes.
-      if (ptIter->get_isSelected() != TNP::Yes)
+      while (ptIter->get_isSelected() != TNP::Yes)
       {
         ptIter++;
-        continue;
       }
 
       // A node marked 'Yes' is the first instance.
@@ -555,9 +519,6 @@ namespace ot {
         ptIter++;
       }
 
-      /// //TODO remove
-      /// fprintf(stderr, "[%d] leastRank: o==%d, l==%u, coords==%s\n", rProc, leastRank->get_owner(), leastRank->getLevel(), leastRank->getBase32Hex().data());
-
       // If the chosen node is ours, select it and increment count.
       if (leastRank->get_owner() == -1 || leastRank->get_owner() == rProc)
       {
@@ -565,9 +526,6 @@ namespace ot {
         numOwnedPoints++;
       }
     }
-    
-
-    // With ownership, modify the local number, MPI_Allreduce to get global number.
 
     RankI numCGNodes = 0;
     par::Mpi_Allreduce(&numOwnedPoints, &numCGNodes, 1, MPI_SUM, comm);
@@ -818,20 +776,22 @@ namespace ot {
     firstCoarsest = start;
     firstFinest = start;
     unsigned char numInstances = start->get_numInstances();
-    numDups = 1;  // Something other than 0.
+    bool sameLevel = true;
     while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
     {
       numInstances += next->get_numInstances();
-      if (numDups && next->getLevel() != firstCoarsest->getLevel())
-        numDups = 0;
+      if (sameLevel && next->getLevel() != firstCoarsest->getLevel())
+        sameLevel = false;
       if (next->getLevel() < firstCoarsest->getLevel())
         firstCoarsest = next;
       if (next->getLevel() > firstFinest->getLevel())
         firstFinest = next;
       next++;
     }
-    if (numDups)
+    if (sameLevel)
       numDups = numInstances;
+    else
+      numDups = 0;
   }
 
 
