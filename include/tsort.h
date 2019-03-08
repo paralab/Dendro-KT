@@ -290,6 +290,7 @@ struct SFC_Tree
                                   RankI sBegin, RankI sEnd,
                                   LevI lev, RotI pRot,
                                   int &numPrevBlocks,
+                                  const int startSize,
                                   std::vector<int> &outBlocks);
 
 };
