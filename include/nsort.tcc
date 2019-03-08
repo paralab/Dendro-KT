@@ -359,31 +359,33 @@ namespace ot {
     // Get neighbour information.
     std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
     assert((splitters.size() == nProc));
-    const RankI numPoints  = points.size();
-    for (RankI ptIdx = 0; ptIdx < numPoints; ptIdx++)
+    for (RankI ptIdx = 0; ptIdx < numUniquePoints; ptIdx++)
     {
-      if (points[ptIdx].get_numInstances() > 0)  // Should always be true if we already compacted.
+      // Concatenates list of (unique) proc neighbours to shareLists.
+      int numProcNb = getProcNeighbours(points[ptIdx], splitters.data(), nProc, shareLists);
+      //TODO test the assertion that all listed proc-neighbours in a sublist are unique.
+
+      /// if (rProc == 1)
+      /// {
+      ///   fprintf(stderr, "[%d]  ", rProc);
+      ///   for (int ii = 0; ii < numProcNb; ii++)
+      ///     fprintf(stderr, "  n=%d", *(shareLists.end() - numProcNb + ii));
+      ///   fprintf(stderr, "\n");
+      /// }
+
+      // Remove ourselves from neighbour list.
+      if (std::remove(shareLists.end() - numProcNb, shareLists.end(), rProc) < shareLists.end())
       {
-        numUniquePoints++;
+        shareLists.erase(shareLists.end() - 1);
+        numProcNb--;
+      }
 
-        // Concatenates list of (unique) proc neighbours to shareLists.
-        int numProcNb = getProcNeighbours(points[ptIdx], splitters.data(), nProc, shareLists);
-        //TODO test the assertion that all listed proc-neighbours in a sublist are unique.
-
-        // Remove ourselves from neighbour list.
-        if (std::remove(shareLists.end() - numProcNb, shareLists.end(), rProc) < shareLists.end())
+      if (numProcNb > 0)  // Shared, i.e. is a proc-boundary node.
+      {
+        bdryNodeInfo.push_back({ptIdx, numProcNb});    // Record which point and how many proc-neighbours.
+        for (int nb = numProcNb; nb >= 1; nb--)
         {
-          shareLists.erase(shareLists.end() - 1);
-          numProcNb--;
-        }
-
-        if (numProcNb > 0)  // Shared, i.e. is a proc-boundary node.
-        {
-          bdryNodeInfo.push_back({ptIdx, numProcNb});    // Record which point and how many proc-neighbours.
-          for (int nb = numProcNb; nb >= 1; nb--)
-          {
-            sendCounts[*(shareLists.end() - nb)]++;
-          }
+          sendCounts[*(shareLists.end() - nb)]++;
         }
       }
     }
@@ -403,6 +405,8 @@ namespace ot {
 
     // Determine the receive counts, via Alltoall of send counts.
     par::Mpi_Alltoall(sendCounts.data(), recvCounts.data(), 1, comm); 
+
+    /// fprintf(stderr, "[%d] sendCnts==%u %u    recvCnts==%u %u.\n", rProc, sendCounts[0], sendCounts[1], recvCounts[0], recvCounts[1]);
 
     // Copy outbound data into the share buffer.
     // Note: Advances sendOffsets, so will need to recompute sendOffsets later.
@@ -450,7 +454,7 @@ namespace ot {
 
     /// //TODO remove
     /// for (const TNP &pt : shareBuffer)
-    ///   fprintf(stderr, "[%d] shBuf leastRank: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
+    ///   fprintf(stderr, "[%d] shBuf: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
     /// fprintf(stderr, "[[%d]]\n\n", rProc);
 
 
@@ -476,12 +480,19 @@ namespace ot {
       MPI_Wait(&requestRecv[rIdx], &status);
 
 
+    /// //TODO remove
+    /// for (const TNP &pt : points)
+    ///   fprintf(stderr, "[%d] allDt: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
+    /// fprintf(stderr, "[[%d]]\n", rProc);
+
+
+
     // Second local pass, classifying nodes as hanging or non-hanging.
     countCGNodes(&(*points.begin()), &(*points.end()), order, true);
 
     /// //TODO remove
     /// for (const TNP &pt : points)
-    ///   fprintf(stderr, "[%d] leastRank: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
+    ///   fprintf(stderr, "[%d] point: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
     /// fprintf(stderr, "[[%d]]\n", rProc);
 
 
@@ -1299,8 +1310,9 @@ namespace ot {
   {
     std::vector<TreeNode<T,dim>> keyList(intPow(3,dim));    // Allocate then shrink.
     keyList.clear();
-    pt.getDFD().appendAllNeighboursAsPoints(keyList);  // Includes domain boundary points.
-    
+    /// pt.getDFD().appendAllNeighboursAsPoints(keyList);  // Includes domain boundary points.
+    pt.getDFD().appendAllNeighbours(keyList);  // Does Not include domain boundary points.
+
     int procNbListSizeOld = procNbList.size();
     SFC_Tree<T,dim>::getContainingBlocks(keyList.data(), 0, (int) keyList.size(), splitters, numSplitters, procNbList);
     int procNbListSize = procNbList.size();
