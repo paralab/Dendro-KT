@@ -566,7 +566,7 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
       char delta_ref = (remainder < stride[d] ? 0 : remainder < 2*stride[d] ? 1 : 2);
       switch(delta_ref)
       {
-        case 0: n_coords[d] = m_uiCoords[d];
+        case 0: n_coords[d] = m_uiCoords[d];    isNeighbourUsable = (n_coords[d] < (1u << m_uiMaxDepth) || includeDomBdry);
             break;
         case 1: n_coords[d] = nAxis[2*d + 0];   isNeighbourUsable = dimUsable[2*d + 0];
             break;
