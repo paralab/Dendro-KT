@@ -300,8 +300,6 @@ namespace ot {
 
     using TNP = TNPoint<T,dim>;
 
-    fprintf(stderr, "\n");
-
     // TODO Ownership: The local sort is not stable. We ought to scan through the recv'd nodes again to find out which proc-ranks are represented.
 
     // 1. Call countCGNodes(classify=false) to agglomerate node instances -> node representatives.
@@ -315,6 +313,8 @@ namespace ot {
     MPI_Comm_rank(comm, &rProc);
     MPI_Comm_size(comm, &nProc);
 
+    /// fprintf(stderr, "\n");
+
     if (nProc == 1)
       return countCGNodes(&(*points.begin()), &(*points.end()), order, true);
 
@@ -323,6 +323,11 @@ namespace ot {
 
     // First local pass: Don't classify, just sort and count instances.
     countCGNodes(&(*points.begin()), &(*points.end()), order, false);
+
+    /// //TODO remove
+    /// for (const TNP &pt : points)
+    ///   fprintf(stderr, "[%d] aftrSort  numIns==%d, l==%u, coords==%s\n", rProc, pt.get_numInstances(), pt.getLevel(), pt.getBase32Hex().data());
+    /// fprintf(stderr, "[[%d]]\n\n", rProc);
 
     // Compact node list (remove literal duplicates).
     RankI numUniquePoints = 0;
@@ -383,6 +388,7 @@ namespace ot {
       }
     }
 
+
     // Create the preliminary send buffer, ``share buffer.''
     // We compute the preliminary send buffer only once, so don't make a separate scatter map for it.
     std::vector<TNP> shareBuffer;
@@ -442,6 +448,11 @@ namespace ot {
     // Preliminary receive will be into end of existing node list.
     points.resize(numUniquePoints + recvTotal);
 
+    /// //TODO remove
+    /// for (const TNP &pt : shareBuffer)
+    ///   fprintf(stderr, "[%d] shBuf leastRank: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
+    /// fprintf(stderr, "[[%d]]\n\n", rProc);
+
 
     //
     // Send and receive. Sends and receives may not be symmetric.
@@ -467,6 +478,12 @@ namespace ot {
 
     // Second local pass, classifying nodes as hanging or non-hanging.
     countCGNodes(&(*points.begin()), &(*points.end()), order, true);
+
+    /// //TODO remove
+    /// for (const TNP &pt : points)
+    ///   fprintf(stderr, "[%d] leastRank: o==%d, l==%u, coords==%s\n", rProc, pt.get_owner(), pt.getLevel(), pt.getBase32Hex().data());
+    /// fprintf(stderr, "[[%d]]\n", rProc);
+
 
     //TODO For a more sophisticated version, could sort just the new points (fewer),
     //     then merge (faster) two sorted lists before applying the resolver.
@@ -519,13 +536,16 @@ namespace ot {
       // A node marked 'Yes' is the first instance.
       // Examine all instances and choose the one with least rank.
       typename std::vector<TNP>::iterator leastRank = ptIter;
-      while (*ptIter == *leastRank)  // Equality compares only coordinates and level.
+      while (ptIter < points.end() && *ptIter == *leastRank)  // Equality compares only coordinates and level.
       {
         ptIter->set_isSelected(TNP::No);
         if (ptIter->get_owner() < leastRank->get_owner())
           leastRank = ptIter;
         ptIter++;
       }
+
+      /// //TODO remove
+      /// fprintf(stderr, "[%d] leastRank: o==%d, l==%u, coords==%s\n", rProc, leastRank->get_owner(), leastRank->getLevel(), leastRank->getBase32Hex().data());
 
       // If the chosen node is ours, select it and increment count.
       if (leastRank->get_owner() == -1 || leastRank->get_owner() == rProc)
@@ -609,6 +629,7 @@ namespace ot {
     // Sorting/instancing task.
     else
     {
+      countInstances(end - numDomBdryPoints, end, order);
       countCGNodes_impl(countInstances, start, end - numDomBdryPoints, 1, 0, order);
     }
 
