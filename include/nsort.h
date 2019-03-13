@@ -48,8 +48,8 @@ namespace ot {
     operator FlagType&() { return m_flag; }
     operator FlagType() { return m_flag; }
 
-    FlagType get_dim_flag() { return m_flag >> m_shift; }
-    FlagType get_orient_flag() { return m_flag & m_mask; }
+    FlagType get_dim_flag() const { return m_flag >> m_shift; }
+    FlagType get_orient_flag() const { return m_flag & m_mask; }
 
     void set_dimFlag(FlagType c_dim) { m_flag = (m_flag & m_mask) | (c_dim << m_shift); }
     void set_orientFlag(FlagType c_orient) { m_flag = (m_flag & (~m_mask)) | (c_orient & m_mask); }
@@ -281,8 +281,10 @@ namespace ot {
       /**
        * @brief Find which processors upon which the node is incident.
        * @description Generates keys from pt.getDFD() and then calls getContainingBlocks().
+       * @note Guaranteed to include all neighbours but may include non-neighbours too.
+       *       Specifically (assuming 2:1 balancing), includes all neighbours of the host k-face.
        */
-      static int getProcNeighbours(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList);
+      static int getProcNeighbours(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList, unsigned int order);
   }; // struct SFC_NodeSort
 
 

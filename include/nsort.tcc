@@ -353,7 +353,7 @@ namespace ot {
     for (RankI ptIdx = 0; ptIdx < numUniquePoints; ptIdx++)
     {
       // Concatenates list of (unique) proc neighbours to shareLists.
-      int numProcNb = getProcNeighbours(points[ptIdx], splitters.data(), nProc, shareLists);
+      int numProcNb = getProcNeighbours(points[ptIdx], splitters.data(), nProc, shareLists, 1);
       //TODO test the assertion that all listed proc-neighbours in a sublist are unique.
 
       // Remove ourselves from neighbour list.
@@ -1267,12 +1267,47 @@ namespace ot {
   template <typename T, unsigned int dim>
   int SFC_NodeSort<T,dim>::getProcNeighbours(TNPoint<T,dim> pt,
       const TreeNode<T,dim> *splitters, int numSplitters,
-      std::vector<int> &procNbList)
+      std::vector<int> &procNbList,
+      unsigned int order)
   {
-    std::vector<TreeNode<T,dim>> keyList(intPow(3,dim));    // Allocate then shrink.
+    std::vector<TreeNode<T,dim>> keyList(2*intPow(3,dim));    // Allocate then shrink. TODO static allocation
     keyList.clear();
-    /// pt.getDFD().appendAllNeighboursAsPoints(keyList);  // Includes domain boundary points.
-    pt.getDFD().appendAllNeighbours(keyList);  // Does Not include domain boundary points.
+
+    pt.getDFD().appendAllNeighboursAsPoints(keyList);  // Includes domain boundary points.
+
+    // Fix to make sure we get 1-finer-level neighbours of the host k-face.
+    // First check if the point is close to the center of the face.
+    // Meanwhile work on constructing the center of the face, whose keys we may add too.
+    const CellType<dim> ptCellType = pt.get_cellType();
+    if (ptCellType.get_dim_flag() > 0)
+    {
+      bool appendCenterKeys = true;
+      const unsigned int len = 1u << (m_uiMaxDepth - pt.getLevel());
+      const T lenb2 = len >> 1u;
+      const unsigned int faceOrientation = ptCellType.get_orient_flag();
+      std::array<T,dim> elemCoords;
+      pt.getCell().getAnchor(elemCoords);
+      std::array<T,dim> faceCenterCoords = elemCoords;
+      for (int d = 0; d < dim; d++)
+      {
+        if (faceOrientation & (1u << d))
+        {
+          long distFromCenter = (long) (pt.getX(d) - elemCoords[d]) - (long) lenb2;
+          distFromCenter = (distFromCenter < 0 ? -distFromCenter : distFromCenter);
+          if (!(distFromCenter * order < len))
+          {
+            appendCenterKeys = false;
+            break;
+          }
+          faceCenterCoords[d] += lenb2;
+        }
+      }
+      if (appendCenterKeys)
+      {
+        TreeNode<T,dim> centerPt(1, faceCenterCoords, m_uiMaxDepth);
+        centerPt.appendAllNeighboursAsPoints(keyList);
+      }
+    }
 
     int procNbListSizeOld = procNbList.size();
     SFC_Tree<T,dim>::getContainingBlocks(keyList.data(), 0, (int) keyList.size(), splitters, numSplitters, procNbList);

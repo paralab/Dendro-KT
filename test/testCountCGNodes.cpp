@@ -203,8 +203,8 @@ int main(int argc, char * argv[])
   MPI_Comm comm = MPI_COMM_WORLD;
 
   constexpr unsigned int dim = 2;
-  const unsigned int endL = 2;
-  const unsigned int order = 2;
+  const unsigned int endL = 3;
+  const unsigned int order = 3;
 
   double tol = 0.05;
 
