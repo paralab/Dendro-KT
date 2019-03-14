@@ -1609,13 +1609,13 @@ namespace ot {
     // Compute offsets to prep for the 2nd pass below.
     visitor_data.computeOffsets();
 
-    // DEBUG TODO remove
-    int rProc;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rProc);
-    for (auto &&x : visitor_data.m_sendCountMap)
-    {
-      fprintf(stderr, "[%d] -> (%d):  \t%u\n", rProc, x.first, x.second);
-    }
+    /// // DEBUG TODO remove
+    /// int rProc;
+    /// MPI_Comm_rank(MPI_COMM_WORLD, &rProc);
+    /// for (auto &&x : visitor_data.m_sendCountMap)
+    /// {
+    ///   fprintf(stderr, "[%d] -> (%d):  \t%u\n", rProc, x.first, x.second);
+    /// }
 
     // Mapping pass.
     computeScattermap_impl<SMVisit_buildMap>(
@@ -1629,8 +1629,22 @@ namespace ot {
     visitor_data.computeOffsets();
 
     // Transfer mapping data to ScatterMap struct.
+    int numProcSend = visitor_data.m_sendCountMap.size();
+
     ScatterMap sm;
-    /* TODO */
+    sm.m_map = visitor_data.m_scatterMap;
+    sm.m_sendCounts.resize(numProcSend);
+    sm.m_sendOffsets.resize(numProcSend);
+    sm.m_sendProc.resize(numProcSend);
+
+    auto countsIter = visitor_data.m_sendCountMap.cbegin();
+    auto offsetsIter = visitor_data.m_sendOffsetsMap.cbegin();
+    for (int procIdx = 0; procIdx < numProcSend; procIdx++, countsIter++, offsetsIter++)
+    {
+      sm.m_sendProc[procIdx] = countsIter->first;
+      sm.m_sendCounts[procIdx] = countsIter->second;
+      sm.m_sendOffsets[procIdx] = offsetsIter->second;
+    }
 
     return sm;
   }
