@@ -1632,7 +1632,7 @@ namespace ot {
     int numProcSend = visitor_data.m_sendCountMap.size();
 
     ScatterMap sm;
-    sm.m_map = visitor_data.m_scatterMap;
+    sm.m_map = std::move(visitor_data.m_scatterMap);
     sm.m_sendCounts.resize(numProcSend);
     sm.m_sendOffsets.resize(numProcSend);
     sm.m_sendProc.resize(numProcSend);
