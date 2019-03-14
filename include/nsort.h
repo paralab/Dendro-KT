@@ -57,33 +57,8 @@ namespace ot {
 
     // TODO void set_flags(FlagType c_orient); // Counts 1s in c_orient and uses count for c_dim.
 
-    static std::array<CellType, (1u<<OuterDim)-1> getExteriorOrientHigh2Low()
-    {
-      std::array<CellType, (1u<<OuterDim)-1> orientations;
-      CellType *dest = orientations.data();
-      for (int fdim = OuterDim - 1; fdim >= 0; fdim--)
-      {
-        CellType *gpIter = dest;
-        emitCombinations(0u, OuterDim, fdim, dest);
-        while (gpIter < dest)
-          (gpIter++)->set_dimFlag(fdim);
-      }
-      return orientations;
-    }
-
-    static std::array<CellType, (1u<<OuterDim)-1> getExteriorOrientLow2High()
-    {
-      std::array<CellType, (1u<<OuterDim)-1> orientations;
-      CellType *dest = orientations.data();
-      for (int fdim = 0; fdim < OuterDim; fdim++)
-      {
-        CellType *gpIter = dest;
-        emitCombinations(0u, OuterDim, fdim, dest);
-        while (gpIter < dest)
-          (gpIter++)->set_dimFlag(fdim);
-      }
-      return orientations;
-    }
+    static std::array<CellType, (1u<<OuterDim)-1> getExteriorOrientHigh2Low();
+    static std::array<CellType, (1u<<OuterDim)-1> getExteriorOrientLow2High();
 
     // Data members.
     FlagType m_flag;
@@ -91,20 +66,7 @@ namespace ot {
     private:
       // Usage: prefix=0u, lengthLeft=OuterDim, onesLeft=faceDimension, dest=arrayStart.
       // Recursion depth is equal to onesLeft.
-      static void emitCombinations(FlagType prefix, unsigned char lengthLeft, unsigned char onesLeft, CellType * &dest)
-      {
-        assert (onesLeft <= lengthLeft);
-
-        if (onesLeft == 0)
-          (dest++)->set_orientFlag(prefix | 0u);
-        else if (onesLeft == lengthLeft)
-          (dest++)->set_orientFlag(prefix | ((1u << lengthLeft) - 1u));
-        else
-        {
-          emitCombinations(prefix, lengthLeft - 1, onesLeft, dest);
-          emitCombinations(prefix | (1u << (lengthLeft - 1)), lengthLeft - 1, onesLeft - 1, dest);
-        }
-      }
+      static void emitCombinations(FlagType prefix, unsigned char lengthLeft, unsigned char onesLeft, CellType * &dest);
 
       static const FlagType m_shift = 4u;
       static const FlagType m_mask = (1u << m_shift) - 1;
