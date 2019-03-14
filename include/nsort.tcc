@@ -1617,14 +1617,13 @@ namespace ot {
       fprintf(stderr, "[%d] -> (%d):  \t%u\n", rProc, x.first, x.second);
     }
 
-    //TODO
-    /// // Mapping pass.
-    /// computeScattermap_impl<SMVisit_buildMap>(
-    ///     ownedNodes, scatterFaces,
-    ///     0, (RankI) ownedNodes.size(),
-    ///     sf_begin, sf_end,
-    ///     0, m_uiMaxDepth, 0,             // Relies on special handling of the domain boundary.
-    ///     visitor_buildMap);
+    // Mapping pass.
+    computeScattermap_impl<SMVisit_buildMap>(
+        ownedNodes, scatterFaces,
+        0, (RankI) ownedNodes.size(),
+        sf_begin, sf_end,
+        0, m_uiMaxDepth, 0,             // Relies on special handling of the domain boundary.
+        visitor_buildMap);
 
     // Re-compute offsets after we advanced them in the 2nd pass above.
     visitor_data.computeOffsets();

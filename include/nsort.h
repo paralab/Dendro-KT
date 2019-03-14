@@ -367,6 +367,7 @@ namespace ot {
             m_sendOffsetsMap[x.first] = accum;
             accum += x.second;
           }
+          m_scatterMap.resize(accum);
         }
 
         // Data members.
