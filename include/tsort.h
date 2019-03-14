@@ -112,7 +112,8 @@ struct SFC_Tree
   // Notes:
   //   - This method operates in-place.
   //   - From sLev to eLev INCLUSIVE
-  static void locTreeSort(TreeNode<T,D> *points,
+  template <class PointType>   // = TreeNode<T,D>
+  static void locTreeSort(PointType *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,

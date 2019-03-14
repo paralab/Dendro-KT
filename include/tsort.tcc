@@ -9,6 +9,79 @@ namespace ot
 
 
 //
+// locTreeSort()
+//
+template<typename T, unsigned int D>
+template <class PointType>
+void
+SFC_Tree<T,D>:: locTreeSort(PointType *points,
+                          RankI begin, RankI end,
+                          LevI sLev,
+                          LevI eLev,
+                          RotI pRot)
+{
+  //// Recursive Depth-first, similar to Most Significant Digit First. ////
+
+  if (end <= begin) { return; }
+
+  constexpr char numChildren = TreeNode<T,D>::numChildren;
+  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  // Reorder the buckets on sLev (current level).
+  std::array<RankI, numChildren+1> tempSplitters;
+  RankI ancStart, ancEnd;
+  /// SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters, ancStart, ancEnd);
+  SFC_bucketing_impl<KeyFunIdentity_Pt<PointType>, PointType, PointType>(
+      points, begin, end, sLev, pRot,
+      KeyFunIdentity_Pt<PointType>(), true, true,
+      tempSplitters,
+      ancStart, ancEnd);
+
+  // The array `tempSplitters' has numChildren+1 slots, which includes the
+  // beginning, middles, and end of the range of children.
+  // Ancestor splitters are is ancStart and ancEnd, not tempSplitters.
+
+  // Lookup tables to apply rotations.
+  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+  if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+  {
+    // Recurse.
+    // Use the splitters to specify ranges for the next level of recursion.
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      // Columns of HILBERT_TABLE are indexed by the Morton rank.
+      // According to Dendro4 TreeNode.tcc:199 they are.
+      // (There are possibly inconsistencies in the old code...?
+      // Don't worry, we can regenerate the table later.)
+      ChildI child = rot_perm[child_sfc];
+      RotI cRot = orientLookup[child];
+
+      if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
+        continue;
+
+      if (sLev > 0)
+      {
+        locTreeSort(points,
+            tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+            sLev+1, eLev,
+            cRot);
+      }
+      else   // Special handling if we have to consider the domain boundary.
+      {
+        locTreeSort(points,
+            tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+            sLev+1, eLev,
+            pRot);
+      }
+    }
+  }
+}// end function()
+
+
+
+//
 // locTreeSort()   (with parallel companion array)
 //
 template<typename T, unsigned int D>

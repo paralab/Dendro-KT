@@ -122,6 +122,19 @@ namespace ot {
     return cellType;
   }
 
+
+  template <typename T, unsigned int dim>
+  bool TNPoint<T,dim>::isCrossing() const
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+    const unsigned int mask = (len << 1u) - 1u;
+    for (int d = 0; d < dim; d++)
+      if ((TreeNode::m_uiCoords[d] & mask) == len)
+        return true;
+    return false;
+  }
+
   template <typename T, unsigned int dim>
   TreeNode<T,dim> TNPoint<T,dim>::getFinestOpenContainer() const
   {
@@ -284,8 +297,100 @@ namespace ot {
     }
   }
 
+
+  template <typename T, unsigned int dim>
+  void Element<T,dim>::appendKFaces(CellType<dim> kface,
+      std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+
+    unsigned int fdim = kface.get_dim_flag();
+    unsigned int orient = kface.get_orient_flag();
+
+    const unsigned int numNodes = intPow(3, fdim);
+
+    std::array<unsigned int, dim> nodeIndices;
+    nodeIndices.fill(0);
+    for (unsigned int node = 0; node < numNodes; node++)
+    {
+      unsigned char kkfaceDim = 0;
+      unsigned int  kkfaceOrient = 0u;
+      std::array<T,dim> nodeCoords = TreeNode::m_uiCoords;
+      int vd = 0;
+      for (int d = 0; d < dim; d++)
+      {
+        if (orient & (1u << d))
+        {
+          if (nodeIndices[vd] == 1)
+          {
+            kkfaceDim++;
+            kkfaceOrient |= (1u << d);
+          }
+          else if (nodeIndices[vd] == 2)
+            nodeCoords[d] += len;
+
+          vd++;
+        }
+      }
+      nodeList.push_back(TreeNode(nodeCoords, TreeNode::m_uiLevel));
+      kkfaces.push_back(CellType<dim>());
+      kkfaces.back().set_dimFlag(kkfaceDim);
+      kkfaces.back().set_orientFlag(kkfaceOrient);
+
+      incrementBaseB<unsigned int, dim>(nodeIndices, 3);
+    }
+  }
+
+
   // ============================ End: Element ============================ //
 
+
+  // ============================ Begin: ScatterFace ============================ //
+
+  template <typename T, unsigned int dim>
+  void ScatterFace<T,dim>::sortUniq(std::vector<ScatterFace> &faceList)
+  {
+    // Sort so that unique-location points end up adjacent in faceList.
+    // Depends on having the special case for domain level integrated into locTreeSort.
+    SFC_Tree<T,dim>::template locTreeSort<ScatterFace>(&(*faceList.begin()), 0, (RankI) faceList.size(), 0, m_uiMaxDepth, 0);
+
+    std::unordered_set<int> uniqueOwners;
+
+    // Shuffle and copy by owner.
+    typename std::vector<ScatterFace>::iterator iterLead = faceList.begin(), iterFollow = faceList.begin();
+    while (iterLead < faceList.end())
+    {
+      // Find group of unique point locations.
+      typename std::vector<ScatterFace>::iterator gpBegin = iterLead, gpEnd = iterLead;
+      while (gpEnd < faceList.end() && *gpEnd == *gpBegin)
+        gpEnd++;
+
+      // Collect set of unique owners within the group.
+      uniqueOwners.clear();
+      while (iterLead < gpEnd)
+      {
+        uniqueOwners.insert(iterLead->get_owner());
+        iterLead++;
+      }
+
+      ScatterFace prototype = *gpBegin;
+
+      // Write the set of unique owners into the leading points.
+      // Only advance iterFollow as far as the number of unique owners.
+      for (int o : uniqueOwners)
+      {
+        *iterFollow = prototype;
+        iterFollow->set_owner(o);
+        iterFollow++;
+      }
+    }
+
+    // Erase the unused elements.
+    faceList.erase(iterFollow, faceList.end());
+  }
+
+  // ============================ End: ScatterFace ============================ //
 
 
   // ============================ Begin: SFC_NodeSort ============================ //
@@ -466,6 +571,95 @@ namespace ot {
 
 
     //
+    // "Scatter-faces"
+    //
+    // Convert sets of neighbouring nodes into sets of neighbouring (closed) k-faces.
+    // (One nonempty set per neighbouring processor).
+    // > Non-hanging nodes --> own k-face.
+    // > Hanging nodes ------> parent k-face.
+    //
+    // Afterward, decompose the closed k-faces into constituent open k'-faces.
+    //
+
+    // Generate lists of closed k-faces.
+    std::array<std::vector<ScatterFace<T,dim>>, intPow(2,dim)-1> kfaces;
+    {
+      typename std::vector<TNP>::iterator ptIter = points.begin();
+      while (ptIter < points.end())
+      {
+        // Find bounds on group.
+        const typename std::vector<TNP>::iterator gpStart = ptIter;
+        typename std::vector<TNP>::iterator gpEnd = ptIter;
+        while (gpEnd < points.end() && *gpEnd == *gpStart)
+          gpEnd++;
+
+        if (ptIter->get_isSelected() == TNP::Yes)  // Non-hanging.
+        {
+          while (ptIter < gpEnd)
+          {
+            if (ptIter->get_owner() != rProc && ptIter->get_owner() != -1)
+            {
+              const unsigned char orientation = ptIter->get_cellType().get_orient_flag();
+              const TreeNode<T,dim> cell = ptIter->getCell();
+              kfaces[orientation].push_back({cell, ptIter->get_owner()});
+            }
+            ptIter++;
+          }
+        }
+        else if (!ptIter->isCrossing())            // Hanging and non-crossing.
+        {
+          while (ptIter < gpEnd)
+          {
+            if (ptIter->get_owner() != rProc && ptIter->get_owner() != -1)
+            {
+              const unsigned char orientation = ptIter->get_cellTypeOnParent().get_orient_flag();
+              const TreeNode<T,dim> cell = ptIter->getCell().getParent();
+              kfaces[orientation].push_back({cell, ptIter->get_owner()});
+            }
+            ptIter++;
+          }
+        }
+
+        ptIter = gpEnd;
+      }
+    }
+
+    // De-clutter the lists of closed k-faces.
+    for (std::vector<ScatterFace<T,dim>> &faceList : kfaces)
+      ScatterFace<T,dim>::sortUniq(faceList);
+
+    // Decompose the closed k-faces into constituent open k'-faces.
+    /// auto orientationsHigh2Low = CellType<dim>::getExteriorOrientHigh2Low();
+    auto cellsLow2High = CellType<dim>::getExteriorOrientLow2High();
+    for (const CellType<dim> &cellType : cellsLow2High)
+    {
+      const unsigned int orientFlag = cellType.get_orient_flag();
+      for (const ScatterFace<T,dim> &closedFace : kfaces[orientFlag])
+      {
+        std::vector<TreeNode<T,dim>> openFaces;
+        std::vector<CellType<dim>> openCellTypes;
+        Element<T,dim>(closedFace).appendKFaces(cellType, openFaces, openCellTypes);
+        for (int f = 0; f < openFaces.size(); f++)
+        {
+          kfaces[openCellTypes[f].get_orient_flag()].push_back({openFaces[f], closedFace.get_owner()});
+        }
+      }
+    }
+
+    // De-clutter the lists of closed k-faces. Now it matters that they're sorted.
+    for (std::vector<ScatterFace<T,dim>> &faceList : kfaces)
+      ScatterFace<T,dim>::sortUniq(faceList);
+
+    /// for (auto &&kfaceList : kfaces)
+    /// {
+    ///   for (auto &&ptStruct : kfaceList)
+    ///   {
+    ///     fprintf(stderr, "[%d]\t(%d) \t %s\n", rProc, ptStruct.get_owner(), ptStruct.getBase32Hex(5).data());
+    ///   }
+    ///   fprintf(stderr, "[%d] ----\n", rProc);
+    /// }
+
+    //
     // Compute the scattermap.
     //
     // > For every non-hanging ("Yes") boundary node, determine ownership.
@@ -498,33 +692,38 @@ namespace ot {
     // Can compute # of owned nodes without the scattermap. At least we can
     // test the counting methods.
 
+    //
+    // Mark owned nodes and finalize the counting part.
+    //
     RankI numOwnedPoints = 0;
-    typename std::vector<TNP>::iterator ptIter = points.begin();
-    while (ptIter < points.end())
     {
-      // Skip hanging nodes.
-      if (ptIter->get_isSelected() != TNP::Yes)
+      typename std::vector<TNP>::iterator ptIter = points.begin();
+      while (ptIter < points.end())
       {
-        ptIter++;
-        continue;
-      }
+        // Skip hanging nodes.
+        if (ptIter->get_isSelected() != TNP::Yes)
+        {
+          ptIter++;
+          continue;
+        }
 
-      // A node marked 'Yes' is the first instance.
-      // Examine all instances and choose the one with least rank.
-      typename std::vector<TNP>::iterator leastRank = ptIter;
-      while (ptIter < points.end() && *ptIter == *leastRank)  // Equality compares only coordinates and level.
-      {
-        ptIter->set_isSelected(TNP::No);
-        if (ptIter->get_owner() < leastRank->get_owner())
-          leastRank = ptIter;
-        ptIter++;
-      }
+        // A node marked 'Yes' is the first instance.
+        // Examine all instances and choose the one with least rank.
+        typename std::vector<TNP>::iterator leastRank = ptIter;
+        while (ptIter < points.end() && *ptIter == *leastRank)  // Equality compares only coordinates and level.
+        {
+          ptIter->set_isSelected(TNP::No);
+          if (ptIter->get_owner() < leastRank->get_owner())
+            leastRank = ptIter;
+          ptIter++;
+        }
 
-      // If the chosen node is ours, select it and increment count.
-      if (leastRank->get_owner() == -1 || leastRank->get_owner() == rProc)
-      {
-        leastRank->set_isSelected(TNP::Yes);
-        numOwnedPoints++;
+        // If the chosen node is ours, select it and increment count.
+        if (leastRank->get_owner() == -1 || leastRank->get_owner() == rProc)
+        {
+          leastRank->set_isSelected(TNP::Yes);
+          numOwnedPoints++;
+        }
       }
     }
 

@@ -20,6 +20,7 @@
 #include <mpi.h>
 #include <vector>
 #include <queue>
+#include <unordered_set>
 #include <stdio.h>
 
 namespace ot {
@@ -56,9 +57,55 @@ namespace ot {
 
     // TODO void set_flags(FlagType c_orient); // Counts 1s in c_orient and uses count for c_dim.
 
+    static std::array<CellType, (1u<<OuterDim)-1> getExteriorOrientHigh2Low()
+    {
+      std::array<CellType, (1u<<OuterDim)-1> orientations;
+      CellType *dest = orientations.data();
+      for (int fdim = OuterDim - 1; fdim >= 0; fdim--)
+      {
+        CellType *gpIter = dest;
+        emitCombinations(0u, OuterDim, fdim, dest);
+        while (gpIter < dest)
+          (gpIter++)->set_dimFlag(fdim);
+      }
+      return orientations;
+    }
+
+    static std::array<CellType, (1u<<OuterDim)-1> getExteriorOrientLow2High()
+    {
+      std::array<CellType, (1u<<OuterDim)-1> orientations;
+      CellType *dest = orientations.data();
+      for (int fdim = 0; fdim < OuterDim; fdim++)
+      {
+        CellType *gpIter = dest;
+        emitCombinations(0u, OuterDim, fdim, dest);
+        while (gpIter < dest)
+          (gpIter++)->set_dimFlag(fdim);
+      }
+      return orientations;
+    }
+
+    // Data members.
     FlagType m_flag;
 
     private:
+      // Usage: prefix=0u, lengthLeft=OuterDim, onesLeft=faceDimension, dest=arrayStart.
+      // Recursion depth is equal to onesLeft.
+      static void emitCombinations(FlagType prefix, unsigned char lengthLeft, unsigned char onesLeft, CellType * &dest)
+      {
+        assert (onesLeft <= lengthLeft);
+
+        if (onesLeft == 0)
+          (dest++)->set_orientFlag(prefix | 0u);
+        else if (onesLeft == lengthLeft)
+          (dest++)->set_orientFlag(prefix | ((1u << lengthLeft) - 1u));
+        else
+        {
+          emitCombinations(prefix, lengthLeft - 1, onesLeft, dest);
+          emitCombinations(prefix | (1u << (lengthLeft - 1)), lengthLeft - 1, onesLeft - 1, dest);
+        }
+      }
+
       static const FlagType m_shift = 4u;
       static const FlagType m_mask = (1u << m_shift) - 1;
   };
@@ -133,6 +180,9 @@ namespace ot {
       /**@brief Get type of cell to which point is interior, at arbitrary level. */
       CellType<dim> get_cellType(LevI lev) const;
 
+      /**@brief Return whether own cell type differs from cell type on parent. */
+      bool isCrossing() const;
+
       /**@brief Get the deepest cell such that the point is not on the boundary of the cell. */
       TreeNode<T,dim> getFinestOpenContainer() const;
 
@@ -174,8 +224,45 @@ namespace ot {
       void appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
       void appendInteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
       void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
+
+      void appendKFaces(CellType<dim> kface, std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const;
   };
 
+
+  template <typename T, unsigned int dim>
+  class ScatterFace : public TreeNode<T,dim>
+  {
+    public:
+      // Bring in parent constructors.
+      ScatterFace () : TreeNode<T,dim> () {}
+      ScatterFace (const std::array<T,dim> coords, unsigned int level) : TreeNode<T,dim> (coords, level) {}
+      ScatterFace (const ScatterFace & other) : TreeNode<T,dim> (other), m_owner(other.m_owner) {}
+      ScatterFace (const int dummy, const std::array<T,dim> coords, unsigned int level) :
+          TreeNode<T,dim> (dummy, coords, level) {}
+
+      // Constructors from TreeNode to ScatterFace.
+      ScatterFace(const TreeNode<T,dim> & other) : TreeNode<T,dim>(other) {}
+      ScatterFace(const TreeNode<T,dim> & other, int owner) : TreeNode<T,dim>(other), m_owner(owner) {}
+
+      // Assignment operators.
+      ScatterFace & operator=(const TreeNode<T,dim> &otherTN) { TreeNode<T,dim>::operator=(otherTN); return *this; }
+      ScatterFace & operator=(const ScatterFace &other) { TreeNode<T,dim>::operator=(other); m_owner = other.m_owner; return *this; }
+
+      // Equality operators.
+      bool operator==(const ScatterFace &other) { return TreeNode<T,dim>::operator==(other) && m_owner == other.m_owner; }
+      bool operator!=(const ScatterFace &other) { return !operator==(other); }
+
+      // Getter/setter m_owner.
+      int get_owner() const { return m_owner; }
+      void set_owner(int owner) { m_owner = owner; }
+
+      /**@brief Sort points into SFC order and extract unique points, discriminating owners. */
+      static void sortUniq(std::vector<ScatterFace> &faceList);
+
+    private:
+      // Data members.
+      int m_owner = -1;
+  };
 
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
