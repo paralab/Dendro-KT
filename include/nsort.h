@@ -379,8 +379,8 @@ namespace ot {
       static void visit_count(SMVisit_data &visitor,
           const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
           RankI ownedNodes_bg, RankI ownedNodes_end,
-          std::array<RankI, nSFOrient> scatterFaces_bg,
-          std::array<RankI, nSFOrient> scatterFaces_end);
+          const std::array<RankI, nSFOrient> &scatterFaces_bg,
+          const std::array<RankI, nSFOrient> &scatterFaces_end);
 
       /**
        * @brief Action of visitor for computeScattermap dual traversal, 2nd pass mapping.
@@ -389,8 +389,8 @@ namespace ot {
       static void visit_buildMap(SMVisit_data &visitor,
           const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
           RankI ownedNodes_bg, RankI ownedNodes_end,
-          std::array<RankI, nSFOrient> scatterFaces_bg,
-          std::array<RankI, nSFOrient> scatterFaces_end);
+          const std::array<RankI, nSFOrient> &scatterFaces_bg,
+          const std::array<RankI, nSFOrient> &scatterFaces_end);
 
       /** @brief Adapter to combine state and action for 1st pass counting. */
       struct SMVisit_count

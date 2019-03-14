@@ -722,7 +722,9 @@ namespace ot {
         Element<T,dim>(closedFace).appendKFaces(cellType, openFaces, openCellTypes);
         for (int f = 0; f < openFaces.size(); f++)
         {
-          kfaces[openCellTypes[f].get_orient_flag()].push_back({openFaces[f], closedFace.get_owner()});
+          if (openCellTypes[f].get_orient_flag() != orientFlag)
+            kfaces[openCellTypes[f].get_orient_flag()].push_back({openFaces[f], closedFace.get_owner()});
+          // Open part of current closed kface is already represented in current list.
         }
       }
     }
@@ -1577,6 +1579,9 @@ namespace ot {
   }
 
 
+  //
+  // computeScattermap()
+  //
   template <typename T, unsigned int dim>
   ScatterMap SFC_NodeSort<T,dim>::computeScattermap(const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces)
   {
@@ -1631,6 +1636,15 @@ namespace ot {
     return sm;
   }
 
+
+  template <typename T, unsigned int dim>
+  struct GetCell
+  {
+    // PointType == TNPoint<T,dim>    KeyType == TreeNode<T,dim>
+    TreeNode<T,dim> operator()(const TNPoint<T,dim> &pt) { return pt.getCell(); }
+  };
+
+
   template <typename T, unsigned int dim>
   template <typename ActionT>
   void SFC_NodeSort<T,dim>::computeScattermap_impl(const std::vector<TNPoint<T,dim>> &ownedNodes,
@@ -1641,63 +1655,140 @@ namespace ot {
       LevI sLev, LevI eLev, RotI pRot,
       ActionT &visitAction)
   {
-    //TODO dummy call to make sure that the compiler catches our mistakes.
-    visitAction(ownedNodes, scatterFaces, ownedNodes_bg, ownedNodes_end, scatterFaces_bg, scatterFaces_end);
+    //// Recursive Depth-first, similar to Most Significant Digit First. ////
+    //// Adapted from locTreeSort.                                       ////
 
-    // TODO
-    // outline
-    // -------
-    // Templated locateBuckets<>() on ownedNodes by getCell().
-    // Templated locateBuckets<>() on each scatterFaces stratum with identity.
-    // Visit ancestor bucket, i.e. ourselves. This covers leaves too.
-    // for each child bucket, if nonempty:
-    //   if root or lower, recurse as usual.
-    //   else higher than root, do a special thing.
+    using SF = ScatterFace<T,dim>;
 
-    // Filter out empty buckets and buckets holding only non-boundary nodes.
+    if (ownedNodes_end <= ownedNodes_bg) { return; }
 
-    /* TODO */
-  }
+    constexpr char numChildren = TreeNode<T,dim>::numChildren;
+    constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+    // Locate buckets in ownedNodes. //
+    std::array<RankI, numChildren+1> tempSplitters;
+    RankI ancStart, ancEnd;
+    SFC_Tree<T,dim>::template SFC_locateBuckets_impl<GetCell<T,dim>, TNPoint<T,dim>, TreeNode<T,dim>>(
+        &(*ownedNodes.begin()), ownedNodes_bg, ownedNodes_end, sLev, pRot,
+        GetCell<T,dim>(), true, true,
+        tempSplitters,
+        ancStart, ancEnd);
+
+    // Locate buckets in each list of open kfaces. //
+    std::array< std::array<RankI, nSFOrient>, numChildren+1> sfSplitters;
+    std::array< RankI, nSFOrient> sfAncStart;
+    std::array< RankI, nSFOrient> sfAncEnd;
+    for (unsigned int orient = 0; orient < nSFOrient; orient++)
+    {
+      std::array<RankI, numChildren+1> getSFSplitters;
+      SFC_Tree<T,dim>::template SFC_locateBuckets_impl<KeyFunIdentity_Pt<SF>, SF, SF>(
+          &(*scatterFaces[orient].begin()), scatterFaces_bg[orient], scatterFaces_end[orient],
+          sLev, pRot,
+          KeyFunIdentity_Pt<SF>(), true, true,
+          getSFSplitters, sfAncStart[orient], sfAncEnd[orient]);
+
+      for (ChildI child_sfc = 0; child_sfc <= numChildren; child_sfc++)
+        sfSplitters[child_sfc][orient] = getSFSplitters[child_sfc];
+    }
+
+    // Visit current node in SFC tree, if nonempty and has proc-bdry points.
+    RankI numBdryPts = 0,  numNonBdryPts = 0;
+    for (RankI ptIter = ancStart; ptIter < ancEnd; ptIter++)
+    {
+      if (ownedNodes[ptIter].get_owner() != -1) numBdryPts++;
+      else                                      numNonBdryPts++;
+    }
+    if (numBdryPts > 0)
+      visitAction(ownedNodes, scatterFaces, ancStart, ancEnd, sfAncStart, sfAncEnd);
 
 
-  /** @brief Action of visitor for computeScattermap dual traversal, 1st pass counting. */
+    // Lookup tables to apply rotations.
+    const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+    const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+    if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+    {
+      // Recurse.
+      // Use the splitters to specify ranges for the next level of recursion.
+      for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+      {
+        ChildI child = rot_perm[child_sfc];
+        RotI cRot = orientLookup[child];
+
+        if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] < 1)
+          continue;
+
+        if (sLev > 0)
+        {
+          computeScattermap_impl(ownedNodes, scatterFaces,
+              tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+              sfSplitters[child_sfc+0], sfSplitters[child_sfc+1],
+              sLev+1, eLev, cRot,
+              visitAction);
+        }
+        else   // Special handling if we have to consider the domain boundary.
+        {
+          computeScattermap_impl(ownedNodes, scatterFaces,
+              tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+              sfSplitters[child_sfc+0], sfSplitters[child_sfc+1],
+              sLev+1, eLev, pRot,
+              visitAction);
+        }
+      }//for
+    }//if
+  }  // end function
+
+
+  /**
+   * @name visit_count
+   * @brief Action of visitor for computeScattermap dual traversal, 1st pass counting.
+   */
   template <typename T, unsigned int dim>
   void SFC_NodeSort<T,dim>::visit_count(SMVisit_data &visitor,
       const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
       RankI ownedNodes_bg, RankI ownedNodes_end,
-      std::array<RankI, nSFOrient> scatterFaces_bg,
-      std::array<RankI, nSFOrient> scatterFaces_end)
+      const std::array<RankI, nSFOrient> &scatterFaces_bg,
+      const std::array<RankI, nSFOrient> &scatterFaces_end)
   {
     for (RankI node_iter = ownedNodes_bg; node_iter < ownedNodes_end; node_iter++)
     {
-      const unsigned int kfaceOrient = ownedNodes[node_iter].get_cellType().get_orient_flag();
-      const RankI sf_bg = scatterFaces_bg[kfaceOrient];
-      const RankI sf_end = scatterFaces_end[kfaceOrient];
-      for (RankI sf_iter = sf_bg; sf_iter < sf_end; sf_iter++)
+      if (ownedNodes[node_iter].get_owner() != -1)
       {
-        int neighbour = scatterFaces[kfaceOrient][sf_iter].get_owner();
-        visitor.m_sendCountMap[neighbour]++;
+        const unsigned int kfaceOrient = ownedNodes[node_iter].get_cellType().get_orient_flag();
+        const RankI sf_bg = scatterFaces_bg[kfaceOrient];
+        const RankI sf_end = scatterFaces_end[kfaceOrient];
+        for (RankI sf_iter = sf_bg; sf_iter < sf_end; sf_iter++)
+        {
+          int neighbour = scatterFaces[kfaceOrient][sf_iter].get_owner();
+          visitor.m_sendCountMap[neighbour]++;
+        }
       }
     }
   }
 
-  /** @brief Action of visitor for computeScattermap dual traversal, 2nd pass mapping. */
+  /**
+   * @name visit_buildMap
+   * @brief Action of visitor for computeScattermap dual traversal, 2nd pass mapping.
+   */
   template <typename T, unsigned int dim>
   void SFC_NodeSort<T,dim>::visit_buildMap(SMVisit_data &visitor,
       const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
       RankI ownedNodes_bg, RankI ownedNodes_end,
-      std::array<RankI, nSFOrient> scatterFaces_bg,
-      std::array<RankI, nSFOrient> scatterFaces_end)
+      const std::array<RankI, nSFOrient> &scatterFaces_bg,
+      const std::array<RankI, nSFOrient> &scatterFaces_end)
   {
     for (RankI node_iter = ownedNodes_bg; node_iter < ownedNodes_end; node_iter++)
     {
-      const unsigned int kfaceOrient = ownedNodes[node_iter].get_cellType().get_orient_flag();
-      const RankI sf_bg = scatterFaces_bg[kfaceOrient];
-      const RankI sf_end = scatterFaces_end[kfaceOrient];
-      for (RankI sf_iter = sf_bg; sf_iter < sf_end; sf_iter++)
+      if (ownedNodes[node_iter].get_owner() != -1)
       {
-        int neighbour = scatterFaces[kfaceOrient][sf_iter].get_owner();
-        visitor.m_scatterMap[ visitor.m_sendOffsetsMap[neighbour]++ ] = node_iter;
+        const unsigned int kfaceOrient = ownedNodes[node_iter].get_cellType().get_orient_flag();
+        const RankI sf_bg = scatterFaces_bg[kfaceOrient];
+        const RankI sf_end = scatterFaces_end[kfaceOrient];
+        for (RankI sf_iter = sf_bg; sf_iter < sf_end; sf_iter++)
+        {
+          int neighbour = scatterFaces[kfaceOrient][sf_iter].get_owner();
+          visitor.m_scatterMap[ visitor.m_sendOffsetsMap[neighbour]++ ] = node_iter;
+        }
       }
     }
   }
