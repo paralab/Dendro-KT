@@ -239,7 +239,18 @@ namespace ot {
     std::vector<RankI> m_map;
     std::vector<RankI> m_sendCounts;
     std::vector<RankI> m_sendOffsets;
-    std::vector<RankI> m_sendProc;
+    std::vector<int> m_sendProc;
+  };
+
+  struct GatherMap
+  {
+    std::vector<int> m_recvProc;
+    std::vector<RankI> m_recvCounts;
+    std::vector<RankI> m_recvOffsets;
+
+    RankI m_totalCount;
+    RankI m_locCount;
+    RankI m_locOffset;
   };
 
 
@@ -249,8 +260,10 @@ namespace ot {
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array. Also compact node list and compute ``scatter map.''
      */
-    //TODO make the input a vector that can change size.
-    static RankI dist_countCGNodes(std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart, MPI_Comm comm);
+    static RankI dist_countCGNodes(
+        std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart,
+        ScatterMap &outScatterMap, GatherMap &outGatherMap,
+        MPI_Comm comm);
 
 
     /**
@@ -408,6 +421,11 @@ namespace ot {
         SMVisit_buildMap(SMVisit_data &data) : m_data(data) {}
         template <class ...Ts> void operator() (Ts... args) { SFC_NodeSort::visit_buildMap(m_data, args...); }
       };
+
+
+      /** @brief Exchange counts from senders to receivers. */
+      static GatherMap scatter2gather(const ScatterMap &sm, RankI localCount, MPI_Comm comm);
+
 
   }; // struct SFC_NodeSort
 

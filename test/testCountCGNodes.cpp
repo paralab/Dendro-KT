@@ -219,6 +219,9 @@ int main(int argc, char * argv[])
   ot::RankI numUniqueExteriorNodes;
   ot::RankI numUniqueNodes;
 
+  ot::ScatterMap scatterMap;
+  ot::GatherMap gatherMap;
+
   // -------------
 
   if (rProc == 0)
@@ -261,7 +264,7 @@ int main(int argc, char * argv[])
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
   {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
     ot::RankI globInterior = 0;
     par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
     numUniqueInteriorNodes = globInterior;
@@ -291,7 +294,7 @@ int main(int argc, char * argv[])
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
   {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
     ot::RankI globInterior = 0;
     par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
     numUniqueInteriorNodes = globInterior;
@@ -321,7 +324,7 @@ int main(int argc, char * argv[])
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
   {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
     ot::RankI globInterior = 0;
     par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
     numUniqueInteriorNodes = globInterior;

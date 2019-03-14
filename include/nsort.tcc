@@ -464,7 +464,10 @@ namespace ot {
   // SFC_NodeSort::dist_countCGNodes()
   //
   template <typename T, unsigned int dim>
-  RankI SFC_NodeSort<T,dim>::dist_countCGNodes(std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart, MPI_Comm comm)
+  RankI SFC_NodeSort<T,dim>::dist_countCGNodes(
+      std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart,
+      ScatterMap &outScatterMap, GatherMap &outGatherMap,
+      MPI_Comm comm)
   {
     using TNP = TNPoint<T,dim>;
 
@@ -781,17 +784,24 @@ namespace ot {
         if (leastRank->get_owner() == -1 || leastRank->get_owner() == rProc)
         {
           leastRank->set_isSelected(TNP::Yes);
+          points[numOwnedPoints] = *leastRank;
           numOwnedPoints++;
         }
       }
     }
+    // Resize and sort points.
+    points.resize(numOwnedPoints);
+    SFC_Tree<T,dim>::template locTreeSort<TNP>(&(*points.begin()), 0, numOwnedPoints, 0, m_uiMaxDepth, 0);
 
     RankI numCGNodes = 0;  // The return variable for counting.
     par::Mpi_Allreduce(&numOwnedPoints, &numCGNodes, 1, MPI_SUM, comm);
 
     // Dual traversal to collect subset of owned nodes for the scattermap.
     // Main reason for using a separate function is the recursive depth-first traversal.
-    ScatterMap scatterMap = computeScattermap(points, kfaces);
+    outScatterMap = computeScattermap(points, kfaces);
+
+    // Get counts/offsets as a receiver from other procs.
+    outGatherMap = scatter2gather(outScatterMap, numOwnedPoints, comm);
 
     return numCGNodes;
   }
@@ -1806,6 +1816,47 @@ namespace ot {
     }
   }
 
+
+  template <typename T, unsigned int dim>
+  GatherMap SFC_NodeSort<T,dim>::scatter2gather(const ScatterMap &sm, RankI localCount, MPI_Comm comm)
+  {
+    int nProc, rProc;
+    MPI_Comm_rank(comm, &rProc);
+    MPI_Comm_size(comm, &nProc);
+
+    std::vector<RankI> fullSendCounts(nProc);
+    auto scountIter = sm.m_sendCounts.cbegin();
+    auto sprocIter = sm.m_sendProc.cbegin();
+    while (scountIter < sm.m_sendCounts.cend())
+      fullSendCounts[*(sprocIter++)] = *(scountIter++);
+
+    // All to all to exchange counts. Receivers need to learn who they receive from.
+    std::vector<RankI> fullRecvCounts(nProc);
+    par::Mpi_Alltoall<RankI>(fullSendCounts.data(), fullRecvCounts.data(), 1, comm);
+
+    // Compact the receive counts into the GatherMap struct.
+    GatherMap gm;
+    RankI accum = 0;
+    for (int proc = 0; proc < nProc; proc++)
+    {
+      if (fullRecvCounts[proc] > 0)
+      {
+        gm.m_recvProc.push_back(proc);
+        gm.m_recvCounts.push_back(fullRecvCounts[proc]);
+        gm.m_recvOffsets.push_back(accum);
+        accum += fullRecvCounts[proc];
+      }
+      else if (proc == rProc)
+      {
+        gm.m_locOffset = accum;             // Allocate space for our local nodes.
+        accum += localCount;
+      }
+    }
+    gm.m_totalCount = accum;
+    gm.m_locCount = localCount;
+
+    return gm;
+  }
 
 
   // ============================ End: SFC_NodeSort ============================ //
