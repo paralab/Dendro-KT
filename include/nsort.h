@@ -358,8 +358,20 @@ namespace ot {
       /** @brief State of visitor for computeScattermap dual traversal. */
       struct SMVisit_data
       {
+        // Methods.
+        void computeOffsets()
+        {
+          RankI accum = 0;
+          for (auto &&x : m_sendCountMap)
+          {
+            m_sendOffsetsMap[x.first] = accum;
+            accum += x.second;
+          }
+        }
+
         // Data members.
         std::map<int, RankI> m_sendCountMap;
+        std::map<int, RankI> m_sendOffsetsMap;
         std::vector<RankI> m_scatterMap;
       };
 
@@ -370,7 +382,10 @@ namespace ot {
           std::array<RankI, nSFOrient> scatterFaces_bg,
           std::array<RankI, nSFOrient> scatterFaces_end);
 
-      /** @brief Action of visitor for computeScattermap dual traversal, 2nd pass mapping. */
+      /**
+       * @brief Action of visitor for computeScattermap dual traversal, 2nd pass mapping.
+       * @pre The offsets need to be initialized with SMVisit_data::computeOffsets().
+       * */
       static void visit_buildMap(SMVisit_data &visitor,
           const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
           RankI ownedNodes_bg, RankI ownedNodes_end,
@@ -388,18 +403,9 @@ namespace ot {
       /** @brief Adapter to combine state and action for 2nd pass mapping. */
       struct SMVisit_buildMap
       {
-        SMVisit_buildMap(SMVisit_data &data) : m_data(data) {}
-
-        void operator() (
-            const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
-            RankI ownedNodes_bg, RankI ownedNodes_end,
-            std::array<RankI, nSFOrient> scatterFaces_bg,
-            std::array<RankI, nSFOrient> scatterFaces_end)
-        {
-          SFC_NodeSort::visit_buildMap(m_data, ownedNodes, scatterFaces, ownedNodes_bg, ownedNodes_end, scatterFaces_bg, scatterFaces_end);
-        }
-
         SMVisit_data &m_data;
+        SMVisit_buildMap(SMVisit_data &data) : m_data(data) {}
+        template <class ...Ts> void operator() (Ts... args) { SFC_NodeSort::visit_buildMap(m_data, args...); }
       };
 
   }; // struct SFC_NodeSort

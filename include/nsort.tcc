@@ -1601,6 +1601,9 @@ namespace ot {
         0, m_uiMaxDepth, 0,  // Relies on special handling of the domain boundary.
         visitor_count);
 
+    // Compute offsets to prep for the 2nd pass below.
+    visitor_data.computeOffsets();
+
     // DEBUG TODO remove
     int rProc;
     MPI_Comm_rank(MPI_COMM_WORLD, &rProc);
@@ -1617,6 +1620,9 @@ namespace ot {
     ///     sf_begin, sf_end,
     ///     0, m_uiMaxDepth, 0,             // Relies on special handling of the domain boundary.
     ///     visitor_buildMap);
+
+    // Re-compute offsets after we advanced them in the 2nd pass above.
+    visitor_data.computeOffsets();
 
     // Transfer mapping data to ScatterMap struct.
     ScatterMap sm;
@@ -1637,6 +1643,16 @@ namespace ot {
   {
     //TODO dummy call to make sure that the compiler catches our mistakes.
     visitAction(ownedNodes, scatterFaces, ownedNodes_bg, ownedNodes_end, scatterFaces_bg, scatterFaces_end);
+
+    // TODO
+    // outline
+    // -------
+    // Templated locateBuckets<>() on ownedNodes by getCell().
+    // Templated locateBuckets<>() on each scatterFaces stratum with identity.
+    // Visit ancestor bucket, i.e. ourselves. This covers leaves too.
+    // for each child bucket, if nonempty:
+    //   if root or lower, recurse as usual.
+    //   else higher than root, do a special thing.
 
     // Filter out empty buckets and buckets holding only non-boundary nodes.
 
@@ -1673,7 +1689,17 @@ namespace ot {
       std::array<RankI, nSFOrient> scatterFaces_bg,
       std::array<RankI, nSFOrient> scatterFaces_end)
   {
-    /* TODO */
+    for (RankI node_iter = ownedNodes_bg; node_iter < ownedNodes_end; node_iter++)
+    {
+      const unsigned int kfaceOrient = ownedNodes[node_iter].get_cellType().get_orient_flag();
+      const RankI sf_bg = scatterFaces_bg[kfaceOrient];
+      const RankI sf_end = scatterFaces_end[kfaceOrient];
+      for (RankI sf_iter = sf_bg; sf_iter < sf_end; sf_iter++)
+      {
+        int neighbour = scatterFaces[kfaceOrient][sf_iter].get_owner();
+        visitor.m_scatterMap[ visitor.m_sendOffsetsMap[neighbour]++ ] = node_iter;
+      }
+    }
   }
 
 
