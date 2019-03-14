@@ -466,16 +466,22 @@ namespace ot {
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::dist_countCGNodes(std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart, MPI_Comm comm)
   {
-    // TODO TODO TODO
-
     using TNP = TNPoint<T,dim>;
 
+    // Counting:
     // 1. Call countCGNodes(classify=false) to agglomerate node instances -> node representatives.
     // 2. For every representative, determine which processor boundaries the node is incident on,
     //    by generating neighbor-keys and sorting them against the proc-bdry splitters.
     // 3. Each representative is copied once per incident proc-boundary.
     // 4. Send and receive the boundary layer nodes.
     // 5. Finally, sort and count nodes with countCGNodes(classify=true).
+
+    // Scattermap:
+    // 1. Before finalizing ownership of nodes and compacting the node list,
+    //    convert both hanging and non-hanging neighbour nodes into a set of
+    //    "scatterfaces."
+    //    - The scatterfaces are open k-faces that may contain owned nodes.
+    // 2. Build the scattermap from the owned nodes that are contained by scatterfaces.
 
     int nProc, rProc;
     MPI_Comm_rank(comm, &rProc);
@@ -635,6 +641,16 @@ namespace ot {
     //     then merge (faster) two sorted lists before applying the resolver.
 
 
+    // 2019-03-07
+    //   Today @masado and @milinda decided that a cell-decomposition
+    //   approach would be cleaner than trying to somehow do a single-pass streaming
+    //   node-node comparison. For one thing, hanging nodes can be quite distant
+    //   from their pointed-to nodes. For another thing, cell-decomposition
+    //   is exact, and so avoids rounding problems.
+    //
+    //   The decision to go with cell-decomposition leads to
+    //   the following "scatterfaces."
+
     //
     // "Scatter-faces"
     //
@@ -647,7 +663,7 @@ namespace ot {
     //
 
     // Generate lists of closed k-faces.
-    std::array<std::vector<ScatterFace<T,dim>>, intPow(2,dim)-1> kfaces;
+    ScatterFacesCollection kfaces;
     {
       typename std::vector<TNP>::iterator ptIter = points.begin();
       while (ptIter < points.end())
@@ -711,55 +727,31 @@ namespace ot {
       }
     }
 
-    // De-clutter the lists of closed k-faces. Now it matters that they're sorted.
+    // De-clutter the lists of closed k-faces again. Now it matters that they're sorted.
     for (std::vector<ScatterFace<T,dim>> &faceList : kfaces)
       ScatterFace<T,dim>::sortUniq(faceList);
 
-    /// for (auto &&kfaceList : kfaces)
-    /// {
-    ///   for (auto &&ptStruct : kfaceList)
-    ///   {
-    ///     fprintf(stderr, "[%d]\t(%d) \t %s\n", rProc, ptStruct.get_owner(), ptStruct.getBase32Hex(5).data());
-    ///   }
-    ///   fprintf(stderr, "[%d] ----\n", rProc);
-    /// }
 
     //
-    // Compute the scattermap.
+    // Compute the scattermap from the scatterfaces and the owned nodes.
     //
-    // > For every non-hanging ("Yes") boundary node, determine ownership.
-    // > For every hanging ("No") boundary node, insert all "base nodes" in parent cell to node list,
-    //   marking them as neither "Yes" nor "No," but as a third tag, "Base".
-    // > Sort the union of nodes according to the final desired ordering,
-    //   so that duplicates are grouped together.
+    // > For every non-hanging ("Yes") boundary (owner != -1) node, determine ownership.
+    //   Filter/compact the node list to owned non-boundary and boundary nodes.
     //
-    //   > Note: The number of possible base nodes equals the number of children
-    //     who share the node, i.e. the number of duplicates from a single processor.
-    //     If we had not collapsed duplicates before sending, we could have simply
-    //     replaced sets of hanging nodes by their respective bases, rather than
-    //     appending them. (We'd still need to re-sort though.)
+    // > Perform a top-down dual-traversal of
+    //   - the sorted list of owned nodes, and
+    //   - the sorted lists of scatterfaces.
     //
-    // > For every non-hanging node,
-    //   if it is a boundary node or a base of a boundary node, and if we own it,
-    //   then insert the node with all borrowers into the scattermap.
-    //   Note that borrowers might be listed more than once as we read the node list.
-    //
-    // > Compact the node list.
+    //   During traversal, we should find a set of lowerleft nodes, per TreeNode,
+    //   and at most one scatterface per neighbour per kface orientation, per TreeNode.
+    //   For each node, look up its open CellType, and check if there are open scatterfaces
+    //   in which the node is contained. If so, it means we need to add the node
+    //   to the scattermap, once per containing scatterface, with different neighbours.
+    //   We can also filter out non-boundary nodes. [We fixed the generate keys, so this is right.]
     //
 
-    // Current ownership policy: Least-rank-processor (without the Base tag).
-
-    // TODO 2019-03-07  Today we decided that a cell-decomposition approach would
-    //   be cleaner, since don't have to deal with rounding problems.
-
-    //TODO
-
-    // Can compute # of owned nodes without the scattermap. At least we can
-    // test the counting methods.
-
-    //
     // Mark owned nodes and finalize the counting part.
-    //
+    // Current ownership policy: Least-rank-processor (without the Base tag).
     RankI numOwnedPoints = 0;
     {
       typename std::vector<TNP>::iterator ptIter = points.begin();
@@ -792,8 +784,12 @@ namespace ot {
       }
     }
 
-    RankI numCGNodes = 0;
+    RankI numCGNodes = 0;  // The return variable for counting.
     par::Mpi_Allreduce(&numOwnedPoints, &numCGNodes, 1, MPI_SUM, comm);
+
+    // Dual traversal to collect subset of owned nodes for the scattermap.
+    // Main reason for using a separate function is the recursive depth-first traversal.
+    ScatterMap scatterMap = computeScattermap(points, kfaces);
 
     return numCGNodes;
   }
@@ -1581,30 +1577,104 @@ namespace ot {
   }
 
 
-  //
-  // SFC_NodeSort:: resolveInterface_scattermapStruct
-  //     operator()   (resolver)
-  //
   template <typename T, unsigned int dim>
-  RankI SFC_NodeSort<T,dim>::resolveInterface_scattermapStruct::
-      operator() (TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  ScatterMap SFC_NodeSort<T,dim>::computeScattermap(const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces)
   {
+    SMVisit_data visitor_data;
+
+    std::array<RankI, nSFOrient> sf_begin, sf_end;
+    for (unsigned int ii = 0; ii < scatterFaces.size(); ii++)
+    {
+      sf_begin[ii] = 0;
+      sf_end[ii] = (RankI) scatterFaces[ii].size();
+    }
+
+    // Adapters hold references to the visitor data. Different operator().
+    SMVisit_count visitor_count(visitor_data);
+    SMVisit_buildMap visitor_buildMap(visitor_data);
+
+    // Counting pass.
+    computeScattermap_impl<SMVisit_count>(
+        ownedNodes, scatterFaces,
+        0, (RankI) ownedNodes.size(),
+        sf_begin, sf_end,
+        0, m_uiMaxDepth, 0,  // Relies on special handling of the domain boundary.
+        visitor_count);
+
+    // DEBUG TODO remove
+    int rProc;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rProc);
+    for (auto &&x : visitor_data.m_sendCountMap)
+    {
+      fprintf(stderr, "[%d] -> (%d):  \t%u\n", rProc, x.first, x.second);
+    }
+
     //TODO
-    return 0;
+    /// // Mapping pass.
+    /// computeScattermap_impl<SMVisit_buildMap>(
+    ///     ownedNodes, scatterFaces,
+    ///     0, (RankI) ownedNodes.size(),
+    ///     sf_begin, sf_end,
+    ///     0, m_uiMaxDepth, 0,             // Relies on special handling of the domain boundary.
+    ///     visitor_buildMap);
+
+    // Transfer mapping data to ScatterMap struct.
+    ScatterMap sm;
+    /* TODO */
+
+    return sm;
   }
 
-  //
-  // SFC_NodeSort:: resolveInterface_scattermapStruct
-  //     computeScattermap()
-  //
   template <typename T, unsigned int dim>
-  void SFC_NodeSort<T,dim>::resolveInterface_scattermapStruct::
-      computeScattermap(std::vector<RankI> &outScattermap, std::vector<RankI> &outSendCounts, std::vector<RankI> &outSendOffsets)
+  template <typename ActionT>
+  void SFC_NodeSort<T,dim>::computeScattermap_impl(const std::vector<TNPoint<T,dim>> &ownedNodes,
+      const SFC_NodeSort<T,dim>::ScatterFacesCollection &scatterFaces,
+      RankI ownedNodes_bg, RankI ownedNodes_end,
+      std::array<RankI, nSFOrient> scatterFaces_bg,
+      std::array<RankI, nSFOrient> scatterFaces_end,
+      LevI sLev, LevI eLev, RotI pRot,
+      ActionT &visitAction)
   {
-    //TODO
+    //TODO dummy call to make sure that the compiler catches our mistakes.
+    visitAction(ownedNodes, scatterFaces, ownedNodes_bg, ownedNodes_end, scatterFaces_bg, scatterFaces_end);
+
+    // Filter out empty buckets and buckets holding only non-boundary nodes.
+
+    /* TODO */
   }
 
 
+  /** @brief Action of visitor for computeScattermap dual traversal, 1st pass counting. */
+  template <typename T, unsigned int dim>
+  void SFC_NodeSort<T,dim>::visit_count(SMVisit_data &visitor,
+      const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
+      RankI ownedNodes_bg, RankI ownedNodes_end,
+      std::array<RankI, nSFOrient> scatterFaces_bg,
+      std::array<RankI, nSFOrient> scatterFaces_end)
+  {
+    for (RankI node_iter = ownedNodes_bg; node_iter < ownedNodes_end; node_iter++)
+    {
+      const unsigned int kfaceOrient = ownedNodes[node_iter].get_cellType().get_orient_flag();
+      const RankI sf_bg = scatterFaces_bg[kfaceOrient];
+      const RankI sf_end = scatterFaces_end[kfaceOrient];
+      for (RankI sf_iter = sf_bg; sf_iter < sf_end; sf_iter++)
+      {
+        int neighbour = scatterFaces[kfaceOrient][sf_iter].get_owner();
+        visitor.m_sendCountMap[neighbour]++;
+      }
+    }
+  }
+
+  /** @brief Action of visitor for computeScattermap dual traversal, 2nd pass mapping. */
+  template <typename T, unsigned int dim>
+  void SFC_NodeSort<T,dim>::visit_buildMap(SMVisit_data &visitor,
+      const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
+      RankI ownedNodes_bg, RankI ownedNodes_end,
+      std::array<RankI, nSFOrient> scatterFaces_bg,
+      std::array<RankI, nSFOrient> scatterFaces_end)
+  {
+    /* TODO */
+  }
 
 
 

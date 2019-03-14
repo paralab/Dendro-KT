@@ -21,6 +21,7 @@
 #include <vector>
 #include <queue>
 #include <unordered_set>
+#include <map>
 #include <stdio.h>
 
 namespace ot {
@@ -191,6 +192,12 @@ namespace ot {
   };
 
 
+  /**
+   * @brief Class to represent a kface that possibly contains an owned node, while building scattermap.
+   * @description The TreeNode segment records the level and anchor coordinates of the kface.
+   *   The addition of m_owner describes what processor any contained nodes will need to be sent to.
+   *   ScatterFace objects might represent open or closed kfaces, depending on the usage scenario.
+   */
   template <typename T, unsigned int dim>
   class ScatterFace : public TreeNode<T,dim>
   {
@@ -226,6 +233,16 @@ namespace ot {
       int m_owner = -1;
   };
 
+
+  struct ScatterMap
+  {
+    std::vector<RankI> m_map;
+    std::vector<RankI> m_sendCounts;
+    std::vector<RankI> m_sendOffsets;
+    std::vector<RankI> m_sendProc;
+  };
+
+
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
@@ -253,6 +270,9 @@ namespace ot {
     static void locTreeSortAsPoints(TNPoint<T,dim> *points, RankI begin, RankI end, LevI sLev, LevI eLev, RotI pRot);
 
     private:
+
+      static constexpr unsigned int nSFOrient = intPow(2,dim)-1;
+      using ScatterFacesCollection = std::array<std::vector<ScatterFace<T,dim>>, nSFOrient>;
 
       /**
        * @brief Count the number of duplicate coordinate locations, if all are at the same level, or yield 0 if there are mixed levels.
@@ -305,24 +325,6 @@ namespace ot {
       static RankI countInstances(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int unused_order);
 
       /**
-       * @brief A ``pseudo-resolver'' object that contributes to the scattermap state during traveral.
-       *        Also the return value is not meaningful at all. Use computeScattermap after traversal.
-       * @note This method uses TNPoint::get_isSelected() to determine non-hanging ownership
-       *       and TNPoint::get_owner() to determine boundary/destination.
-       */
-      struct resolveInterface_scattermapStruct
-      {
-        RankI operator() (TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
-
-        void computeScattermap(std::vector<RankI> &outScattermap, std::vector<RankI> &outSendCounts, std::vector<RankI> &outSendOffsets);
-
-        // Iterator state.
-        RankI numOwnedPoints = 0;   // Local node index for the next scattermap entry.
-        std::vector<RankI> uniqOwnedIdx;
-        std::vector<int> destProc;
-      };
-
-      /**
        * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.
        */
       static std::vector<TreeNode<T,dim>> dist_bcastSplitters(const TreeNode<T,dim> *start, MPI_Comm comm);
@@ -334,6 +336,72 @@ namespace ot {
        *       Specifically (assuming 2:1 balancing), includes all neighbours of the host k-face.
        */
       static int getProcNeighbours(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList, unsigned int order);
+
+      /**
+       * @brief Takes sorted lists of owned nodes and scatterfaces and computes the scattermap.
+       * @note This method uses ScatterFace::get_owner() to determine destination.
+       * @note All lists must already be SFC-sorted for this to work.
+       */
+      static ScatterMap computeScattermap(const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces);
+
+      /**
+       * @brief Recursive dual-traversal to collect owned nodes for the scattermap.
+       */
+      template <typename ActionT>
+      static void computeScattermap_impl(const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
+          RankI ownedNodes_bg, RankI ownedNodes_end,
+          std::array<RankI, nSFOrient> scatterFaces_bg,
+          std::array<RankI, nSFOrient> scatterFaces_end,
+          LevI sLev, LevI eLev, RotI pRot,
+          ActionT &visitAction);
+
+      /** @brief State of visitor for computeScattermap dual traversal. */
+      struct SMVisit_data
+      {
+        // Data members.
+        std::map<int, RankI> m_sendCountMap;
+        std::vector<RankI> m_scatterMap;
+      };
+
+      /** @brief Action of visitor for computeScattermap dual traversal, 1st pass counting. */
+      static void visit_count(SMVisit_data &visitor,
+          const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
+          RankI ownedNodes_bg, RankI ownedNodes_end,
+          std::array<RankI, nSFOrient> scatterFaces_bg,
+          std::array<RankI, nSFOrient> scatterFaces_end);
+
+      /** @brief Action of visitor for computeScattermap dual traversal, 2nd pass mapping. */
+      static void visit_buildMap(SMVisit_data &visitor,
+          const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
+          RankI ownedNodes_bg, RankI ownedNodes_end,
+          std::array<RankI, nSFOrient> scatterFaces_bg,
+          std::array<RankI, nSFOrient> scatterFaces_end);
+
+      /** @brief Adapter to combine state and action for 1st pass counting. */
+      struct SMVisit_count
+      {
+        SMVisit_data &m_data;
+        SMVisit_count(SMVisit_data &data) : m_data(data) {}
+        template <class ...Ts> void operator() (Ts... args) { SFC_NodeSort::visit_count(m_data, args...); }
+      };
+
+      /** @brief Adapter to combine state and action for 2nd pass mapping. */
+      struct SMVisit_buildMap
+      {
+        SMVisit_buildMap(SMVisit_data &data) : m_data(data) {}
+
+        void operator() (
+            const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
+            RankI ownedNodes_bg, RankI ownedNodes_end,
+            std::array<RankI, nSFOrient> scatterFaces_bg,
+            std::array<RankI, nSFOrient> scatterFaces_end)
+        {
+          SFC_NodeSort::visit_buildMap(m_data, ownedNodes, scatterFaces, ownedNodes_bg, ownedNodes_end, scatterFaces_bg, scatterFaces_end);
+        }
+
+        SMVisit_data &m_data;
+      };
+
   }; // struct SFC_NodeSort
 
 
