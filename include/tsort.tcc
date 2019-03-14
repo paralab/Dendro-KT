@@ -243,59 +243,27 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
   constexpr char numChildren = TreeNode::numChildren;
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 
-  std::array<int, numChildren> counts;
-  counts.fill(0);
-  int countAncestors = 0;   // Special bucket to ensure ancestors bucketed properly.
-  for (const PointType *pt = points + begin; pt < points + end; pt++)
-  {
-    const KeyType &tn = keyfun(*pt);
-    if (separateAncestors && tn.getLevel() < lev)
-      countAncestors++;
-    else
-      counts[tn.getMortonIndex(lev)]++;
-  }
+  // -- Reconstruct offsets and bucketEnds from returned splitters. -- //
+  SFC_locateBuckets_impl<KeyFun,PointType,KeyType>(
+      points, begin, end, lev, pRot,
+      keyfun, separateAncestors, ancestorsFirst,
+      outSplitters, outAncStart, outAncEnd);
 
   std::array<RankI, numChildren+1> offsets, bucketEnds;  // Last idx represents ancestors.
-  RankI accum;
-  if (ancestorsFirst)
-    accum = begin + countAncestors;                  // Ancestors belong in front.
-  else
-    accum = begin;
-
-  /// const int a1 = (ancestorsFirst ? 1 : 0); // OLD, used when sibling and ancestor splitters were combined in one array.
-
-  std::array<PointType, numChildren+1> unsortedBuffer;
-  int bufferSize = 0;
 
   const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  ChildI child_sfc = 0;
-  for ( ; child_sfc < numChildren; child_sfc++)
+  for (ChildI child_sfc = 0; child_sfc < numChildren; child_sfc++)
   {
     ChildI child = rot_perm[child_sfc];
-    outSplitters[child_sfc] = accum;
-    offsets[child] = accum;           // Start of bucket. Moving marker.
-    accum += counts[child];
-    bucketEnds[child] = accum;        // End of bucket. Fixed marker.
+    offsets[child] = outSplitters[child_sfc];
+    bucketEnds[child] = outSplitters[child_sfc+1];
   }
-  outSplitters[child_sfc] = accum;  // Should be the end of siblings..
-
-  if (ancestorsFirst)
-  {
-    offsets[numChildren] = begin;
-    bucketEnds[numChildren] = begin + countAncestors;
-    outAncStart = begin;
-    outAncEnd = begin + countAncestors;
-  }
-  else
-  {
-    offsets[numChildren] = accum;
-    bucketEnds[numChildren] = accum + countAncestors;
-    outAncStart = accum;
-    outAncEnd = accum + countAncestors;
-  }
-
+  offsets[numChildren] = outAncStart;
+  bucketEnds[numChildren] = outAncEnd;
 
   // -- Movement phase. -- //
+  std::array<PointType, numChildren+1> unsortedBuffer;
+  int bufferSize = 0;
 
   for (char bucketId = 0; bucketId <= numChildren; bucketId++)
   {
@@ -324,10 +292,73 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
     else
       bufferSize--;
   }
-
 }
 
 
+template <typename T, unsigned int D>
+template <class KeyFun, typename PointType, typename KeyType>
+void
+SFC_Tree<T,D>:: SFC_locateBuckets_impl(const PointType *points,
+                          RankI begin, RankI end,
+                          LevI lev,
+                          RotI pRot,
+                          KeyFun keyfun,
+                          bool separateAncestors,
+                          bool ancestorsFirst,
+                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          RankI &outAncStart,
+                          RankI &outAncEnd)
+{
+  using TreeNode = TreeNode<T,D>;
+  constexpr char numChildren = TreeNode::numChildren;
+  constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  std::array<int, numChildren> counts;
+  counts.fill(0);
+  int countAncestors = 0;   // Special bucket to ensure ancestors bucketed properly.
+  for (const PointType *pt = points + begin; pt < points + end; pt++)
+  {
+    const KeyType &tn = keyfun(*pt);
+    if (separateAncestors && tn.getLevel() < lev)
+      countAncestors++;
+    else
+      counts[tn.getMortonIndex(lev)]++;
+  }
+
+  /// std::array<RankI, numChildren+1> offsets, bucketEnds;  // Last idx represents ancestors.
+  RankI accum;
+  if (ancestorsFirst)
+    accum = begin + countAncestors;                  // Ancestors belong in front.
+  else
+    accum = begin;                                   // Else first child is front.
+
+  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  ChildI child_sfc = 0;
+  for ( ; child_sfc < numChildren; child_sfc++)
+  {
+    ChildI child = rot_perm[child_sfc];
+    outSplitters[child_sfc] = accum;
+    /// offsets[child] = accum;           // Start of bucket. Moving marker.
+    accum += counts[child];
+    /// bucketEnds[child] = accum;        // End of bucket. Fixed marker.
+  }
+  outSplitters[child_sfc] = accum;  // Should be the end of siblings..
+
+  if (ancestorsFirst)
+  {
+    /// offsets[numChildren] = begin;
+    /// bucketEnds[numChildren] = begin + countAncestors;
+    outAncStart = begin;
+    outAncEnd = begin + countAncestors;
+  }
+  else
+  {
+    /// offsets[numChildren] = accum;
+    /// bucketEnds[numChildren] = accum + countAncestors;
+    outAncStart = accum;
+    outAncEnd = accum + countAncestors;
+  }
+}
 
 
 
