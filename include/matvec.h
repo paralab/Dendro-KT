@@ -1,0 +1,38 @@
+/**
+ * @file:matvec.h
+ * @author: Masado Ishii  --  UofU SoC,
+ * @date: 2019-03-15
+ * @brief: Variations of the TreeSort algorithm (tsort.h) for mesh-free matvec. Based on Dendro-5.0.
+ */
+
+#ifndef DENDRO_KT_MATVEC_H
+#define DENDRO_KT_MATVEC_H
+
+#include "treeNode.h"
+#include "tsort.h"
+#include "nsort.h"
+
+namespace fem {
+
+  template <typename T, typename da, unsigned int dim>
+  struct SFC_Matvec
+  {
+    /** @brief Finds the required buffer size at each level by bucketing points. */
+    static ot::RankI countSubtreeSizes(ot::TNPoint<T,dim> *points,
+        ot::RankI begin, ot::RankI end,
+        ot::LevI sLev,
+        ot::LevI eLev,
+        ot::RotI pRot,
+        int order,
+        std::vector<ot::RankI> &outSubtreeSizes);
+
+
+
+
+  };
+
+}//namespace fem
+
+#include "matvec.tcc"
+
+#endif//DENDRO_KT_MATVEC_H
