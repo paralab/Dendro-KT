@@ -209,6 +209,9 @@ void testGatherMap(MPI_Comm comm)
 template<unsigned int dim, unsigned int endL, unsigned int order>
 void testMatvecSubtreeSizes(MPI_Comm comm)
 {
+  using TNP = ot::TNPoint<T,dim>;
+  using da = float;
+
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -220,6 +223,15 @@ void testMatvecSubtreeSizes(MPI_Comm comm)
   NodeList<dim> nodeList;
   ot::ScatterMap scatterMap;
   ot::GatherMap gatherMap;
+
+  //
+  // The method countSubtreeSizes() counts a theoretical upper bound
+  // on the buffer capacity needed at each level in a way that should not depend
+  // on having neighbor-owned nodes. The count should be the same before and after
+  // scattering/gathering.
+  //
+  std::vector<ot::RankI> subtreeSizesBefore;
+  std::vector<ot::RankI> subtreeSizesAfter;
 
   // Example3 tree.
   Example3<dim>::fill_tree(endL, tree);
@@ -235,28 +247,32 @@ void testMatvecSubtreeSizes(MPI_Comm comm)
   for (const ot::TreeNode<T,dim> &tn : tree)
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeList);
 
-  // Resize the gathermap since we added nodes to the local list.
+  // Since we added new points to the list -> resize the gatherMap;
+  // since we are going to change order during Matvec, -> remap the scatterMap.
+  // We can't remap the scatterMap unless we have the shuffleMap (from countSubtreeSizes()).
+  //     shuffleMap: [new_i] --> original_i.
   ot::GatherMap::resizeLocalCounts(gatherMap, (ot::RankI) nodeList.size(), rProc);
+  std::vector<ot::RankI> shuffleMap(nodeList.size());
+  for (ot::RankI ii = 0; ii < nodeList.size(); ii++)
+    shuffleMap[ii] = ii;
 
-  //
-  // The method countSubtreeSizes() counts a theoretical upper bound
-  // on the buffer capacity needed at each level in a way that should not depend
-  // on having neighbor-owned nodes. The count should be the same before and after
-  // scattering/gathering.
-  //
-  std::vector<ot::RankI> subtreeSizesBefore;
-  std::vector<ot::RankI> subtreeSizesAfter;
-
-  using da = float;
-
-  //TODO should use a differnt buffer since we haven't resized scattermap yet.
-  // or should we resize the scattermap too?
-
-  // Count before.
+  // ===Count Before===  Also, this initializes the shuffleMap.
+  //                     Important: nodeList includes interior points.
   fem::SFC_Matvec<T,da,dim>::countSubtreeSizes(
-      &(*nodeList.begin()), 0, (ot::RankI) nodeList.size(),
+      &(*nodeList.begin()), &(*shuffleMap.begin()),
+      0, (ot::RankI) nodeList.size(),
       0, m_uiMaxDepth, 0, order,
       subtreeSizesBefore);
+
+  // Now that we have the shuffleMap, we can remap the scatterMap.
+  // To do it, compute the inverse of the shuffleMap (inefficiently), but just once.
+  //     shuffleMap_inv: [original_i] --> new_i.
+  std::vector<ot::RankI> shuffleMap_inv(nodeList.size());
+  for (ot::RankI ii = 0; ii < nodeList.size(); ii++)
+    shuffleMap_inv[shuffleMap[ii]] = ii;
+  // Remap the scatterMap.
+  for (ot::RankI ii = 0; ii < scatterMap.m_map.size(); ii++)
+    scatterMap.m_map[ii] = shuffleMap_inv[scatterMap.m_map[ii]];
 
   //
   // Scatter/gather.
@@ -264,38 +280,108 @@ void testMatvecSubtreeSizes(MPI_Comm comm)
   NodeList<dim> nodeListRecv(gatherMap.m_totalCount);
   NodeList<dim> sendBuf(scatterMap.m_map.size());
 
-  //TODO
-  /// // Stage send data.
-  /// for (ot::RankI ii = 0; ii < sendBuf.size(); ii++)
-  ///   sendBuf[ii] = nodeList[scatterMap.m_map[ii]];
+  // Stage send data.
+  for (ot::RankI ii = 0; ii < sendBuf.size(); ii++)
+    sendBuf[ii] = nodeList[scatterMap.m_map[ii]];
+  // Note for user: When we do this for each iteration Matvec,
+  // need to use like nodeListRecv[scaterMap.m_map[ii] + gatherMap.m_locOffset].
 
-  /// // Send/receive data.
-  /// std::vector<MPI_Request> requestSend(scatterMap.m_sendProc.size());
-  /// std::vector<MPI_Request> requestRecv(gatherMap.m_recvProc.size());
-  /// MPI_Status status;
+  // Send/receive data.
+  std::vector<MPI_Request> requestSend(scatterMap.m_sendProc.size());
+  std::vector<MPI_Request> requestRecv(gatherMap.m_recvProc.size());
+  MPI_Status status;
 
-  /// for (int sIdx = 0; sIdx < scatterMap.m_sendProc.size(); sIdx++)
-  ///   par::Mpi_Isend(sendBuf.data() + scatterMap.m_sendOffsets[sIdx],   // Send.
-  ///       scatterMap.m_sendCounts[sIdx],
-  ///       scatterMap.m_sendProc[sIdx], 0, comm, &requestSend[sIdx]);
+  for (int sIdx = 0; sIdx < scatterMap.m_sendProc.size(); sIdx++)
+    par::Mpi_Isend(sendBuf.data() + scatterMap.m_sendOffsets[sIdx],   // Send.
+        scatterMap.m_sendCounts[sIdx],
+        scatterMap.m_sendProc[sIdx], 0, comm, &requestSend[sIdx]);
 
-  /// for (int rIdx = 0; rIdx < gatherMap.m_recvProc.size(); rIdx++)
-  ///   par::Mpi_Irecv(dataArray.data() + gatherMap.m_recvOffsets[rIdx],  // Recv.
-  ///       gatherMap.m_recvCounts[rIdx],
-  ///       gatherMap.m_recvProc[rIdx], 0, comm, &requestRecv[rIdx]);
+  for (int rIdx = 0; rIdx < gatherMap.m_recvProc.size(); rIdx++)
+    par::Mpi_Irecv(nodeListRecv.data() + gatherMap.m_recvOffsets[rIdx],  // Recv.
+        gatherMap.m_recvCounts[rIdx],
+        gatherMap.m_recvProc[rIdx], 0, comm, &requestRecv[rIdx]);
 
-  /// for (int sIdx = 0; sIdx < scatterMap.m_sendProc.size(); sIdx++)     // Wait sends.
-  ///   MPI_Wait(&requestSend[sIdx], &status);
-  /// for (int rIdx = 0; rIdx < gatherMap.m_recvProc.size(); rIdx++)      // Wait recvs.
-  ///   MPI_Wait(&requestRecv[rIdx], &status);
+  for (int sIdx = 0; sIdx < scatterMap.m_sendProc.size(); sIdx++)     // Wait sends.
+    MPI_Wait(&requestSend[sIdx], &status);
+  for (int rIdx = 0; rIdx < gatherMap.m_recvProc.size(); rIdx++)      // Wait recvs.
+    MPI_Wait(&requestRecv[rIdx], &status);
 
-  // Count after.
+  // The original data must be copied to the middle of the active nodeListRecv list.
+  memcpy(nodeListRecv.data() + gatherMap.m_locOffset, nodeList.data(), sizeof(TNP)*nodeList.size());
+
+  // ===Count After===
+  std::vector<ot::RankI> dummyShuffleMap(nodeListRecv.size());
   fem::SFC_Matvec<T,da,dim>::countSubtreeSizes(
-      &(*nodeListRecv.begin()), 0, (ot::RankI) nodeListRecv.size(),
+      &(*nodeListRecv.begin()), &(*dummyShuffleMap.begin()),
+      0, (ot::RankI) nodeListRecv.size(),
       0, m_uiMaxDepth, 0, order,
       subtreeSizesAfter);
 
-  // TODO report to screen if it worked.
+
+  //
+  // Report results. Did the subtree size lists match or not?
+  //
+  ot::RankI subtreeDepthBefore_loc = subtreeSizesBefore.size(), subtreeDepthBefore_glob;
+  ot::RankI subtreeDepthAfter_loc  = subtreeSizesAfter.size(),  subtreeDepthAfter_glob;
+  ot::RankI subtreeDepthMax_glob;
+  par::Mpi_Allreduce<ot::RankI>(&subtreeDepthBefore_loc, &subtreeDepthBefore_glob, 1, MPI_MAX, comm);
+  par::Mpi_Allreduce<ot::RankI>(&subtreeDepthAfter_loc, &subtreeDepthAfter_glob, 1, MPI_MAX, comm);
+  subtreeDepthMax_glob = (subtreeDepthBefore_glob >= subtreeDepthAfter_glob ? subtreeDepthBefore_glob : subtreeDepthAfter_glob);
+  std::vector<ot::RankI> subtreeSizesBefore_glob;
+  std::vector<ot::RankI> subtreeSizesAfter_glob;
+  if (rProc == 0)
+  {
+    subtreeSizesBefore_glob.resize(nProc * subtreeDepthMax_glob, 0);
+    subtreeSizesAfter_glob.resize(nProc * subtreeDepthMax_glob, 0);
+  }
+  subtreeSizesBefore.resize(subtreeDepthMax_glob, 0);
+  subtreeSizesAfter.resize(subtreeDepthMax_glob, 0);
+  par::Mpi_Gather<ot::RankI>(subtreeSizesBefore.data(), subtreeSizesBefore_glob.data(), subtreeDepthMax_glob, 0, comm);
+  par::Mpi_Gather<ot::RankI>(subtreeSizesAfter.data(), subtreeSizesAfter_glob.data(), subtreeDepthMax_glob, 0, comm);
+
+  if (rProc == 0)
+  {
+    // We will print out procs across columns,
+    // depth down rows.
+    // Every two rows will show before and after, then a blank line separator.
+    std::vector<int> sumRows(subtreeDepthMax_glob, true);
+    std::vector<int> sumColumns(nProc, true);
+    int sumMatrix = true;
+
+    std::cout << "Subtree sizes. Cols: processors. Rows: tree levels.\n";
+    for (int col = 0; col < nProc; col++)
+      std::cout << "\t" << col;
+    std::cout << "\n";
+
+    for (int row = 0; row < subtreeDepthMax_glob; row++)
+    {
+      for (int col = 0; col < nProc; col++)
+      {
+        bool cellMatch = (subtreeSizesBefore_glob[col * subtreeDepthMax_glob + row] ==
+                          subtreeSizesAfter_glob[col * subtreeDepthMax_glob + row]);
+        sumRows[row] &= cellMatch;
+        sumColumns[col] &= cellMatch;
+      }
+      sumMatrix &= sumRows[row];
+
+      std::cout << row;
+      for (int col = 0; col < nProc; col++)
+        std::cout << "\t" << subtreeSizesBefore_glob[col * subtreeDepthMax_glob + row];
+      std::cout << "\t| " << (sumRows[row] ? "yes" : "NO!") << "\n";
+      for (int col = 0; col < nProc; col++)
+        std::cout << "\t" << subtreeSizesAfter_glob[col * subtreeDepthMax_glob + row];
+      std::cout << "\t|\n\n";
+    }
+
+    for (int col = 0; col <= nProc; col++)
+      std::cout << "----\t";
+    std::cout << "\n";
+    for (int col = 0; col < nProc; col++)
+      std::cout << "\t" << (sumColumns[col] ? "yes" : "NO!");
+    std::cout << "\n\n";
+
+    std::cout << "Overall success?  " << (sumMatrix ? "yes" : "NO!") << "\n";
+  }
 
   _DestroyHcurve();
 }

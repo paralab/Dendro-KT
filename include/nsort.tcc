@@ -732,7 +732,7 @@ namespace ot {
       }
     }
 
-    // De-clutter the lists of closed k-faces again. Now it matters that they're sorted.
+    // De-clutter the lists of closed k-faces again. Now it matters that we sort them.
     for (std::vector<ScatterFace<T,dim>> &faceList : kfaces)
       ScatterFace<T,dim>::sortUniq(faceList);
 

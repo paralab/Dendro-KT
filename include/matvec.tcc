@@ -10,7 +10,7 @@ namespace fem {
 
   template <typename T, typename da, unsigned int dim>
   ot::RankI
-  SFC_Matvec<T,da,dim>:: countSubtreeSizes(ot::TNPoint<T,dim> *points,
+  SFC_Matvec<T,da,dim>:: countSubtreeSizes(ot::TNPoint<T,dim> *points, ot::RankI *companions,
                             ot::RankI begin, ot::RankI end,
                             ot::LevI sLev,
                             ot::LevI eLev,
@@ -30,18 +30,20 @@ namespace fem {
     //
 
     using TNP = ot::TNPoint<T,dim>;
+    using Companion = ot::RankI;
     constexpr unsigned int numChildren = 1u<<dim;
     const int nPe = intPow(order+1, dim);
     /// const int nPe_ext = nPe - intPow(order-1, dim);
 
     // Re-usable buffer for quick-and-dirty bucketing.
-    static struct { ot::RankI topBegin; TNP *buf; } longBuffer = {0, nullptr};
+    static struct { ot::RankI topBegin; TNP *buf; Companion *bufComp; } longBuffer = {0, nullptr, nullptr};
     bool deleteBuffer = false;
     if (longBuffer.buf == nullptr)
     {
       deleteBuffer = true;
       longBuffer.topBegin = begin;
       longBuffer.buf = new TNP[end - begin];
+      longBuffer.bufComp = new Companion[end - begin];
     }
 
     // Move all interface points and boundary points to the beginning.
@@ -54,15 +56,25 @@ namespace fem {
 
     {
       TNP * const ourBuf = &longBuffer.buf[begin - longBuffer.topBegin];
+      Companion * const ourBufComp = &longBuffer.bufComp[begin - longBuffer.topBegin];
       ot::RankI lidChildExteriorPts = 0;
       ot::RankI lidChildInteriorPts = numChildExteriorPts;
       for (ot::RankI ptIter = begin; ptIter < end; ptIter++)
         if (points[ptIter].get_cellType(sLev).get_dim_flag() < dim)
-          ourBuf[lidChildExteriorPts++] = points[ptIter];
+        {
+          ourBuf[lidChildExteriorPts] = points[ptIter];
+          ourBufComp[lidChildExteriorPts] = companions[ptIter];
+          lidChildExteriorPts++;
+        }
         else
-          ourBuf[lidChildInteriorPts++] = points[ptIter];
+        {
+          ourBuf[lidChildInteriorPts] = points[ptIter];
+          ourBufComp[lidChildInteriorPts] = companions[ptIter];
+          lidChildInteriorPts++;
+        }
 
-      memcpy(points, ourBuf, sizeof(TNP) * (end - begin));
+      memcpy(points + begin, ourBuf, sizeof(TNP) * (end - begin));
+      memcpy(companions + begin, ourBufComp, sizeof(Companion) * (end - begin));
     }
 
 
@@ -75,6 +87,10 @@ namespace fem {
 
     ot::RankI myContribution = 0;
 
+    // Resize is a pre-order operation.
+    if (sLev + 1 > outSubtreeSizes.size())
+      outSubtreeSizes.resize(sLev+1, 0);
+
     // Add contributions.
     if (bucketIsLeaf)
     {
@@ -85,9 +101,9 @@ namespace fem {
       // Regular bucketing, except we know there will be no ancestor points.
       std::array<ot::RankI, 1+numChildren> tempSplitters;
       ot::RankI unused_ancS, unused_ancE;
-      ot::SFC_Tree<T,dim>::template SFC_bucketing_impl
-          <ot::KeyFunIdentity_Pt<TNP>, TNP, TNP>(
-          points, numChildExteriorPts, end, sLev, pRot,
+      ot::SFC_Tree<T,dim>::template SFC_bucketing_general
+          <ot::KeyFunIdentity_Pt<TNP>, TNP, TNP, Companion, true>(
+          points, companions, numChildExteriorPts, end, sLev, pRot,
           ot::KeyFunIdentity_Pt<TNP>(), false, false,
           tempSplitters, unused_ancS, unused_ancE);
 
@@ -104,7 +120,7 @@ namespace fem {
           ot::RotI cRot = orientLookup[child];
 
           myContribution += countSubtreeSizes(
-              points, tempSplitters[child_sfc], tempSplitters[child_sfc+1],
+              points, companions, tempSplitters[child_sfc], tempSplitters[child_sfc+1],
               sLev+1, eLev, cRot,
               order, outSubtreeSizes);
         }
@@ -117,7 +133,7 @@ namespace fem {
           ot::RotI cRot = orientLookup[child];
 
           myContribution += countSubtreeSizes(
-              points, tempSplitters[child_sfc], tempSplitters[child_sfc+1],
+              points, companions, tempSplitters[child_sfc], tempSplitters[child_sfc+1],
               sLev+1, eLev, pRot,
               order, outSubtreeSizes);
         }
@@ -128,12 +144,13 @@ namespace fem {
     if (deleteBuffer == true)
     {
       delete [] longBuffer.buf;
+      delete [] longBuffer.bufComp;
       longBuffer.topBegin = 0;
       longBuffer.buf = nullptr;
+      longBuffer.bufComp = nullptr;
     }
 
     // Set/return contribution.
-    outSubtreeSizes.resize(sLev+1, 0);
     if (myContribution > outSubtreeSizes[sLev])
       outSubtreeSizes[sLev] = myContribution;
 
