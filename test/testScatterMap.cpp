@@ -37,7 +37,13 @@ void distPrune(std::vector<X> &list, MPI_Comm comm)
   list.resize(mySeg);
 }
 
+template<unsigned int dim, unsigned int endL, unsigned int order>
+void testGatherMap(MPI_Comm comm);
 
+
+//
+// main()
+//
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
@@ -51,6 +57,24 @@ int main(int argc, char * argv[])
   const unsigned int endL = 3;
   const unsigned int order = 2;
 
+  testGatherMap<dim,endL,order>(comm);
+
+  MPI_Finalize();
+
+  return 0;
+}
+
+
+
+//
+// testGatherMap()
+//
+template<unsigned int dim, unsigned int endL, unsigned int order>
+void testGatherMap(MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
   double tol = 0.05;
 
   _InitializeHcurve(dim);
@@ -170,8 +194,4 @@ int main(int argc, char * argv[])
   // ----------------------------
 
   _DestroyHcurve();
-
-  MPI_Finalize();
-
-  return 0;
 }
