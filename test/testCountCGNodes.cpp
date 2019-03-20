@@ -48,6 +48,9 @@ void distPrune(std::vector<X> &list, MPI_Comm comm)
 }
 
 
+template <unsigned int dim, unsigned int order>
+void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistributed, double tol, MPI_Comm comm);
+
 
 int main(int argc, char * argv[])
 {
@@ -69,15 +72,8 @@ int main(int argc, char * argv[])
 
   unsigned int numPoints;
   Tree<dim> tree;
-  NodeList<dim> nodeListExterior;
-  NodeList<dim> nodeListInterior;
 
-  ot::RankI numUniqueInteriorNodes;
-  ot::RankI numUniqueExteriorNodes;
-  ot::RankI numUniqueNodes;
-
-  ot::ScatterMap scatterMap;
-  ot::GatherMap gatherMap;
+  char msgPrefix[50];
 
   // -------------
 
@@ -103,98 +99,21 @@ int main(int argc, char * argv[])
 
   // Example1
   Example1<dim>::fill_tree(endL, tree);
-  if (RunDistributed)
-  {
-    distPrune(tree, comm);
-    ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
-  }
-  for (const ot::TreeNode<T,dim> &tn : tree)
-  {
-    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
-  }
-  /// for (auto &&n : nodeListExterior)
-  /// {
-  ///   if (!n.isOnDomainBoundary())
-  ///     std::cout << n.getFinestOpenContainer().getBase32Hex().data() << "\n";
-  /// }
-  numUniqueInteriorNodes = nodeListInterior.size();
-  if (RunDistributed)
-  {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
-    ot::RankI globInterior = 0;
-    par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
-    numUniqueInteriorNodes = globInterior;
-  }
-  else
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
-  numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
-  /// for (auto &&n : nodeListExterior)
-  ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
-  printf("Example1: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
+  sprintf(msgPrefix, "Example1");
+  testExample<dim,order>(msgPrefix, tree, RunDistributed, tol, comm);
   tree.clear();
-  nodeListInterior.clear();
-  nodeListExterior.clear();
 
   // Example2
   Example2<dim>::fill_tree(endL, tree);
-  if (RunDistributed)
-  {
-    distPrune(tree, comm);
-    ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
-  }
-  for (const ot::TreeNode<T,dim> &tn : tree)
-  {
-    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
-  }
-  numUniqueInteriorNodes = nodeListInterior.size();
-  if (RunDistributed)
-  {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
-    ot::RankI globInterior = 0;
-    par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
-    numUniqueInteriorNodes = globInterior;
-  }
-  else
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
-  numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
-  /// for (auto &&n : nodeListExterior)
-  ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
-  printf("Example2: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
+  sprintf(msgPrefix, "Example2");
+  testExample<dim,order>(msgPrefix, tree, RunDistributed, tol, comm);
   tree.clear();
-  nodeListInterior.clear();
-  nodeListExterior.clear();
 
   // Example3
   Example3<dim>::fill_tree(endL, tree);
-  if (RunDistributed)
-  {
-    distPrune(tree, comm);
-    ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
-  }
-  for (const ot::TreeNode<T,dim> &tn : tree)
-  {
-    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
-  }
-  numUniqueInteriorNodes = nodeListInterior.size();
-  if (RunDistributed)
-  {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
-    ot::RankI globInterior = 0;
-    par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
-    numUniqueInteriorNodes = globInterior;
-  }
-  else
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
-  numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
-  /// for (auto &&n : nodeListExterior)
-  ///   std::cout << n.getBase32Hex().data() << " \t " << n.getBase32Hex(5).data() << "\n";
-  printf("Example3: Algorithm says # points == %u \t [Int:%u] [Ext:%u].\n", numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes);
+  sprintf(msgPrefix, "Example3");
+  testExample<dim,order>(msgPrefix, tree, RunDistributed, tol, comm);
   tree.clear();
-  nodeListInterior.clear();
-  nodeListExterior.clear();
 
   _DestroyHcurve();
 
@@ -202,3 +121,62 @@ int main(int argc, char * argv[])
 
   return 0;
 }
+
+
+
+//
+// testExample()
+//
+template <unsigned int dim, unsigned int order>
+void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistributed, double tol, MPI_Comm comm)
+{
+  NodeList<dim> nodeListExterior;
+  NodeList<dim> nodeListInterior;
+  NodeList<dim> nodeListCombined;
+
+  ot::ScatterMap scatterMap;
+  ot::GatherMap gatherMap;
+
+  ot::ScatterMap scatterMapCombined;
+  ot::GatherMap gatherMapCombined;
+
+  ot::RankI numUniqueInteriorNodes;
+  ot::RankI numUniqueExteriorNodes;
+  ot::RankI numUniqueNodes;
+
+  ot::RankI numUniqueCombinedNodes;
+
+
+  if (RunDistributed)
+  {
+    distPrune(tree, comm);
+    ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
+  }
+  for (const ot::TreeNode<T,dim> &tn : tree)
+  {
+    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
+    ot::Element<T,dim>(tn).appendNodes(order, nodeListCombined);
+  }
+  numUniqueInteriorNodes = nodeListInterior.size();
+  if (RunDistributed)
+  {
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
+    ot::RankI globInterior = 0;
+    par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
+    numUniqueInteriorNodes = globInterior;
+    numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListCombined, order, tree.data(), scatterMapCombined, gatherMapCombined, comm);
+  }
+  else
+  {
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListExterior.begin()), &(*nodeListExterior.end()), order);
+    numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListCombined.begin()), &(*nodeListCombined.end()), order);
+  }
+  numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
+  printf("%s: Algorithm says # points == %u \t [Int:%u] [Ext:%u] [Comb:%u].\n", msgPrefix, numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes, numUniqueCombinedNodes);
+  nodeListInterior.clear();
+  nodeListExterior.clear();
+  nodeListCombined.clear();
+}
+
+
