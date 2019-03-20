@@ -49,15 +49,15 @@ namespace fem {
     // which suffices to compute our upper bound.
     ot::RankI numChildExteriorPts = 0;
     for (ot::RankI ptIter = begin; ptIter < end; ptIter++)
-      if (points[ptIter].get_CellType(sLev).get_dim_flag() < dim)
+      if (points[ptIter].get_cellType(sLev).get_dim_flag() < dim)
         numChildExteriorPts++;
 
     {
-      TNP * const ourBuf = &longBuffer[begin - longBuffer.topBegin];
+      TNP * const ourBuf = &longBuffer.buf[begin - longBuffer.topBegin];
       ot::RankI lidChildExteriorPts = 0;
       ot::RankI lidChildInteriorPts = numChildExteriorPts;
       for (ot::RankI ptIter = begin; ptIter < end; ptIter++)
-        if (points[ptIter].get_CellType(sLev).get_dim_flag() < dim)
+        if (points[ptIter].get_cellType(sLev).get_dim_flag() < dim)
           ourBuf[lidChildExteriorPts++] = points[ptIter];
         else
           ourBuf[lidChildInteriorPts++] = points[ptIter];
@@ -127,7 +127,7 @@ namespace fem {
     // Clean up the re-usable buffer if at top of recursion.
     if (deleteBuffer == true)
     {
-      delete [] longBuffer;
+      delete [] longBuffer.buf;
       longBuffer.topBegin = 0;
       longBuffer.buf = nullptr;
     }

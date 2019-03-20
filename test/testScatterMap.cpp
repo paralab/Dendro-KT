@@ -11,6 +11,7 @@
 
 #include "treeNode.h"
 #include "nsort.h"
+#include "matvec.h"
 
 #include "hcurvedata.h"
 
@@ -40,6 +41,9 @@ void distPrune(std::vector<X> &list, MPI_Comm comm)
 template<unsigned int dim, unsigned int endL, unsigned int order>
 void testGatherMap(MPI_Comm comm);
 
+template<unsigned int dim, unsigned int endL, unsigned int order>
+void testMatvecSubtreeSizes(MPI_Comm comm);
+
 
 //
 // main()
@@ -57,7 +61,9 @@ int main(int argc, char * argv[])
   const unsigned int endL = 3;
   const unsigned int order = 2;
 
-  testGatherMap<dim,endL,order>(comm);
+  /// testGatherMap<dim,endL,order>(comm);
+
+  testMatvecSubtreeSizes<dim,endL,order>(comm);
 
   MPI_Finalize();
 
@@ -195,3 +201,102 @@ void testGatherMap(MPI_Comm comm)
 
   _DestroyHcurve();
 }
+
+
+//
+// testMatvecSubtreeSizes()
+//
+template<unsigned int dim, unsigned int endL, unsigned int order>
+void testMatvecSubtreeSizes(MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+  double tol = 0.05;
+
+  _InitializeHcurve(dim);
+
+  Tree<dim> tree;
+  NodeList<dim> nodeList;
+  ot::ScatterMap scatterMap;
+  ot::GatherMap gatherMap;
+
+  // Example3 tree.
+  Example3<dim>::fill_tree(endL, tree);
+  distPrune(tree, comm);
+  ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
+
+  // Add exterior points and resolve ownership/hanging nodes.
+  for (const ot::TreeNode<T,dim> &tn : tree)
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
+  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, tree.data(), scatterMap, gatherMap, comm);
+
+  // Add interior points (we definitely own them and they cannot be hanging).
+  for (const ot::TreeNode<T,dim> &tn : tree)
+    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeList);
+
+  // Resize the gathermap since we added nodes to the local list.
+  ot::GatherMap::resizeLocalCounts(gatherMap, (ot::RankI) nodeList.size(), rProc);
+
+  //
+  // The method countSubtreeSizes() counts a theoretical upper bound
+  // on the buffer capacity needed at each level in a way that should not depend
+  // on having neighbor-owned nodes. The count should be the same before and after
+  // scattering/gathering.
+  //
+  std::vector<ot::RankI> subtreeSizesBefore;
+  std::vector<ot::RankI> subtreeSizesAfter;
+
+  using da = float;
+
+  //TODO should use a differnt buffer since we haven't resized scattermap yet.
+  // or should we resize the scattermap too?
+
+  // Count before.
+  fem::SFC_Matvec<T,da,dim>::countSubtreeSizes(
+      &(*nodeList.begin()), 0, (ot::RankI) nodeList.size(),
+      0, m_uiMaxDepth, 0, order,
+      subtreeSizesBefore);
+
+  //
+  // Scatter/gather.
+  //
+  NodeList<dim> nodeListRecv(gatherMap.m_totalCount);
+  NodeList<dim> sendBuf(scatterMap.m_map.size());
+
+  //TODO
+  /// // Stage send data.
+  /// for (ot::RankI ii = 0; ii < sendBuf.size(); ii++)
+  ///   sendBuf[ii] = nodeList[scatterMap.m_map[ii]];
+
+  /// // Send/receive data.
+  /// std::vector<MPI_Request> requestSend(scatterMap.m_sendProc.size());
+  /// std::vector<MPI_Request> requestRecv(gatherMap.m_recvProc.size());
+  /// MPI_Status status;
+
+  /// for (int sIdx = 0; sIdx < scatterMap.m_sendProc.size(); sIdx++)
+  ///   par::Mpi_Isend(sendBuf.data() + scatterMap.m_sendOffsets[sIdx],   // Send.
+  ///       scatterMap.m_sendCounts[sIdx],
+  ///       scatterMap.m_sendProc[sIdx], 0, comm, &requestSend[sIdx]);
+
+  /// for (int rIdx = 0; rIdx < gatherMap.m_recvProc.size(); rIdx++)
+  ///   par::Mpi_Irecv(dataArray.data() + gatherMap.m_recvOffsets[rIdx],  // Recv.
+  ///       gatherMap.m_recvCounts[rIdx],
+  ///       gatherMap.m_recvProc[rIdx], 0, comm, &requestRecv[rIdx]);
+
+  /// for (int sIdx = 0; sIdx < scatterMap.m_sendProc.size(); sIdx++)     // Wait sends.
+  ///   MPI_Wait(&requestSend[sIdx], &status);
+  /// for (int rIdx = 0; rIdx < gatherMap.m_recvProc.size(); rIdx++)      // Wait recvs.
+  ///   MPI_Wait(&requestRecv[rIdx], &status);
+
+  // Count after.
+  fem::SFC_Matvec<T,da,dim>::countSubtreeSizes(
+      &(*nodeListRecv.begin()), 0, (ot::RankI) nodeListRecv.size(),
+      0, m_uiMaxDepth, 0, order,
+      subtreeSizesAfter);
+
+  // TODO report to screen if it worked.
+
+  _DestroyHcurve();
+}
+
