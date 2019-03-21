@@ -23,8 +23,7 @@ namespace fem {
      */
     static ot::RankI countSubtreeSizes(ot::TNPoint<T,dim> *points, ot::RankI *companions,
         ot::RankI begin, ot::RankI end,
-        ot::LevI sLev,
-        ot::LevI eLev,
+        ot::LevI subtreeRootLev,
         ot::RotI pRot,
         int order,
         std::vector<ot::RankI> &outSubtreeSizes);

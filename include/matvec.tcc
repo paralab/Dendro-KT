@@ -12,8 +12,7 @@ namespace fem {
   ot::RankI
   SFC_Matvec<T,da,dim>:: countSubtreeSizes(ot::TNPoint<T,dim> *points, ot::RankI *companions,
                             ot::RankI begin, ot::RankI end,
-                            ot::LevI sLev,
-                            ot::LevI eLev,
+                            ot::LevI subtreeRootLev,
                             ot::RotI pRot,
                             int order,
                             std::vector<ot::RankI> &outSubtreeSizes)
@@ -51,7 +50,7 @@ namespace fem {
     // which suffices to compute our upper bound.
     ot::RankI numChildExteriorPts = 0;
     for (ot::RankI ptIter = begin; ptIter < end; ptIter++)
-      if (points[ptIter].get_cellType(sLev).get_dim_flag() < dim)
+      if (points[ptIter].get_cellType(subtreeRootLev+1).get_dim_flag() < dim)
         numChildExteriorPts++;
 
     {
@@ -60,7 +59,7 @@ namespace fem {
       ot::RankI lidChildExteriorPts = 0;
       ot::RankI lidChildInteriorPts = numChildExteriorPts;
       for (ot::RankI ptIter = begin; ptIter < end; ptIter++)
-        if (points[ptIter].get_cellType(sLev).get_dim_flag() < dim)
+        if (points[ptIter].get_cellType(subtreeRootLev+1).get_dim_flag() < dim)
         {
           ourBuf[lidChildExteriorPts] = points[ptIter];
           ourBufComp[lidChildExteriorPts] = companions[ptIter];
@@ -82,14 +81,14 @@ namespace fem {
     // (Theoretically we should be able to tell from just the first point.)
     bool bucketIsLeaf = true;
     for (ot::RankI ptIter = numChildExteriorPts;
-        ptIter < end && (bucketIsLeaf = (points[ptIter].getLevel() < sLev));
+        ptIter < end && (bucketIsLeaf = !(points[ptIter].getLevel() > subtreeRootLev));
         ptIter++);
 
     ot::RankI myContribution = 0;
 
     // Resize is a pre-order operation.
-    if (sLev + 1 > outSubtreeSizes.size())
-      outSubtreeSizes.resize(sLev+1, 0);
+    if (subtreeRootLev + 1 > outSubtreeSizes.size())
+      outSubtreeSizes.resize(subtreeRootLev+1, 0);
 
     // Add contributions.
     if (bucketIsLeaf)
@@ -103,7 +102,7 @@ namespace fem {
       ot::RankI unused_ancS, unused_ancE;
       ot::SFC_Tree<T,dim>::template SFC_bucketing_general
           <ot::KeyFunIdentity_Pt<TNP>, TNP, TNP, Companion, true>(
-          points, companions, numChildExteriorPts, end, sLev, pRot,
+          points, companions, numChildExteriorPts, end, subtreeRootLev+1, pRot,
           ot::KeyFunIdentity_Pt<TNP>(), false, false,
           tempSplitters, unused_ancS, unused_ancE);
 
@@ -112,31 +111,16 @@ namespace fem {
       const ot::ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
       const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
 
-      if (sLev > 0)   // Recurse normally.
+      // Recurse normally.
+      for (ot::ChildI child_sfc = 0; child_sfc < numChildren; child_sfc++)
       {
-        for (ot::ChildI child_sfc = 0; child_sfc < numChildren; child_sfc++)
-        {
-          ot::ChildI child = rot_perm[child_sfc];
-          ot::RotI cRot = orientLookup[child];
+        ot::ChildI child = rot_perm[child_sfc];
+        ot::RotI cRot = orientLookup[child];
 
-          myContribution += countSubtreeSizes(
-              points, companions, tempSplitters[child_sfc], tempSplitters[child_sfc+1],
-              sLev+1, eLev, cRot,
-              order, outSubtreeSizes);
-        }
-      }
-      else            // Recurse with special handling for children of level 0.
-      {
-        for (ot::ChildI child_sfc = 0; child_sfc < numChildren; child_sfc++)
-        {
-          ot::ChildI child = rot_perm[child_sfc];
-          ot::RotI cRot = orientLookup[child];
-
-          myContribution += countSubtreeSizes(
-              points, companions, tempSplitters[child_sfc], tempSplitters[child_sfc+1],
-              sLev+1, eLev, pRot,
-              order, outSubtreeSizes);
-        }
+        myContribution += countSubtreeSizes(
+            points, companions, tempSplitters[child_sfc], tempSplitters[child_sfc+1],
+            subtreeRootLev+1, cRot,
+            order, outSubtreeSizes);
       }
     }
 
@@ -151,8 +135,8 @@ namespace fem {
     }
 
     // Set/return contribution.
-    if (myContribution > outSubtreeSizes[sLev])
-      outSubtreeSizes[sLev] = myContribution;
+    if (myContribution > outSubtreeSizes[subtreeRootLev])
+      outSubtreeSizes[subtreeRootLev] = myContribution;
 
     return myContribution;
   }// end function()

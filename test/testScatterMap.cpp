@@ -57,9 +57,9 @@ int main(int argc, char * argv[])
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  constexpr unsigned int dim = 3;
-  const unsigned int endL = 3;
-  const unsigned int order = 2;
+  constexpr unsigned int dim = 2;
+  const unsigned int endL = 4;
+  const unsigned int order = 3;
 
   /// testGatherMap<dim,endL,order>(comm);
 
@@ -238,6 +238,10 @@ void testMatvecSubtreeSizes(MPI_Comm comm)
   distPrune(tree, comm);
   ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
 
+  if (rProc == 0)
+    std::cout << "The total number of points in the tree is "
+        << Example3<dim>::num_points(endL, order) << ".\n";
+
   // Add exterior points and resolve ownership/hanging nodes.
   for (const ot::TreeNode<T,dim> &tn : tree)
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
@@ -261,8 +265,14 @@ void testMatvecSubtreeSizes(MPI_Comm comm)
   fem::SFC_Matvec<T,da,dim>::countSubtreeSizes(
       &(*nodeList.begin()), &(*shuffleMap.begin()),
       0, (ot::RankI) nodeList.size(),
-      0, m_uiMaxDepth, 0, order,
+      0, 0, order,
       subtreeSizesBefore);
+
+  /// fem::SFC_Matvec<T,da,dim>::countSubtreeSizes(
+  ///     &(*nodeList.begin()), &(*shuffleMap.begin()),
+  ///     0, (ot::RankI) nodeList.size(),
+  ///     0, 0, order,
+  ///     subtreeSizesAfter);    // Basic check to see if it matches after sorting.
 
   // Now that we have the shuffleMap, we can remap the scatterMap.
   // To do it, compute the inverse of the shuffleMap (inefficiently), but just once.
@@ -314,7 +324,7 @@ void testMatvecSubtreeSizes(MPI_Comm comm)
   fem::SFC_Matvec<T,da,dim>::countSubtreeSizes(
       &(*nodeListRecv.begin()), &(*dummyShuffleMap.begin()),
       0, (ot::RankI) nodeListRecv.size(),
-      0, m_uiMaxDepth, 0, order,
+      0, 0, order,
       subtreeSizesAfter);
 
 
