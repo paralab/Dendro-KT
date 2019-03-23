@@ -986,10 +986,16 @@ namespace ot {
 
         if (!allIdentical)
         {
-          locTreeSortAsPoints(points,
-              tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
-              sLev+1, eLev,
-              cRot);
+          if (sLev > 0)
+            locTreeSortAsPoints(points,
+                tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+                sLev+1, eLev,
+                cRot);
+          else
+            locTreeSortAsPoints(points,
+                tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+                sLev+1, eLev,
+                pRot);
         }
         else
         {
@@ -1858,6 +1864,38 @@ namespace ot {
     return gm;
   }
 
+
+  template <typename T, unsigned int dim>
+  template <typename da>
+  void SFC_NodeSort<T,dim>::ghostExchange(da *data, da *sendBuf, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm)
+  {
+    const RankI sendSize = sm.m_map.size();
+    const da * const mydata = data + gm.m_locOffset;
+
+    // Stage send data.
+    for (ot::RankI ii = 0; ii < sendSize; ii++)
+      sendBuf[ii] = mydata[sm.m_map[ii]];
+
+    // Send/receive data.
+    std::vector<MPI_Request> requestSend(sm.m_sendProc.size());
+    std::vector<MPI_Request> requestRecv(gm.m_recvProc.size());
+    MPI_Status status;
+
+    for (int sIdx = 0; sIdx < sm.m_sendProc.size(); sIdx++)
+      par::Mpi_Isend(sendBuf+ sm.m_sendOffsets[sIdx],   // Send.
+          sm.m_sendCounts[sIdx],
+          sm.m_sendProc[sIdx], 0, comm, &requestSend[sIdx]);
+
+    for (int rIdx = 0; rIdx < gm.m_recvProc.size(); rIdx++)
+      par::Mpi_Irecv(data + gm.m_recvOffsets[rIdx],  // Recv.
+          gm.m_recvCounts[rIdx],
+          gm.m_recvProc[rIdx], 0, comm, &requestRecv[rIdx]);
+
+    for (int sIdx = 0; sIdx < sm.m_sendProc.size(); sIdx++)     // Wait sends.
+      MPI_Wait(&requestSend[sIdx], &status);
+    for (int rIdx = 0; rIdx < gm.m_recvProc.size(); rIdx++)      // Wait recvs.
+      MPI_Wait(&requestRecv[rIdx], &status);
+  }
 
   // ============================ End: SFC_NodeSort ============================ //
 

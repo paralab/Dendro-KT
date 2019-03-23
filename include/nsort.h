@@ -299,6 +299,14 @@ namespace ot {
      */
     static void locTreeSortAsPoints(TNPoint<T,dim> *points, RankI begin, RankI end, LevI sLev, LevI eLev, RotI pRot);
 
+    /** @brief Stage and send our data (using ScatterMap), and receive ghost data into ghost buffers (using GatherMap). */
+    //TODO multiple data arrays in parallel. Use variadic templates.
+    //TODO Might need reverse exchange eventually?
+    //TODO this function doesn't really belong in this class, it doesn't depend on T or dim at all.
+    template <typename da>
+    static void ghostExchange(da *dataAndGhostBuffers, da *sendBufferSpace, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm);
+
+
     private:
 
       static constexpr unsigned int nSFOrient = intPow(2,dim)-1;
@@ -442,8 +450,6 @@ namespace ot {
 
       /** @brief Exchange counts from senders to receivers. */
       static GatherMap scatter2gather(const ScatterMap &sm, RankI localCount, MPI_Comm comm);
-
-
   }; // struct SFC_NodeSort
 
 

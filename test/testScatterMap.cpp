@@ -44,6 +44,9 @@ void testGatherMap(MPI_Comm comm);
 template<unsigned int dim, unsigned int endL, unsigned int order>
 void testMatvecSubtreeSizes(MPI_Comm comm);
 
+template <unsigned int dim, unsigned int endL, unsigned int order>
+void testUniformGrid(MPI_Comm comm);
+
 
 //
 // main()
@@ -63,7 +66,9 @@ int main(int argc, char * argv[])
 
   /// testGatherMap<dim,endL,order>(comm);
 
-  testMatvecSubtreeSizes<dim,endL,order>(comm);
+  /// testMatvecSubtreeSizes<dim,endL,order>(comm);
+
+  testUniformGrid<dim,endL,order>(comm);
 
   MPI_Finalize();
 
@@ -396,3 +401,122 @@ void testMatvecSubtreeSizes(MPI_Comm comm)
   _DestroyHcurve();
 }
 
+
+
+template <unsigned int dim, unsigned int endL, unsigned int order>
+void testUniformGrid(MPI_Comm comm)
+{
+  using TNP = ot::TNPoint<T,dim>;
+
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+  double tol = 0.05;
+
+  _InitializeHcurve(dim);
+
+  Tree<dim> tree;
+  ot::ScatterMap scatterMap;
+  ot::GatherMap gatherMap;
+
+  //
+  // In this test we will generate the nodes from a uniform grid.
+  // We want to make sure that the nodes we have after global resolving
+  // + the nodes we get from ghost exchange is equal to the set of
+  // nodes we would get from our partition of the tree.
+  //
+
+  // Example2 tree.
+  Example2<dim>::fill_tree(endL, tree);
+  distPrune(tree, comm);
+  ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
+
+  if (rProc == 0)
+    std::cout << "The total number of points in the tree is "
+        << Example2<dim>::num_points(endL, order) << ".\n";
+
+  // The nodes that we should theoretically end up with after resolution and ghost exchange.
+  std::vector<TNP> theoreticalNodes;
+  for (auto &&tn : tree)
+    ot::Element<T,dim>(tn).appendNodes(order, theoreticalNodes);
+  /// ot::SFC_Tree<T,dim>::template locTreeSort<TNP>(theoreticalNodes.data(), 0, (ot::RankI) theoreticalNodes.size(), 0, m_uiMaxDepth, 0);   // Uses level.
+  ot::SFC_NodeSort<T,dim>::locTreeSortAsPoints(theoreticalNodes.data(), 0, (ot::RankI) theoreticalNodes.size(), 0, m_uiMaxDepth, 0);
+  /// ot::SFC_Tree<T,dim>::locRemoveDuplicates(theoreticalNodes);    // Can't; doesn't work on TNP.
+  // Quick and dirty quadratic running time instead.
+  ot::RankI thIterEnd = theoreticalNodes.size();
+  for (ot::RankI thIter = 1; thIter < thIterEnd; thIter++)
+  {
+    if (theoreticalNodes[thIter] == theoreticalNodes[thIter-1])
+    {
+      theoreticalNodes.erase(theoreticalNodes.begin() + thIter);
+      thIter--;
+      thIterEnd--;
+    }
+  }
+  theoreticalNodes.resize(thIterEnd);
+
+  // The actual nodes.
+  std::vector<TNP> nodeList;
+
+  // Append all exterior nodes, then do global resolving ownership. (There are no hanging nodes).
+  for (auto &&tn : tree)
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
+  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, tree.data(), scatterMap, gatherMap, comm);
+
+  // Allocate space for sendbuffer.
+  std::vector<TNP> sendBuf(scatterMap.m_map.size());
+
+  // One-time ghost exchange.
+  nodeList.resize(gatherMap.m_totalCount);
+  if (gatherMap.m_locOffset > 0)
+  {
+    // Shift local data up into mydata offset.
+    for (ot::RankI ii = 0; ii < gatherMap.m_locCount; ii++)
+      nodeList[gatherMap.m_locOffset + gatherMap.m_locCount - 1 - ii] = nodeList[gatherMap.m_locCount - 1 - ii];
+  }
+  ot::SFC_NodeSort<T,dim>::template ghostExchange<TNP>(nodeList.data(), sendBuf.data(), scatterMap, gatherMap, comm);
+
+  // Append all interior nodes.
+  for (auto &&tn : tree)
+    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeList);
+
+  // Sort collection of nodes (and they should already be unique).
+  /// ot::SFC_Tree<T,dim>::template locTreeSort<TNP>(nodeList.data(), 0, (ot::RankI) nodeList.size(), 0, m_uiMaxDepth, 0);    // Uses level.
+  ot::SFC_NodeSort<T,dim>::locTreeSortAsPoints(nodeList.data(), 0, (ot::RankI) nodeList.size(), 0, m_uiMaxDepth, 0);
+
+
+  // Compare actual nodes to theoretical nodes.
+  int locSuccess, globSuccess;
+  bool matchSizes = (nodeList.size() == theoreticalNodes.size());
+  if (!matchSizes)
+  {
+    fprintf(stderr, "[%d] Sizes MISMATCH t:%lu a:%lu\n", rProc, theoreticalNodes.size(), nodeList.size());
+    locSuccess = false;
+  }
+  else
+  {
+    bool matchContents = true;
+    for (ot::RankI ii = 0; ii < nodeList.size(); ii++)
+    {
+      if (nodeList[ii] != theoreticalNodes[ii])
+      {
+        fprintf(stderr, "[%d] index==%u,  (%u).%s  !==  (%u).%s\n", rProc, ii,
+            theoreticalNodes[ii].getLevel(), theoreticalNodes[ii].getBase32Hex(8).data(),
+            nodeList[ii].getLevel(), nodeList[ii].getBase32Hex(8).data());
+        matchContents = false;
+        break;
+      }
+    }
+
+    fprintf(stderr, "[%d] Sizes match (%lu).  Contents %s\n", rProc, nodeList.size(),
+        (matchContents ? "match" : "MISMATCH"));
+    locSuccess = matchSizes && matchContents;
+  }
+
+  par::Mpi_Reduce(&locSuccess, &globSuccess, 1, MPI_LAND, 0, comm);
+
+  if (rProc == 0)
+    fprintf(stderr, "Overall success?  %s\n", (globSuccess ? "yes" : "NO!"));
+
+  _DestroyHcurve();
+}
