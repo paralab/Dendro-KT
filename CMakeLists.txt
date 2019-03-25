@@ -252,3 +252,8 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testScatterMap.cpp)
 add_executable(tstScatterMap ${SRC_FILES})
 target_include_directories(tstScatterMap PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstScatterMap dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testScatterUniq.cpp)
+add_executable(tstScatterUniq ${SRC_FILES})
+target_include_directories(tstScatterUniq PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstScatterUniq dendroKT ${MPI_LIBRARIES} m)
