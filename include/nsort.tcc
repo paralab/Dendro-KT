@@ -644,6 +644,12 @@ namespace ot {
     //     then merge (faster) two sorted lists before applying the resolver.
 
 
+    // ----- For the refactored version:
+    //         Move the final compaction up here,
+    //         then in dist_computeScattermap() base the scattermap on the key-generation.
+    //
+
+
     // 2019-03-07
     //   Today @masado and @milinda decided that a cell-decomposition
     //   approach would be cleaner than trying to somehow do a single-pass streaming
@@ -804,6 +810,81 @@ namespace ot {
     outGatherMap = scatter2gather(outScatterMap, numOwnedPoints, comm);
 
     return numCGNodes;
+  }
+
+
+  //
+  // SFC_NodeSort::computeScattermap()    (Sufficient version)
+  //
+  template <typename T, unsigned int dim>
+  ScatterMap SFC_NodeSort<T,dim>::computeScattermap(const std::vector<TNPoint<T,dim>> &ownedNodes, const TreeNode<T,dim> *treePartStart, MPI_Comm comm)
+  {
+  /// struct ScatterMap
+  /// {
+  ///   std::vector<RankI> m_map;
+  ///   std::vector<RankI> m_sendCounts;
+  ///   std::vector<RankI> m_sendOffsets;
+  ///   std::vector<int> m_sendProc;
+  /// };
+    using TNP = TNPoint<T,dim>;
+
+    int rProc, nProc;
+    MPI_Comm_rank(comm, &rProc);
+    MPI_Comm_size(comm, &nProc);
+
+    ScatterMap outScatterMap;
+    std::vector<RankI> sendCountsAll(nProc, 0);    // Un-compacted.
+
+    // Get the splitters.
+    std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
+
+    // Loop through all owned nodes, finding which procs may depend on them based on key generation.
+    // Add them to a list that we will later transform into the scattermap.
+    struct ScatterInstance { RankI locId; int destProc; };
+    std::vector<ScatterInstance> scatterList;
+    std::vector<int> procNbList;
+    for (RankI locId = 0; locId < ownedNodes.size(); locId++)
+    {
+      ownedNodes[locId].getProcNeighboursSingleNode(ownedNodes[locId], splitters.data(), (int) splitters.size(), procNbList);
+      for (int destProc : procNbList)
+      {
+        if (destProc == rProc)
+          continue;
+
+        scatterList.push_back({locId, destProc});
+        sendCountsAll[destProc]++;
+      }
+
+      procNbList.clear();
+    }
+
+    // Compact the send counts / send offsets.
+    RankI accumSendCount = 0;
+    for (int proc = 0; proc < nProc; proc++)
+    {
+      if (sendCountsAll[proc] > 0)
+      {
+        outScatterMap.m_sendProc.push_back(proc);
+        outScatterMap.m_sendOffsets.push_back(accumSendCount);
+        outScatterMap.m_sendCounts.push_back(sendCountsAll[proc]);
+      }
+    }
+    outScatterMap.m_map.resize(accumSendCount);
+
+    // Repurpose sendCountsAll to store the inverse sendCount map.
+    auto &sendProcInv = sendCountsAll;
+    for (int destIdx = 0; destIdx < outScatterMap.m_sendProc.size(); destIdx++)
+      sendProcInv[outScatterMap.m_sendProc[destIdx]] = destIdx;
+
+    // Finally, compute the m_map in ScatterMap.
+    std::vector<RankI> sendOffsetsTmp = outScatterMap.m_sendOffsets;
+    for (const ScatterInstance &scInst : scatterList)
+    {
+      int destIdx = sendProcInv[scInst.destProc];
+      outScatterMap.m_map[sendOffsetsTmp[destIdx]++] = scInst.locId;
+    }
+
+    return outScatterMap;
   }
 
 
@@ -1614,8 +1695,7 @@ namespace ot {
   template <typename T, unsigned int dim>
   int SFC_NodeSort<T,dim>::getProcNeighboursSingleNode(TNPoint<T,dim> pt,
       const TreeNode<T,dim> *splitters, int numSplitters,
-      std::vector<int> &procNbList,
-      unsigned int order)
+      std::vector<int> &procNbList)
   {
   //      > keyList(intPow(3, dim-fdim) * intPow(2,dim))
   //      > 1st factor: Reach center of every k-face that contains this point. (Perturb by lenb2)

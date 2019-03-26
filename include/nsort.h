@@ -299,6 +299,19 @@ namespace ot {
      */
     static void locTreeSortAsPoints(TNPoint<T,dim> *points, RankI begin, RankI end, LevI sLev, LevI eLev, RotI pRot);
 
+    /**
+     * @brief Takes distributed sorted lists of owned nodes, uses key generation to compute sufficient scattermap.
+     * @note Might produce some nodes that don't need to be exchanged. Hopefully it's not too many surplus.
+     */
+    static ScatterMap computeScattermap(const std::vector<TNPoint<T,dim>> &ownedNodes, const TreeNode<T,dim> *treePartStart, MPI_Comm comm);
+
+    /**
+     * @brief Exchange counts from senders to receivers.
+     * @TODO change the name ("gather map" means something else).
+     */
+    static GatherMap scatter2gather(const ScatterMap &sm, RankI localCount, MPI_Comm comm);
+
+
     /** @brief Stage and send our data (using ScatterMap), and receive ghost data into ghost buffers (using GatherMap). */
     //TODO multiple data arrays in parallel. Use variadic templates.
     //TODO Might need reverse exchange eventually?
@@ -381,7 +394,7 @@ namespace ot {
        *              actually assumes it is invoked over a set of nodes originating from elements.
        *              This method works on a single-node basis.
        */
-      static int getProcNeighboursSingleNode(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList, unsigned int order);
+      static int getProcNeighboursSingleNode(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList);
 
       /**
        * @brief Takes sorted lists of owned nodes and scatterfaces and computes the scattermap.
@@ -455,9 +468,6 @@ namespace ot {
         template <class ...Ts> void operator() (Ts... args) { SFC_NodeSort::visit_buildMap(m_data, args...); }
       };
 
-
-      /** @brief Exchange counts from senders to receivers. */
-      static GatherMap scatter2gather(const ScatterMap &sm, RankI localCount, MPI_Comm comm);
   }; // struct SFC_NodeSort
 
 
