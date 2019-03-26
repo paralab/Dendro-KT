@@ -819,13 +819,6 @@ namespace ot {
   template <typename T, unsigned int dim>
   ScatterMap SFC_NodeSort<T,dim>::computeScattermap(const std::vector<TNPoint<T,dim>> &ownedNodes, const TreeNode<T,dim> *treePartStart, MPI_Comm comm)
   {
-  /// struct ScatterMap
-  /// {
-  ///   std::vector<RankI> m_map;
-  ///   std::vector<RankI> m_sendCounts;
-  ///   std::vector<RankI> m_sendOffsets;
-  ///   std::vector<int> m_sendProc;
-  /// };
     using TNP = TNPoint<T,dim>;
 
     int rProc, nProc;
@@ -845,7 +838,7 @@ namespace ot {
     std::vector<int> procNbList;
     for (RankI locId = 0; locId < ownedNodes.size(); locId++)
     {
-      ownedNodes[locId].getProcNeighboursSingleNode(ownedNodes[locId], splitters.data(), (int) splitters.size(), procNbList);
+      getProcNeighboursSingleNode(ownedNodes[locId], splitters.data(), (int) splitters.size(), procNbList);
       for (int destProc : procNbList)
       {
         if (destProc == rProc)
@@ -867,6 +860,7 @@ namespace ot {
         outScatterMap.m_sendProc.push_back(proc);
         outScatterMap.m_sendOffsets.push_back(accumSendCount);
         outScatterMap.m_sendCounts.push_back(sendCountsAll[proc]);
+        accumSendCount += sendCountsAll[proc];
       }
     }
     outScatterMap.m_map.resize(accumSendCount);
@@ -1742,7 +1736,7 @@ namespace ot {
         #pragma unroll(dim)
         for (int d = 0; d < dim; d++)
           offsets[d] = - ((bool)(ii & (1<<d)));
-        keyList.push_back(x.getNeighbour<true>(offsets));
+        keyList.push_back(x.template getNeighbour<true>(offsets));
       }
     }
 
