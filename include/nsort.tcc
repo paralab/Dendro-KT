@@ -1605,6 +1605,78 @@ namespace ot {
 
 
   //
+  // SFC_NodeSort::getProcNeighboursSingleNode()
+  //
+  //  @description The other method, getProcNeighbours(), while fixing the hanging node allowance,
+  //               actually assumes it is invoked over a set of nodes originating from elements.
+  //               This method works on a single-node basis.
+  //
+  template <typename T, unsigned int dim>
+  int SFC_NodeSort<T,dim>::getProcNeighboursSingleNode(TNPoint<T,dim> pt,
+      const TreeNode<T,dim> *splitters, int numSplitters,
+      std::vector<int> &procNbList,
+      unsigned int order)
+  {
+  //      > keyList(intPow(3, dim-fdim) * intPow(2,dim))
+  //      > 1st factor: Reach center of every k-face that contains this point. (Perturb by lenb2)
+  //      > 2nd factor: Generate minimal volume surrounding each of those points. (Perturb by m_uiMaxDepth)
+  //      > Any non-hanging neighbour is a parent of a potential hanging-neighbour as well.
+  //
+
+    std::vector<TreeNode<T,dim>> fcenterList(intPow(3,dim));
+    fcenterList.clear();
+    std::vector<TreeNode<T,dim>> keyList(intPow(6,dim));    // Allocate then shrink. TODO static allocation
+    keyList.clear();
+
+    // To make sure we get 1-finer-level neighbours of the host k-faces.
+    // We need to include centers of all incident k-faces, and generate
+    // pow(2,dim) keys for each of them.
+
+    // Get the center of our own kface.
+    const CellType<dim> ptCellType = pt.get_cellType();
+    const unsigned int len = 1u << (m_uiMaxDepth - pt.getLevel());
+    const T lenb2 = len >> 1u;
+    const unsigned int faceOrientation = ptCellType.get_orient_flag();
+    std::array<T,dim> elemCoords;
+    pt.getCell().getAnchor(elemCoords);
+    std::array<T,dim> faceCenterCoords = elemCoords;
+    for (int d = 0; d < dim; d++)
+    {
+      if (faceOrientation & (1u << d))
+        faceCenterCoords[d] += lenb2;
+    }
+    TreeNode<T,dim> ourCenter(1, faceCenterCoords, pt.getLevel()+1);
+
+    // Centers of all containing kfaces.
+    //   TODO we don't need all pow(3,dim) neighbours, just the ones orthogonal to our kface.
+    fcenterList.push_back(ourCenter);
+    ourCenter.appendAllNeighboursAsPoints(fcenterList);
+
+    // Generate keys from those kface-center points.
+    for (TreeNode<T,dim> &x : fcenterList)
+    {
+      x.setLevel(m_uiMaxDepth);
+      std::array<signed char, dim> offsets;
+      for (int ii = 0; ii < (1<<dim); ii++)
+      {
+        #pragma unroll(dim)
+        for (int d = 0; d < dim; d++)
+          offsets[d] = - ((bool)(ii & (1<<d)));
+        keyList.push_back(x.getNeighbour<true>(offsets));
+      }
+    }
+
+    int procNbListSizeOld = procNbList.size();
+    SFC_Tree<T,dim>::getContainingBlocks(keyList.data(), 0, (int) keyList.size(), splitters, numSplitters, procNbList);
+    int procNbListSize = procNbList.size();
+
+    return procNbListSize - procNbListSizeOld;
+  }
+
+
+
+
+  //
   // computeScattermap()
   //
   template <typename T, unsigned int dim>

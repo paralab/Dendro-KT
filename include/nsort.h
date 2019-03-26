@@ -376,6 +376,14 @@ namespace ot {
       static int getProcNeighbours(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList, unsigned int order);
 
       /**
+       * @brief Find which processors upon which the node is incident.
+       * @description The other method, getProcNeighbours(), while fixing the hanging node allowance,
+       *              actually assumes it is invoked over a set of nodes originating from elements.
+       *              This method works on a single-node basis.
+       */
+      static int getProcNeighboursSingleNode(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList, unsigned int order);
+
+      /**
        * @brief Takes sorted lists of owned nodes and scatterfaces and computes the scattermap.
        * @note This method uses ScatterFace::get_owner() to determine destination.
        * @note All lists must already be SFC-sorted for this to work.
