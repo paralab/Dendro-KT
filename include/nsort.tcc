@@ -1542,6 +1542,15 @@ namespace ot {
   //
   // SFC_NodeSort::getProcNeighbours()
   //
+  // TODO this is only sufficient when used on a set of nodes generated in full
+  //      from a set of elements. If not all nodes of the represented elements
+  //      are here, then we need key generation/procNeighbour search on a per
+  //      node basis--this requires more keys.
+  //      > keyList(intPow(3, dim-fdim) * intPow(2,dim))
+  //      > 1st factor: Reach center of every k-face that contains this point. (Perturb by lenb2)
+  //      > 2nd factor: Generate minimal volume surrounding each of those points. (Perturb by m_uiMaxDepth)
+  //      > Any non-hanging neighbour is a parent of a potential hanging-neighbour as well.
+  //
   template <typename T, unsigned int dim>
   int SFC_NodeSort<T,dim>::getProcNeighbours(TNPoint<T,dim> pt,
       const TreeNode<T,dim> *splitters, int numSplitters,
