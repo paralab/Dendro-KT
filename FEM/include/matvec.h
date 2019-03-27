@@ -29,7 +29,7 @@ namespace fem
     void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement);
 
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement);
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement);
 
     /**
      * @brief: top_down bucket function
@@ -195,14 +195,12 @@ namespace fem
     {
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
-      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, sz, eleOp, refElement);
-      // TODO SFC rotation
+      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, eleOp, refElement);
     }
 
     // Recursive implementation.
-    // TODO SFC rotation
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement)
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement)
     {
         // 1. initialize the output vector to zero. 
         for(unsigned int i=0;i<sz;i++)
@@ -229,29 +227,30 @@ namespace fem
         std::vector<T> vec_out_contrib;
         std::vector<ChildI> smap;
 
-        // For now this may increase the size of coords_dup and vec_in_dup.
-        bool isLeaf = top_down<T,TN,RE,dim>(coords, coords_dup, vecIn, vec_in_dup, sz, offset, counts, refElement, smap, subtreeRoot, 0);  //TODO sfc rotation
+        // For now, this may increase the size of coords_dup and vec_in_dup.
+        // We can get the proper size for vec_out_contrib from the result.
+        bool isLeaf = top_down<T,TN,RE,dim>(coords, coords_dup, vecIn, vec_in_dup, sz, offset, counts, refElement, smap, subtreeRoot, pRot);
         
         if(!isLeaf)
         {
             vec_out_contrib.resize(vec_in_dup.size());
 
-            ChildI pRot = 0;   //TODO sfc rotation
             constexpr unsigned int rotOffset = 2*(1u<<dim);  // num columns in rotations[].
             const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren]; // child_m = rot_perm[child_sfc]
             const ChildI * const rot_inv =  &rotations[pRot*rotOffset + 1*numChildren]; // child_sfc = rot_inv[child_m]
+            const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
 
             // input points counts[i] > nPe assert();
             for(unsigned int child_sfc = 0; child_sfc < numChildren; child_sfc++)
             {
                 ChildI child_m = rot_perm[child_sfc];
+                RotI   cRot = orientLookup[child_m];
                 /// matvec<T,TN,RE,dim>(vecOut+offset[c],vec_out,coord_outs+[offset[c]],counts[c],eleOp,refElement);  // Original idea from Milinda
                 matvec_rec<T,TN,RE,dim>(&(*vec_in_dup.cbegin())      + offset[child_sfc],
                                         &(*vec_out_contrib.begin()) + offset[child_sfc],
                                         &(*coords_dup.cbegin())       + offset[child_sfc],
-                                        subtreeRoot.getChildMorton(child_m),
+                                        subtreeRoot.getChildMorton(child_m), cRot,
                                         counts[child_sfc], eleOp, refElement);
-                // TODO sfc rotation
             }
         
         }else
