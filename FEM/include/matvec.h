@@ -202,6 +202,8 @@ namespace fem
     template<typename T,typename TN, typename RE,  unsigned int dim>
     void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement)
     {
+        const LevI pLev = subtreeRoot.getLevel();
+
         // 1. initialize the output vector to zero. 
         for(unsigned int i=0;i<sz;i++)
             vecOut[i] = (T)0;
@@ -221,19 +223,27 @@ namespace fem
         /// T* smap = NULL;
         T* gmap = NULL;
 
-        // TODO make these static, one for each level.
-        std::vector<TN> coords_dup;
-        std::vector<T> vec_in_dup;
-        std::vector<T> vec_out_contrib;
-        std::vector<ChildI> smap;
+        // Hack to get away with no-reallocation without actually doing pre-allocation.
+        // Arrangement in memory may be unpredictable, but at least we don't have to reallocate.
+        struct InternalBuffers
+        {
+          std::vector<TN> coords_dup;
+          std::vector<T> vec_in_dup;
+          std::vector<T> vec_out_contrib;
+          std::vector<ChildI> smap;
+        };
+        static std::vector<InternalBuffers> ibufs;
+
+        if (pLev == 0)
+          ibufs.resize(m_uiMaxDepth+1);
 
         // For now, this may increase the size of coords_dup and vec_in_dup.
         // We can get the proper size for vec_out_contrib from the result.
-        bool isLeaf = top_down<T,TN,RE,dim>(coords, coords_dup, vecIn, vec_in_dup, sz, offset, counts, refElement, smap, subtreeRoot, pRot);
+        bool isLeaf = top_down<T,TN,RE,dim>(coords, ibufs[pLev].coords_dup, vecIn, ibufs[pLev].vec_in_dup, sz, offset, counts, refElement, ibufs[pLev].smap, subtreeRoot, pRot);
         
         if(!isLeaf)
         {
-            vec_out_contrib.resize(vec_in_dup.size());
+            ibufs[pLev].vec_out_contrib.resize(ibufs[pLev].vec_in_dup.size());
 
             constexpr unsigned int rotOffset = 2*(1u<<dim);  // num columns in rotations[].
             const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren]; // child_m = rot_perm[child_sfc]
@@ -246,9 +256,9 @@ namespace fem
                 ChildI child_m = rot_perm[child_sfc];
                 RotI   cRot = orientLookup[child_m];
                 /// matvec<T,TN,RE,dim>(vecOut+offset[c],vec_out,coord_outs+[offset[c]],counts[c],eleOp,refElement);  // Original idea from Milinda
-                matvec_rec<T,TN,RE,dim>(&(*vec_in_dup.cbegin())      + offset[child_sfc],
-                                        &(*vec_out_contrib.begin()) + offset[child_sfc],
-                                        &(*coords_dup.cbegin())       + offset[child_sfc],
+                matvec_rec<T,TN,RE,dim>(&(*ibufs[pLev].vec_in_dup.cbegin())      + offset[child_sfc],
+                                        &(*ibufs[pLev].vec_out_contrib.begin()) + offset[child_sfc],
+                                        &(*ibufs[pLev].coords_dup.cbegin())       + offset[child_sfc],
                                         subtreeRoot.getChildMorton(child_m), cRot,
                                         counts[child_sfc], eleOp, refElement);
             }
@@ -268,6 +278,8 @@ namespace fem
         delete [] offset;
         delete [] counts;
 
+        /// if (pLev == 0)
+        ///   ibufs.clear();
     }
    
 
