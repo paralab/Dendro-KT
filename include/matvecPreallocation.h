@@ -35,6 +35,6 @@ namespace fem {
 
 }//namespace fem
 
-#include "matvec.tcc"
+#include "matvecPreallocation.tcc"
 
 #endif//DENDRO_KT_MATVEC_H

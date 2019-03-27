@@ -149,8 +149,9 @@ set(DENDRO_KT_INC include/dendro.h
                   include/tsearchCmpx.h
                   include/treeNode.h
                   include/treeNode.tcc
-                  include/matvec.h
-                  include/matvec.tcc
+                  ### include/matvec.h
+                  ### include/matvec.tcc
+                  FEM/include/matvec.h
                   IO/vtk/include/oct2vtk.h
                   )
 
@@ -171,6 +172,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
 
 add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/FEM/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/include)
 target_include_directories(dendroKT PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(dendroKT ${MPI_LIBRARIES} m)

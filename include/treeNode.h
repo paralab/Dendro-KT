@@ -46,6 +46,8 @@ namespace ot {
 
     public:
 
+        using coordType = T;
+
         static constexpr char numChildren = (1u << dim);
 
         //@masado, can you please fix this to work with any dim. (@masado: Looks like it's not being used.)
