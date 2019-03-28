@@ -47,12 +47,9 @@ namespace bench
         {
          
             std::vector<TreeNode> tree;
-            
             t_sort.start();    
             ot::SFC_Tree<T,dim>::distTreeSort(points, loadFlexibility , comm);
             t_sort.stop();
-
-
             
             t_con.start();    
             ot::SFC_Tree<T,dim>::distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
@@ -63,30 +60,69 @@ namespace bench
             ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
             t_bal.stop();
             tree.clear();
-
-
             // add cg point compute and scatter map compute. 
 
-
         }
-        
-
-
 
 
     }
+
+
+    void dump_profile_info(std::ostream& fout, profiler_t* timers, char ** names, unsigned int n ,MPI_Comm comm)
+    {
+
+        double stat;
+        double stat_g[3*n];
+
+        int rank, npes;
+        MPI_Comm_rank(comm,&rank);
+        MPI_Comm_size(comm,&npes);
+
+
+        for(unsigned int i=0; i<n; i++)
+        {
+           stat=(timers[i].seconds) / timers[i].num_calls ;     
+           
+           par::Mpi_Reduce(&stat,stat_g + 3*i + 0 ,1, MPI_MIN,0,comm);
+           par::Mpi_Reduce(&stat,stat_g + 3*i + 1 ,1, MPI_SUM,0,comm);
+           par::Mpi_Reduce(&stat,stat_g + 3*i + 2 ,1, MPI_MAX,0,comm);
+
+           stat_g[ 3*i + 1] = stat_g[ 3*i + 1]/(double)npes;
+ 
+        }
+
+        if(!rank)
+        {
+            for(unsigned int i=0; i<n; i++)
+            {
+               fout<<names[i]<<"(min)\t"<<names[i]<<"(mean)\t"<<names[i]<<"(max)\t";
+            }
+
+        }
+
+        if(!rank)
+            fout<<std::endl;
+
+        if(!rank)
+        {
+            for(unsigned int i=0; i<n; i++)
+            {
+               fout<<stat_g[3*i + 0]<<"\t"<<stat_g[3*i + 1]<<"\t"<<stat_g[3*i+2]<<"\t";
+            }
+        }
+
+        if(!rank)
+            fout<<std::endl;
+
+    }
+
 
 }// end of namespace of bench
 
 
 
-
-
-
-
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
-
 
     MPI_Init(&argc,&argv);
 
@@ -95,22 +131,24 @@ int main(int argc, char ** argv)
     MPI_Comm_rank(comm,&rank);
     MPI_Comm_size(comm,&npes);
     
-    if(argc<1)
+    if(argc<=1)
     {
         if(!rank)
-        {
-            std::cout<<"usage :  "<<argv[0]<<" pts_per_core(weak scaling) maxdepth dim"<<std::endl;
-        }
-
+            std::cout<<"usage :  "<<argv[0]<<" pts_per_core(weak scaling) maxdepth"<<std::endl;
+        
         MPI_Abort(comm,0);
     }
 
     const unsigned int pts_per_core = atoi(argv[1]);
     m_uiMaxDepth = atoi(argv[2]);
-    const unsigned int dim = atoi(argv[3]);
+    const unsigned int dim =4;
 
     _InitializeHcurve(dim);
 
+    bench::bench_kernel(100,5,comm);
+    profiler_t counters []={bench::t_sort, bench::t_con, bench::t_bal, bench::t_cg, bench::t_sm};
+    char * counter_names[] ={"sort","cons","bal","cg","sm"};
+    bench::dump_profile_info(std::cout,counters,counter_names,5,comm);
 
     _DestroyHcurve();
     MPI_Finalize();
