@@ -1,14 +1,16 @@
 //
-// Created by milinda on 10/5/18.
+// Created by milinda on 2/8/16.
 //
 /**
- * @brief contains global scope definitions related to Dendro-KT
- **/
-
+ * @brief:
+ * contains main dendro data types and some basic definitions
+ * 
+*/
 #ifndef DENDRO_KT_DENDRO_H
 #define DENDRO_KT_DENDRO_H
 
 #include <climits>
+#include <complex>
 
 #define RED "\e[1;31m"
 #define BLU "\e[2;34m"
@@ -31,8 +33,12 @@
 #endif
 
 
+#define DendroScalar double
+#define DendroComplex std::complex<double>
+
+
+
 //#define DendroIntL unsigned int
 typedef unsigned __int128 DendroUInt_128;
 
-
-#endif
+#endif //DENDRO_KT_DENDRO_H
