@@ -139,6 +139,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/ompUtils.h
                   include/ompUtils.tcc
                   include/point.h
+                  include/profiler.h
                   include/seqUtils.h
                   include/seqUtils.tcc
                   include/parUtils.h
@@ -159,6 +160,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/octUtils.cpp
                   src/parUtils.cpp
                   src/point.cpp
+                  src/profiler.cpp
                   src/KDhcurvedata.cpp
                   src/KDhcurvedata_DATA.cpp
                   src/tsort.cpp
@@ -174,6 +176,7 @@ add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/FEM/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/include)
+target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/zlib/inc)
 target_include_directories(dendroKT PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(dendroKT ${MPI_LIBRARIES} m)
 
@@ -259,3 +262,8 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testScatterUniq.cpp)
 add_executable(tstScatterUniq ${SRC_FILES})
 target_include_directories(tstScatterUniq PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstScatterUniq dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/tsort_bench.h ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/tsort_bench.cpp)
+add_executable(tsortBench ${SRC_FILES})
+target_include_directories(tsortBench PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/bench/include)
+target_link_libraries(tsortBench dendroKT ${MPI_LIBRARIES} m)
