@@ -490,7 +490,20 @@ namespace ot {
     MPI_Comm_size(comm, &nProc);
 
     if (nProc == 1)
-      return countCGNodes(&(*points.begin()), &(*points.end()), order, true);
+    {
+      RankI numUniqNodes = countCGNodes(&(*points.begin()), &(*points.end()), order, true);
+
+      // Remove the extra points -- the local version does not do this for us.
+      int write_ii = 0;
+      while (write_ii < points.size() && points[write_ii].get_isSelected() == TNP::Yes)
+        write_ii++;
+      for (int ii = write_ii + 1; ii < points.size(); ii++)
+        if (points[ii].get_isSelected() == TNP::Yes)
+          points[write_ii++] = points[ii];
+      points.resize(numUniqNodes);
+
+      return numUniqNodes;
+    }
 
     if (points.size() == 0)
       return 0;
