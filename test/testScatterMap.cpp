@@ -55,7 +55,8 @@ void testUniformGrid(MPI_Comm comm);
 /// bool listDiff(const std::vector<ot::TNPoint<T,dim>> &list1, const std::vector<ot::TNPoint<T,dim>> &list1, Action &a);
 
 
-void testCompileMatvec();
+template<unsigned int dim, unsigned int endL, unsigned int order>
+void testRuntimeMatvec();
 
 
 //
@@ -78,9 +79,9 @@ int main(int argc, char * argv[])
 
   /// testMatvecSubtreeSizes<dim,endL,order>(comm);
 
-  testUniformGrid<dim,endL,order>(comm);
+  /// testUniformGrid<dim,endL,order>(comm);
 
-  /// testCompileMatvec();
+  testRuntimeMatvec<dim,endL,order>();
 
   MPI_Finalize();
 
@@ -574,22 +575,55 @@ void testUniformGrid(MPI_Comm comm)
 }
 
 
-void testCompileMatvec()
+template<unsigned int dim, unsigned int endL, unsigned int order>
+void testRuntimeMatvec()
 {
-  constexpr unsigned int dim = 4u;
-  using T = float;
+  _InitializeHcurve(dim);
+
+  // Local dummy test, i.e. you should run it sequentially.
+  // The distributed methods are called, but this test might not be meaningful if you run it distributed.
+  const MPI_Comm comm = MPI_COMM_WORLD;
+
+  using da = float;
   using TN = ot::TreeNode<unsigned int, dim>;
   using RE = bool;   // We don't use it yet, but the reference element is defined in "refel.h"
+  const double tol = 0.1;
 
-  // Don't actually run this yet, I just need to get the syntax errors out of the way.
+  //
+  // Get nodes.
+  //
 
-  unsigned int sz = 0;
+  // Example3 tree.
+  std::vector<ot::TreeNode<T,dim>> tree;
+  std::vector<ot::TNPoint<T,dim>> nodeListExterior;
+  Example3<dim>::fill_tree(endL, tree);
+  distPrune(tree, comm);
+  ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
+  for (const ot::TreeNode<T,dim> &tn : tree)
+  {
+    /// ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
+  }
+  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(*tree.cbegin()), comm);
 
-  const T *vecIn = nullptr;
-  T *vecOut = nullptr;
-  const TN *coords = nullptr;
-  std::function<void(const T*, T*, TN* coords)> eleOp;   // empty
+
+  //
+  // Execute matvec on valid coordinates and dummy input vector.
+  //
+
+  unsigned int sz = nodeListExterior.size();
+
+  const da *vecIn = new da[sz];   // Some undefined garbage input, thou shalt not modify the garbage.
+  da *vecOut = new da[sz];
+  const TN *coords = &(*nodeListExterior.cbegin());
+  std::function<void(const da*, da*, TN* coords)> eleOp;   // empty eleOp.
   RE refElement;
 
-  fem::matvec<T, TN, RE, dim>(vecIn, vecOut, coords, sz, eleOp, &refElement);
+  fem::matvec<da, TN, RE, dim>(vecIn, vecOut, coords, sz, eleOp, &refElement);
+
+  delete [] vecIn;
+  delete [] vecOut;
+
+  _DestroyHcurve();
+
 }
