@@ -34,8 +34,12 @@ namespace bench
         const unsigned int dim = 4;
         using T = unsigned int;
         using TreeNode = ot::TreeNode<T,dim>;
+        using TNP = ot::TNPoint<T,dim>;
+        using ScatterMap = ot::ScatterMap;
+        using RecvMap = ot::GatherMap;
         const unsigned int maxPtsPerRegion = 1;
         const T leafLevel = m_uiMaxDepth;
+        const unsigned int polyOrder = 1;
 
         const double loadFlexibility = 0.2;
        
@@ -47,21 +51,49 @@ namespace bench
         {
          
             std::vector<TreeNode> tree;
+            TreeNode treeSplitter;
+            std::vector<TNP> nodeListExterior;
+            /// std::vector<TNP> nodeListInterior;
+            unsigned int numCGNodes;
+            ScatterMap sm;
+            RecvMap rm;
+
+            // Time sorting.
             t_sort.start();    
             ot::SFC_Tree<T,dim>::distTreeSort(points, loadFlexibility , comm);
             t_sort.stop();
             
+            // Time construction.
             t_con.start();    
             ot::SFC_Tree<T,dim>::distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
             t_con.stop();
             tree.clear();
 
+            // Time balanced construction.
             t_bal.start();
             ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
             t_bal.stop();
-            tree.clear();
-            // add cg point compute and scatter map compute. 
 
+            // Before clearing the tree, generate the nodes, and save first element of the tree for splitters.
+            for (auto &&tn : tree)
+            {
+                ot::Element<T,dim>(tn).appendExteriorNodes(polyOrder, nodeListExterior);
+                /// ot::Element<T,dim>(tn).appendInteriorNodes(polyOrder, nodeListInterior);
+            }
+            treeSplitter = tree.front();
+            tree.clear();
+
+            // Time counting/resolving CG nodes.
+            t_cg.start();
+            numCGNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, polyOrder, (const TreeNode *) &treeSplitter, comm);
+            t_cg.stop();
+
+            // Time computing the scatter map.
+            t_sm.start();
+            sm = ot::SFC_NodeSort<T,dim>::computeScattermap(nodeListExterior, (const TreeNode *) &treeSplitter, comm);
+            rm = ot::SFC_NodeSort<T,dim>::scatter2gather(sm, (ot::RankI) nodeListExterior.size(), comm);
+            t_sm.stop();
+            nodeListExterior.clear();
         }
 
 

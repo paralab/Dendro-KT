@@ -12,6 +12,7 @@
 
 #include "treeNode.h"
 #include "tsort.h"
+#include "nsort.h"
 #include "octUtils.h"
 #include "hcurvedata.h"
 #include "octUtils.h"
