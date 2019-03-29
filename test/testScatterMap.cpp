@@ -606,6 +606,9 @@ void testRuntimeMatvec()
   }
   ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(*tree.cbegin()), comm);
 
+  // Pointer type and array type must match. We give a pointer of type TN, so must convert.
+  std::vector<TN> coords(nodeListExterior.begin(), nodeListExterior.end());
+
 
   //
   // Execute matvec on valid coordinates and dummy input vector.
@@ -615,11 +618,10 @@ void testRuntimeMatvec()
 
   const da *vecIn = new da[sz];   // Some undefined garbage input, thou shalt not modify the garbage.
   da *vecOut = new da[sz];
-  const TN *coords = &(*nodeListExterior.cbegin());
   std::function<void(const da*, da*, TN* coords)> eleOp;   // empty eleOp.
   RE refElement;
 
-  fem::matvec<da, TN, RE, dim>(vecIn, vecOut, coords, sz, eleOp, &refElement);
+  fem::matvec<da, TN, RE, dim>(vecIn, vecOut, &(*coords.cbegin()), sz, eleOp, &refElement);
 
   delete [] vecIn;
   delete [] vecOut;

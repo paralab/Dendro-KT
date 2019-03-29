@@ -149,6 +149,7 @@ namespace fem
           coords_dup[offsets[child_sfc]] = coords[ii];
           vec_dup[offsets[child_sfc]] = vec[ii];
           offsets[child_sfc]++;
+          destChIdx++;
         }
       }
 
