@@ -80,7 +80,7 @@ int main(int argc, char * argv[])
 
   testUniformGrid<dim,endL,order>(comm);
 
-  testCompileMatvec();
+  /// testCompileMatvec();
 
   MPI_Finalize();
 
@@ -126,11 +126,14 @@ void testGatherMap(MPI_Comm comm)
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
   }
   /// numUniqueInteriorNodes = nodeListInterior.size();
-  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
+  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
   /// ot::RankI globInterior = 0;
   /// par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
   /// numUniqueInteriorNodes = globInterior;
   numUniqueNodes = /*numUniqueInteriorNodes +*/ numUniqueExteriorNodes;
+
+  scatterMap = ot::SFC_NodeSort<T,dim>::computeScatterMap(nodeListExterior, &(*tree.cbegin()), comm);
+  gatherMap = ot::SFC_NodeSort<T,dim>::scatter2gather(scatterMap, (ot::RankI) nodeListExterior.size(), comm);
 
   // ----------------------------
 
@@ -428,9 +431,6 @@ void testUniformGrid(MPI_Comm comm)
   _InitializeHcurve(dim);
 
   Tree<dim> tree;
-  ot::ScatterMap old_scatterMap;
-  ot::GatherMap old_gatherMap;
-
   ot::ScatterMap new_scatterMap;
   ot::GatherMap new_gatherMap;
 
@@ -481,7 +481,7 @@ void testUniformGrid(MPI_Comm comm)
   // Append all exterior nodes, then do global resolving ownership. (There are no hanging nodes).
   for (auto &&tn : tree)
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
-  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, tree.data(), old_scatterMap, old_gatherMap, comm);
+  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, tree.data(), comm);
 
   // This is to test the new scattermap.
   std::vector<TNP> newNodeList = nodeList;
@@ -489,64 +489,6 @@ void testUniformGrid(MPI_Comm comm)
   for (auto &&tn : tree)
     ot::Element<T,dim>(tn).appendInteriorNodes(order, newNodeList);
 
-  //
-  // Compare results from (old) scattermap versus nodes from tree.
-  //
-
-  /// // Allocate space for sendbuffer.
-  /// std::vector<TNP> sendBuf(scatterMap.m_map.size());
-
-  /// // One-time ghost exchange.
-  /// nodeList.resize(gatherMap.m_totalCount);
-  /// if (gatherMap.m_locOffset > 0)
-  /// {
-  ///   // Shift local data up into mydata offset.
-  ///   for (ot::RankI ii = 0; ii < gatherMap.m_locCount; ii++)
-  ///     nodeList[gatherMap.m_locOffset + gatherMap.m_locCount - 1 - ii] = nodeList[gatherMap.m_locCount - 1 - ii];
-  /// }
-  /// ot::SFC_NodeSort<T,dim>::template ghostExchange<TNP>(nodeList.data(), sendBuf.data(), scatterMap, gatherMap, comm);
-
-  /// // Append all interior nodes.
-  /// for (auto &&tn : tree)
-  ///   ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeList);
-
-  /// // Sort collection of nodes (and they should already be unique).
-  /// ot::SFC_NodeSort<T,dim>::locTreeSortAsPoints(nodeList.data(), 0, (ot::RankI) nodeList.size(), 0, m_uiMaxDepth, 0);
-
-  /// // Compare actual nodes to theoretical nodes.
-  /// int locSuccess, globSuccess;
-  /// bool matchSizes = (nodeList.size() == theoreticalNodes.size());
-  /// if (!matchSizes)
-  /// {
-  ///   fprintf(stderr, "[%d] Sizes MISMATCH t:%lu a:%lu\n", rProc, theoreticalNodes.size(), nodeList.size());
-  ///   locSuccess = false;
-  /// }
-  /// else
-  /// {
-  ///   bool matchContents = true;
-  ///   for (ot::RankI ii = 0; ii < nodeList.size(); ii++)
-  ///   {
-  ///     if (nodeList[ii] != theoreticalNodes[ii])
-  ///     {
-  ///       fprintf(stderr, "[%d] index==%u,  (%u).%s  !==  (%u).%s\n", rProc, ii,
-  ///           theoreticalNodes[ii].getLevel(), theoreticalNodes[ii].getBase32Hex(8).data(),
-  ///           nodeList[ii].getLevel(), nodeList[ii].getBase32Hex(8).data());
-  ///       matchContents = false;
-  ///       break;
-  ///     }
-  ///   }
-
-  ///   fprintf(stderr, "[%d] Sizes match (%lu).  Contents %s\n", rProc, nodeList.size(),
-  ///       (matchContents ? "match" : "MISMATCH"));
-  ///   locSuccess = matchSizes && matchContents;
-  /// }
-
-  /// par::Mpi_Reduce(&locSuccess, &globSuccess, 1, MPI_LAND, 0, comm);
-
-  /// if (rProc == 0)
-  ///   fprintf(stderr, "Overall success?  %s\n", (globSuccess ? "yes" : "NO!"));
-
-  
   // Get the new scattermap.
   new_scatterMap = ot::SFC_NodeSort<T,dim>::computeScattermap(newNodeList, &(*tree.cbegin()), comm);
   new_gatherMap = ot::SFC_NodeSort<T,dim>::scatter2gather(new_scatterMap, (ot::RankI) newNodeList.size(), comm);

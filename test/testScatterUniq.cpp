@@ -96,9 +96,6 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
   NodeList<dim> nodeListExterior;
   /// NodeList<dim> nodeListInterior;
 
-  ot::ScatterMap unused_scatterMap;
-  ot::GatherMap unused_gatherMap;
-
   ot::RankI numUniqueExteriorNodes;
   /// ot::RankI numUniqueInteriorNodes;
 
@@ -120,7 +117,7 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
   // Count the CG nodes.
   if (RunDistributed)
   {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), unused_scatterMap, unused_gatherMap, comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
   }
   else
   {

@@ -279,7 +279,6 @@ namespace ot {
      */
     static RankI dist_countCGNodes(
         std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart,
-        ScatterMap &outScatterMap, GatherMap &outGatherMap,
         MPI_Comm comm);
 
 

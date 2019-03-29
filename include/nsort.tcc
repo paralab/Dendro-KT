@@ -466,7 +466,6 @@ namespace ot {
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::dist_countCGNodes(
       std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart,
-      ScatterMap &outScatterMap, GatherMap &outGatherMap,
       MPI_Comm comm)
   {
     using TNP = TNPoint<T,dim>;
@@ -649,118 +648,6 @@ namespace ot {
     //         then in dist_computeScattermap() base the scattermap on the key-generation.
     //
 
-
-    // 2019-03-07
-    //   Today @masado and @milinda decided that a cell-decomposition
-    //   approach would be cleaner than trying to somehow do a single-pass streaming
-    //   node-node comparison. For one thing, hanging nodes can be quite distant
-    //   from their pointed-to nodes. For another thing, cell-decomposition
-    //   is exact, and so avoids rounding problems.
-    //
-    //   The decision to go with cell-decomposition leads to
-    //   the following "scatterfaces."
-
-    //
-    // "Scatter-faces"
-    //
-    // Convert sets of neighbouring nodes into sets of neighbouring (closed) k-faces.
-    // (One nonempty set per neighbouring processor).
-    // > Non-hanging nodes --> own k-face.
-    // > Hanging nodes ------> parent k-face.
-    //
-    // Afterward, decompose the closed k-faces into constituent open k'-faces.
-    //
-
-    // Generate lists of closed k-faces.
-    ScatterFacesCollection kfaces;
-    {
-      typename std::vector<TNP>::iterator ptIter = points.begin();
-      while (ptIter < points.end())
-      {
-        // Find bounds on group.
-        const typename std::vector<TNP>::iterator gpStart = ptIter;
-        typename std::vector<TNP>::iterator gpEnd = ptIter;
-        while (gpEnd < points.end() && *gpEnd == *gpStart)
-          gpEnd++;
-
-        if (ptIter->get_isSelected() == TNP::Yes)  // Non-hanging.
-        {
-          while (ptIter < gpEnd)
-          {
-            if (ptIter->get_owner() != rProc && ptIter->get_owner() != -1)
-            {
-              const unsigned char orientation = ptIter->get_cellType().get_orient_flag();
-              const TreeNode<T,dim> cell = ptIter->getCell();
-              kfaces[orientation].push_back({cell, ptIter->get_owner()});
-            }
-            ptIter++;
-          }
-        }
-        else if (!ptIter->isCrossing())            // Hanging and non-crossing.
-        {
-          while (ptIter < gpEnd)
-          {
-            if (ptIter->get_owner() != rProc && ptIter->get_owner() != -1)
-            {
-              const unsigned char orientation = ptIter->get_cellTypeOnParent().get_orient_flag();
-              const TreeNode<T,dim> cell = ptIter->getCell().getParent();
-              kfaces[orientation].push_back({cell, ptIter->get_owner()});
-            }
-            ptIter++;
-          }
-        }
-
-        ptIter = gpEnd;
-      }
-    }
-
-    // De-clutter the lists of closed k-faces.
-    for (std::vector<ScatterFace<T,dim>> &faceList : kfaces)
-      ScatterFace<T,dim>::sortUniq(faceList);
-
-    // Decompose the closed k-faces into constituent open k'-faces.
-    /// auto orientationsHigh2Low = CellType<dim>::getExteriorOrientHigh2Low();
-    auto cellsLow2High = CellType<dim>::getExteriorOrientLow2High();
-    for (const CellType<dim> &cellType : cellsLow2High)
-    {
-      const unsigned int orientFlag = cellType.get_orient_flag();
-      for (const ScatterFace<T,dim> &closedFace : kfaces[orientFlag])
-      {
-        std::vector<TreeNode<T,dim>> openFaces;
-        std::vector<CellType<dim>> openCellTypes;
-        Element<T,dim>(closedFace).appendKFaces(cellType, openFaces, openCellTypes);
-        for (int f = 0; f < openFaces.size(); f++)
-        {
-          if (openCellTypes[f].get_orient_flag() != orientFlag)
-            kfaces[openCellTypes[f].get_orient_flag()].push_back({openFaces[f], closedFace.get_owner()});
-          // Open part of current closed kface is already represented in current list.
-        }
-      }
-    }
-
-    // De-clutter the lists of closed k-faces again. Now it matters that we sort them.
-    for (std::vector<ScatterFace<T,dim>> &faceList : kfaces)
-      ScatterFace<T,dim>::sortUniq(faceList);
-
-
-    //
-    // Compute the scattermap from the scatterfaces and the owned nodes.
-    //
-    // > For every non-hanging ("Yes") boundary (owner != -1) node, determine ownership.
-    //   Filter/compact the node list to owned non-boundary and boundary nodes.
-    //
-    // > Perform a top-down dual-traversal of
-    //   - the sorted list of owned nodes, and
-    //   - the sorted lists of scatterfaces.
-    //
-    //   During traversal, we should find a set of lowerleft nodes, per TreeNode,
-    //   and at most one scatterface per neighbour per kface orientation, per TreeNode.
-    //   For each node, look up its open CellType, and check if there are open scatterfaces
-    //   in which the node is contained. If so, it means we need to add the node
-    //   to the scattermap, once per containing scatterface, with different neighbours.
-    //   We can also filter out non-boundary nodes. [We fixed the generate keys, so this is right.]
-    //
-
     // Mark owned nodes and finalize the counting part.
     // Current ownership policy: Least-rank-processor (without the Base tag).
     RankI numOwnedPoints = 0;
@@ -801,13 +688,6 @@ namespace ot {
 
     RankI numCGNodes = 0;  // The return variable for counting.
     par::Mpi_Allreduce(&numOwnedPoints, &numCGNodes, 1, MPI_SUM, comm);
-
-    // Dual traversal to collect subset of owned nodes for the scattermap.
-    // Main reason for using a separate function is the recursive depth-first traversal.
-    outScatterMap = computeScattermap(points, kfaces);
-
-    // Get counts/offsets as a receiver from other procs.
-    outGatherMap = scatter2gather(outScatterMap, numOwnedPoints, comm);
 
     return numCGNodes;
   }

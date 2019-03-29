@@ -134,12 +134,6 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
   NodeList<dim> nodeListInterior;
   NodeList<dim> nodeListCombined;
 
-  ot::ScatterMap scatterMap;
-  ot::GatherMap gatherMap;
-
-  ot::ScatterMap scatterMapCombined;
-  ot::GatherMap gatherMapCombined;
-
   ot::RankI numUniqueInteriorNodes;
   ot::RankI numUniqueExteriorNodes;
   ot::RankI numUniqueNodes;
@@ -161,11 +155,11 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
   {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), scatterMap, gatherMap, comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
     ot::RankI globInterior = 0;
     par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
     numUniqueInteriorNodes = globInterior;
-    numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListCombined, order, tree.data(), scatterMapCombined, gatherMapCombined, comm);
+    numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListCombined, order, tree.data(), comm);
   }
   else
   {
