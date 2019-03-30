@@ -26,10 +26,10 @@ namespace fem
 
     // Declaring the matvec at the top.
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement);
+    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement);
 
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement, const T* pVecIn, const TN* pCoords, unsigned int pSz);
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement, const T* pVecIn, const TN* pCoords, unsigned int pSz);
 
     /**
      * @brief: top_down bucket function
@@ -188,21 +188,26 @@ namespace fem
      * @param [out] vecOut: output vector (local vector) 
      * @param [in] coords: coordinate points for the partition
      * @param [in] sz: number of points
+     * @param [in] partFront: front TreeNode in local segment of tree partition.
+     * @param [in] partBack: back TreeNode in local segment of tree partition.
      * @param [in] eleOp: Elemental operator (i.e. elemental matvec)
      * @param [in] refElement: reference element.
      */
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement)
+    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement)
     {
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
-      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, eleOp, refElement, nullptr, nullptr, 0);
+      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, refElement, nullptr, nullptr, 0);
     }
 
     // Recursive implementation.
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement, const T* pVecIn, const TN* pCoords, unsigned int pSz)
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement, const T* pVecIn, const TN* pCoords, unsigned int pSz)
     {
+        if (sz == 0)
+          return;
+
         const LevI pLev = subtreeRoot.getLevel();
         const int nElePoints = intPow(refElement->getOrder() + 1, dim);
 
@@ -240,12 +245,12 @@ namespace fem
 
         if (pLev == 0)
         {
-          // Initialize static buffers.
-          ibufs.resize(m_uiMaxDepth+1);
-          parentEleBuffer.resize(nElePoints);
-          parentEleFill.resize(nElePoints);
-          leafEleBuffer.resize(nElePoints);
-          leafEleFill.resize(nElePoints);
+            // Initialize static buffers.
+            ibufs.resize(m_uiMaxDepth+1);
+            parentEleBuffer.resize(nElePoints);
+            parentEleFill.resize(nElePoints);
+            leafEleBuffer.resize(nElePoints);
+            leafEleFill.resize(nElePoints);
         }
 
         // For now, this may increase the size of coords_dup and vec_in_dup.
@@ -261,21 +266,39 @@ namespace fem
             const ChildI * const rot_inv =  &rotations[pRot*rotOffset + 1*numChildren]; // child_sfc = rot_inv[child_m]
             const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
 
+            // As descend subtrees in sfc order, check their intersection with the local partition:
+            // Partially contained, disjointly contained, or disjointly uncontained.
+            bool chBeforePart = true;
+            bool chAfterPart = false;
+            const bool willMeetFront = subtreeRoot.isAncestor(partFront);
+            const bool willMeetBack = subtreeRoot.isAncestor(partBack);
+
             // input points counts[i] > nPe assert();
             for(unsigned int child_sfc = 0; child_sfc < numChildren; child_sfc++)
             {
                 ChildI child_m = rot_perm[child_sfc];
                 RotI   cRot = orientLookup[child_m];
-                matvec_rec<T,TN,RE,dim>(&(*ibufs[pLev].vec_in_dup.cbegin())      + offset[child_sfc],
-                                        &(*ibufs[pLev].vec_out_contrib.begin()) + offset[child_sfc],
-                                        &(*ibufs[pLev].coords_dup.cbegin())       + offset[child_sfc],
-                                        subtreeRoot.getChildMorton(child_m), cRot,
-                                        counts[child_sfc], eleOp, refElement,
-                                        vecIn, coords, sz);
+                TN tnChild = subtreeRoot.getChildMorton(child_m);
+
+                chBeforePart &= (bool) (willMeetFront && !(tnChild == partFront || tnChild.isAncestor(partFront)));
+
+                if (!chBeforePart && !chAfterPart)
+                    matvec_rec<T,TN,RE,dim>(&(*ibufs[pLev].vec_in_dup.cbegin())      + offset[child_sfc],
+                                            &(*ibufs[pLev].vec_out_contrib.begin()) + offset[child_sfc],
+                                            &(*ibufs[pLev].coords_dup.cbegin())       + offset[child_sfc],
+                                            tnChild, cRot,
+                                            counts[child_sfc], partFront, partBack,
+                                            eleOp, refElement,
+                                            vecIn, coords, sz);
+
+                chAfterPart |= (bool) (willMeetBack && (tnChild == partBack || tnChild.isAncestor(partBack)));
             }
         
         }else
         {
+            /// // DEBUG print the leaft element.
+            /// fprintf(stderr, "Leaf: (%u) \t%s\n", pLev, subtreeRoot.getBase32Hex(m_uiMaxDepth).data());
+
             const int polyOrder = refElement->getOrder();
 
             // Put leaf points in order and check if leaf has all the nodes it needs.
@@ -357,8 +380,10 @@ namespace fem
         delete [] offset;
         delete [] counts;
 
-        /// if (pLev == 0)
-        ///   ibufs.clear();
+        if (pLev == 0)
+        {
+            /// ibufs.clear();
+        }
     }
    
 

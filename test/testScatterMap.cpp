@@ -69,7 +69,7 @@ int main(int argc, char * argv[])
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  constexpr unsigned int dim = 2;
+  constexpr unsigned int dim = 4;
   const unsigned int endL = 4;
   const unsigned int order = 3;
 
@@ -579,6 +579,8 @@ void testDummyMatvec()
   _InitializeHcurve(dim);
 
   const MPI_Comm comm = MPI_COMM_WORLD;
+  int rProc;
+  MPI_Comm_rank(comm, &rProc);
 
   struct DummyRefElement
   {
@@ -600,7 +602,10 @@ void testDummyMatvec()
   std::vector<ot::TreeNode<T,dim>> tree;
   std::vector<ot::TNPoint<T,dim>> nodeList;
   Example3<dim>::fill_tree(endL, tree);
+  /// if (rProc == 0)
+  ///   std::cout << "The total number of elements in the tree is " << tree.size() << ".\n";
   distPrune(tree, comm);
+
   ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
   for (const ot::TreeNode<T,dim> &tn : tree)
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
@@ -608,12 +613,13 @@ void testDummyMatvec()
 
   for (const ot::TreeNode<T,dim> &tn : tree)
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeList);
-  const ot::TreeNode<T,dim> treeStart = tree.front();
+  const ot::TreeNode<T,dim> treeFront = tree.front();
+  const ot::TreeNode<T,dim> treeBack = tree.back();
   tree.clear();
 
   unsigned int localSize = nodeList.size();
 
-  ot::ScatterMap scatterMap = ot::SFC_NodeSort<T,dim>::computeScattermap(nodeList, &treeStart, comm);
+  ot::ScatterMap scatterMap = ot::SFC_NodeSort<T,dim>::computeScattermap(nodeList, &treeFront, comm);
   ot::GatherMap  recvMap = ot::SFC_NodeSort<T,dim>::scatter2gather(scatterMap, localSize, comm);
 
   nodeList.resize(recvMap.m_totalCount);
@@ -640,7 +646,7 @@ void testDummyMatvec()
   std::function<void(const da*, da*, TN* coords)> eleOp;   // empty eleOp.
   RE refElement{dim, order};
 
-  fem::matvec<da, TN, RE, dim>(vecIn, vecOut, &(*coords.cbegin()), sz, eleOp, &refElement);
+  fem::matvec<da, TN, RE, dim>(vecIn, vecOut, &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, &refElement);
 
   delete [] vecIn;
   delete [] vecOut;
