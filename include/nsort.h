@@ -159,6 +159,9 @@ namespace ot {
        */
       void appendAllBaseNodes(std::vector<TNPoint> &nodeList);
 
+      /** @brief Assuming nodes on a cell are ordered lexicographically, get the rank of this node on the given cell. */
+      unsigned int get_lexNodeRank(const TreeNode<T,dim> &hostCell, unsigned int polyOrder) const;
+
     protected:
       // Data members.
       IsSelected m_isSelected;

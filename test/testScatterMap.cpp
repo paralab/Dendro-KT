@@ -12,6 +12,7 @@
 #include "treeNode.h"
 #include "nsort.h"
 #include "matvec.h"
+#include "refel.h"
 #include<functional>
 /// #include "matvecPreallocation.h"
 
@@ -43,9 +44,6 @@ void distPrune(std::vector<X> &list, MPI_Comm comm)
 template<unsigned int dim, unsigned int endL, unsigned int order>
 void testGatherMap(MPI_Comm comm);
 
-/// template<unsigned int dim, unsigned int endL, unsigned int order>
-/// void testMatvecSubtreeSizes(MPI_Comm comm);
-
 template <unsigned int dim, unsigned int endL, unsigned int order>
 void testUniformGrid(MPI_Comm comm);
 
@@ -56,7 +54,7 @@ void testUniformGrid(MPI_Comm comm);
 
 
 template<unsigned int dim, unsigned int endL, unsigned int order>
-void testRuntimeMatvec();
+void testDummyMatvec();
 
 
 //
@@ -81,7 +79,7 @@ int main(int argc, char * argv[])
 
   /// testUniformGrid<dim,endL,order>(comm);
 
-  testRuntimeMatvec<dim,endL,order>();
+  testDummyMatvec<dim,endL,order>();
 
   MPI_Finalize();
 
@@ -576,17 +574,22 @@ void testUniformGrid(MPI_Comm comm)
 
 
 template<unsigned int dim, unsigned int endL, unsigned int order>
-void testRuntimeMatvec()
+void testDummyMatvec()
 {
   _InitializeHcurve(dim);
 
-  // Local dummy test, i.e. you should run it sequentially.
-  // The distributed methods are called, but this test might not be meaningful if you run it distributed.
   const MPI_Comm comm = MPI_COMM_WORLD;
+
+  struct DummyRefElement
+  {
+    unsigned int m_dim;
+    unsigned int m_order;
+    unsigned int getOrder() const { return m_order; }
+  };
 
   using da = float;
   using TN = ot::TreeNode<unsigned int, dim>;
-  using RE = bool;   // We don't use it yet, but the reference element is defined in "refel.h"
+  using RE = DummyRefElement;
   const double tol = 0.1;
 
   //
@@ -595,31 +598,47 @@ void testRuntimeMatvec()
 
   // Example3 tree.
   std::vector<ot::TreeNode<T,dim>> tree;
-  std::vector<ot::TNPoint<T,dim>> nodeListExterior;
+  std::vector<ot::TNPoint<T,dim>> nodeList;
   Example3<dim>::fill_tree(endL, tree);
   distPrune(tree, comm);
   ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
   for (const ot::TreeNode<T,dim> &tn : tree)
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
+  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, &(*tree.cbegin()), comm);
+
+  for (const ot::TreeNode<T,dim> &tn : tree)
+    ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeList);
+  const ot::TreeNode<T,dim> treeStart = tree.front();
+  tree.clear();
+
+  unsigned int localSize = nodeList.size();
+
+  ot::ScatterMap scatterMap = ot::SFC_NodeSort<T,dim>::computeScattermap(nodeList, &treeStart, comm);
+  ot::GatherMap  recvMap = ot::SFC_NodeSort<T,dim>::scatter2gather(scatterMap, localSize, comm);
+
+  nodeList.resize(recvMap.m_totalCount);
+  std::move_backward(nodeList.begin(), nodeList.begin() + recvMap.m_locCount,
+      nodeList.begin() + recvMap.m_locOffset + recvMap.m_locCount);
   {
-    /// ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
+    std::vector<ot::TNPoint<T,dim>> sendBuf(scatterMap.m_map.size());
+    ot::SFC_NodeSort<T,dim>::template ghostExchange<ot::TNPoint<T,dim>>(nodeList.data(), sendBuf.data(), scatterMap, recvMap, comm);
   }
-  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(*tree.cbegin()), comm);
 
   // Pointer type and array type must match. We give a pointer of type TN, so must convert.
-  std::vector<TN> coords(nodeListExterior.begin(), nodeListExterior.end());
-
+  // Hopefully this does not disturb the level/coordinate mismatch we want to maintain.
+  std::vector<TN> coords(nodeList.begin(), nodeList.end());
+  nodeList.clear();
 
   //
   // Execute matvec on valid coordinates and dummy input vector.
   //
 
-  unsigned int sz = nodeListExterior.size();
+  unsigned int sz = coords.size();
 
   const da *vecIn = new da[sz];   // Some undefined garbage input, thou shalt not modify the garbage.
   da *vecOut = new da[sz];
   std::function<void(const da*, da*, TN* coords)> eleOp;   // empty eleOp.
-  RE refElement;
+  RE refElement{dim, order};
 
   fem::matvec<da, TN, RE, dim>(vecIn, vecOut, &(*coords.cbegin()), sz, eleOp, &refElement);
 

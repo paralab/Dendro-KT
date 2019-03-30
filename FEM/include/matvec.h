@@ -29,7 +29,7 @@ namespace fem
     void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement);
 
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement);
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement, const T* pVecIn, const TN* pCoords, unsigned int pSz);
 
     /**
      * @brief: top_down bucket function
@@ -196,14 +196,15 @@ namespace fem
     {
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
-      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, eleOp, refElement);
+      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, eleOp, refElement, nullptr, nullptr, 0);
     }
 
     // Recursive implementation.
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement)
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement, const T* pVecIn, const TN* pCoords, unsigned int pSz)
     {
         const LevI pLev = subtreeRoot.getLevel();
+        const int nElePoints = intPow(refElement->getOrder() + 1, dim);
 
         // 1. initialize the output vector to zero. 
         for(unsigned int i=0;i<sz;i++)
@@ -234,9 +235,18 @@ namespace fem
           std::vector<ChildI> smap;
         };
         static std::vector<InternalBuffers> ibufs;
+        static std::vector<T> parentEleBuffer, leafEleBuffer;
+        static std::vector<bool> parentEleFill, leafEleFill;
 
         if (pLev == 0)
+        {
+          // Initialize static buffers.
           ibufs.resize(m_uiMaxDepth+1);
+          parentEleBuffer.resize(nElePoints);
+          parentEleFill.resize(nElePoints);
+          leafEleBuffer.resize(nElePoints);
+          leafEleFill.resize(nElePoints);
+        }
 
         // For now, this may increase the size of coords_dup and vec_in_dup.
         // We can get the proper size for vec_out_contrib from the result.
@@ -256,17 +266,85 @@ namespace fem
             {
                 ChildI child_m = rot_perm[child_sfc];
                 RotI   cRot = orientLookup[child_m];
-                /// matvec<T,TN,RE,dim>(vecOut+offset[c],vec_out,coord_outs+[offset[c]],counts[c],eleOp,refElement);  // Original idea from Milinda
                 matvec_rec<T,TN,RE,dim>(&(*ibufs[pLev].vec_in_dup.cbegin())      + offset[child_sfc],
                                         &(*ibufs[pLev].vec_out_contrib.begin()) + offset[child_sfc],
                                         &(*ibufs[pLev].coords_dup.cbegin())       + offset[child_sfc],
                                         subtreeRoot.getChildMorton(child_m), cRot,
-                                        counts[child_sfc], eleOp, refElement);
+                                        counts[child_sfc], eleOp, refElement,
+                                        vecIn, coords, sz);
             }
         
         }else
         {
-            // call eleOp function
+            const int polyOrder = refElement->getOrder();
+
+            // Put leaf points in order and check if leaf has all the nodes it needs.
+            std::fill(leafEleFill.begin(), leafEleFill.end(), false);
+            for (int ii = 0; ii < sz; ii++)
+            {
+                // TODO these type casts are ugly and they might even induce more copying than necessary.
+                std::array<typename TN::coordType,dim> ptCoords;
+                ot::TNPoint<typename TN::coordType,dim> pt(1, (coords[ii].getAnchor(ptCoords), ptCoords), coords[ii].getLevel());
+
+                unsigned int nodeRank = pt.get_lexNodeRank(subtreeRoot, polyOrder);
+                assert((nodeRank < intPow(polyOrder+1, dim)));
+
+                leafEleFill[nodeRank] = true;
+                leafEleBuffer[nodeRank] = vecIn[ii];
+            }
+
+            bool leafHasAllNodes = true;
+            for (int nr = 0; leafHasAllNodes && nr < intPow(polyOrder+1, dim); nr++)
+                leafHasAllNodes = leafEleFill[nr];
+
+            // If not, copy parent nodes and interpolate.
+            if (!leafHasAllNodes)
+            {
+                if (pVecIn == nullptr || pCoords == nullptr || pSz == 0)
+                {
+                    fprintf(stderr, "Error: Tried to interpolate parent->child, but parent has no nodes!\n");
+                    assert(false);
+                }
+
+                // Copy parent nodes.
+                TN subtreeParent = subtreeRoot.getParent();
+                std::fill(parentEleFill.begin(), parentEleFill.end(), false);
+                for (int ii = 0; ii < pSz; ii++)
+                {
+                    if (pCoords[ii].getLevel() != pLev-1)
+                      continue;
+
+                    // TODO these type casts are ugly and they might even induce more copying than necessary.
+                    std::array<typename TN::coordType,dim> ptCoords;
+                    ot::TNPoint<typename TN::coordType,dim> pt(1, (pCoords[ii].getAnchor(ptCoords), ptCoords), pCoords[ii].getLevel());
+
+                    unsigned int nodeRank = pt.get_lexNodeRank(subtreeParent, polyOrder);
+                    assert((nodeRank < intPow(polyOrder+1, dim)));
+                    /// fprintf(stderr, "parent nodeRank==%u\n", nodeRank);
+
+                    parentEleFill[nodeRank] = true;
+                    parentEleBuffer[nodeRank] = pVecIn[ii];
+                }
+
+                // Interpolate.
+
+                // TODO capture inside a DEBUG guard.
+                  // For now just check a necessary condition:
+                  // If a node on leaf is missing, it's corresponding node on parent should be available.
+                bool parentHasNeededNodes = true;
+                for (int nr = 0; parentHasNeededNodes && nr < intPow(polyOrder+1, dim); nr++)
+                    parentHasNeededNodes = leafEleFill[nr] || parentEleFill[nr];
+
+                if (!parentHasNeededNodes)
+                {
+                    fprintf(stderr, "Error: Tried to interpolate parent->child, but parent is missing needed nodes!\n");
+                    assert(false);
+                }
+
+                // TODO Perform interpolation using refElement.
+            }
+
+            // TODO call eleOp function
             // Note you might need to identify the parent nodes for parent to child interpolation. 
             // (use reference element class for interpolation)
 

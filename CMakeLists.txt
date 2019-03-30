@@ -150,9 +150,8 @@ set(DENDRO_KT_INC include/dendro.h
                   include/tsearchCmpx.h
                   include/treeNode.h
                   include/treeNode.tcc
-                  ### include/matvec.h
-                  ### include/matvec.tcc
                   FEM/include/matvec.h
+                  ### FEM/include/refel.h
                   IO/vtk/include/oct2vtk.h
                   )
 
@@ -167,7 +166,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/nsort.cpp
                   src/tsearchCmpx.cpp
                   src/treeNode.cpp
-                  src/matvec.cpp
+                  ### FEM/src/refel.cpp
                   IO/vtk/src/oct2vtk.cpp
                   )
 

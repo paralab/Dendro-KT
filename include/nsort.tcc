@@ -279,6 +279,29 @@ namespace ot {
     }
   }
 
+
+  template <typename T, unsigned int dim>
+  unsigned int TNPoint<T,dim>::get_lexNodeRank(const TreeNode<T,dim> &hostCell, unsigned int polyOrder) const
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - hostCell.getLevel());
+
+    unsigned int rank = 0;
+    unsigned int stride = 1;
+    #pragma unroll(dim)
+    for (int d = 0; d < dim; d++)
+    {
+      // Round up here, since we round down when we generate the nodes.
+      // The inequalities of integer division work out, as long as polyOrder < len.
+      unsigned int index1D = polyOrder - polyOrder * (hostCell.getX(d) + len - TreeNode::m_uiCoords[d]) / len;
+      rank += index1D * stride;
+      stride *= (polyOrder + 1);
+    }
+
+    return rank;
+  }
+
+
   // ============================ End: TNPoint ============================ //
 
 
