@@ -151,6 +151,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/treeNode.h
                   include/treeNode.tcc
                   IO/vtk/include/oct2vtk.h
+                  array/include/arraySlice.h
                   )
 
 set(DENDRO_KT_SRC src/binUtils.cpp
