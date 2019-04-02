@@ -153,6 +153,7 @@ set(DENDRO_KT_INC include/dendro.h
                   FEM/include/matvec.h
                   ### FEM/include/refel.h
                   IO/vtk/include/oct2vtk.h
+                  array/include/arraySlice.h
                   )
 
 set(DENDRO_KT_SRC src/binUtils.cpp

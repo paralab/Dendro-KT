@@ -14,6 +14,7 @@
 
 #include "basis.h"
 #include "tensor.h"
+#include "mathUtils.h"
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -173,10 +174,81 @@ class RefElement
      * @brief This is computed in way that 4d coordinates changes in the order of t,z, y, x
      * Which means first we need to fill all the z values in plane(x=0,y=0) then all the z values in plane (x=0,y=0+h) and so forth.
      *
+     * @note Computations are done in internal buffers. It is safe to re-use out == in.
      */
+    template <unsigned int dim>
+    inline void IKD_Parent2Child(const double *in, double *out, unsigned int childNum) const
+    {
+      // For now just interpolate the whole volume, and outside copy the subset of nodes that we need.
+      // TODO Implement decomposition approach that is used in the high-order case, M>dim.
+
+      // Interpolating the volume involves dim separate 1D operators.
+      // Our working buffers are 'im_vec1' and 'im_vec2'. We copy to 'out'
+      // at the very end.
+
+      // Double buffering with initial source set to 'in'.
+      double * const buffers[2] = {getImVec1(), getImVec2()};
+      int bFrom = 1, bTo = 0;
+      const double * imFrom = in;
+      double * imTo = buffers[bTo];
+       
+      // Line up 1D operators for each axis, based on childNum.
+      const double * const ip[2] = {&(*ip_1D_0.cbegin()), &(*ip_1D_1.cbegin())};
+      const double * ipAxis[dim];
+      #pragma unroll(dim)
+      for (int d = 0; d < dim; d++)
+        ipAxis[d] = ip[(bool) (childNum & (1u<<d))];
+
+      // This won't actually work because 'tangent' is a template parameter and needs const argument ('d' is variable).
+      /// for (int d = dim-1; d != 0; d--)   // For some reason we interpolate in order from largest to smallest dimension.
+      /// {
+      ///   // DENDRO_TENSOR_..._APPLY_ELEM()
+      ///   IterateTensorBindMatrix<dim, d>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[d], imFrom, imTo);  // Error
+      ///
+      ///   // Swap source/destination pointers.
+      ///   imFrom = buffers[(bFrom = !bFrom)];
+      ///   imTo = buffers[(bTo = !bTo)];
+      /// }
+
+      struct V
+      {
+        double * const * buffers;
+        int &bFrom, &bTo;
+        const double * &imFrom;
+        double * &imTo;
+        const double * const * ipAxis;
+      }
+      localVariables{buffers, bFrom, bTo, imFrom, imTo, ipAxis};
+
+      // Loop-unrolled implementation of above, using awkward recursive template.
+      // I think can be done more cleanly in C++20 using template lambdas.
+      template <unsigned dCount, unsigned dEffective> struct loop { static void body(V &v) {
+          // Order from largest to smallest dimension. Else reverse below 2 lines.
+          loop<0, dEffective>::body(v);
+          loop<dCount-1, dEffective-1>::body(v);
+      } };
+      template <unsigned dEffective> struct loop<0, dEffective> { static void body(V &v) {
+          // DENDRO_TENSOR_..._APPLY_ELEM()
+          IterateTensorBindMatrix<dim, dEffective>::template iterate_bind_matrix<double>(
+              v.m_uiNrp, v.ipAxis[dEffective], v.imFrom, v.imTo);
+
+          // Swap source/destination pointers.
+          v.imFrom = v.buffers[(v.bFrom = !v.bfrom)];
+          v.imTo = v.buffers[(v.bTo = !v.bTo)];
+      } };
+      template <unsigned dim_>
+      using repeat = loop<dim_-1, dim_-1>;
+
+      repeat<dim>::body(localVariables);
+
+      // The result is now in 'imFrom'. Copy to 'out'.
+      memcpy(out, imFrom, sizeof(double)*intPow(m_uiNrp, dim));
+    }
+
+
     inline void I4D_Parent2Child(const double *in, double *out, unsigned int childNum) const
     {
-
+      // unused
     }
 
 
