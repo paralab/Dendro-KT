@@ -165,6 +165,28 @@ class RefElement
 
     inline const double getElementSz() const { return (r.back() - r.front()); }
 
+    template <unsigned int dim>   // TODO make this a class template parameter
+    inline void getIpPtrs(const double * ipAxis[]) const
+    {
+      const double * const ip[2] = {&(*ip_1D_0.cbegin()), &(*ip_1D_1.cbegin())};
+      #pragma unroll(dim)
+      for (int d = 0; d < dim; d++)
+        ipAxis[d] = ip[(bool) (childNum & (1u<<d))];
+    }
+
+    template <typename da, unsigned int dim>
+    inline void getDoubleBufferPipeline(const da * fromPtrs[], da * toPtrs[], const da * in, da * out) const
+    {
+      toPtrs[0] = getImVec1();
+      fromPtrs[0] = getImVec2();
+      for (int d = 1; d < dim; d++)
+      {
+        fromPtrs[d] = toPtrs[d-1];
+        toPtrs[d] = fromPtrs[d-1];
+      }
+      fromPtrs[0] = in;
+      toPtrs[dim-1] = out;
+    }
 
      /**
      * @param[in] in: input function values.
@@ -176,79 +198,30 @@ class RefElement
      *
      * @note Computations are done in internal buffers. It is safe to re-use out == in.
      */
-    template <unsigned int dim>
-    inline void IKD_Parent2Child(const double *in, double *out, unsigned int childNum) const
-    {
-      // For now just interpolate the whole volume, and outside copy the subset of nodes that we need.
-      // TODO Implement decomposition approach that is used in the high-order case, M>dim.
-
-      // Interpolating the volume involves dim separate 1D operators.
-      // Our working buffers are 'im_vec1' and 'im_vec2'. We copy to 'out'
-      // at the very end.
-
-      // Double buffering with initial source set to 'in'.
-      double * const buffers[2] = {getImVec1(), getImVec2()};
-      int bFrom = 1, bTo = 0;
-      const double * imFrom = in;
-      double * imTo = buffers[bTo];
-       
-      // Line up 1D operators for each axis, based on childNum.
-      const double * const ip[2] = {&(*ip_1D_0.cbegin()), &(*ip_1D_1.cbegin())};
-      const double * ipAxis[dim];
-      #pragma unroll(dim)
-      for (int d = 0; d < dim; d++)
-        ipAxis[d] = ip[(bool) (childNum & (1u<<d))];
-
-      // This won't actually work because 'tangent' is a template parameter and needs const argument ('d' is variable).
-      /// for (int d = dim-1; d != 0; d--)   // For some reason we interpolate in order from largest to smallest dimension.
-      /// {
-      ///   // DENDRO_TENSOR_..._APPLY_ELEM()
-      ///   IterateTensorBindMatrix<dim, d>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[d], imFrom, imTo);  // Error
-      ///
-      ///   // Swap source/destination pointers.
-      ///   imFrom = buffers[(bFrom = !bFrom)];
-      ///   imTo = buffers[(bTo = !bTo)];
-      /// }
-
-      struct V
-      {
-        double * const * buffers;
-        int &bFrom, &bTo;
-        const double * &imFrom;
-        double * &imTo;
-        const double * const * ipAxis;
-      }
-      localVariables{buffers, bFrom, bTo, imFrom, imTo, ipAxis};
-
-      // Loop-unrolled implementation of above, using awkward recursive template.
-      // I think can be done more cleanly in C++20 using template lambdas.
-      template <unsigned dCount, unsigned dEffective> struct loop { static void body(V &v) {
-          // Order from largest to smallest dimension. Else reverse below 2 lines.
-          loop<0, dEffective>::body(v);
-          loop<dCount-1, dEffective-1>::body(v);
-      } };
-      template <unsigned dEffective> struct loop<0, dEffective> { static void body(V &v) {
-          // DENDRO_TENSOR_..._APPLY_ELEM()
-          IterateTensorBindMatrix<dim, dEffective>::template iterate_bind_matrix<double>(
-              v.m_uiNrp, v.ipAxis[dEffective], v.imFrom, v.imTo);
-
-          // Swap source/destination pointers.
-          v.imFrom = v.buffers[(v.bFrom = !v.bfrom)];
-          v.imTo = v.buffers[(v.bTo = !v.bTo)];
-      } };
-      template <unsigned dim_>
-      using repeat = loop<dim_-1, dim_-1>;
-
-      repeat<dim>::body(localVariables);
-
-      // The result is now in 'imFrom'. Copy to 'out'.
-      memcpy(out, imFrom, sizeof(double)*intPow(m_uiNrp, dim));
-    }
-
-
     inline void I4D_Parent2Child(const double *in, double *out, unsigned int childNum) const
     {
-      // unused
+      constexpr unsigned int dim = 4;
+      assert((childNum < (1u<<dim)));
+
+      // Double buffering.
+      double * imFrom[dim];
+      double * imTo[dim];
+      getDoubleBufferPipeline<double, dim>(imFrom, imTo, in, out);
+      if (dim == 1)
+        imTo[0] = getImVec1();   // Protect 'in'.
+
+      // Line up 1D operators for each axis, based on childNum.
+      const double * ipAxis[dim];
+      getIpPtrs<dim>(ipAxis);
+
+      // Hard-code for now. TODO make recursive template in util namespace.
+      IterateTensorBindMatrix<dim, 0>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[0], imFrom[0], imTo[0]);
+      IterateTensorBindMatrix<dim, 1>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[1], imFrom[1], imTo[1]);
+      IterateTensorBindMatrix<dim, 2>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[2], imFrom[2], imTo[2]);
+      IterateTensorBindMatrix<dim, 3>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[3], imFrom[3], imTo[3]);
+
+      if (dim == 1)   // Protected 'in'.
+        memcpy(out, imTo[dim-1], sizeof(double)*intPow(m_uiNrp, dim));
     }
 
 
