@@ -166,7 +166,7 @@ class RefElement
     inline const double getElementSz() const { return (r.back() - r.front()); }
 
     template <unsigned int dim>   // TODO make this a class template parameter
-    inline void getIpPtrs(const double * ipAxis[]) const
+    inline void getIpPtrs(const double * ipAxis[], unsigned int childNum) const
     {
       const double * const ip[2] = {&(*ip_1D_0.cbegin()), &(*ip_1D_1.cbegin())};
       #pragma unroll(dim)
@@ -175,7 +175,7 @@ class RefElement
     }
 
     template <typename da, unsigned int dim>
-    inline void getDoubleBufferPipeline(const da * fromPtrs[], da * toPtrs[], const da * in, da * out) const
+    inline void getDoubleBufferPipeline(const da * fromPtrs[], da * toPtrs[], const da * in, da * out)
     {
       toPtrs[0] = getImVec1();
       fromPtrs[0] = getImVec2();
@@ -198,21 +198,21 @@ class RefElement
      *
      * @note Computations are done in internal buffers. It is safe to re-use out == in.
      */
-    inline void I4D_Parent2Child(const double *in, double *out, unsigned int childNum) const
+    inline void I4D_Parent2Child(const double *in, double *out, unsigned int childNum)
     {
       constexpr unsigned int dim = 4;
       assert((childNum < (1u<<dim)));
 
       // Double buffering.
-      double * imFrom[dim];
+      const double * imFrom[dim];
       double * imTo[dim];
       getDoubleBufferPipeline<double, dim>(imFrom, imTo, in, out);
-      if (dim == 1)
+      if (dim == 1 && in == out)
         imTo[0] = getImVec1();   // Protect 'in'.
 
       // Line up 1D operators for each axis, based on childNum.
       const double * ipAxis[dim];
-      getIpPtrs<dim>(ipAxis);
+      getIpPtrs<dim>(ipAxis, childNum);
 
       // Hard-code for now. TODO make recursive template in util namespace.
       IterateTensorBindMatrix<dim, 0>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[0], imFrom[0], imTo[0]);
@@ -220,7 +220,7 @@ class RefElement
       IterateTensorBindMatrix<dim, 2>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[2], imFrom[2], imTo[2]);
       IterateTensorBindMatrix<dim, 3>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[3], imFrom[3], imTo[3]);
 
-      if (dim == 1)   // Protected 'in'.
+      if (dim == 1 && in == out)   // Protected 'in'.
         memcpy(out, imTo[dim-1], sizeof(double)*intPow(m_uiNrp, dim));
     }
 

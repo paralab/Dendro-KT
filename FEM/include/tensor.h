@@ -95,7 +95,7 @@ struct IterateBindMatrix
   };
 
   template <typename da>
-  inline static void iterate_bind_matrix(const unsigned int M, da *A, da *X, da *Y);
+  inline static void iterate_bind_matrix(const unsigned int M, const da *A, const da *X, da *Y);
 };
 
 
@@ -104,7 +104,7 @@ struct IterateBindMatrix
   //
   template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
   template <typename da>
-  inline void IterateBindMatrix<dim,sliceFlag,tangent>::iterate_bind_matrix(const unsigned int M, da *A, da *X, da *Y)
+  inline void IterateBindMatrix<dim,sliceFlag,tangent>::iterate_bind_matrix(const unsigned int M, const da *A, const da *X, da *Y)
   {
     // For each row of the matrix, iterate through the hyperplane
     // of the index space that is normal to the axis `face'.
