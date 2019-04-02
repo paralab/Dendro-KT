@@ -166,7 +166,7 @@ class RefElement
     inline const double getElementSz() const { return (r.back() - r.front()); }
 
     template <unsigned int dim>   // TODO make this a class template parameter
-    inline void getIpPtrs(const double * ipAxis[]) const
+    inline void getIpPtrs(const double * ipAxis[], unsigned int childNum) const
     {
       const double * const ip[2] = {&(*ip_1D_0.cbegin()), &(*ip_1D_1.cbegin())};
       #pragma unroll(dim)
@@ -212,7 +212,7 @@ class RefElement
 
       // Line up 1D operators for each axis, based on childNum.
       const double * ipAxis[dim];
-      getIpPtrs<dim>(ipAxis);
+      getIpPtrs<dim>(ipAxis, childNum);
 
       // Hard-code for now. TODO make recursive template in util namespace.
       IterateTensorBindMatrix<dim, 0>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[0], imFrom[0], imTo[0]);
