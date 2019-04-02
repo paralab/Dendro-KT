@@ -13,6 +13,7 @@
 #include <iostream>
 #include <cmath>
 #include <math.h>
+#include <array>
 #include "parUtils.h"
 
 /**
