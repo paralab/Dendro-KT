@@ -17,6 +17,22 @@
 
 #include <arraySlice.h>
 
+// TODO make a new namespace
+
+/**
+ * @tparam dim Dimension of element, i.e. order of tensor.
+ * @tparam da  Datatype of vectors.
+ * @tparam forward If true, axes are evaluated in increasing order.
+ * @param [in] M Size of tensor in 1D.
+ * @param [in] A Array of pointers to interpolation matrices, ordered by axis.
+ * @param [in] in Array of pointers to input buffers, ordered with source in position 0.
+ * @param [in] out Array of pointers to output buffers, ordered with destination in position (dim-1).
+ */
+template <unsigned int dim, typename da, bool forward>
+void KroneckerProduct(unsigned M, const da **A, const da **in, da **out);
+
+
+
 template <typename da>
 struct MatKernelAssign
 {
@@ -87,7 +103,7 @@ struct IterateBindMatrix
     InnerKernel<da> &m_kernel;
     unsigned int m_M;
     const da *m_APtr;
-    OuterKernel(InnerKernel<da> &kernel, unsigned int M, da *A) : m_kernel(kernel), m_M(M), m_APtr(A) {}
+    OuterKernel(InnerKernel<da> &kernel, unsigned int M, const da *A) : m_kernel(kernel), m_M(M), m_APtr(A) {}
     OuterKernel() = delete;
 
     unsigned int m_row;
@@ -159,6 +175,33 @@ struct IterateBindMatrix
     unsigned int y_ii = m_outerIdx + m_row * tangentStride + innerIdx;
     kernel(m_d, x_ii, y_ii);
   }
+
+
+
+template <unsigned int dim, unsigned int d, bool forward>
+struct KroneckerProduct_loop { template <typename da> static void body(unsigned M, const da **A, const da **in, da **out) {
+  constexpr unsigned int ii = (forward ? dim-1 - d : d);
+
+  if (forward)
+    IterateTensorBindMatrix<dim, d>::template iterate_bind_matrix<da>(M, A[d], in[ii], out[ii]);
+
+  KroneckerProduct_loop<dim, d-1, forward>::template body<da>(M,A,in,out);
+
+  if (!forward)
+    IterateTensorBindMatrix<dim, d>::template iterate_bind_matrix<da>(M, A[d], in[ii], out[ii]);
+}};
+template <unsigned int dim, bool forward>
+struct KroneckerProduct_loop<dim, 0, forward> { template <typename da> static void body(unsigned M, const da **A, const da **in, da **out) {
+  constexpr unsigned int ii = (forward ? dim-1 : 0);
+  IterateTensorBindMatrix<dim, 0>::template iterate_bind_matrix<da>(M, A[0], in[ii], out[ii]);
+}};
+
+template <unsigned int dim, typename da, bool forward>
+void KroneckerProduct(unsigned M, const da **A, const da **in, da **out)
+{
+  KroneckerProduct_loop<dim, dim-1, forward>::template body<da>(M,A,in,out);
+}
+
 
 
 
