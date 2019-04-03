@@ -12,7 +12,7 @@
 #include "treeNode.h"
 #include "nsort.h"
 #include "matvec.h"
-/// #include "refel.h"
+#include "refel.h"
 #include<functional>
 /// #include "matvecPreallocation.h"
 
@@ -582,16 +582,9 @@ void testDummyMatvec()
   int rProc;
   MPI_Comm_rank(comm, &rProc);
 
-  struct DummyRefElement
-  {
-    unsigned int m_dim;
-    unsigned int m_order;
-    unsigned int getOrder() const { return m_order; }
-  };
-
-  using da = float;
+  using da = double;  // RefElement only supports double for now.
   using TN = ot::TreeNode<unsigned int, dim>;
-  using RE = DummyRefElement;
+  using RE = RefElement;
   const double tol = 0.1;
 
   //

@@ -399,9 +399,14 @@ namespace fem
                     assert(false);
                 }
 
-                // TODO Perform interpolation using refElement.
-                /// - Parent2Child(parentEleBuffer.data(), parentEleBuffer.data())  // in == out is safe.
-                /// - for (int ii = 0; ii < sz; ii++) if (!leafEleFill[ii]) leafEleBufferIn[ii] = parentEleBuffer[ii];
+                // Interpolation performed in the parent buffer, to preserve child buffer. (in==out is safe).
+                refElement->template IKD_Parent2Child<dim>(parentEleBuffer.data(), parentEleBuffer.data(), subtreeRoot.getMortonIndex());
+                //TODO
+
+                // Transfer the needed interpolated values. (Invalid values are skipped).
+                for (int ii = 0; ii < sz; ii++)
+                    if (!leafEleFill[ii])
+                        leafEleBufferIn[ii] = parentEleBuffer[ii];
             }
 
             // Elemental computation.
@@ -422,12 +427,11 @@ namespace fem
 
             if (!leafHasAllNodes)
             {
-                //TODO
-                /// for (int ii = 0; ii < sz; ii++)
-                ///     if (!leafEleFill[ii])
-                ///         parentEleBuffer[ii] = leafEleBufferOut[ii];
+                // Perform the transpose interpolation in the leaf buffer,
+                // and then accumulate directly into pVecOut.
 
-                //TODO back-interpolate Child2Parent(parentEleBuffer.data(), parentEleBuffer.data())  // in == out is safe.
+                // Transpose of interpolation.   (in==out is safe -- but not necessary).
+                refElement->template IKD_Child2Parent<dim>(leafEleBufferOut.data(), leafEleBufferOut.data(), subtreeRoot.getMortonIndex());
 
                 // Accumulate into parent nodes.
                 TN subtreeParent = subtreeRoot.getParent();
@@ -441,10 +445,14 @@ namespace fem
                     ot::TNPoint<typename TN::coordType,dim> pt(1, (pCoords[ii].getAnchor(ptCoords), ptCoords), pCoords[ii].getLevel());
 
                     unsigned int nodeRank = pt.get_lexNodeRank(subtreeParent, polyOrder);
-                    if (!isFirstChild)
-                      pVecOut[ii] += parentEleBuffer[nodeRank];
-                    else
-                      pVecOut[ii] = parentEleBuffer[nodeRank];
+
+                    if (!leafEleFill[nodeRank])
+                    {
+                      if (!isFirstChild)
+                        pVecOut[ii] += leafEleBufferOut[nodeRank];
+                      else
+                        pVecOut[ii] = leafEleBufferOut[nodeRank];
+                    }
                 }
             }
         }
