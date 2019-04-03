@@ -53,8 +53,8 @@ class RefElement
     int m_uiOrder;
     /** Number of 3D interpolation points on the element */
     int m_uiNp;
-    /** Number of 2D face interpolation points */
-    int m_uiNfp;
+    /// /** Number of 2D face interpolation points */
+    /// int m_uiNfp;
     /** Number of 1D interpolation points */
     int m_uiNrp;
 
@@ -139,6 +139,32 @@ class RefElement
     /**intermidiate vec 1 needed during interploation */
     std::vector<double> im_vec2;
 
+
+    template <unsigned int dim>   // TODO make this a class template parameter
+    inline void getIpPtrs(const double * ipAxis[], unsigned int childNum) const
+    {
+      const double * const ip[2] = {&(*ip_1D_0.cbegin()), &(*ip_1D_1.cbegin())};
+      #pragma unroll(dim)
+      for (int d = 0; d < dim; d++)
+        ipAxis[d] = ip[(bool) (childNum & (1u<<d))];
+    }
+
+    template <typename da, unsigned int dim>
+    inline void getDoubleBufferPipeline(const da * fromPtrs[], da * toPtrs[], const da * in, da * out)
+    {
+      toPtrs[0] = getImVec1();
+      fromPtrs[0] = getImVec2();
+      for (int d = 1; d < dim; d++)
+      {
+        fromPtrs[d] = const_cast<const da *>(toPtrs[d-1]);
+        toPtrs[d] = const_cast<da *>(fromPtrs[d-1]);
+      }
+      fromPtrs[0] = in;
+      toPtrs[dim-1] = out;
+    }
+
+
+
   public:
     RefElement();
     RefElement(unsigned int dim, unsigned int order);
@@ -164,29 +190,6 @@ class RefElement
     inline const double *getWgll() const { return &(*(wgll.begin())); }
 
     inline const double getElementSz() const { return (r.back() - r.front()); }
-
-    template <unsigned int dim>   // TODO make this a class template parameter
-    inline void getIpPtrs(const double * ipAxis[], unsigned int childNum) const
-    {
-      const double * const ip[2] = {&(*ip_1D_0.cbegin()), &(*ip_1D_1.cbegin())};
-      #pragma unroll(dim)
-      for (int d = 0; d < dim; d++)
-        ipAxis[d] = ip[(bool) (childNum & (1u<<d))];
-    }
-
-    template <typename da, unsigned int dim>
-    inline void getDoubleBufferPipeline(const da * fromPtrs[], da * toPtrs[], const da * in, da * out)
-    {
-      toPtrs[0] = getImVec1();
-      fromPtrs[0] = getImVec2();
-      for (int d = 1; d < dim; d++)
-      {
-        fromPtrs[d] = toPtrs[d-1];
-        toPtrs[d] = fromPtrs[d-1];
-      }
-      fromPtrs[0] = in;
-      toPtrs[dim-1] = out;
-    }
 
      /**
      * @param[in] in: input function values.

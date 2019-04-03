@@ -87,7 +87,7 @@ struct IterateBindMatrix
     InnerKernel<da> &m_kernel;
     unsigned int m_M;
     const da *m_APtr;
-    OuterKernel(InnerKernel<da> &kernel, unsigned int M, da *A) : m_kernel(kernel), m_M(M), m_APtr(A) {}
+    OuterKernel(InnerKernel<da> &kernel, unsigned int M, const da *A) : m_kernel(kernel), m_M(M), m_APtr(A) {}
     OuterKernel() = delete;
 
     unsigned int m_row;
