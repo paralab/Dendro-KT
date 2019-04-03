@@ -403,7 +403,16 @@ namespace fem
             // Elemental computation.
             eleOp(&(*leafEleBufferIn.cbegin()), &(*leafEleBufferOut.begin()));
 
-            // TODO transfer results of eleOp to vecOut in original coordinate order.
+            // Transfer results of eleOp to vecOut in original coordinate order.
+            for (int ii = 0; ii < sz; ii++)
+            {
+                // TODO these type casts are ugly and they might even induce more copying than necessary.
+                std::array<typename TN::coordType,dim> ptCoords;
+                ot::TNPoint<typename TN::coordType,dim> pt(1, (coords[ii].getAnchor(ptCoords), ptCoords), coords[ii].getLevel());
+
+                unsigned int nodeRank = pt.get_lexNodeRank(subtreeRoot, polyOrder);
+                vecOut[ii] = leafEleBufferOut[nodeRank];
+            }
 
             // TODO if not complete, back-interpolate to the parent into pVecOut
             //
