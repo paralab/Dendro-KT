@@ -155,6 +155,8 @@ set(DENDRO_KT_INC include/dendro.h
                   FEM/include/matvec.h
                   FEM/include/tensor.h
                   FEM/include/refel.h
+                  FEM/include/basis.h
+                  FEM/include/lapac.h
                   )
 
 set(DENDRO_KT_SRC src/binUtils.cpp
@@ -172,6 +174,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   FEM/src/matvec.cpp
                   FEM/src/tensor.cpp
                   FEM/src/refel.cpp
+                  FEM/src/basis.cpp
                   )
 
 
