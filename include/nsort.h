@@ -187,7 +187,10 @@ namespace ot {
 
       using TreeNode<T,dim>::operator=;
 
-      void appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
+      /** @brief Append nodes in lexicographic order. */
+      template <typename TN = TNPoint<T,dim>>
+      void appendNodes(unsigned int order, std::vector<TN> &nodeList) const;
+
       void appendInteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
       void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
 

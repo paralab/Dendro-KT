@@ -308,7 +308,8 @@ namespace ot {
   // ============================ Begin: Element ============================ //
 
   template <typename T, unsigned int dim>
-  void Element<T,dim>::appendNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
+  template <typename TN>
+  void Element<T,dim>::appendNodes(unsigned int order, std::vector<TN> &nodeList) const
   {
     using TreeNode = TreeNode<T,dim>;
     const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
@@ -323,7 +324,7 @@ namespace ot {
       #pragma unroll(dim)
       for (int d = 0; d < dim; d++)
         nodeCoords[d] = len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
-      nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
+      nodeList.push_back({1, nodeCoords, TreeNode::m_uiLevel});
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }

@@ -25,15 +25,15 @@ namespace fem
   using RotI = ot::RotI;
 
   /// using EleOpT = std::function<void(const T *in, T *out, TN* coords)>;
-  template <typename da>
-  using EleOpT = std::function<void(const da *in, da *out)>;
+  template <typename da, typename TN>
+  using EleOpT = std::function<void(const da *in, da *out, TN *coords)>;
 
     // Declaring the matvec at the top.
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement);
+    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T,TN> eleOp, const RE* refElement);
 
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild);
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T,TN> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild);
 
     /**
      * @brief: top_down bucket function
@@ -224,7 +224,7 @@ namespace fem
      * @param [in] refElement: reference element.
      */
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement)
+    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T,TN> eleOp, const RE* refElement)
     {
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
@@ -233,7 +233,7 @@ namespace fem
 
     // Recursive implementation.
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild)
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T,TN> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild)
     {
         if (sz == 0)
           return;
@@ -272,6 +272,7 @@ namespace fem
         static std::vector<InternalBuffers> ibufs;
         static std::vector<T> parentEleBuffer, leafEleBufferIn, leafEleBufferOut;
         static std::vector<bool> parentEleFill, leafEleFill;
+        static std::vector<TN> leafNodeBuffer;
 
         if (pLev == 0)
         {
@@ -282,6 +283,7 @@ namespace fem
             leafEleBufferIn.resize(nElePoints);
             leafEleBufferOut.resize(nElePoints);
             leafEleFill.resize(nElePoints);
+            leafNodeBuffer.resize(nElePoints);
         }
 
         // For now, this may increase the size of coords_dup and vec_in_dup.
@@ -409,10 +411,12 @@ namespace fem
                         leafEleBufferIn[ii] = parentEleBuffer[ii];
             }
 
+            // Get element node coordinates in lexicographic order.
+            leafNodeBuffer.clear();
+            ot::Element<typename TN::coordType, dim>(subtreeRoot).template appendNodes<TN>(polyOrder, leafNodeBuffer);
+
             // Elemental computation.
-            eleOp(&(*leafEleBufferIn.cbegin()), &(*leafEleBufferOut.begin()));
-            //TODO eleOp(&(*leafEleBufferIn.cbegin()), &(*leafEleBufferOut.begin()), subtreeRoot);
-            //TODO is the (const TN * coords) for an array of coords or just the element coords?
+            eleOp(&(*leafEleBufferIn.cbegin()), &(*leafEleBufferOut.begin()), &(*leafNodeBuffer.begin()));
 
             // Transfer results of eleOp to vecOut in original coordinate order.
             for (int ii = 0; ii < sz; ii++)
