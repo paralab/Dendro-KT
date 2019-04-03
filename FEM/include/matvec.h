@@ -24,12 +24,16 @@ namespace fem
   using LevI = ot::LevI;
   using RotI = ot::RotI;
 
+  /// using EleOpT = std::function<void(const T *in, T *out, TN* coords)>;
+  template <typename da>
+  using EleOpT = std::function<void(const da *in, da *out)>;
+
     // Declaring the matvec at the top.
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement);
+    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement);
 
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement, const T* pVecIn, const TN* pCoords, unsigned int pSz);
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz);
 
     /**
      * @brief: top_down bucket function
@@ -40,19 +44,37 @@ namespace fem
      * @param [in] sz: number of points (in points)
      * @param [out] offsets: bucket offsets in bucketed arrays, length would be 1u<<dim
      * @param [out] counts: bucket counts
-     * @param [in] refElement: Reference element
      * @param [out] scattermap: bucketing scatter map from parent to child: scattermap[node_i * (1u<<dim) + destIdx] == destChild_sfc; A child of -1 (aka max unsigned value) means empty.
      * @return: Return true when we hit a leaf element. 
      */
-    template<typename T,typename TN, typename RE, unsigned int dim>
-    bool top_down(const TN* coords, std::vector<TN> &coords_dup, const T* vec, std::vector<T> &vec_dup, unsigned int sz, unsigned int* offsets, unsigned int* counts, const RE* refElement, std::vector<ChildI> &scattermap, const TN subtreeRoot, RotI pRot)
+    template<typename T,typename TN, unsigned int dim>
+    bool top_down(const TN* coords, std::vector<TN> &coords_dup, const T* vec, std::vector<T> &vec_dup, unsigned int sz, unsigned int* offsets, unsigned int* counts, std::vector<ChildI> &scattermap, const TN subtreeRoot, RotI pRot);
+
+
+    /**
+     * @brief: bottom_up bucket function
+     * @param [out] vec: output vector 
+     * @param [int] vec_contrib: output vector bucketed contributions from all children.
+     * @param [in] sz: number of points (in points)
+     * @param [in] offsets: bucket offsets in bucketed arrays, length would be 1u<<dim
+     * @param [in] scattermap: bucketing scatter map from parent to child: scattermap[node_i * (1u<<dim) + destIdx] == destChild_sfc; A child of -1 (aka max unsigned value) means empty. We need to do the reverse for bottom-up.
+     */
+    template <typename T, typename TN, unsigned int dim>
+    void bottom_up(T* vec, const std::vector<T> &vec_contrib, unsigned int sz, const unsigned int *offsets, const std::vector<ChildI> &scatterMap);
+
+
+    // ------------------------------- //
+
+
+    template<typename T,typename TN, unsigned int dim>
+    bool top_down(const TN* coords, std::vector<TN> &coords_dup, const T* vec, std::vector<T> &vec_dup, unsigned int sz, unsigned int* offsets, unsigned int* counts, std::vector<ChildI> &scattermap, const TN subtreeRoot, RotI pRot)
     {
       /**
        * @author Masado Ishii
        * @author Milinda Fernando
        */
 
-      // Read-only inputs:                         coords,   vec,    refElement.
+      // Read-only inputs:                         coords,   vec
       // Pre-allocated outputs:                    offsets,     counts.
       // Internally allocated (TODO pre-allocate): coords_dup,  vec_dup,   scattermap.
 
@@ -164,23 +186,31 @@ namespace fem
       return false;   // Non-leaf.
     }
 
-    /**
-     * 
-     * @brief: bottom_up bucket function
-     * @param [in] in: input points
-     * @param [in] sz: number of points (in points)
-     * @param [out] out: bucktet points with duplications on the element boundary. 
-     * @param [out] offsets: offsets for bucketed array size would be 1u<<dim
-     * @param [out] counts: bucket counts
-     * @param [in] refElement: Reference element
-     * @return: Return true when we hit the root element. 
-     */
-    template<typename T,typename TN, typename RE, unsigned int dim>
-    bool bottom_up(const TN* coords_in, TN* coords_out, const T* vec_in, T* vec_out, unsigned int sz, const unsigned int* offsets, const unsigned int* counts,const RE* refElement,unsigned int* gathermap)
+
+    template <typename T, typename TN, unsigned int dim>
+    void bottom_up(T* vec, const std::vector<T> &vec_contrib, unsigned int sz, const unsigned int *offsets, const std::vector<ChildI> &scatterMap)
     {
-      //TODO fill in stub
-      return false;
+      constexpr unsigned int numChildren = (1u<<dim);
+
+      std::array<unsigned int, numChildren> offsetsWrite;
+      memcpy(&(*offsetsWrite.begin()), offsets, sizeof(unsigned int)*numChildren);
+
+      for (unsigned int ii = 0; ii < sz; ii++)
+      {
+        bool initialized = false;
+        unsigned int child_sfc;
+        for (unsigned int src = 0; src < numChildren && (child_sfc = scatterMap[ii*numChildren + src]) != -1; src++)
+        {
+          if (initialized)
+            vec[ii] += vec_contrib[offsetsWrite[child_sfc]++];
+          else
+            vec[ii] = vec_contrib[offsetsWrite[child_sfc]++];
+          initialized = true;
+        }
+      }
     }
+
+
 
     /**
      * @brief : mesh-free matvec
@@ -194,16 +224,16 @@ namespace fem
      * @param [in] refElement: reference element.
      */
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement)
+    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement)
     {
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
-      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, refElement, nullptr, nullptr, 0);
+      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, refElement, nullptr, nullptr, nullptr, 0);
     }
 
     // Recursive implementation.
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, std::function<void(const T*, T*, TN* coords)> eleOp, const RE* refElement, const T* pVecIn, const TN* pCoords, unsigned int pSz)
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz)
     {
         if (sz == 0)
           return;
@@ -240,7 +270,7 @@ namespace fem
           std::vector<ChildI> smap;
         };
         static std::vector<InternalBuffers> ibufs;
-        static std::vector<T> parentEleBuffer, leafEleBuffer;
+        static std::vector<T> parentEleBuffer, leafEleBufferIn, leafEleBufferOut;
         static std::vector<bool> parentEleFill, leafEleFill;
 
         if (pLev == 0)
@@ -249,14 +279,15 @@ namespace fem
             ibufs.resize(m_uiMaxDepth+1);
             parentEleBuffer.resize(nElePoints);
             parentEleFill.resize(nElePoints);
-            leafEleBuffer.resize(nElePoints);
+            leafEleBufferIn.resize(nElePoints);
+            leafEleBufferOut.resize(nElePoints);
             leafEleFill.resize(nElePoints);
         }
 
         // For now, this may increase the size of coords_dup and vec_in_dup.
         // We can get the proper size for vec_out_contrib from the result.
-        bool isLeaf = top_down<T,TN,RE,dim>(coords, ibufs[pLev].coords_dup, vecIn, ibufs[pLev].vec_in_dup, sz, offset, counts, refElement, ibufs[pLev].smap, subtreeRoot, pRot);
-        
+        bool isLeaf = top_down<T,TN,dim>(coords, ibufs[pLev].coords_dup, vecIn, ibufs[pLev].vec_in_dup, sz, offset, counts, ibufs[pLev].smap, subtreeRoot, pRot);
+
         if(!isLeaf)
         {
             ibufs[pLev].vec_out_contrib.resize(ibufs[pLev].vec_in_dup.size());
@@ -289,7 +320,7 @@ namespace fem
                                             tnChild, cRot,
                                             counts[child_sfc], partFront, partBack,
                                             eleOp, refElement,
-                                            vecIn, coords, sz);
+                                            vecIn, vecOut, coords, sz);
 
                 chAfterPart |= (bool) (willMeetBack && (tnChild == partBack || tnChild.isAncestor(partBack)));
             }
@@ -313,7 +344,7 @@ namespace fem
                 assert((nodeRank < intPow(polyOrder+1, dim)));
 
                 leafEleFill[nodeRank] = true;
-                leafEleBuffer[nodeRank] = vecIn[ii];
+                leafEleBufferIn[nodeRank] = vecIn[ii];
             }
 
             bool leafHasAllNodes = true;
@@ -365,18 +396,33 @@ namespace fem
                 }
 
                 // TODO Perform interpolation using refElement.
+                /// - Parent2Child(parentEleBuffer.data(), parentEleBuffer.data())  // in == out is safe.
+                /// - for (int ii = 0; ii < sz; ii++) if (!leafEleFill[ii]) leafEleBufferIn[ii] = parentEleBuffer[ii];
             }
 
-            // TODO call eleOp function
-            // Note you might need to identify the parent nodes for parent to child interpolation. 
-            // (use reference element class for interpolation)
+            // Elemental computation.
+            eleOp(&(*leafEleBufferIn.cbegin()), &(*leafEleBufferOut.begin()));
 
+            // TODO transfer results of eleOp to vecOut in original coordinate order.
+
+            // TODO if not complete, back-interpolate to the parent into pVecOut
+            //
+            // if (!leafHasAllNodes)
+            // {
+            //   for (int ii = 0; ii < sz; ii++) if (!leafEleFill[ii]) parentEleBuffer[ii] = leafEleBufferOut[ii];
+            //   Child2Parent(parentEleBuffer.data(), parentEleBuffer.data()),   // in == out is safe.
+            //
+            //   // Add parent-level results back to parent vector in original coordinate order.
+            //   // (Note that the parent output vector is already initialized to 0 during copy).
+            //   // TODO
+            // }
+            //
         }
 
-        // call for bottom up;
-        //TODO
-        /// bool isRoot= bottom_up<T,TN,RE,dim>(coords,coords_out.data(),vecOut,vec_out.data(),offset,counts,refElement,gmap);
-        
+        if (!isLeaf)
+          bottom_up<T,TN,dim>(vecOut, ibufs[pLev].vec_out_contrib, sz, offset, ibufs[pLev].smap);
+
+
         delete [] offset;
         delete [] counts;
 

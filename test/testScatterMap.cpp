@@ -12,7 +12,7 @@
 #include "treeNode.h"
 #include "nsort.h"
 #include "matvec.h"
-#include "refel.h"
+/// #include "refel.h"
 #include<functional>
 /// #include "matvecPreallocation.h"
 
@@ -69,8 +69,8 @@ int main(int argc, char * argv[])
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  constexpr unsigned int dim = 4;
-  const unsigned int endL = 4;
+  constexpr unsigned int dim = 3;
+  const unsigned int endL = 3;
   const unsigned int order = 3;
 
   /// testGatherMap<dim,endL,order>(comm);
@@ -641,15 +641,44 @@ void testDummyMatvec()
 
   unsigned int sz = coords.size();
 
-  const da *vecIn = new da[sz];   // Some undefined garbage input, thou shalt not modify the garbage.
-  da *vecOut = new da[sz];
-  std::function<void(const da*, da*, TN* coords)> eleOp;   // empty eleOp.
+  // New dummy eleOp.
+  struct EleOpStruct
+  {
+    unsigned int m_dim;
+    unsigned int m_polyOrder;
+    void operator() (const da *in, da *out) const { for (unsigned int ii = 0; ii < intPow(m_polyOrder+1, m_dim); ii++) out[ii] = -in[ii]; }
+  }
+  eleOpInstance{dim, order};
+
+  /// const da *vecIn = new da[sz];   // Some undefined garbage input, thou shalt not modify the garbage.
+  /// da *vecOut = new da[sz];
+  /// std::function<void(const da*, da*, TN* coords)> eleOp;   // empty eleOp.
+  /// std::function<void(const da*, da*)> eleOp;   // empty eleOp.
+
+  std::vector<da> vecIn(sz);
+  std::vector<da> vecOut(sz, 0);
+  for (unsigned int ii = 0; ii < sz; ii++)
+    vecIn[ii] = ii;
+  std::function<void(const da*, da*)> eleOp = eleOpInstance;
   RE refElement{dim, order};
 
-  fem::matvec<da, TN, RE, dim>(vecIn, vecOut, &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, &refElement);
+  fem::matvec<da, TN, RE, dim>(&(*vecIn.cbegin()), &(*vecOut.begin()), &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, &refElement);
 
-  delete [] vecIn;
-  delete [] vecOut;
+  std::cout << "Input\n";
+  for (unsigned int ii = 0; ii < sz; )
+  {
+    for (unsigned int j = 0; ii < sz && j < 15; ii++, j++)
+      std::cout << "\t" << vecIn[ii];
+    std::cout << "\n";
+  }
+
+  std::cout << "\n\n" << "Output\n";
+  for (unsigned int ii = 0; ii < sz; )
+  {
+    for (unsigned int j = 0; ii < sz && j < 15; ii++, j++)
+      std::cout << "\t" << vecOut[ii];
+    std::cout << "\n";
+  }
 
   _DestroyHcurve();
 
