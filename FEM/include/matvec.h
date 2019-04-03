@@ -33,7 +33,7 @@ namespace fem
     void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement);
 
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz);
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild);
 
     /**
      * @brief: top_down bucket function
@@ -228,12 +228,12 @@ namespace fem
     {
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
-      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, refElement, nullptr, nullptr, nullptr, 0);
+      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, refElement, nullptr, nullptr, nullptr, 0, true);
     }
 
     // Recursive implementation.
     template<typename T,typename TN, typename RE,  unsigned int dim>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz)
+    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild)
     {
         if (sz == 0)
           return;
@@ -304,6 +304,8 @@ namespace fem
             const bool willMeetFront = subtreeRoot.isAncestor(partFront);
             const bool willMeetBack = subtreeRoot.isAncestor(partBack);
 
+            bool childIsFirst = true;
+
             // input points counts[i] > nPe assert();
             for(unsigned int child_sfc = 0; child_sfc < numChildren; child_sfc++)
             {
@@ -320,9 +322,11 @@ namespace fem
                                             tnChild, cRot,
                                             counts[child_sfc], partFront, partBack,
                                             eleOp, refElement,
-                                            vecIn, vecOut, coords, sz);
+                                            vecIn, vecOut, coords, sz, childIsFirst);
 
                 chAfterPart |= (bool) (willMeetBack && (tnChild == partBack || tnChild.isAncestor(partBack)));
+
+                childIsFirst = false;
             }
         
         }else
@@ -378,7 +382,6 @@ namespace fem
 
                     parentEleFill[nodeRank] = true;
                     parentEleBuffer[nodeRank] = pVecIn[ii];
-                    pVecOut[ii] = 0.0;
                 }
 
                 // Interpolate.
@@ -403,6 +406,8 @@ namespace fem
 
             // Elemental computation.
             eleOp(&(*leafEleBufferIn.cbegin()), &(*leafEleBufferOut.begin()));
+            //TODO eleOp(&(*leafEleBufferIn.cbegin()), &(*leafEleBufferOut.begin()), subtreeRoot);
+            //TODO is the (const TN * coords) for an array of coords or just the element coords?
 
             // Transfer results of eleOp to vecOut in original coordinate order.
             for (int ii = 0; ii < sz; ii++)
@@ -436,7 +441,10 @@ namespace fem
                     ot::TNPoint<typename TN::coordType,dim> pt(1, (pCoords[ii].getAnchor(ptCoords), ptCoords), pCoords[ii].getLevel());
 
                     unsigned int nodeRank = pt.get_lexNodeRank(subtreeParent, polyOrder);
-                    pVecOut[ii] += parentEleBuffer[nodeRank];
+                    if (!isFirstChild)
+                      pVecOut[ii] += parentEleBuffer[nodeRank];
+                    else
+                      pVecOut[ii] = parentEleBuffer[nodeRank];
                 }
             }
         }
