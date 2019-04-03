@@ -378,6 +378,7 @@ namespace fem
 
                     parentEleFill[nodeRank] = true;
                     parentEleBuffer[nodeRank] = pVecIn[ii];
+                    pVecOut[ii] = 0.0;
                 }
 
                 // Interpolate.
@@ -414,18 +415,30 @@ namespace fem
                 vecOut[ii] = leafEleBufferOut[nodeRank];
             }
 
-            // TODO if not complete, back-interpolate to the parent into pVecOut
-            //
-            // if (!leafHasAllNodes)
-            // {
-            //   for (int ii = 0; ii < sz; ii++) if (!leafEleFill[ii]) parentEleBuffer[ii] = leafEleBufferOut[ii];
-            //   Child2Parent(parentEleBuffer.data(), parentEleBuffer.data()),   // in == out is safe.
-            //
-            //   // Add parent-level results back to parent vector in original coordinate order.
-            //   // (Note that the parent output vector is already initialized to 0 during copy).
-            //   // TODO
-            // }
-            //
+            if (!leafHasAllNodes)
+            {
+                //TODO
+                /// for (int ii = 0; ii < sz; ii++)
+                ///     if (!leafEleFill[ii])
+                ///         parentEleBuffer[ii] = leafEleBufferOut[ii];
+
+                //TODO back-interpolate Child2Parent(parentEleBuffer.data(), parentEleBuffer.data())  // in == out is safe.
+
+                // Accumulate into parent nodes.
+                TN subtreeParent = subtreeRoot.getParent();
+                for (int ii = 0; ii < pSz; ii++)
+                {
+                    if (pCoords[ii].getLevel() != pLev-1)
+                      continue;
+
+                    // TODO these type casts are ugly and they might even induce more copying than necessary.
+                    std::array<typename TN::coordType,dim> ptCoords;
+                    ot::TNPoint<typename TN::coordType,dim> pt(1, (pCoords[ii].getAnchor(ptCoords), ptCoords), pCoords[ii].getLevel());
+
+                    unsigned int nodeRank = pt.get_lexNodeRank(subtreeParent, polyOrder);
+                    pVecOut[ii] += parentEleBuffer[nodeRank];
+                }
+            }
         }
 
         if (!isLeaf)
