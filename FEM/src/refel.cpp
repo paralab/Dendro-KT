@@ -24,19 +24,15 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
     /*
      * Reference element domain is from  (-1,1)
      * */
-    if(dim==1)
-        m_uiVol=2;
-    else if(dim==2)
-        m_uiVol=4;
-    else if(dim==3)
-        m_uiVol=8;
+    m_uiVol = 1u<<dim;
 
     m_uiDimension=dim;
     m_uiOrder=order;
 
-    m_uiNp  = (m_uiOrder + 1) * (m_uiOrder + 1) * (m_uiOrder + 1);
-    m_uiNfp = (m_uiOrder + 1) * (m_uiOrder + 1);
     m_uiNrp = (m_uiOrder + 1);
+    /// m_uiNfp = (m_uiOrder + 1) * (m_uiOrder + 1);
+    /// m_uiNp  = (m_uiOrder + 1) * (m_uiOrder + 1) * (m_uiOrder + 1);
+    m_uiNp = intPow(m_uiNrp, dim);
 
     u.resize(m_uiNrp);
     r.resize(m_uiNrp);

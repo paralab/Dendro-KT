@@ -17,6 +17,22 @@
 
 #include <arraySlice.h>
 
+// TODO make a new namespace
+
+/**
+ * @tparam dim Dimension of element, i.e. order of tensor.
+ * @tparam da  Datatype of vectors.
+ * @tparam forward If true, axes are evaluated in increasing order.
+ * @param [in] M Size of tensor in 1D.
+ * @param [in] A Array of pointers to interpolation matrices, ordered by axis.
+ * @param [in] in Array of pointers to input buffers, ordered with source in position 0.
+ * @param [in] out Array of pointers to output buffers, ordered with destination in position (dim-1).
+ */
+template <unsigned int dim, typename da, bool forward>
+void KroneckerProduct(unsigned M, const da **A, const da **in, da **out);
+
+
+
 template <typename da>
 struct MatKernelAssign
 {
@@ -34,17 +50,29 @@ struct MatKernelAccum
 };
 
 
-//
-// IterateFacetBindMatrix
-//
-// Usage: IterateFacetBindMatrix<dim, face, tangent>::template iterate_facet_bind_matrix<da>(M, A, X, Y);
-//
+// Local matrix multiplication over 1D of a general slice of tensor.
+template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
+struct IterateBindMatrix;
+
+// Specialization of IterateBindMatrix to the full tensor.
+template <unsigned int dim, unsigned int tangent>
+using IterateTensorBindMatrix = IterateBindMatrix<dim, (1u<<dim)-1, tangent>;
+
+// Specialization of IterateBindMatrix to a (K-1)-face of the tensor.
 template <unsigned int dim, unsigned int face, unsigned int tangent>
-struct IterateFacetBindMatrix
+using IterateFacetBindMatrix = IterateBindMatrix<dim, ((1u<<dim)-1) - (1u<<face), tangent>;
+
+
+//
+// IterateBindMatrix
+//
+// Usage: IterateBindMatrix<dim, sliceFlag, tangent>::template iterate_bind_matrix<da>(M, A, X, Y);
+//
+template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
+struct IterateBindMatrix
 {
-  static constexpr unsigned int fullOrientFlag = ((1u<<dim) - 1) - (1u<<face);
-  static constexpr unsigned int upperOrientFlag = fullOrientFlag & (- (1u<<(tangent+1)));
-  static constexpr unsigned int lowerOrientFlag = fullOrientFlag & ((1u<<tangent) - 1);
+  static constexpr unsigned int upperOrientFlag = sliceFlag & (- (1u<<(tangent+1)));
+  static constexpr unsigned int lowerOrientFlag = sliceFlag & ((1u<<tangent) - 1);
 
   using OuterLoop = PowerLoopSlice<dim, upperOrientFlag>;
   using InnerLoop = PowerLoopSlice<dim, lowerOrientFlag>;
@@ -75,7 +103,7 @@ struct IterateFacetBindMatrix
     InnerKernel<da> &m_kernel;
     unsigned int m_M;
     const da *m_APtr;
-    OuterKernel(InnerKernel<da> &kernel, unsigned int M, da *A) : m_kernel(kernel), m_M(M), m_APtr(A) {}
+    OuterKernel(InnerKernel<da> &kernel, unsigned int M, const da *A) : m_kernel(kernel), m_M(M), m_APtr(A) {}
     OuterKernel() = delete;
 
     unsigned int m_row;
@@ -83,16 +111,16 @@ struct IterateFacetBindMatrix
   };
 
   template <typename da>
-  inline static void iterate_facet_bind_matrix(const unsigned int M, da *A, da *X, da *Y);
+  inline static void iterate_bind_matrix(const unsigned int M, const da *A, const da *X, da *Y);
 };
 
 
   //
-  // iterate_facet_bind_matrix()
+  // iterate_bind_matrix()
   //
-  template <unsigned int dim, unsigned int face, unsigned int tangent>
+  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
   template <typename da>
-  inline void IterateFacetBindMatrix<dim,face,tangent>::iterate_facet_bind_matrix(const unsigned int M, da *A, da *X, da *Y)
+  inline void IterateBindMatrix<dim,sliceFlag,tangent>::iterate_bind_matrix(const unsigned int M, const da *A, const da *X, da *Y)
   {
     // For each row of the matrix, iterate through the hyperplane
     // of the index space that is normal to the axis `face'.
@@ -112,9 +140,9 @@ struct IterateFacetBindMatrix
   //
   // OuterKernel::operator()()
   //
-  template <unsigned int dim, unsigned int face, unsigned int tangent>
+  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
   template <typename da>
-  inline void IterateFacetBindMatrix<dim,face,tangent>::
+  inline void IterateBindMatrix<dim,sliceFlag,tangent>::
        OuterKernel<da>::
        operator()(unsigned int outerIdx)
   {
@@ -134,10 +162,10 @@ struct IterateFacetBindMatrix
   //
   // InnerKernel::actuate()
   //
-  template <unsigned int dim, unsigned int face, unsigned int tangent>
+  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
   template <typename da>
   template <typename Kernel>
-  inline void IterateFacetBindMatrix<dim,face,tangent>::
+  inline void IterateBindMatrix<dim,sliceFlag,tangent>::
        InnerKernel<da>::
        actuate(Kernel &kernel, unsigned int innerIdx)
   {
@@ -147,6 +175,33 @@ struct IterateFacetBindMatrix
     unsigned int y_ii = m_outerIdx + m_row * tangentStride + innerIdx;
     kernel(m_d, x_ii, y_ii);
   }
+
+
+
+template <unsigned int dim, unsigned int d, bool forward>
+struct KroneckerProduct_loop { template <typename da> static void body(unsigned M, const da **A, const da **in, da **out) {
+  constexpr unsigned int ii = (forward ? dim-1 - d : d);
+
+  if (forward)
+    IterateTensorBindMatrix<dim, d>::template iterate_bind_matrix<da>(M, A[d], in[ii], out[ii]);
+
+  KroneckerProduct_loop<dim, d-1, forward>::template body<da>(M,A,in,out);
+
+  if (!forward)
+    IterateTensorBindMatrix<dim, d>::template iterate_bind_matrix<da>(M, A[d], in[ii], out[ii]);
+}};
+template <unsigned int dim, bool forward>
+struct KroneckerProduct_loop<dim, 0, forward> { template <typename da> static void body(unsigned M, const da **A, const da **in, da **out) {
+  constexpr unsigned int ii = (forward ? dim-1 : 0);
+  IterateTensorBindMatrix<dim, 0>::template iterate_bind_matrix<da>(M, A[0], in[ii], out[ii]);
+}};
+
+template <unsigned int dim, typename da, bool forward>
+void KroneckerProduct(unsigned M, const da **A, const da **in, da **out)
+{
+  KroneckerProduct_loop<dim, dim-1, forward>::template body<da>(M,A,in,out);
+}
+
 
 
 

@@ -15,7 +15,6 @@
 #include <algorithm>
 #include "dendro.h"
 #include "ompUtils.h"
-#include "treeNode.h"
 #include <chrono>
 #include <assert.h>
 
