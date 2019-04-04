@@ -135,7 +135,8 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points, Companion *companions,
 
       if (sLev > 0)
       {
-        locTreeSort(points, companions,
+        locTreeSort<KeyFun, PointType, KeyType, Companion, useCompanions>
+            (points, companions,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
             cRot,                         // This branch uses cRot.
@@ -143,7 +144,8 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points, Companion *companions,
       }
       else   // Special handling if we have to consider the domain boundary.
       {
-        locTreeSort(points, companions,
+        locTreeSort<KeyFun, PointType, KeyType, Companion, useCompanions>
+            (points, companions,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
             pRot,                         // This branch uses pRot.

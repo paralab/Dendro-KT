@@ -51,7 +51,7 @@ namespace bench
         {
          
             std::vector<TreeNode> tree;
-            TreeNode treeSplitter;
+            TreeNode treeSplitterF, treeSplitterB;
             std::vector<TNP> nodeListExterior;
             /// std::vector<TNP> nodeListInterior;
             unsigned int numCGNodes;
@@ -80,17 +80,18 @@ namespace bench
                 ot::Element<T,dim>(tn).appendExteriorNodes(polyOrder, nodeListExterior);
                 /// ot::Element<T,dim>(tn).appendInteriorNodes(polyOrder, nodeListInterior);
             }
-            treeSplitter = tree.front();
+            treeSplitterF = tree.front();
+            treeSplitterB = tree.back();
             tree.clear();
 
             // Time counting/resolving CG nodes.
             t_cg.start();
-            numCGNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, polyOrder, (const TreeNode *) &treeSplitter, comm);
+            numCGNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, polyOrder, (const TreeNode *) &treeSplitterF, (const TreeNode *) &treeSplitterB, comm);
             t_cg.stop();
 
             // Time computing the scatter map.
             t_sm.start();
-            sm = ot::SFC_NodeSort<T,dim>::computeScattermap(nodeListExterior, (const TreeNode *) &treeSplitter, comm);
+            sm = ot::SFC_NodeSort<T,dim>::computeScattermap(nodeListExterior, (const TreeNode *) &treeSplitterF, comm);
             rm = ot::SFC_NodeSort<T,dim>::scatter2gather(sm, (ot::RankI) nodeListExterior.size(), comm);
             t_sm.stop();
             nodeListExterior.clear();

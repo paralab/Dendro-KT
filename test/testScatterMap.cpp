@@ -70,7 +70,7 @@ int main(int argc, char * argv[])
   MPI_Comm_size(comm, &nProc);
 
   constexpr unsigned int dim = 2;
-  const unsigned int endL = 2;
+  const unsigned int endL = 3;
   const unsigned int order = 2;
 
   /// testGatherMap<dim,endL,order>(comm);
@@ -125,7 +125,7 @@ void testGatherMap(MPI_Comm comm)
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
   }
   /// numUniqueInteriorNodes = nodeListInterior.size();
-  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+  numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(tree.front()), &(tree.back()), comm);
   /// ot::RankI globInterior = 0;
   /// par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
   /// numUniqueInteriorNodes = globInterior;
@@ -480,7 +480,7 @@ void testUniformGrid(MPI_Comm comm)
   // Append all exterior nodes, then do global resolving ownership. (There are no hanging nodes).
   for (auto &&tn : tree)
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
-  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, tree.data(), comm);
+  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, &(tree.front()), &(tree.back()), comm);
 
   // This is to test the new scattermap.
   std::vector<TNP> newNodeList = nodeList;
@@ -602,7 +602,7 @@ void testDummyMatvec()
   ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
   for (const ot::TreeNode<T,dim> &tn : tree)
     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
-  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, &(*tree.cbegin()), comm);
+  ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, &(tree.front()), &(tree.back()), comm);
 
   for (const ot::TreeNode<T,dim> &tn : tree)
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeList);

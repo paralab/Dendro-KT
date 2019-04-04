@@ -489,7 +489,8 @@ namespace ot {
   //
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::dist_countCGNodes(
-      std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart,
+      std::vector<TNPoint<T,dim>> &points, unsigned int order,
+      const TreeNode<T,dim> *treePartFront, const TreeNode<T,dim> *treePartBack,
       MPI_Comm comm)
   {
     using TNP = TNPoint<T,dim>;
@@ -563,7 +564,7 @@ namespace ot {
     std::vector<RankI> shareMap;
 
     // Get neighbour information.
-    std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
+    std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartFront, comm);
     assert((splitters.size() == nProc));
     for (RankI ptIdx = 0; ptIdx < numUniquePoints; ptIdx++)
     {
@@ -686,42 +687,104 @@ namespace ot {
     //
 
     // Mark owned nodes and finalize the counting part.
-    // Current ownership policy: Least-rank-processor (without the Base tag).
-    RankI numOwnedPoints = 0;
+    // Current ownership policy: Match the node partition with the tree partition.
+
+    // Remove duplicates and hanging nodes.
+    RankI numUniqPoints = 0;
     {
       typename std::vector<TNP>::iterator ptIter = points.begin();
       while (ptIter < points.end())
       {
-        // Skip hanging nodes.
-        if (ptIter->get_isSelected() != TNP::Yes)
-        {
-          ptIter++;
-          continue;
-        }
-
+        // Skip hanging nodes (no hanging node is marked 'Yes').
+        //
         // A node marked 'Yes' is the first instance.
-        // Examine all instances and choose the one with least rank.
-        typename std::vector<TNP>::iterator leastRank = ptIter;
-        while (ptIter < points.end() && *ptIter == *leastRank)  // Equality compares only coordinates and level.
+        // For the current policy we disregard which procs it came from.
+        // The purpose of this loop is to remove the duplicates.
+        if (ptIter->get_isSelected() == TNP::Yes)
         {
-          ptIter->set_isSelected(TNP::No);
-          if (ptIter->get_owner() < leastRank->get_owner())
-            leastRank = ptIter;
-          ptIter++;
+          points[numUniqPoints] = *ptIter;
+          numUniqPoints++;
         }
-
-        // If the chosen node is ours, select it and increment count.
-        if (leastRank->get_owner() == -1 || leastRank->get_owner() == rProc)
-        {
-          leastRank->set_isSelected(TNP::Yes);
-          points[numOwnedPoints] = *leastRank;
-          numOwnedPoints++;
-        }
+        ptIter++;
       }
     }
-    // Resize and sort points.
-    points.resize(numOwnedPoints);
-    SFC_Tree<T,dim>::template locTreeSort<TNP>(&(*points.begin()), 0, numOwnedPoints, 0, m_uiMaxDepth, 0);
+    points.resize(numUniqPoints);
+
+    // To match the tree partition, we need to pre-sort the points in SFC order.
+    // The key function means that boundary nodes are logically pushed
+    // to the interior of an in-bounds element.
+    SFC_Tree<T,dim>::template locTreeSort< KeyFunInboundsContainer_t<TNP, TreeNode<T,dim>>,
+                                           TNP,
+                                           TreeNode<T,dim>,
+                                           int, false >(
+        &(*points.begin()), nullptr, 0, numUniqPoints, 1, m_uiMaxDepth, 0, KeyFunInboundsContainer<TNP, TreeNode<T,dim>>);
+
+    // The points are now sorted such that some contiguous segment in the middle
+    // belongs to the local tree partition. Find that segment and trim.
+    typename std::vector<TNP>::iterator segBegin, segEnd;
+    {
+      const unsigned int frontLev = treePartFront->getLevel();
+      const unsigned int backLev = treePartBack->getLevel();
+
+      constexpr char numChildren = TreeNode<T,dim>::numChildren;
+      constexpr char rotOffset = 2*numChildren;                             // num columns in rotations[].
+      unsigned int pRot = 0;
+
+      // Find first contained node.
+      segBegin = points.begin();
+      for (unsigned int testLev = 1; testLev <= frontLev; testLev++)
+      {
+        const ChildI *rot_inv = &rotations[pRot*rotOffset + 1*numChildren];   // child_sfc == rot_inv[child_morton];
+        const ChildI spChild_m = treePartFront->getMortonIndex(testLev);
+        const ChildI spChild_sfc = rot_inv[spChild_m];
+
+        while (segBegin < points.end() && rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segBegin).getMortonIndex(testLev)] < spChild_sfc)
+          segBegin++;
+        // Could be replaced by a binary search.
+
+        if (segBegin == points.end() || rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segBegin).getMortonIndex(testLev)] > spChild_sfc)
+          break;
+        // Else, child_sfc == spChild_sfc, so we need to keep descending.
+
+        const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+        pRot = orientLookup[spChild_m];
+      }
+
+      // Find last contained node.
+      if (segBegin < points.end())
+      {
+        pRot = 0;
+        segEnd = points.end() - 1;
+        for (unsigned int testLev = 1; testLev <= backLev; testLev++)
+        {
+          const ChildI *rot_inv = &rotations[pRot*rotOffset + 1*numChildren];   // child_sfc == rot_inv[child_morton];
+          const ChildI spChild_m = treePartBack->getMortonIndex(testLev);
+          const ChildI spChild_sfc = rot_inv[spChild_m];
+
+          while (segEnd > segBegin && rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segEnd).getMortonIndex(testLev)] > spChild_sfc)
+            segEnd--;
+          // Could be replaced by a binary search.
+
+          // It is not possible for rot_inv[segEnd->getMortonIndex(testLev)] < spChild_sfc,
+          // because that would imply segEnd < segBegin.
+          // Therefore we know child_sfc == spChild_sfc, and we need to keep descending.
+
+          const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+          pRot = orientLookup[spChild_m];
+        }
+        segEnd++;
+      }
+      else
+        segEnd = points.end();
+    }
+
+    // We identified the segment of contained nodes. Eliminate all others.
+    if (segBegin > points.begin())
+      std::move(segBegin, segEnd, points.begin());
+    points.resize(segEnd - segBegin);
+    //TODO Does the interface require that we set_isSelected(TNP::Yes)?
+
+    RankI numOwnedPoints = points.size();
 
     RankI numCGNodes = 0;  // The return variable for counting.
     par::Mpi_Allreduce(&numOwnedPoints, &numCGNodes, 1, MPI_SUM, comm);

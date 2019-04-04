@@ -47,6 +47,7 @@ namespace ot {
     public:
 
         using coordType = T;
+        static constexpr unsigned int coordDim = dim;
 
         static constexpr char numChildren = (1u << dim);
 

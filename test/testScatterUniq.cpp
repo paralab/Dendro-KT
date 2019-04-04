@@ -117,7 +117,7 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
   // Count the CG nodes.
   if (RunDistributed)
   {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(tree.front()), &(tree.back()), comm);
   }
   else
   {

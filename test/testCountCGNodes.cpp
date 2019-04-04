@@ -63,8 +63,8 @@ int main(int argc, char * argv[])
   MPI_Comm comm = MPI_COMM_WORLD;
 
   constexpr unsigned int dim = 3;
-  const unsigned int endL = 3;
-  const unsigned int order = 2;
+  const unsigned int endL = 4;
+  const unsigned int order = 3;
 
   double tol = 0.05;
 
@@ -155,11 +155,11 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
   {
-    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, tree.data(), comm);
+    numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(tree.front()), &(tree.back()), comm);
     ot::RankI globInterior = 0;
     par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
     numUniqueInteriorNodes = globInterior;
-    numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListCombined, order, tree.data(), comm);
+    numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListCombined, order, &(tree.front()), &(tree.back()), comm);
   }
   else
   {

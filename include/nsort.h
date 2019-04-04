@@ -22,6 +22,7 @@
 #include <queue>
 #include <unordered_set>
 #include <map>
+#include <functional>
 #include <stdio.h>
 
 namespace ot {
@@ -171,6 +172,30 @@ namespace ot {
   };
 
 
+  // The convention to nudge points, including boundary points, into containers.
+  template <typename SrcType, typename RsltType>
+  inline RsltType KeyFunInboundsContainer(const SrcType &pt)
+  {
+    using T = typename SrcType::coordType;
+    constexpr unsigned int dim = SrcType::coordDim;
+    std::array<T,dim> coords;
+    pt.getAnchor(coords);
+    const unsigned int lev = pt.getLevel();
+    const unsigned int len = 1u << (m_uiMaxDepth-lev);
+    const unsigned int domainUpper = (1u<<m_uiMaxDepth) - 1;
+
+    for (int d = 0; d < dim; d++)
+    {
+      if (coords[d] > domainUpper)
+        coords[d] -= len;
+    }
+
+    return {coords, lev};   // Erases resolution below lev.
+  }
+
+  template <typename SrcType, typename RsltType>
+  using KeyFunInboundsContainer_t = std::function<RsltType(const SrcType &)>;
+
   template <typename T, unsigned int dim>
   class Element : public TreeNode<T,dim>
   {
@@ -284,7 +309,8 @@ namespace ot {
      * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array. Also compact node list and compute ``scatter map.''
      */
     static RankI dist_countCGNodes(
-        std::vector<TNPoint<T,dim>> &points, unsigned int order, const TreeNode<T,dim> *treePartStart,
+        std::vector<TNPoint<T,dim>> &points, unsigned int order,
+        const TreeNode<T,dim> *treePartFront, const TreeNode<T,dim> *treePartBack,
         MPI_Comm comm);
 
 
