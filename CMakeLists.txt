@@ -83,7 +83,6 @@ if(BUILD_WITH_PETSC)
     list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake-modules")
     find_package(PETSc REQUIRED)
     add_definitions(-DBUILD_WITH_PETSC)
-
 endif()
 
 
@@ -145,11 +144,13 @@ set(DENDRO_KT_INC include/dendro.h
                   include/parUtils.h
                   include/parUtils.tcc
                   include/tsort.h
+                  include/oda.h
                   include/nsort.h
                   include/nsort.tcc
                   include/tsearchCmpx.h
                   include/treeNode.h
                   include/treeNode.tcc
+                  include/asyncExchangeContex.h
                   IO/vtk/include/oct2vtk.h
                   array/include/arraySlice.h
                   )
@@ -166,6 +167,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/tsearchCmpx.cpp
                   src/treeNode.cpp
                   IO/vtk/src/oct2vtk.cpp
+                  src/oda.cpp
                   )
 
 
@@ -190,7 +192,7 @@ endif()
 
 if(BUILD_WITH_PETSC)
     target_include_directories(dendroKT PUBLIC ${PETSC_INCLUDES})
-    target_link_libraries(dendroKT PUBLIC ${PETSC_LIBRARIES})
+    target_link_libraries(dendroKT ${PETSC_LIBRARIES})
 endif()
 
 if(HILBERT_ORDERING)
