@@ -344,11 +344,14 @@ namespace ot {
 
 
     /** @brief Stage and send our data (using ScatterMap), and receive ghost data into ghost buffers (using GatherMap). */
-    //TODO multiple data arrays in parallel. Use variadic templates.
-    //TODO Might need reverse exchange eventually?
-    //TODO this function doesn't really belong in this class, it doesn't depend on T or dim at all.
+    //TODO this function doesn't really belong in this class, it doesn't depend on T or dim at all. --> the 'oda' class
     template <typename da>
     static void ghostExchange(da *dataAndGhostBuffers, da *sendBufferSpace, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm);
+
+    /** @brief Send back contributions to owners (using GatherMap), receive and unstage/accumulate to our data (using ScatterMap). */
+    // TODO move this to the 'oda' class as well.
+    template <typename da>
+    static void ghostReverse(da *dataAndGhostBuffers, da *sendBufferSpace, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm);
 
 
     private:

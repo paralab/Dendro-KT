@@ -2032,6 +2032,58 @@ namespace ot {
       MPI_Wait(&requestRecv[rIdx], &status);
   }
 
+ 
+  template <typename T, unsigned int dim>
+  template <typename da>
+  void SFC_NodeSort<T,dim>::ghostReverse(da *data, da *sendBuf, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm)
+  {
+    // In this function we do the reverse of ghostExchange().
+
+    // 'data' is the outVec from matvec().
+    // Assume that the unused positions in outVec were initialized to 0
+    // and are still 0. Otherwise we will send, receive, and accum garbage.
+
+    std::vector<MPI_Request> requestSend(gm.m_recvProc.size());
+    std::vector<MPI_Request> requestRecv(sm.m_sendProc.size());
+    MPI_Status status;
+
+    // 1. We have contributions to remote nodes.
+    //    They are already staged in the ghost layers.
+    //    Send back to owners via the 'gather map'.
+    for (int rIdx = 0; rIdx < gm.m_recvProc.size(); rIdx++)
+      par::Mpi_Isend(data + gm.m_recvOffsets[rIdx],
+          gm.m_recvCounts[rIdx],
+          gm.m_recvProc[rIdx], 0, comm, &requestSend[rIdx]);
+
+    for (int rIdx = 0; rIdx < gm.m_recvProc.size(); rIdx++)
+      par::Mpi_Irecv(data + gm.m_recvOffsets[rIdx],  // Recv.
+          gm.m_recvCounts[rIdx],
+          gm.m_recvProc[rIdx], 0, comm, &requestRecv[rIdx]);
+
+
+    // 2. Owners receive back contributions from non-owners.
+    //    Contributions are received into the send buffer space
+    //    via the counts/offsets of the 'scatter map'.
+    for (int sIdx = 0; sIdx < sm.m_sendProc.size(); sIdx++)
+      par::Mpi_Irecv(sendBuf+ sm.m_sendOffsets[sIdx],
+          sm.m_sendCounts[sIdx],
+          sm.m_sendProc[sIdx], 0, comm, &requestRecv[sIdx]);
+
+    // Wait for sends and recvs.
+    for (int rIdx = 0; rIdx < gm.m_recvProc.size(); rIdx++)      // Wait sends.
+      MPI_Wait(&requestSend[rIdx], &status);
+    for (int sIdx = 0; sIdx < sm.m_sendProc.size(); sIdx++)     // Wait recvs.
+      MPI_Wait(&requestRecv[sIdx], &status);
+
+
+    // 3. Owners locally accumulate the contributions from the send buffer space
+    //    into the proper node positions via the map of the 'scatter map'.
+    const RankI sendSize = sm.m_map.size();
+    const da * const mydata = data + gm.m_locOffset;
+    for (ot::RankI ii = 0; ii < sendSize; ii++)
+      mydata[sm.m_map[ii]] += sendBuf[ii];
+  }
+
   // ============================ End: SFC_NodeSort ============================ //
 
 }//namespace ot

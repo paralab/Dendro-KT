@@ -498,6 +498,9 @@ void testUniformGrid(MPI_Comm comm)
   std::vector<TNP> sendBufNew(new_scatterMap.m_map.size());
   ot::SFC_NodeSort<T,dim>::template ghostExchange<TNP>(newNodeListAll.data(), sendBufNew.data(), new_scatterMap, new_gatherMap, comm);
 
+  /// //FORCE COMPILER - don't actually use this, it is not meaningful and it will mess up the test.
+  /// ot::SFC_NodeSort<T,dim>::template ghostReverse<TNP>(newNodeListAll.data(), sendBufNew.data(), new_scatterMap, new_gatherMap, comm);
+
   // Sort all the local and received nodes together.
   ot::SFC_NodeSort<T,dim>::locTreeSortAsPoints(newNodeListAll.data(), 0, (ot::RankI) newNodeListAll.size(), 0, m_uiMaxDepth, 0);
 
