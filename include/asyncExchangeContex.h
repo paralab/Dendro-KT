@@ -84,7 +84,7 @@ namespace ot {
             inline void* getSendBuffer() { return m_uiSendBuf;}
             inline void* getRecvBuffer() { return m_uiRecvBuf;}
 
-            inline const void* getBuffer() {return m_uiBuffer;}
+            inline void* getBuffer() const {return m_uiBuffer;}
 
             /** @note Remember not to copy-assign MPI_Request. */
             inline MPI_Request * getUpstRequestList(){ return m_uiUpstRequests.data();}

@@ -127,16 +127,15 @@ namespace ot
     template <typename T>
     void DA<dim>::readFromGhostBegin(T* vec,unsigned int dof)
     {
-        if(m_uiGlobalNpes==1)
+        if (m_uiGlobalNpes==1)
+            return;
+
+        if (!m_uiIsActive)
             return;
 
         // send recv buffers.
         T* sendB = NULL;
         T* recvB = NULL;
-
-        //TODO what is does it mean for a process to be active? (m_uiIsActive)
-
-        MPI_Comm comm = m_uiGlobalComm;   //TODO
 
         // 1. Prepare asynchronous exchange context.
         const unsigned int nUpstProcs = m_gm.m_recvProc.size();
@@ -160,7 +159,7 @@ namespace ot
             T *recvProcStart = recvB + dof*m_gm.m_recvOffsets[upstIdx];
             unsigned int recvCount = dof*m_gm.m_recvCounts[upstIdx];
             unsigned int upstProc = m_gm.m_recvProc[upstIdx];
-            par::Mpi_Irecv(recvProcStart, recvCount, upstProc, m_uiCommTag, comm, &reql[upstIdx]);
+            par::Mpi_Irecv(recvProcStart, recvCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
           }
         }
 
@@ -184,7 +183,7 @@ namespace ot
             T *sendProcStart = sendB + dof * m_sm.m_sendOffsets[dnstIdx];
             unsigned int sendCount = dof*m_sm.m_sendCounts[dnstIdx];
             unsigned int dnstProc = m_sm.m_sendProc[dnstIdx];
-            par::Mpi_Isend(sendProcStart, sendCount, dnstProc, m_uiCommTag, comm, &reql[dnstIdx]);
+            par::Mpi_Isend(sendProcStart, sendCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
           }
         }
 
@@ -288,10 +287,11 @@ namespace ot
             return;
 
         // Find asynchronous exchange context.
-        // AsynchExchangeContex * const ctx = &(*std::find_if(
-        //       m_uiMPIContexts.begin(), m_uiMPIContexts.end(),
-        //       [vec](const AsynchExchangeContex &c){ return ((T*) ctx.getBuffer()) == vec; }));
-        // assert(ctx->getBufferType == typeid(T).hash_code());
+        AsyncExchangeContex * const ctx =
+          &(*std::find_if(
+              m_uiMPIContexts.begin(), m_uiMPIContexts.end(),
+              [vec](const AsyncExchangeContex &c){ return ((T*) c.getBuffer()) == vec; }));
+        assert(ctx->getBufferType() == typeid(T).hash_code());
 
         // 1. Wait on recvs and sends.
 

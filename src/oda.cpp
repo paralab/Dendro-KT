@@ -42,19 +42,38 @@ namespace ot
      * */
     template <unsigned int dim>
     template <typename TN>
-    DA<dim>::DA(const TN *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order)
+    DA<dim>::DA(const TN *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
     {
+        //TODO
+        // ???  leftover uninitialized member variables.
+        //
+        /// std::vector<unsigned int> m_uiBdyNodeIds;
+        /// unsigned int m_uiLocalElementSz;
+        /// unsigned int m_uiTotalElementSz;
+
         m_uiElementOrder = order;
         m_uiNpE = intPow(order + 1, dim);
 
         unsigned int intNodesPerEle = intPow(order - 1, dim);
 
+        // TODO take into account grainSz and sfc_tol to set up activeComm.
+
         int nProc, rProc;
-        MPI_Comm_size(comm, &nProc);
-        MPI_Comm_rank(comm, &rProc);
+
+        m_uiGlobalComm = comm;
+        MPI_Comm_size(m_uiGlobalComm, &nProc);
+        MPI_Comm_rank(m_uiGlobalComm, &rProc);
         m_uiGlobalNpes = nProc;
         m_uiRankGlobal = rProc;
-        m_uiGlobalComm = comm;
+
+        // For now, make all procs active.
+        m_uiIsActive = true;
+        m_uiActiveComm = m_uiGlobalComm;
+        MPI_Comm_size(m_uiActiveComm, &nProc);
+        MPI_Comm_rank(m_uiActiveComm, &rProc);
+        m_uiActiveNpes = nProc;
+        m_uiRankActive = rProc;
+
         m_uiCommTag = 0;
 
         // Splitters for distributed exchanges.
@@ -67,7 +86,7 @@ namespace ot
             ot::Element<C,dim>(tn).appendExteriorNodes(order, nodeList);
 
         // Count unique element-exterior nodes.
-        unsigned int glbExtNodes = ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList, order, &treeFront, &treeBack, comm);
+        unsigned int glbExtNodes = ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList, order, &treeFront, &treeBack, m_uiActiveComm);
 
         // Finish generating nodes from the tree - element-interior nodes.
         // TODO measure if keeping interior nodes at end of list good/bad for performance.
@@ -76,14 +95,14 @@ namespace ot
 
         unsigned int locIntNodes = intNodesPerEle * nEle;
         unsigned int glbIntNodes = 0;
-        par::Mpi_Allreduce(&locIntNodes, &glbIntNodes, 1, MPI_SUM, comm);
+        par::Mpi_Allreduce(&locIntNodes, &glbIntNodes, 1, MPI_SUM, m_uiActiveComm);
 
         m_uiLocalNodalSz = nodeList.size();
         m_uiGlobalNodeSz = glbExtNodes + glbIntNodes;
 
-        // Create scatter/gather maps.
-        m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(nodeList, &treeFront, comm);
-        m_gm = ot::SFC_NodeSort<C,dim>::scatter2gather(m_sm, m_uiLocalNodalSz, comm);
+        // Create scatter/gather maps. Scatter map reflects whatever ordering is in nodeList.
+        m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(nodeList, &treeFront, m_uiActiveComm);
+        m_gm = ot::SFC_NodeSort<C,dim>::scatter2gather(m_sm, m_uiLocalNodalSz, m_uiActiveComm);
 
         // Export from gm: dividers between local and ghost segments.
         m_uiTotalNodalSz   = m_gm.m_totalCount;
@@ -106,18 +125,8 @@ namespace ot
         // Fill ghost segments of node coordinates vector.
         std::vector<ot::TreeNode<C,dim>> tmpSendBuf(m_sm.m_map.size());
         ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::TreeNode<C,dim>>(
-            &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, comm);
+            &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, m_uiActiveComm);
         //TODO transfer ghostExchange into this class, then use new method.
-
-        // ???  leftover uninitialized member variables.
-        //
-        /// std::vector<unsigned int> m_uiBdyNodeIds;
-        /// bool m_uiIsActive;
-        /// MPI_Comm m_uiActiveComm;
-        /// unsigned int m_uiActiveNpes;
-        /// unsigned int m_uiRankActive;
-        /// unsigned int m_uiLocalElementSz;
-        /// unsigned int m_uiTotalElementSz;
     }
 
 

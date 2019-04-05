@@ -43,8 +43,8 @@ class DA
     /**@brief: dim of the problem*/  
     static constexpr unsigned int m_uiDim = dim; 
    
-    /**@brief domain boundary node ids*/
-    std::vector<unsigned int> m_uiBdyNodeIds;
+    /// /**@brief domain boundary node ids*/
+    /// std::vector<unsigned int> m_uiBdyNodeIds;
 
     /**@brief total nodal size (with ghost nodes)*/
     unsigned int m_uiTotalNodalSz;
@@ -122,7 +122,7 @@ class DA
     std::vector<ot::TreeNode<C,dim>> m_tnCoords;
 
   public:
-    
+
         /**@brief: Constructor for the DA data structures
          * @param [in] in : input octree, need to be 2:1 balanced unique sorted octree.
          * @param [in] comm: MPI global communicator for mesh generation.
@@ -130,12 +130,11 @@ class DA
          * @param [in] grainSz: Number of suggested elements per processor,
          * @param [in] sfc_tol: SFC partitioning tolerance,
          * */
-        //DA(std::vector<ot::TreeNode> &balOct, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
-        DA();  
+        DA();
 
         template <typename TN>
-        DA(const TN *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order);
-       
+        DA(const TN *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+
         /**@biref: Construct a DA from a function
          *
          * */
