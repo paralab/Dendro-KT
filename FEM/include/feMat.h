@@ -15,15 +15,17 @@
 #include "petscdmda.h"
 #endif
 
+template <unsigned int dim>
 class feMat {
 
 protected:
+    static constexpr unsigned int m_uiDim = dim;
 
     /**@brief: pointer to OCT DA*/
-    ot::DA* m_uiOctDA;
+    ot::DA<dim>* m_uiOctDA;
 
-    /**@brief: type of the DA*/
-    ot::DAType m_uiDaType;
+    /// /**@brief: type of the DA*/  //TODO
+    /// ot::DAType m_uiDaType;
 
     /**@brief problem domain min point*/
     Point m_uiPtMin;
@@ -40,8 +42,9 @@ protected:
 public:
     /**@brief: feMat constructor
       * @par[in] daType: type of the DA
+      * @note Does not own da.
     **/
-    feMat(ot::DA* da)
+    feMat(ot::DA<dim>* da)
     {
         m_uiOctDA=da;
     }
@@ -55,7 +58,7 @@ public:
     /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
      * @param [in] in input vector u
      * @param [out] out output vector Ku
-     * @param [in] scale vector by scale*Ku
+     * @param [in] default parameter scale vector by scale*Ku
      * */
     virtual void matVec(const VECType * in, VECType* out,double scale=1.0)=0;
 

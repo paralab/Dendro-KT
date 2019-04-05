@@ -10,10 +10,11 @@
 
 #include "feMat.h"
 
-template <typename T>
-class feMatrix : public feMat {
+template <typename T, unsigned int dim>
+class feMatrix : public feMat<dim> {
 
 protected:
+         static constexpr unsigned int m_uiDim = dim;
 
          /**@brief number of dof*/
          unsigned int m_uiDof;
@@ -32,7 +33,7 @@ protected:
          * @brief constructs an FEM stiffness matrix class.
          * @param[in] da: octree DA
          * */
-        feMatrix(ot::DA* da,unsigned int dof=1);
+        feMatrix(ot::DA<dim>* da,unsigned int dof=1);
 
         ~feMatrix();
 
@@ -47,9 +48,9 @@ protected:
         /**@brief Computes the elemental matvec
           * @param [in] in input vector u
           * @param [out] out output vector Ku
-          * @param [in] default parameter scale vector by scale*Ku
+          * @param [in] scale vector by scale*Ku
         **/
-        virtual void elementalMatVec(const VECType* in,VECType* out, double*coords=NULL,double scale)=0;
+        virtual void elementalMatVec(const VECType *in, VECType *out, double *coords, double scale) = 0;
 
 
 
@@ -109,32 +110,32 @@ protected:
             return asLeaf().preMat();
         }
 
-        /**
-         * @brief Compute the elemental Matrix.
-         * @param[in] eleID: element ID
-         * @param[out] records: records corresponding to the elemental matrix.
-         * */
-        void getElementalMatrix(unsigned int eleID, std::vector<ot::MatRecord>& records)
-        {
-            return asLeaf().getElementalMatrix(eleID,records);
-        }
+        /// /**
+        ///  * @brief Compute the elemental Matrix.
+        ///  * @param[in] eleID: element ID
+        ///  * @param[out] records: records corresponding to the elemental matrix.
+        ///  * */
+        /// void getElementalMatrix(unsigned int eleID, std::vector<ot::MatRecord>& records)
+        /// {
+        ///     return asLeaf().getElementalMatrix(eleID,records);
+        /// }
 
 
 };
 
-template<typename T>
-feMatrix<T>::feMatrix(ot::DA* da,unsigned int dof) : feMat(da)
+template <typename T, unsigned int dim>
+feMatrix<T,dim>::feMatrix(ot::DA<dim>* da,unsigned int dof) : feMat<dim>(da)
 {
     m_uiDof=dof;
-    const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
+    const unsigned int nPe=feMat<dim>::m_uiOctDA->getNumNodesPerElement();
     m_uiEleVecIn = new  VECType[m_uiDof*nPe];
     m_uiEleVecOut = new VECType[m_uiDof*nPe];
 
     m_uiEleCoords= new double[m_uiDim*nPe];
 
 }
-template<typename T>
-feMatrix<T>::~feMatrix()
+template <typename T, unsigned int dim>
+feMatrix<T,dim>::~feMatrix()
 {
     delete [] m_uiEleVecIn;
     delete [] m_uiEleVecOut;
@@ -146,8 +147,8 @@ feMatrix<T>::~feMatrix()
 
 }
 
-template <typename T>
-void feMatrix<T>::matVec(const VECType *in, VECType *out, double scale)
+template <typename T, unsigned int dim>
+void feMatrix<T,dim>::matVec(const VECType *in, VECType *out, double scale)
 {
 
     // todo : matvec goes here. 
@@ -211,8 +212,8 @@ void feMatrix<T>::matVec(const VECType *in, VECType *out, double scale)
 
 #ifdef BUILD_WITH_PETSC
 
-template<typename T>
-void feMatrix<T>::matVec(const Vec &in, Vec &out, double scale)
+template <typename T, unsigned int dim>
+void feMatrix<T,dim>::matVec(const Vec &in, Vec &out, double scale)
 {
 
     PetscScalar * inArry=NULL;
@@ -230,8 +231,8 @@ void feMatrix<T>::matVec(const Vec &in, Vec &out, double scale)
 
 
 
-template <typename T>
-bool feMatrix<T>::getAssembledMatrix(Mat *J, MatType mtype)
+template <typename T, unsigned int dim>
+bool feMatrix<T,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {
     // todo we can skip this part for sc. 
     // Octree part ...

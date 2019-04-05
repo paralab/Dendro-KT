@@ -12,10 +12,11 @@
 
 #include "feVec.h"
 
-template <typename T>
-class feVector : public feVec {
+template <typename T, unsigned int dim>
+class feVector : public feVec<dim> {
 
 protected:
+    static constexpr unsigned int m_uiDim = dim;
 
     /**@brief number of unknowns */
     unsigned int m_uiDof;
@@ -35,7 +36,7 @@ public:
      * @brief constructs an FEM stiffness matrix class.
      * @param[in] da: octree DA
      * */
-    feVector(ot::DA* da,unsigned int dof=1);
+    feVector(ot::DA<dim>* da,unsigned int dof=1);
 
     ~feVector();
 
@@ -95,19 +96,19 @@ public:
 
 };
 
-template <typename T>
-feVector<T>::feVector(ot::DA *da,unsigned int dof) : feVec(da)
+template <typename T, unsigned int dim>
+feVector<T,dim>::feVector(ot::DA<dim> *da,unsigned int dof) : feVec<dim>(da)
 {
     m_uiDof=dof;
-    const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
+    const unsigned int nPe=feVec<dim>::m_uiOctDA->getNumNodesPerElement();
     m_uiEleVecIn = new  VECType[m_uiDof*nPe];
     m_uiEleVecOut = new VECType[m_uiDof*nPe];
 
     m_uiEleCoords= new double[m_uiDim*nPe];
 }
 
-template <typename T>
-feVector<T>::~feVector()
+template <typename T, unsigned int dim>
+feVector<T,dim>::~feVector()
 {
     delete [] m_uiEleVecIn;
     delete [] m_uiEleVecOut;
@@ -116,8 +117,8 @@ feVector<T>::~feVector()
 }
 
 
-template <typename T>
-void feVector<T>::computeVec(const VECType* in,VECType* out,double scale)
+template <typename T, unsigned int dim>
+void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
 {
 
     // todo: very simillar to matvec, but with different elemental operator. 
@@ -178,8 +179,8 @@ void feVector<T>::computeVec(const VECType* in,VECType* out,double scale)
 #ifdef BUILD_WITH_PETSC
 
 
-template <typename T>
-void feVector<T>::computeVec(const Vec &in, Vec &out, double scale)
+template <typename T, unsigned int dim>
+void feVector<T,dim>::computeVec(const Vec &in, Vec &out, double scale)
 {
     PetscScalar * inArry=NULL;
     PetscScalar * outArry=NULL;

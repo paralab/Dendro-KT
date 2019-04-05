@@ -17,14 +17,17 @@
 #include "petscdmda.h"
 #endif
 
+template <unsigned int dim>
 class feVec {
 
 protected:
-    /**@brief: pointer to OCT DA*/
-    ot::DA* m_uiOctDA;
+    static constexpr unsigned int m_uiDim = dim;
 
-    /**@brief: type of the DA*/
-    ot::DAType m_uiDaType;
+    /**@brief: pointer to OCT DA*/
+    ot::DA<dim>* m_uiOctDA;
+
+    /// /**@brief: type of the DA*/  ///TODO
+    /// ot::DAType m_uiDaType;
 
     /**@brief problem domain min point*/
     Point m_uiPtMin;
@@ -42,7 +45,7 @@ public:
     /**@brief: feVec constructor
      * @par[in] daType: type of the DA
      * */
-    feVec(ot::DA* da)
+    feVec(ot::DA<dim>* da)
     {
         m_uiOctDA=da;
     }
