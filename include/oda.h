@@ -2,15 +2,22 @@
  * @brief: contains basic da (distributed array) functionality for the dendro-kt
  * @authors: Masado Ishii, Milinda Fernando. 
  * School of Computiing, University of Utah
+ * @note: based on dendro5 oda class. 
  * @date 04/04/2019
  **/
 
 #ifndef DENDRO_KT_ODA_H
 #define DENDRO_KT_ODA_H
 
+#include <iostream>
+#include <vector>
 #include "asyncExchangeContex.h"
 #include "dendro.h"
 #include "mpi.h"
+#include <functional>
+#include "treeNode.h"
+#include <cstring>
+
 
 #ifdef BUILD_WITH_PETSC
 #include "petsc.h"
@@ -28,13 +35,10 @@ class DA
 {
 
   private:
+
+    /**@brief: dim of the problem*/  
+    unsigned int m_uiDim; 
    
-    /**@brief: min of octree domain*/
-    double m_uiOctreeLowerBound[m_uiDim];
-
-    /**@brief: max of octree domain*/
-    double m_uiOctreeUpperBound[m_uiDim];
-
     /**@brief domain boundary node ids*/
     std::vector<unsigned int> m_uiBdyNodeIds;
 
@@ -44,27 +48,67 @@ class DA
     /**@brief number of local nodes*/
     unsigned int m_uiLocalNodalSz;
 
-    /**@brief number of pre ghost nodes*/
+    /**@brief number of local element sz*/ 
+    unsigned int m_uiLocalElementSz;
+
+    /**@brief: number of total element sz (local + ghost elements)*/
+    unsigned int m_uiTotalElementSz;
+
+    /**@brief pre ghost node begin*/
     unsigned int m_uiPreNodeBegin;
 
+    /**@brief: pre ghost node end */
     unsigned int m_uiPreNodeEnd;
 
+    /**@brief: local nodes begin*/ 
     unsigned int m_uiLocalNodeBegin;
-
+    
+    /**@brief: local nodes end*/ 
     unsigned int m_uiLocalNodeEnd;
 
+    /**@brief: post ghost begin*/ 
     unsigned int m_uiPostNodeBegin;
 
+    /**@brief: post ghost end*/ 
     unsigned int m_uiPostNodeEnd;
     
     /**@brief contexts for async data transfers*/
     std::vector<ot::AsyncExchangeContex> m_uiMPIContexts;
 
-    /**@brief mpi tags*/
+    /**@brief: mpi tags*/
     unsigned int m_uiCommTag;
 
-    /**@brief total number of nodes accross all the processes*/
+    /**@brief: total number of nodes accross all the processes*/
     DendroIntL m_uiGlobalNodeSz;
+
+    /**@brief: Global mpi communicator */ 
+    MPI_Comm m_uiGlobalComm; 
+
+    /**@brief: active mpi communicator (subset of the) m_uiGlobalComm*/
+    MPI_Comm m_uiActiveComm;
+    
+    /**@brief: true if current DA is active, part of the active comm.*/
+    bool m_uiIsActive;
+
+    /**@brief: element order*/  
+    unsigned int m_uiElementOrder;
+
+    /**@brief: number of nodes per element*/ 
+    unsigned int m_uiNpE;
+
+    /**@brief: active number of procs */
+    unsigned int m_uiActiveNpes;
+
+    /**@brief: global number of procs*/
+    unsigned int m_uiGlobalNpes;
+
+    /**@brief: active rank w.r.t. to active comm.*/ 
+    unsigned int m_uiRankActive;
+
+    /**@brief: global rank w.r.t. to global comm. */  
+    unsigned int m_uiRankGlobal;
+
+
 
   public:
     
@@ -75,14 +119,9 @@ class DA
          * @param [in] grainSz: Number of suggested elements per processor,
          * @param [in] sfc_tol: SFC partitioning tolerance,
          * */
-        DA(std::vector<ot::TreeNode> &balOct, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
-
-        /**
-         * @brief: Create a DA from a specified mesh
-         * @param[in] pMesh : input mesh
-         * */
-        DA(ot::Mesh *pMesh);
-
+        //DA(std::vector<ot::TreeNode> &balOct, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA();  
+       
         /**@biref: Construct a DA from a function
          *
          * */
@@ -98,138 +137,82 @@ class DA
         inline unsigned int getLocalNodalSz() const { return m_uiLocalNodalSz; }
 
         /**@brief returns the pre ghost nodal size*/
-        inline unsigned int getPreNodalSz() const { return m_uiMesh->getNumPreMeshNodes(); }
+        inline unsigned int getPreNodalSz() const { return (m_uiPreNodeEnd-m_uiPreNodeBegin); }
 
         /**@brief returns the post nodal size*/
-        inline unsigned int getPostNodalSz() const { return m_uiMesh->getNumPostMeshNodes(); }
+        inline unsigned int getPostNodalSz() const { return (m_uiPostNodeEnd-m_uiPostNodeBegin); }
 
         /**@brief returns the total nodal size (this includes the ghosted region as well.)*/
         inline unsigned int getTotalNodalSz() const { return m_uiTotalNodalSz; }
 
-        /**@brief returns the local elemental size*/
-        inline unsigned int getLocalElemSz() const { return m_uiLocalElementSz; }
-
-        /**@brief returns the local elemental size (includes the ghost elements as well)*/
-        inline unsigned int getTotalElemSz() const { return m_uiTotalElementSz; }
-
         /**@brief see if the current DA is active*/
-        inline bool isActive() { return m_uiMesh->isActive(); }
+        inline bool isActive() { return m_uiIsActive; }
 
         /**@brief get number of nodes per element*/
-        inline unsigned int getNumNodesPerElement() const { return m_uiMesh->getNumNodesPerElement(); }
+        inline unsigned int getNumNodesPerElement() const { return m_uiNpE; }
 
         /**@brief get element order*/
-        inline unsigned int getElementOrder() const { return m_uiMesh->getElementOrder(); }
+        inline unsigned int getElementOrder() const { return m_uiElementOrder; }
 
         /**@brief: returns the global MPI communicator*/
-        inline MPI_Comm getGlobalComm() const { return m_uiMesh->getMPIGlobalCommunicator(); }
-
-        /**@brief: returns node local to node global map*/
-        inline const std::vector<DendroIntL> getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
-
-        /**@brief returns the mesh*/
-        inline const ot::Mesh *getMesh() const { return m_uiMesh; }
+        inline MPI_Comm getGlobalComm() const { return m_uiGlobalComm; }
 
         /**@brief: returns the active MPI sub com of the global communicator*/
         inline MPI_Comm getCommActive() const
         {
-            if (m_uiMesh->isActive())
-                return m_uiMesh->getMPICommunicator();
+            if (m_uiIsActive)
+                return m_uiActiveComm;
             else
                 return MPI_COMM_NULL;
         }
 
         /**@brief: global mpi com. size*/
-        inline unsigned int getNpesAll() const { return m_uiMesh->getMPICommSizeGlobal(); };
+        inline unsigned int getNpesAll() const { return m_uiGlobalNpes; };
 
         /**@brief: number of processors active */
         inline unsigned int getNpesActive() const
         {
-            if (m_uiMesh->isActive())
-                return m_uiMesh->getMPICommSize();
+            if (m_uiIsActive)
+                return m_uiActiveNpes;
             else
                 return 0;
         }
 
         /**@brief: rank with respect to the global comm. */
-        inline unsigned int getRankAll() const { return m_uiMesh->getMPIRankGlobal(); };
+        inline unsigned int getRankAll() const { return m_uiRankGlobal; };
 
         /**@brief: rank w.r.t active comm.  */
         inline unsigned int getRankActive() const
         {
-            if (m_uiMesh->isActive())
-                return m_uiMesh->getMPIRank();
+            if (m_uiIsActive)
+                return m_uiRankActive;
             else
-                return m_uiMesh->getMPIRankGlobal();
+                return m_uiRankGlobal;
         }
-
-        /**@brief: returns true if specified eleID is a boundary element
-             * false if the eleID is local and not a boundary element.
-             * @param[in] eleID: element ID
-             * */
-        bool isBoundaryOctant(unsigned int eleID) const;
-
-        /**@brief computes the elementCoordinates (based on the nodal placement)
-            * @param[in] eleID : element ID
-            * @param[in/out] coords: computed coords (note: assumes memory is allocated allocated)
-            * coords are stored by p0,p1,p2... each pi \in R^dim where pi are ordered in along x axis then y axis and  then z axis
-            * coors size m_uiDim*m_uiNpE
-            * for(unsigned int k=0;k<(m_uiElementOrder+1);k++)
-                for(unsigned int j=0;j<(m_uiElementOrder+1);j++)
-                    for(unsigned int i=0;i<(m_uiElementOrder+1);i++)
-                    {
-                        coords[(k*(m_uiElementOrder+1)*(m_uiElementOrder+1)+j*(m_uiElementOrder+1)+i)*m_uiDim+0]=x+i*dx;
-                        coords[(k*(m_uiElementOrder+1)*(m_uiElementOrder+1)+j*(m_uiElementOrder+1)+i)*m_uiDim+1]=y+j*dy;
-                        coords[(k*(m_uiElementOrder+1)*(m_uiElementOrder+1)+j*(m_uiElementOrder+1)+i)*m_uiDim+2]=z+k*dz;
-                    }
-            *
-            *
-            * */
-        void getElementalCoords(unsigned int eleID, double *coords) const;
-
-        /**@brief get a constant pointer for the reference element*/
-        inline const RefElement *getReferenceElement() const { return m_uiMesh->getReferenceElement(); }
-
-        /**@brief: get the number of local elements. */
-        inline unsigned int getElementSize() const { return m_uiMesh->getNumLocalMeshElements(); }
-
-        /**@brief: get the number of pre-ghost element size*/
-        inline unsigned int getPreGhostElementSize() const { return m_uiMesh->getNumPreGhostElements(); }
-
-        /**@brief: get the number of post-ghost element size*/
-        inline unsigned int getPostGhostElementSize() const { return m_uiMesh->getNumPostGhostElements(); }
-
-        /**@brief: get the number of pre and post ghost elements*/
-        inline unsigned int getPreAndPostGhostNodeSize() const { return (m_uiMesh->getNumPreMeshNodes() + m_uiMesh->getNumPostMeshNodes()); }
-
-        /**@brief number of layer 1 ghost elements. */
-        inline unsigned int getNumLayer1GhostEleSz() const { return m_uiMesh->getLevel1GhostElementIndices().size(); }
-
-        /**@brief: get the number of pre and post ghost elements*/
-        unsigned int getGhostedElementSize() const { return (m_uiMesh->getNumPreGhostElements() + m_uiMesh->getNumPostGhostElements()); }
 
         /**@brief: get the max depth of the octree*/
         inline unsigned int getMaxDepth() const { return m_uiMaxDepth; };
+       
         /**@brief: get the dimensionality of the octree*/
         inline unsigned int getDimension() const { return m_uiDim; };
 
         /**
-             * @brief Creates a ODA vector
-             * @param [in] local : VecType pointer
-             * @param [in] isElemental: True if creating a elemental vector (cell data vector) false for a nodal vector
-             * @param [in] isGhosted: True will allocate ghost nodal values as well, false will only allocate memory for local nodes.
-             * @param [in] dof: degrees of freedoms
-             * */
+          * @brief Creates a ODA vector
+          * @param [in] local : VecType pointer
+          * @param [in] isElemental: True if creating a elemental vector (cell data vector) false for a nodal vector
+          * @param [in] isGhosted: True will allocate ghost nodal values as well, false will only allocate memory for local nodes.
+          * @param [in] dof: degrees of freedoms
+          * */
         template <typename T>
         int createVector(T *&local, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
 
         /**
-            * @brief Creates a ODA vector std::vector<T>
-            * @param [in] local : VecType pointer
-            * @param [in] isElemental: True if creating a elemental vector (cell data vector) false for a nodal vector
-            * @param [in] isGhosted: True will allocate ghost nodal values as well, false will only allocate memory for local nodes.
-            * @param [in] dof: degrees of freedoms
-            * */
+          * @brief Creates a ODA vector std::vector<T>
+          * @param [in] local : VecType pointer
+          * @param [in] isElemental: True if creating a elemental vector (cell data vector) false for a nodal vector
+          * @param [in] isGhosted: True will allocate ghost nodal values as well, false will only allocate memory for local nodes.
+          * @param [in] dof: degrees of freedoms
+          * */
         template <typename T>
         int createVector(std::vector<T> &local, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
 
@@ -243,30 +226,15 @@ class DA
         template <typename T>
         void destroyVector(std::vector<T> &local) const;
 
-        /**@brief initialize the loop counters. */
-        template <ot::DA_FLAGS::LoopType type>
-        void init();
-
-        /**@brief get the current elmenent in the iteration*/
-        unsigned int curr();
-
-        /**@brief Returns if the current element has reached end or not. */
-        template <ot::DA_FLAGS::LoopType type>
-        unsigned int end();
-
-        /**@brief: increment it to the next element. */
-        template <ot::DA_FLAGS::LoopType type>
-        void next();
-
         /**
-             * @brief Initiate the ghost nodal value exchange
-             * */
+          * @brief Initiate the ghost nodal value exchange
+          * */
         template <typename T>
         void readFromGhostBegin(T *vec, unsigned int dof = 1);
 
         /**
-             * @brief Sync the ghost element exchange
-             * */
+          * @brief Sync the ghost element exchange
+          * */
         template <typename T>
         void readFromGhostEnd(T *vec, unsigned int dof = 1);
 
@@ -298,47 +266,6 @@ class DA
 
         template <typename T>
         void ghostedNodalToNodalVec(const T *gVec, T *&local, bool isAllocated = false, unsigned int dof = 1) const;
-
-        /**
-             * @brief computes the element nodal values using interpolation if needed.
-             * @param[in] in: input vector (need to be ghosted )
-             * @param[in/out] eleVec: allocated eleVec (size: numNodesPerElement*dof) after the function call will have the interpolated values.
-             * @param[in] eleID: element ID
-             * @param[in] dof: degrees of freedoms
-             * */
-        template <typename T>
-        void getElementNodalValues(const T *in, T *eleVecOut, unsigned int eleID, unsigned int dof = 1) const;
-
-        /**
-             * @brief computes the elemental vec to global vec accumilation
-             * @param[out] out: output (need to be ghosted )
-             * @param[in] eleVecIn: eleVec values.
-             * @param[in] eleID: element ID
-             * @param[in] dof: degrees of freedoms
-             * */
-        template <typename T>
-        void eleVecToVecAccumilation(T *out, const T *eleVecIn, unsigned int eleID, unsigned int dof = 1) const;
-
-        /**
-             * @brief Computes the octree writable boundary nodes.
-             * @param[in/out]: bdyIndex: boundary index nodal locations (only writable boundary locations)
-             * @param[in] isGhosted: change the indices to the ghosted array.
-             * */
-        void getOctreeBoundaryNodeIndices(std::vector<unsigned int> &bdyIndex, std::vector<double> &coords, bool isGhosted = false);
-
-        /**
-             * @brief Returns the local indices to the nodes of the current element.
-             * @param nodes   Indices into the nodes of the given element. Should be allocated by the user prior to calling.
-             @return -1 for error
-            */
-        int getNodeIndices(DendroIntL *nodeIdx, unsigned int ele, bool isGhosted) const;
-
-        /**
-             * @brief Returns the global node indices of a given element,
-             * @param[out] nodeIdx: global node indices, 
-             * @param[in] ele: element id
-             */
-        int getGlobalNodeIndices(DendroIntL *nodeIdx, unsigned int ele) const;
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
@@ -375,17 +302,6 @@ class DA
         template <typename T>
         void vecTopvtu(T *local, const char *fPrefix, char **nodalVarNames = NULL, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1);
 
-        /**@brief return the level of current octant
-             * @param[in] ele: elementID of the current octant
-             * */
-        inline unsigned int getLevel(unsigned int ele) const { return m_uiMesh->getAllElements()[ele].getLevel(); }
-
-        /**
-             * @brief return the TreeNode of the current octnat.
-             * @param[in] ele: elementID of the current octant
-            * */
-        inline ot::TreeNode getOctant(unsigned int ele) const { return m_uiMesh->getAllElements()[ele]; }
-
         /**
              * @brief returns a pointer to a dof index,
              * @param [in] in: input vector pointer
@@ -405,6 +321,7 @@ class DA
              * @param [in] isGhosted: true if this is a ghosted vector
              * @param [in] dof: degrees of freedoms
              * */
+
         template <typename T>
         void copyVectors(T *dest, const T *source, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
 
@@ -418,44 +335,7 @@ class DA
         template <typename T>
         void copyVector(T *dest, const T *source, bool isElemental = false, bool isGhosted = false) const;
 
-        /**
-             * @brief: Performs remesh based on the DA_FLAGS::Refine, which specifies no change, refine or coarsen.
-             * @param[in] flags: refinement flags.
-             * @param[in] sz: size of the array flags (needs to be size of the local elements)
-             * @param[in] grainSz: rougly the number of octants per core you need when you create the new da.
-             * @param[in] ld_tol: load imbalance tolerance.
-             * @param[in] sfK: splitter fix factor. better to be power of two. increase the value to 128 when running on > 64,000 cores
-             * @return: Specifies the new grid, with new DA.
-             */
-        ot::DA *remesh(const DA_FLAGS::Refine *flags, unsigned int sz, unsigned int grainSz = 100, double ld_bal = 0.3, unsigned int sfK = 2) const;
-
-        /**
-             * @brief performs grid transfer operations after the remesh.
-             * @param[in] varIn: variable defined by oldDA
-             * @param[out] varOut: variable defined by newDA. interpolate varOut from varIn. (Note: varOut allocated inside the function, no need to allocate outside)
-             * @param[in] isElemental: true if it is an elemental vector
-             * @param[in] isGhosted: true if allocated ghost vector
-             * @param[in] dof: degrees of freedoms.
-             * */
-        template <typename T>
-        void intergridTransfer(const T *varIn, T *&varOut, const ot::DA *newDA, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1);
-
-        /**
-             * @brief computes the face neighbor points for additional computations for a specified direction.
-             * @param [in] eleID: element ID
-             * @param [in] in: inpute vector
-             * @param [out] out: output vector values are in the order of the x,y,z size : 4*NodesPerElement
-             * @param [out] coords: get the corresponding coordinates size: 4*NodesPerElement*m_uiDim;
-             * @param [out] neighID: face neighbor octant IDs,
-             * @param [in] face: face direction in {OCT_DIR_LEFT,OCT_IDR_RIGHT,OCT_DIR_DOWN, OCT_DIR_UP,OCT_DIR_BACK,OCT_DIR_FRONT}
-
-            * returns true if the values are set, i.e. there is a face neighbor to get the values.
-            * */
-        template <typename T>
-        bool getFaceNeighborValues(unsigned int eleID, const T *in, T *out, T *coords, unsigned int *neighID, unsigned int face) const;
-
         // all the petsc functionalities goes below with the pre-processor gards.
-        
         #ifdef BUILD_WITH_PETSC
 
         /**
@@ -558,7 +438,7 @@ class DA
             * @return an error flag
             * @note records will be cleared inside the function
             */
-        PetscErrorCode petscSetValuesInMatrix(Mat mat, std::vector<ot::MatRecord> &records, unsigned int dof, InsertMode mode) const;
+        //PetscErrorCode petscSetValuesInMatrix(Mat mat, std::vector<ot::MatRecord> &records, unsigned int dof, InsertMode mode) const;
 
         /** 
              * @brief: Dendro 5 vectors with multiple dof values are stored in 00000000,11111111 for multiple dof values, 
@@ -575,21 +455,18 @@ class DA
              * @param [in] dof: number of dof.  
              */
         PetscErrorCode petscChangeVecToMatFree(Vec &v1, bool isElemental, bool isGhosted, unsigned int dof = 1) const;
-
-        /**
-             * @brief performs grid transfer operations after the remesh with Petsc Vectors.
-             * @param[in] varIn: variable defined by oldDA
-             * @param[out] varOut: variable defined by newDA. interpolate varOut from varIn. (Note: varOut allocated inside the function, no need to allocate outside)
-             * @param[in] isElemental: true if it is an elemental vector
-             * @param[in] isGhosted: true if allocated ghost vector
-             * @param[in] dof: degrees of freedoms.
-            */
-        template <typename T>
-        void petscIntergridTransfer(const Vec &varIn, Vec &varOut, const ot::DA *newDA, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1);
+     
+        /**@brief: dealloc the petsc vector
+         * */  
+        PetscErrorCode petscDestroyVec(Vec & vec);       
 
         #endif
 };
 
 } // end of namespace ot.
+
+
+#include "oda.tcc"
+
 
 #endif // end of DENDRO_KT_ODA_H
