@@ -134,8 +134,8 @@ namespace ot
             return;
 
         // send recv buffers.
-        T* sendB = NULL;
-        T* recvB = NULL;
+        T* dnstB = NULL;
+        T* upstB = NULL;
 
         // 1. Prepare asynchronous exchange context.
         const unsigned int nUpstProcs = m_gm.m_recvProc.size();
@@ -143,244 +143,89 @@ namespace ot
         m_uiMPIContexts.push_back({vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs});
         AsyncExchangeContex &ctx = m_uiMPIContexts.back();
 
-        const unsigned int recvBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
-        const unsigned int sendBSz = m_sm.m_map.size();
+        const unsigned int upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
+        const unsigned int dnstBSz = m_sm.m_map.size();
 
         // 2. Initiate recvs. Since vec is collated [abc abc], can receive into vec.
-        if (recvBSz)
+        if (upstBSz)
         {
-          /// ctx.allocateRecvBuffer(sizeof(T)*recvBSz*dof);
-          /// recvB = (T*) ctx.getRecvBuffer();
-          recvB = vec;
+          /// ctx.allocateRecvBuffer(sizeof(T)*upstBSz*dof);
+          /// upstB = (T*) ctx.getRecvBuffer();
+          upstB = vec;
           MPI_Request *reql = ctx.getUpstRequestList();
 
           for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
           {
-            T *recvProcStart = recvB + dof*m_gm.m_recvOffsets[upstIdx];
-            unsigned int recvCount = dof*m_gm.m_recvCounts[upstIdx];
+            T *upstProcStart = upstB + dof*m_gm.m_recvOffsets[upstIdx];
+            unsigned int upstCount = dof*m_gm.m_recvCounts[upstIdx];
             unsigned int upstProc = m_gm.m_recvProc[upstIdx];
-            par::Mpi_Irecv(recvProcStart, recvCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
+            par::Mpi_Irecv(upstProcStart, upstCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
           }
         }
 
         // 3. Send data.
-        if (sendBSz)
+        if (dnstBSz)
         {
-          ctx.allocateSendBuffer(sizeof(T)*sendBSz*dof);
-          sendB = (T*) ctx.getSendBuffer();
+          ctx.allocateSendBuffer(sizeof(T)*dnstBSz*dof);
+          dnstB = (T*) ctx.getSendBuffer();
           MPI_Request *reql = ctx.getDnstRequestList();
 
           // 3a. Stage the send data.
-          for (unsigned int k = 0; k < sendBSz; k++)
+          for (unsigned int k = 0; k < dnstBSz; k++)
           {
             const T *nodeSrc = vec + dof * m_sm.m_map[k];
-            std::copy(nodeSrc, nodeSrc + dof, sendB + dof * k);
+            std::copy(nodeSrc, nodeSrc + dof, dnstB + dof * k);
           }
 
           // 3b. Fire the sends.
           for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
           {
-            T *sendProcStart = sendB + dof * m_sm.m_sendOffsets[dnstIdx];
-            unsigned int sendCount = dof*m_sm.m_sendCounts[dnstIdx];
+            T *dnstProcStart = dnstB + dof * m_sm.m_sendOffsets[dnstIdx];
+            unsigned int dnstCount = dof*m_sm.m_sendCounts[dnstIdx];
             unsigned int dnstProc = m_sm.m_sendProc[dnstIdx];
-            par::Mpi_Isend(sendProcStart, sendCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
+            par::Mpi_Isend(dnstProcStart, dnstCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
           }
         }
 
         m_uiCommTag++;
-
-
-
-        // TODO remove this after get questions answered.
-        // todo: @masado could you write this part using your scatter map, (I left the commented code as a reference, once you done please remove it)
-        /*if(m_uiIsActive)
-        {
-            const std::vector<unsigned int> nodeSendCount=m_uiMesh->getNodalSendCounts();
-            const std::vector<unsigned int> nodeSendOffset=m_uiMesh->getNodalSendOffsets();
-
-            const std::vector<unsigned int> nodeRecvCount=m_uiMesh->getNodalRecvCounts();
-            const std::vector<unsigned int> nodeRecvOffset=m_uiMesh->getNodalRecvOffsets();
-
-            const std::vector<unsigned int> sendProcList=m_uiMesh->getSendProcList();
-            const std::vector<unsigned int> recvProcList=m_uiMesh->getRecvProcList();
-
-            const std::vector<unsigned int> sendNodeSM=m_uiMesh->getSendNodeSM();
-            const std::vector<unsigned int> recvNodeSM=m_uiMesh->getRecvNodeSM();
-
-
-            const unsigned int activeNpes=m_uiMesh->getMPICommSize();
-
-            const unsigned int sendBSz=nodeSendOffset[activeNpes-1] + nodeSendCount[activeNpes-1];
-            const unsigned int recvBSz=nodeRecvOffset[activeNpes-1] + nodeRecvCount[activeNpes-1];
-            unsigned int proc_id;
-
-            AsyncExchangeContex ctx(vec);
-            MPI_Comm commActive=m_uiMesh->getMPICommunicator();
-
-
-            if(recvBSz)
-            {
-                ctx.allocateRecvBuffer((sizeof(T)*recvBSz*dof));
-                recvB=(T*)ctx.getRecvBuffer();
-
-                // active recv procs
-                for(unsigned int recv_p=0;recv_p<recvProcList.size();recv_p++)
-                {
-                    proc_id=recvProcList[recv_p];
-                    MPI_Request* req=new MPI_Request();
-                    par::Mpi_Irecv((recvB+dof*nodeRecvOffset[proc_id]),dof*nodeRecvCount[proc_id],proc_id,m_uiCommTag,commActive,req);
-                    ctx.getRequestList().push_back(req);
-
-                }
-
-            }
-
-            if(sendBSz)
-            {
-                ctx.allocateSendBuffer(sizeof(T)*dof*sendBSz);
-                sendB=(T*)ctx.getSendBuffer();
-
-                for(unsigned int send_p=0;send_p<sendProcList.size();send_p++) {
-                    proc_id=sendProcList[send_p];
-
-                    for(unsigned int var=0;var<dof;var++)
-                    {
-                        for (unsigned int k = nodeSendOffset[proc_id]; k < (nodeSendOffset[proc_id] + nodeSendCount[proc_id]); k++)
-                        {
-                            sendB[dof*(nodeSendOffset[proc_id]) + (var*nodeSendCount[proc_id])+(k-nodeSendOffset[proc_id])] = (vec+var*m_uiTotalNodalSz)[sendNodeSM[k]];
-                        }
-
-                    }
-
-
-
-                }
-
-                // active send procs
-                for(unsigned int send_p=0;send_p<sendProcList.size();send_p++)
-                {
-                    proc_id=sendProcList[send_p];
-                    MPI_Request * req=new MPI_Request();
-                    par::Mpi_Isend(sendB+dof*nodeSendOffset[proc_id],dof*nodeSendCount[proc_id],proc_id,m_uiCommTag,commActive,req);
-                    ctx.getRequestList().push_back(req);
-
-                }
-
-
-            }
-
-            m_uiCommTag++;
-            m_uiMPIContexts.push_back(ctx);
-
-
-        }*/
-
-        return;
-
     }
 
     template <unsigned int dim>
     template <typename T>
     void DA<dim>::readFromGhostEnd(T *vec,unsigned int dof)
     {
-        if(m_uiGlobalNpes==1)
+        if (m_uiGlobalNpes==1)
             return;
 
-        // Find asynchronous exchange context.
-        AsyncExchangeContex * const ctx =
-          &(*std::find_if(
+        if (!m_uiIsActive)
+            return;
+
+        // 1. Find asynchronous exchange context.
+        MPI_Request *reql;
+        MPI_Status status;
+        auto const ctxPtr = std::find_if(
               m_uiMPIContexts.begin(), m_uiMPIContexts.end(),
-              [vec](const AsyncExchangeContex &c){ return ((T*) c.getBuffer()) == vec; }));
-        assert(ctx->getBufferType() == typeid(T).hash_code());
+              [vec](const AsyncExchangeContex &c){ return ((T*) c.getBuffer()) == vec; });
 
-        // 1. Wait on recvs and sends.
+        // Weak type safety check.
+        assert(ctxPtr->getBufferType() == typeid(T).hash_code());
 
-        // 2. Transpose the received data.
+        const unsigned int nUpstProcs = m_gm.m_recvProc.size();
+        const unsigned int nDnstProcs = m_sm.m_sendProc.size();
+
+        // 2. Wait on recvs and sends.
+        reql = ctxPtr->getUpstRequestList();
+        for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
+          MPI_Wait(reql[upstIdx], &status);
+
+        reql = ctxPtr->getDnstRequestList();
+        for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
+          MPI_Wait(reql[dnstIdx], &status);
 
         // 3. Release the asynchronous exchange context.
-
-        // send recv buffers.
-        /*T* sendB = NULL;
-        T* recvB = NULL;
-
-        if(m_uiIsActive)
-        {
-            const std::vector<unsigned int> nodeSendCount=m_uiMesh->getNodalSendCounts();
-            const std::vector<unsigned int> nodeSendOffset=m_uiMesh->getNodalSendOffsets();
-
-            const std::vector<unsigned int> nodeRecvCount=m_uiMesh->getNodalRecvCounts();
-            const std::vector<unsigned int> nodeRecvOffset=m_uiMesh->getNodalRecvOffsets();
-
-            const std::vector<unsigned int> sendProcList=m_uiMesh->getSendProcList();
-            const std::vector<unsigned int> recvProcList=m_uiMesh->getRecvProcList();
-
-            const std::vector<unsigned int> sendNodeSM=m_uiMesh->getSendNodeSM();
-            const std::vector<unsigned int> recvNodeSM=m_uiMesh->getRecvNodeSM();
-
-
-            const unsigned int activeNpes=m_uiMesh->getMPICommSize();
-
-            const unsigned int sendBSz=nodeSendOffset[activeNpes-1] + nodeSendCount[activeNpes-1];
-            const unsigned int recvBSz=nodeRecvOffset[activeNpes-1] + nodeRecvCount[activeNpes-1];
-            unsigned int proc_id;
-
-            unsigned int ctxIndex=0;
-            for(unsigned int i=0;i<m_uiMPIContexts.size();i++)
-            {
-                if(m_uiMPIContexts[i].getBuffer()==vec)
-                {
-                    ctxIndex=i;
-                    break;
-                }
-
-            }
-
-
-            MPI_Status status;
-            // need to wait for the commns to finish ...
-            for (unsigned int i = 0; i < m_uiMPIContexts[ctxIndex].getRequestList().size(); i++) {
-                MPI_Wait(m_uiMPIContexts[ctxIndex].getRequestList()[i], &status);
-            }
-
-            if(recvBSz)
-            {
-                // copy the recv data to the vec
-                recvB=(T*)m_uiMPIContexts[ctxIndex].getRecvBuffer();
-
-                for(unsigned int recv_p=0;recv_p<recvProcList.size();recv_p++){
-                    proc_id=recvProcList[recv_p];
-
-                    for(unsigned int var=0;var<dof;var++)
-                    {
-                        for (unsigned int k = nodeRecvOffset[proc_id]; k < (nodeRecvOffset[proc_id] + nodeRecvCount[proc_id]); k++)
-                        {
-                            (vec+var*m_uiTotalNodalSz)[recvNodeSM[k]]=recvB[dof*(nodeRecvOffset[proc_id]) + (var*nodeRecvCount[proc_id])+(k-nodeRecvOffset[proc_id])];
-                        }
-                    }
-
-                }
-
-            }
-
-
-
-            m_uiMPIContexts[ctxIndex].deAllocateSendBuffer();
-            m_uiMPIContexts[ctxIndex].deAllocateRecvBuffer();
-
-            for (unsigned int i = 0; i < m_uiMPIContexts[ctxIndex].getRequestList().size(); i++)
-                delete m_uiMPIContexts[ctxIndex].getRequestList()[i];
-
-            m_uiMPIContexts[ctxIndex].getRequestList().clear();
-
-            // remove the context ...
-            m_uiMPIContexts.erase(m_uiMPIContexts.begin() + ctxIndex);
-
-
-        }
-
-        return;*/
-
-
+        /// ctxPtr->deAllocateRecvBuffer();
+        ctxPtr->deAllocateSendBuffer();
+        m_uiMPIContexts.erase(ctxPtr);
     }
 
     template <unsigned int dim>
