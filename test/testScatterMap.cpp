@@ -638,10 +638,12 @@ void testDummyMatvec()
   unsigned int sz = coords.size();
 
   // New dummy eleOp.
-  std::function<void(const da*, da*, TN *coords)>  eleOp{[](const da *in, da *out, TN *coords)
+  std::function<void(const da*, da*, double *coords, double)>  eleOp{[](const da *in, da *out, double *coords, double scale)
   {
     for (unsigned int ii = 0; ii < intPow(order+1, dim); ii++) out[ii] = in[ii];
   }};
+
+  const double scale = 1.0;
 
   std::vector<da> vecIn(sz);
   std::vector<da> vecOut(sz, 0);
@@ -649,7 +651,7 @@ void testDummyMatvec()
     vecIn[ii] = 1;
   RE refElement{dim, order};
 
-  fem::matvec<da, TN, RE, dim>(&(*vecIn.cbegin()), &(*vecOut.begin()), &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, &refElement);
+  fem::matvec<da, TN, RE, dim>(&(*vecIn.cbegin()), &(*vecOut.begin()), &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, scale, &refElement);
 
   std::cout << "Input\n";
   for (unsigned int ii = 0; ii < sz; )

@@ -49,7 +49,7 @@ protected:
           * @param [out] out output vector Ku
           * @param [in] default parameter scale vector by scale*Ku
         **/
-        virtual void elementalMatVec(const VECType* in,VECType* out, double*coords=NULL,double scale=1.0)=0;
+        virtual void elementalMatVec(const VECType* in,VECType* out, double*coords=NULL,double scale)=0;
 
 
 

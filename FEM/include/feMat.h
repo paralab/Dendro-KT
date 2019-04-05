@@ -55,7 +55,7 @@ public:
     /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
      * @param [in] in input vector u
      * @param [out] out output vector Ku
-     * @param [in] default parameter scale vector by scale*Ku
+     * @param [in] scale vector by scale*Ku
      * */
     virtual void matVec(const VECType * in, VECType* out,double scale=1.0)=0;
 
