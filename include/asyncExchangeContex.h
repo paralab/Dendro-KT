@@ -14,12 +14,15 @@
 
 #include "mpi.h"
 #include <vector>
+#include <typeinfo>
 
 namespace ot {
 
     class AsyncExchangeContex {
 
         private :
+            size_t m_bufferType;
+
             /** pointer to the variable which perform the ghost exchange */
             void* m_uiBuffer;
 
@@ -29,19 +32,19 @@ namespace ot {
             /** pointer to the send buffer*/
             void* m_uiRecvBuf;
 
-            std::vector<MPI_Request*>  m_uiRequests;
-
-            ot::ScatterMap m_sm;
-            ot::GatherMap m_gm;
+            std::vector<MPI_Request> m_uiUpstrRequests;
+            std::vector<MPI_Request> m_uiDnstrRequests;
 
         public:
             /**@brief creates an async ghost exchange contex*/
-            AsyncExchangeContex(const void* var)
+            AsyncExchangeContex(const void* var, size_t bufferType, unsigned int nUpstrProcs, unsigned int nDnstrProcs)
             {
+                m_bufferType = bufferType;
                 m_uiBuffer=(void*)var;
                 m_uiSendBuf=NULL;
                 m_uiRecvBuf=NULL;
-                m_uiRequests.clear();
+                m_uiUpstrRequests.resize(nUpstrProcs);
+                m_uiDnstrRequests.resize(nDnstrProcs);
             }
 
             /**@brief allocates send buffer for ghost exchange*/
@@ -70,17 +73,17 @@ namespace ot {
                 m_uiRecvBuf=NULL;
             }
 
-            inline ot::ScatterMap & getScatterMap() { return m_sm; }
-            inline ot::GatherMap & getGatherMap() { return m_gm; }
+            inline size_t getBufferType() { return m_bufferType; }
 
             inline void* getSendBuffer() { return m_uiSendBuf;}
             inline void* getRecvBuffer() { return m_uiRecvBuf;}
 
             inline const void* getBuffer() {return m_uiBuffer;}
 
-            inline std::vector<MPI_Request*>& getRequestList(){ return m_uiRequests;}
+            inline MPI_Request * getUpstrRequestList(){ return m_uiUpstrRequests.data();}
+            inline MPI_Request * getDnstrRequestList(){ return m_uiDnstrRequests.data();}
 
-            bool operator== (AsyncExchangeContex other) const{
+            bool operator== (const AsyncExchangeContex &other) const{
                 return( m_uiBuffer == other.m_uiBuffer );
             }
 

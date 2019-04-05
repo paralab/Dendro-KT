@@ -75,6 +75,12 @@ class DA
     /**@brief: post ghost end*/ 
     unsigned int m_uiPostNodeEnd;
     
+    /**@brief: internal scatter map. */
+    ot::ScatterMap m_sm;
+
+    /**@brief: internal gather map. */
+    ot::GatherMap m_gm;
+
     /**@brief contexts for async data transfers*/
     std::vector<ot::AsyncExchangeContex> m_uiMPIContexts;
 

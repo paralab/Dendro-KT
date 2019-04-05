@@ -55,6 +55,7 @@ namespace ot
         m_uiGlobalNpes = nProc;
         m_uiRankGlobal = rProc;
         m_uiGlobalComm = comm;
+        m_uiCommTag = 0;
 
         // Splitters for distributed exchanges.
         const ot::TreeNode<C,dim> treeFront = inTree[0];
@@ -80,22 +81,21 @@ namespace ot
         m_uiLocalNodalSz = nodeList.size();
         m_uiGlobalNodeSz = glbExtNodes + glbIntNodes;
 
-        //TODO I don't quite understand the AsyncExchangeContex class...
-        m_uiMPIContexts.push_back({nullptr});  //TODO
-
         // Create scatter/gather maps.
-        m_uiMPIContexts[0].getScatterMap() = ot::SFC_NodeSort<C,dim>::computeScattermap(nodeList, &treeFront, comm);
-        m_uiMPIContexts[0].getGatherMap() = ot::SFC_NodeSort<C,dim>::scatter2gather(m_uiMPIContexts[0].getScatterMap(), m_uiLocalNodalSz, comm);
+        m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(nodeList, &treeFront, comm);
+        m_gm = ot::SFC_NodeSort<C,dim>::scatter2gather(m_sm, m_uiLocalNodalSz, comm);
 
-        // Import from gm: dividers between local and ghost segments.
-        const ot::GatherMap &gm = m_uiMPIContexts[0].getGatherMap();
-        m_uiTotalNodalSz   = gm.m_totalCount;
+        // Export from gm: dividers between local and ghost segments.
+        m_uiTotalNodalSz   = m_gm.m_totalCount;
         m_uiPreNodeBegin   = 0;
-        m_uiPreNodeEnd     = gm.m_locOffset;
-        m_uiLocalNodeBegin = gm.m_locOffset;
-        m_uiLocalNodeEnd   = gm.m_locOffset + gm.m_locCount;
-        m_uiPostNodeBegin  = gm.m_locOffset + gm.m_locCount;;
-        m_uiPostNodeEnd    = gm.m_totalCount;
+        m_uiPreNodeEnd     = m_gm.m_locOffset;
+        m_uiLocalNodeBegin = m_gm.m_locOffset;
+        m_uiLocalNodeEnd   = m_gm.m_locOffset + m_gm.m_locCount;
+        m_uiPostNodeBegin  = m_gm.m_locOffset + m_gm.m_locCount;;
+        m_uiPostNodeEnd    = m_gm.m_totalCount;
+
+        // Note: We will offset the starting address whenever we copy with scattermap.
+        // Otherwise we should build-in the offset to the scattermap here.
 
         // Create vector of node coordinates, with ghost segments allocated.
         m_tnCoords.resize(m_uiTotalNodalSz);
@@ -104,10 +104,9 @@ namespace ot
         nodeList.clear();
 
         // Fill ghost segments of node coordinates vector.
-        const ot::ScatterMap &sm = m_uiMPIContexts[0].getScatterMap();
-        std::vector<ot::TreeNode<C,dim>> tmpSendBuf(sm.m_map.size());
+        std::vector<ot::TreeNode<C,dim>> tmpSendBuf(m_sm.m_map.size());
         ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::TreeNode<C,dim>>(
-            &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), sm, gm, comm);
+            &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, comm);
         //TODO transfer ghostExchange into this class, then use new method.
 
         // ???  leftover uninitialized member variables.
@@ -115,7 +114,6 @@ namespace ot
         /// std::vector<unsigned int> m_uiBdyNodeIds;
         /// bool m_uiIsActive;
         /// MPI_Comm m_uiActiveComm;
-        /// unsigned int m_uiCommTag;
         /// unsigned int m_uiActiveNpes;
         /// unsigned int m_uiRankActive;
         /// unsigned int m_uiLocalElementSz;

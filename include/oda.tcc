@@ -127,6 +127,9 @@ namespace ot
     template <typename T>
     void DA<dim>::readFromGhostBegin(T* vec,unsigned int dof)
     {
+        // It is assumed that vec points to a number of (ghosted) vectors,
+        // stored end to end, where each vector corresponds to some variable.
+        // The number of vectors is 'dof'.
 
         if(m_uiGlobalNpes==1)
             return;
@@ -134,6 +137,64 @@ namespace ot
         // send recv buffers.
         T* sendB = NULL;
         T* recvB = NULL;
+
+        //TODO what is does it mean for a process to be active? (m_uiIsActive)
+
+        // 1. Prepare asynchronous exchange context.
+        // const unsigned int nUpstProcs = m_gm.m_recvProc.size();
+        // const unsigned int nDnstProcs = m_sm.m_sendProc.size();
+        // m_uiMPIContexts.push_back({vec, typeid(T).hash_code(), nUpstProcs, nDstProcs});
+        // AsyncExchangeContex &ctx = m_uiMPIContexts.back();
+        //
+        // const unsigned int recvBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
+        // const unsigned int sendBSz = m_sm.m_map.size();
+
+        // 2. Initiate recvs.
+        // if (recvBSz)
+        // {
+        //   ctx.allocateRecvBuffer(sizeof(T)*recvBSz*dof);
+        //   recvB = (T*) ctx.getRecvBuffer();
+        //   MPI_Request *reql = ctx.getUpstrRequestList();
+        //
+        //   for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
+        //   {
+        //     unsigned int upstProc = m_gm.m_recvProc[upstIdx];
+        //     par::Mpi_Irecv((recvB + dof*m_gm.m_recvOffset[upstIdx]), dof*m_gm.m_recvCounts[upstIdx], upstProc, m_uiCommTag, comm, &reql[upstIdx]);
+        //   }
+        // }
+
+        // 3. Send data.
+        // if (sendBSz)
+        // {
+        //   ctx.allocateSendBuffer(sizeof(T)*sendBSz*dof);
+        //   sendB = (T*) ctx.getSendBuffer();
+        //   MPI_Request *reql = ctx.getDnstrRequestList();
+        //
+        //   for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
+        //   {
+        //     // 3a. Stage the send data.
+        //     T *sendProcStart = sendB + dof * m_sm.m_sendOffset[dnstIdx];
+        //     for (unsigned int var = 0; var < dof; var++)
+        //     {
+        //       T *sendVarStart = sendProcStart + var * m_sm.m_sendCount[dnstIdx];
+        //       const T *srcVarStart = vec + var * m_uiTotalNodalSz;
+        //       for (unsigned int kRel = 0; k < m_sm.m_sendCounts[dnstIdx]; k++)
+        //       {
+        //         unsigned int k = kRel + m_sm.m_sendOffset[proc_id];
+        //         sendVarStart[kRel] = srcVarStart[m_uiLocalNodeBegin + m_sm.m_map[k]];
+        //       }
+        //     }
+        //
+        //     // 3b. Fire the sends.
+        //     unsigned int dnstProc = m_sm.m_sendProc[dnstIdx];
+        //     par::Mpi_Isend(sendProcStart, dof*m_sm.m_sendCounts[dnstIdx], dnstProc, m_uiCommTag, comm, &reql[dnstIdx]);
+        //   }
+        // }
+
+        // m_uiCommTag++;
+
+
+
         // todo: @masado could you write this part using your scatter map, (I left the commented code as a reference, once you done please remove it)
         /*if(m_uiIsActive)
         {
@@ -227,6 +288,18 @@ namespace ot
     {
         if(m_uiGlobalNpes==1)
             return;
+
+        // Find asynchronous exchange context.
+        // AsynchExchangeContex * const ctx = &(*std::find_if(
+        //       m_uiMPIContexts.begin(), m_uiMPIContexts.end(),
+        //       [vec](const AsynchExchangeContex &c){ return ((T*) ctx.getBuffer()) == vec; }));
+        // assert(ctx->getBufferType == typeid(T).hash_code());
+
+        // 1. Wait on recvs and sends.
+
+        // 2. Transpose the received data.
+
+        // 3. Release the asynchronous exchange context.
 
         // send recv buffers.
         /*T* sendB = NULL;
@@ -333,7 +406,37 @@ namespace ot
     void DA<dim>::setVectorByFunction(T* local,std::function<void(T,T,T,T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
     {
         // todo @massado can you please write this part. 
-        
+
+        // TODO allow multiple dimensionality of input function. Until then, workaround:
+        constexpr unsigned int edim = (dim < 3 ? dim : 3);
+        T fCoords[3] = {0, 0, 0};
+        std::array<C,dim> tnCoords;
+
+        const T scale = 1.0 / (1u << m_uiMaxDepth);
+
+        //TODO initialize the ghost segments too? I will for now...
+
+        if (!isElemental)
+        {
+            const unsigned int nodalSz = (isGhosted ? m_uiTotalNodalSz : m_uiLocalNodalSz);
+            // Assumes end-to-end variables.
+            for (unsigned int var = 0; var < dof; var++)
+            {
+                for (unsigned int k = 0; k < nodalSz; k++)
+                {
+                    m_tnCoords[var*nodalSz + k].getAnchor(tnCoords);
+                    #pragma unroll(edim)
+                    for (int d = 0; d < edim; d++)
+                      fCoords[d] = scale * tnCoords[d];
+
+                    func(fCoords[0], fCoords[1], fCoords[2], &local[var*nodalSz + k]);
+                }
+            }
+        }
+        else
+        {
+          //TODO
+        }
     }
 
 
