@@ -9,14 +9,15 @@
 #ifndef DENDRO_KT_ODA_H
 #define DENDRO_KT_ODA_H
 
-#include <iostream>
-#include <vector>
 #include "asyncExchangeContex.h"
 #include "dendro.h"
 #include "mpi.h"
-#include <functional>
 #include "treeNode.h"
 #include "mathUtils.h"
+#include <iostream>
+#include <vector>
+#include <functional>
+#include <algorithm>
 #include <cstring>
 
 
@@ -240,22 +241,30 @@ class DA
         void destroyVector(std::vector<T> &local) const;
 
         /**
-          * @brief Initiate the ghost nodal value exchange
+          * @brief Initiate the ghost nodal value exchange.
+          * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
           * */
         template <typename T>
         void readFromGhostBegin(T *vec, unsigned int dof = 1);
 
         /**
           * @brief Sync the ghost element exchange
+          * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
           * */
         template <typename T>
         void readFromGhostEnd(T *vec, unsigned int dof = 1);
 
-        /**@brief Initiate accumilation across ghost elements*/
+        /**
+         * @brief Initiate accumilation across ghost elements
+         * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
+         */
         template <typename T>
         void writeToGhostsBegin(T *vec, unsigned int dof = 1);
 
-        /**@brief Sync accumilation across ghost elements*/
+        /**
+         * @brief Sync accumilation across ghost elements
+         * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
+         */
         template <typename T>
         void writeToGhostsEnd(T *vec, unsigned int dof = 1);
 

@@ -1,15 +1,15 @@
 /**
  * @brief: contains basic da (distributed array) functionality for the dendro-kt
- * @authors: Masado Ishii, Milinda Fernando. 
+ * @authors: Masado Ishii, Milinda Fernando.
  * School of Computiing, University of Utah
- * @note: based on dendro5 oda class. 
+ * @note: based on dendro5 oda class.
  * @date 04/04/2019
  **/
 
 namespace ot
 {
 
-    
+
     template <unsigned int dim>
     template <typename T>
     int DA<dim>::createVector(T*& local, bool isElemental, bool isGhosted, unsigned int dof) const
@@ -127,10 +127,6 @@ namespace ot
     template <typename T>
     void DA<dim>::readFromGhostBegin(T* vec,unsigned int dof)
     {
-        // It is assumed that vec points to a number of (ghosted) vectors,
-        // stored end to end, where each vector corresponds to some variable.
-        // The number of vectors is 'dof'.
-
         if(m_uiGlobalNpes==1)
             return;
 
@@ -140,61 +136,63 @@ namespace ot
 
         //TODO what is does it mean for a process to be active? (m_uiIsActive)
 
-        // 1. Prepare asynchronous exchange context.
-        // const unsigned int nUpstProcs = m_gm.m_recvProc.size();
-        // const unsigned int nDnstProcs = m_sm.m_sendProc.size();
-        // m_uiMPIContexts.push_back({vec, typeid(T).hash_code(), nUpstProcs, nDstProcs});
-        // AsyncExchangeContex &ctx = m_uiMPIContexts.back();
-        //
-        // const unsigned int recvBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
-        // const unsigned int sendBSz = m_sm.m_map.size();
+        MPI_Comm comm = m_uiGlobalComm;   //TODO
 
-        // 2. Initiate recvs.
-        // if (recvBSz)
-        // {
-        //   ctx.allocateRecvBuffer(sizeof(T)*recvBSz*dof);
-        //   recvB = (T*) ctx.getRecvBuffer();
-        //   MPI_Request *reql = ctx.getUpstrRequestList();
-        //
-        //   for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
-        //   {
-        //     unsigned int upstProc = m_gm.m_recvProc[upstIdx];
-        //     par::Mpi_Irecv((recvB + dof*m_gm.m_recvOffset[upstIdx]), dof*m_gm.m_recvCounts[upstIdx], upstProc, m_uiCommTag, comm, &reql[upstIdx]);
-        //   }
-        // }
+        // 1. Prepare asynchronous exchange context.
+        const unsigned int nUpstProcs = m_gm.m_recvProc.size();
+        const unsigned int nDnstProcs = m_sm.m_sendProc.size();
+        m_uiMPIContexts.push_back({vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs});
+        AsyncExchangeContex &ctx = m_uiMPIContexts.back();
+
+        const unsigned int recvBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
+        const unsigned int sendBSz = m_sm.m_map.size();
+
+        // 2. Initiate recvs. Since vec is collated [abc abc], can receive into vec.
+        if (recvBSz)
+        {
+          /// ctx.allocateRecvBuffer(sizeof(T)*recvBSz*dof);
+          /// recvB = (T*) ctx.getRecvBuffer();
+          recvB = vec;
+          MPI_Request *reql = ctx.getUpstRequestList();
+
+          for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
+          {
+            T *recvProcStart = recvB + dof*m_gm.m_recvOffsets[upstIdx];
+            unsigned int recvCount = dof*m_gm.m_recvCounts[upstIdx];
+            unsigned int upstProc = m_gm.m_recvProc[upstIdx];
+            par::Mpi_Irecv(recvProcStart, recvCount, upstProc, m_uiCommTag, comm, &reql[upstIdx]);
+          }
+        }
 
         // 3. Send data.
-        // if (sendBSz)
-        // {
-        //   ctx.allocateSendBuffer(sizeof(T)*sendBSz*dof);
-        //   sendB = (T*) ctx.getSendBuffer();
-        //   MPI_Request *reql = ctx.getDnstrRequestList();
-        //
-        //   for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
-        //   {
-        //     // 3a. Stage the send data.
-        //     T *sendProcStart = sendB + dof * m_sm.m_sendOffset[dnstIdx];
-        //     for (unsigned int var = 0; var < dof; var++)
-        //     {
-        //       T *sendVarStart = sendProcStart + var * m_sm.m_sendCount[dnstIdx];
-        //       const T *srcVarStart = vec + var * m_uiTotalNodalSz;
-        //       for (unsigned int kRel = 0; k < m_sm.m_sendCounts[dnstIdx]; k++)
-        //       {
-        //         unsigned int k = kRel + m_sm.m_sendOffset[proc_id];
-        //         sendVarStart[kRel] = srcVarStart[m_uiLocalNodeBegin + m_sm.m_map[k]];
-        //       }
-        //     }
-        //
-        //     // 3b. Fire the sends.
-        //     unsigned int dnstProc = m_sm.m_sendProc[dnstIdx];
-        //     par::Mpi_Isend(sendProcStart, dof*m_sm.m_sendCounts[dnstIdx], dnstProc, m_uiCommTag, comm, &reql[dnstIdx]);
-        //   }
-        // }
+        if (sendBSz)
+        {
+          ctx.allocateSendBuffer(sizeof(T)*sendBSz*dof);
+          sendB = (T*) ctx.getSendBuffer();
+          MPI_Request *reql = ctx.getDnstRequestList();
 
-        // m_uiCommTag++;
+          // 3a. Stage the send data.
+          for (unsigned int k = 0; k < sendBSz; k++)
+          {
+            const T *nodeSrc = vec + dof * m_sm.m_map[k];
+            std::copy(nodeSrc, nodeSrc + dof, sendB + dof * k);
+          }
+
+          // 3b. Fire the sends.
+          for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
+          {
+            T *sendProcStart = sendB + dof * m_sm.m_sendOffsets[dnstIdx];
+            unsigned int sendCount = dof*m_sm.m_sendCounts[dnstIdx];
+            unsigned int dnstProc = m_sm.m_sendProc[dnstIdx];
+            par::Mpi_Isend(sendProcStart, sendCount, dnstProc, m_uiCommTag, comm, &reql[dnstIdx]);
+          }
+        }
+
+        m_uiCommTag++;
 
 
 
+        // TODO remove this after get questions answered.
         // todo: @masado could you write this part using your scatter map, (I left the commented code as a reference, once you done please remove it)
         /*if(m_uiIsActive)
         {
@@ -389,23 +387,23 @@ namespace ot
     template <typename T>
     void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof)
     {
-        // todo @massado can you please write this part. 
+        // todo @massado can you please write this part.
 
     }
 
-    
+
     template <unsigned int dim>
     template <typename T>
     void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof)
     {
-        // todo @massado can you please write this part. 
+        // todo @massado can you please write this part.
     }
 
     template <unsigned int dim>
     template <typename T>
     void DA<dim>::setVectorByFunction(T* local,std::function<void(T,T,T,T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
     {
-        // todo @massado can you please write this part. 
+        // todo @massado can you please write this part.
 
         // TODO allow multiple dimensionality of input function. Until then, workaround:
         constexpr unsigned int edim = (dim < 3 ? dim : 3);
@@ -518,10 +516,10 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::vecTopvtu(T* local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof) 
+    void DA<dim>::vecTopvtu(T* local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof)
     {
 
-       
+
     }
 
 
@@ -591,7 +589,7 @@ namespace ot
     }
 
 
-   
+
 
 
 #ifdef BUILD_WITH_PETSC
