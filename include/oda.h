@@ -16,6 +16,7 @@
 #include "mpi.h"
 #include <functional>
 #include "treeNode.h"
+#include "mathUtils.h"
 #include <cstring>
 
 
@@ -31,13 +32,15 @@
 
 namespace ot
 {
+template <unsigned int dim>
 class DA
 {
+    using C = unsigned int;    // Integer coordinate type.
 
   private:
 
     /**@brief: dim of the problem*/  
-    unsigned int m_uiDim; 
+    static constexpr unsigned int m_uiDim = dim; 
    
     /**@brief domain boundary node ids*/
     std::vector<unsigned int> m_uiBdyNodeIds;
@@ -108,7 +111,8 @@ class DA
     /**@brief: global rank w.r.t. to global comm. */  
     unsigned int m_uiRankGlobal;
 
-
+    /**@brief: coordinates of nodes in the vector. */
+    std::vector<ot::TreeNode<C,dim>> m_tnCoords;
 
   public:
     
@@ -121,6 +125,9 @@ class DA
          * */
         //DA(std::vector<ot::TreeNode> &balOct, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
         DA();  
+
+        template <typename TN>
+        DA(const TN *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order);
        
         /**@biref: Construct a DA from a function
          *

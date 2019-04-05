@@ -1,8 +1,8 @@
 /**
  * @brief: contains basic da (distributed array) functionality for the dendro-kt
- * @authors: Masado Ishii, Milinda Fernando. 
+ * @authors: Masado Ishii, Milinda Fernando.
  * School of Computiing, University of Utah
- * @note: based on dendro5 oda class. 
+ * @note: based on dendro5 oda class.
  * @date 04/04/2019
  **/
 
@@ -10,31 +10,130 @@
 
 namespace ot
 {
-
-    /**@brief: Constructor for the DA data structures
-      * @param [in] in : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-      * @param [in] grainSz: Number of suggested elements per processor,
-      * @param [in] sfc_tol: SFC partitioning tolerance,
-     * */
-    DA::DA(){
-
-        // todo: @masado, I think you should write the oda constructor. 
-        // initialize all the vars related to cg nodes. 
-
+    template <unsigned int dim>
+    DA<dim>::DA(){
+        // Does nothing!
+        m_uiTotalNodalSz = 0;
+        m_uiLocalNodalSz = 0;
+        m_uiLocalElementSz = 0;
+        m_uiTotalElementSz = 0;
+        m_uiPreNodeBegin = 0;
+        m_uiPreNodeEnd = 0;
+        m_uiLocalNodeBegin = 0;
+        m_uiLocalNodeEnd = 0;
+        m_uiPostNodeBegin = 0;
+        m_uiPostNodeEnd = 0;
+        m_uiCommTag = 0;
+        m_uiGlobalNodeSz = 0;
+        m_uiElementOrder = 0;
+        m_uiNpE = 0;
+        m_uiActiveNpes = 0;
+        m_uiGlobalNpes = 0;
+        m_uiRankActive = 0;
+        m_uiRankGlobal = 0;
     }
 
-  
-    DA::~DA()
+
+    /**@brief: Constructor for the DA data structures
+      * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
+      * @param [in] nEle : size of input octree.
+      * @param [in] comm: MPI global communicator for mesh generation.
+      * @param [in] order: order of the element.
+     * */
+    template <unsigned int dim>
+    template <typename TN>
+    DA<dim>::DA(const TN *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order)
+    {
+        m_uiElementOrder = order;
+        m_uiNpE = intPow(order + 1, dim);
+
+        unsigned int intNodesPerEle = intPow(order - 1, dim);
+
+        int nProc, rProc;
+        MPI_Comm_size(comm, &nProc);
+        MPI_Comm_rank(comm, &rProc);
+        m_uiGlobalNpes = nProc;
+        m_uiRankGlobal = rProc;
+        m_uiGlobalComm = comm;
+
+        // Splitters for distributed exchanges.
+        const ot::TreeNode<C,dim> treeFront = inTree[0];
+        const ot::TreeNode<C,dim> treeBack = inTree[nEle-1];
+
+        // Generate nodes from the tree. First, element-exterior nodes.
+        std::vector<ot::TNPoint<C,dim>> nodeList;
+        for (const TN &tn : inTree)
+            ot::Element<C,dim>(tn).appendExteriorNodes(order, nodeList);
+
+        // Count unique element-exterior nodes.
+        unsigned int glbExtNodes = ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList, order, &treeFront, &treeBack, comm);
+
+        // Finish generating nodes from the tree - element-interior nodes.
+        // TODO measure if keeping interior nodes at end of list good/bad for performance.
+        for (const ot::TreeNode<C,dim> &tn : inTree)
+            ot::Element<C,dim>(tn).appendInteriorNodes(order, nodeList);
+
+        unsigned int locIntNodes = intNodesPerEle * nEle;
+        unsigned int glbIntNodes = 0;
+        par::Mpi_Allreduce(&locIntNodes, &glbIntNodes, 1, MPI_SUM, comm);
+
+        m_uiLocalNodalSz = nodeList.size();
+        m_uiGlobalNodeSz = glbExtNodes + glbIntNodes;
+
+        //TODO I don't quite understand the AsyncExchangeContex class...
+        m_uiMPIContexts.push_back({nullptr});  //TODO
+
+        // Create scatter/gather maps.
+        m_uiMPIContexts[0].getScatterMap() = ot::SFC_NodeSort<C,dim>::computeScattermap(nodeList, &treeFront, comm);
+        m_uiMPIContexts[0].getGatherMap() = ot::SFC_NodeSort<C,dim>::scatter2gather(m_uiMPIContexts[0].getScatterMap(), m_uiLocalNodalSz, comm);
+
+        // Import from gm: dividers between local and ghost segments.
+        const ot::GatherMap &gm = m_uiMPIContexts[0].getGatherMap();
+        m_uiTotalNodalSz   = gm.m_totalCount;
+        m_uiPreNodeBegin   = 0;
+        m_uiPreNodeEnd     = gm.m_locOffset;
+        m_uiLocalNodeBegin = gm.m_locOffset;
+        m_uiLocalNodeEnd   = gm.m_locOffset + gm.m_locCount;
+        m_uiPostNodeBegin  = gm.m_locOffset + gm.m_locCount;;
+        m_uiPostNodeEnd    = gm.m_totalCount;
+
+        // Create vector of node coordinates, with ghost segments allocated.
+        m_tnCoords.resize(m_uiTotalNodalSz);
+        for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
+          m_tnCoords[m_uiLocalNodeBegin + ii] = nodeList[ii];
+        nodeList.clear();
+
+        // Fill ghost segments of node coordinates vector.
+        const ot::ScatterMap &sm = m_uiMPIContexts[0].getScatterMap();
+        std::vector<ot::TreeNode<C,dim>> tmpSendBuf(sm.m_map.size());
+        ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::TreeNode<C,dim>>(
+            &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), sm, gm, comm);
+        //TODO transfer ghostExchange into this class, then use new method.
+
+        // ???  leftover uninitialized member variables.
+        //
+        /// std::vector<unsigned int> m_uiBdyNodeIds;
+        /// bool m_uiIsActive;
+        /// MPI_Comm m_uiActiveComm;
+        /// unsigned int m_uiCommTag;
+        /// unsigned int m_uiActiveNpes;
+        /// unsigned int m_uiRankActive;
+        /// unsigned int m_uiLocalElementSz;
+        /// unsigned int m_uiTotalElementSz;
+    }
+
+
+    template <unsigned int dim>
+    DA<dim>::~DA()
     {
     }
 
-    
+
     // all the petsc functionalities goes below.
     #ifdef BUILD_WITH_PETSC
 
-    PetscErrorCode DA::petscCreateVector(Vec &local, bool isElemental, bool isGhosted, unsigned int dof) const
+    template <unsigned int dim>
+    PetscErrorCode DA<dim>::petscCreateVector(Vec &local, bool isElemental, bool isGhosted, unsigned int dof) const
     {
         unsigned int sz=0;
         MPI_Comm globalComm=this->getGlobalComm();
@@ -76,7 +175,8 @@ namespace ot
 
     }
 
-    PetscErrorCode DA::createMatrix(Mat &M, MatType mtype, unsigned int dof) const
+    template <unsigned int dim>
+    PetscErrorCode DA<dim>::createMatrix(Mat &M, MatType mtype, unsigned int dof) const
     {
 
 
@@ -122,7 +222,8 @@ namespace ot
 
 
 
-    PetscErrorCode DA::petscNodalVecToGhostedNodal(const Vec& in,Vec& out,bool isAllocated,unsigned int dof) const
+    template <unsigned int dim>
+    PetscErrorCode DA<dim>::petscNodalVecToGhostedNodal(const Vec& in,Vec& out,bool isAllocated,unsigned int dof) const
     {
 
         if(!(m_uiIsActive))
@@ -150,7 +251,8 @@ namespace ot
     }
 
 
-    PetscErrorCode DA::petscGhostedNodalToNodalVec(const Vec& gVec,Vec& local,bool isAllocated,unsigned int dof) const
+    template <unsigned int dim>
+    PetscErrorCode DA<dim>::petscGhostedNodalToNodalVec(const Vec& gVec,Vec& local,bool isAllocated,unsigned int dof) const
     {
         if(!(m_uiIsActive))
             return 0;
@@ -176,7 +278,8 @@ namespace ot
     }
 
 
-    void DA::petscReadFromGhostBegin(PetscScalar* vecArry, unsigned int dof) 
+    template <unsigned int dim>
+    void DA<dim>::petscReadFromGhostBegin(PetscScalar* vecArry, unsigned int dof) 
     {
         if(!m_uiIsActive)
             return;
@@ -187,7 +290,8 @@ namespace ot
 
     }
 
-    void DA::petscReadFromGhostEnd(PetscScalar* vecArry, unsigned int dof) 
+    template <unsigned int dim>
+    void DA<dim>::petscReadFromGhostEnd(PetscScalar* vecArry, unsigned int dof) 
     {
         if(!m_uiIsActive)
             return;
@@ -199,7 +303,8 @@ namespace ot
     }
 
 
-    void DA::petscVecTopvtu(const Vec& local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof) 
+    template <unsigned int dim>
+    void DA<dim>::petscVecTopvtu(const Vec& local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof) 
     {
 
         PetscScalar *arry=NULL;
@@ -213,7 +318,8 @@ namespace ot
 
 
     
-    PetscErrorCode DA::petscChangeVecToMatBased(Vec& v1,bool isElemental,bool isGhosted, unsigned int dof) const
+    template <unsigned int dim>
+    PetscErrorCode DA<dim>::petscChangeVecToMatBased(Vec& v1,bool isElemental,bool isGhosted, unsigned int dof) const
     {
         Vec tmp;
         petscCreateVector(tmp,isElemental,isGhosted,dof);
@@ -259,7 +365,8 @@ namespace ot
 
     
     
-    PetscErrorCode DA::petscChangeVecToMatFree(Vec& v1,bool isElemental,bool isGhosted,unsigned int dof) const
+    template <unsigned int dim>
+    PetscErrorCode DA<dim>::petscChangeVecToMatFree(Vec& v1,bool isElemental,bool isGhosted,unsigned int dof) const
     {
         Vec tmp;
         petscCreateVector(tmp,isElemental,isGhosted,dof);
@@ -304,7 +411,8 @@ namespace ot
     }
 
 
-    PetscErrorCode DA::petscDestroyVec(Vec & vec)
+    template <unsigned int dim>
+    PetscErrorCode DA<dim>::petscDestroyVec(Vec & vec)
     {
             VecDestroy(&vec);
             vec=NULL;

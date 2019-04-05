@@ -10,8 +10,9 @@ namespace ot
 {
 
     
+    template <unsigned int dim>
     template <typename T>
-    int DA::createVector(T*& local, bool isElemental, bool isGhosted, unsigned int dof) const
+    int DA<dim>::createVector(T*& local, bool isElemental, bool isGhosted, unsigned int dof) const
     {
 
         if(!(m_uiIsActive))
@@ -41,8 +42,9 @@ namespace ot
 
     }
 
+    template <unsigned int dim>
     template<typename T>
-    int DA::createVector(std::vector<T>& local, bool isElemental, bool isGhosted, unsigned int dof) const
+    int DA<dim>::createVector(std::vector<T>& local, bool isElemental, bool isGhosted, unsigned int dof) const
     {
         if(!(m_uiIsActive))
         {
@@ -70,21 +72,24 @@ namespace ot
     }
 
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::destroyVector(T*& local) const
+    void DA<dim>::destroyVector(T*& local) const
     {
         delete [] local;
         local=NULL;
     }
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::destroyVector(std::vector<T>& local) const
+    void DA<dim>::destroyVector(std::vector<T>& local) const
     {
         local.clear();
     }
 
+    template <unsigned int dim>
     template<typename T>
-    void DA::nodalVecToGhostedNodal(const T* in, T*& out,bool isAllocated,unsigned int dof) const
+    void DA<dim>::nodalVecToGhostedNodal(const T* in, T*& out,bool isAllocated,unsigned int dof) const
     {
 
         if(!(m_uiIsActive))
@@ -101,8 +106,9 @@ namespace ot
 
     }
 
+    template <unsigned int dim>
     template<typename T>
-    void DA::ghostedNodalToNodalVec(const T* gVec,T*& local,bool isAllocated,unsigned int dof) const
+    void DA<dim>::ghostedNodalToNodalVec(const T* gVec,T*& local,bool isAllocated,unsigned int dof) const
     {
         if(!(m_uiIsActive))
             return;
@@ -117,8 +123,9 @@ namespace ot
 
 
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::readFromGhostBegin(T* vec,unsigned int dof)
+    void DA<dim>::readFromGhostBegin(T* vec,unsigned int dof)
     {
 
         if(m_uiGlobalNpes==1)
@@ -214,8 +221,9 @@ namespace ot
 
     }
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::readFromGhostEnd(T *vec,unsigned int dof)
+    void DA<dim>::readFromGhostEnd(T *vec,unsigned int dof)
     {
         if(m_uiGlobalNpes==1)
             return;
@@ -304,30 +312,34 @@ namespace ot
 
     }
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::writeToGhostsBegin(T *vec, unsigned int dof)
+    void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof)
     {
         // todo @massado can you please write this part. 
 
     }
 
     
+    template <unsigned int dim>
     template <typename T>
-    void DA::writeToGhostsEnd(T *vec, unsigned int dof)
+    void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof)
     {
         // todo @massado can you please write this part. 
     }
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::setVectorByFunction(T* local,std::function<void(T,T,T,T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
+    void DA<dim>::setVectorByFunction(T* local,std::function<void(T,T,T,T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
     {
         // todo @massado can you please write this part. 
         
     }
 
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::setVectorByScalar(T* local,const T* value,bool isElemental, bool isGhosted, unsigned int dof) const
+    void DA<dim>::setVectorByScalar(T* local,const T* value,bool isElemental, bool isGhosted, unsigned int dof) const
     {
 
         unsigned int arrSz;
@@ -367,8 +379,9 @@ namespace ot
 
     }
 
+    template <unsigned int dim>
     template<typename T>
-    T* DA::getVecPointerToDof(T* in ,unsigned int dofInex, bool isElemental,bool isGhosted) const
+    T* DA<dim>::getVecPointerToDof(T* in ,unsigned int dofInex, bool isElemental,bool isGhosted) const
     {
 
         if(!(m_uiIsActive))
@@ -400,16 +413,18 @@ namespace ot
     }
 
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::vecTopvtu(T* local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof) 
+    void DA<dim>::vecTopvtu(T* local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof) 
     {
 
        
     }
 
 
+    template <unsigned int dim>
     template<typename T>
-    void DA::copyVector(T* dest,const T* source,bool isElemental,bool isGhosted) const
+    void DA<dim>::copyVector(T* dest,const T* source,bool isElemental,bool isGhosted) const
     {
         if(!(m_uiIsActive))
             return ;
@@ -440,8 +455,9 @@ namespace ot
 
     }
 
+    template <unsigned int dim>
     template<typename T>
-    void DA::copyVectors(T* dest,const T* source,bool isElemental,bool isGhosted,unsigned int dof) const
+    void DA<dim>::copyVectors(T* dest,const T* source,bool isElemental,bool isGhosted,unsigned int dof) const
     {
         if(!(m_uiIsActive))
             return ;
@@ -478,8 +494,9 @@ namespace ot
 #ifdef BUILD_WITH_PETSC
 
 
+    template <unsigned int dim>
     template<typename T>
-    void DA::petscSetVectorByFunction(Vec& local,std::function<void(T,T,T,T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
+    void DA<dim>::petscSetVectorByFunction(Vec& local,std::function<void(T,T,T,T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
     {
 
         PetscScalar * arry=NULL;
@@ -492,8 +509,9 @@ namespace ot
 
     }
 
+    template <unsigned int dim>
     template <typename T>
-    void DA::petscSetVectorByScalar(Vec& local,const T* value,bool isElemental, bool isGhosted, unsigned int dof) const
+    void DA<dim>::petscSetVectorByScalar(Vec& local,const T* value,bool isElemental, bool isGhosted, unsigned int dof) const
     {
 
         PetscScalar * arry=NULL;

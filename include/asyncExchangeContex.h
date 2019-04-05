@@ -10,6 +10,8 @@
 #ifndef DENDRO_KT_UPDATECTX_H
 #define DENDRO_KT_UPDATECTX_H
 
+#include "nsort.h"
+
 #include "mpi.h"
 #include <vector>
 
@@ -28,6 +30,9 @@ namespace ot {
             void* m_uiRecvBuf;
 
             std::vector<MPI_Request*>  m_uiRequests;
+
+            ot::ScatterMap m_sm;
+            ot::GatherMap m_gm;
 
         public:
             /**@brief creates an async ghost exchange contex*/
@@ -64,6 +69,9 @@ namespace ot {
                 free(m_uiRecvBuf);
                 m_uiRecvBuf=NULL;
             }
+
+            inline ot::ScatterMap & getScatterMap() { return m_sm; }
+            inline ot::GatherMap & getGatherMap() { return m_gm; }
 
             inline void* getSendBuffer() { return m_uiSendBuf;}
             inline void* getRecvBuffer() { return m_uiRecvBuf;}
