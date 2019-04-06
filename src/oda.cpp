@@ -41,8 +41,7 @@ namespace ot
       * @param [in] order: order of the element.
      * */
     template <unsigned int dim>
-    template <typename TN>
-    DA<dim>::DA(const TN *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
     {
         //TODO
         // ???  leftover uninitialized member variables.
@@ -82,16 +81,16 @@ namespace ot
 
         // Generate nodes from the tree. First, element-exterior nodes.
         std::vector<ot::TNPoint<C,dim>> nodeList;
-        for (const TN &tn : inTree)
-            ot::Element<C,dim>(tn).appendExteriorNodes(order, nodeList);
+        for (unsigned int ii = 0; ii < nEle; ii++)
+            ot::Element<C,dim>(inTree[ii]).appendExteriorNodes(order, nodeList);
 
         // Count unique element-exterior nodes.
         unsigned int glbExtNodes = ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList, order, &treeFront, &treeBack, m_uiActiveComm);
 
         // Finish generating nodes from the tree - element-interior nodes.
         // TODO measure if keeping interior nodes at end of list good/bad for performance.
-        for (const ot::TreeNode<C,dim> &tn : inTree)
-            ot::Element<C,dim>(tn).appendInteriorNodes(order, nodeList);
+        for (unsigned int ii = 0; ii < nEle; ii++)
+            ot::Element<C,dim>(inTree[ii]).appendInteriorNodes(order, nodeList);
 
         unsigned int locIntNodes = intNodesPerEle * nEle;
         unsigned int glbIntNodes = 0;

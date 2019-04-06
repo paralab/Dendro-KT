@@ -132,8 +132,7 @@ class DA
          * */
         DA();
 
-        template <typename TN>
-        DA(const TN *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
 
         /**@biref: Construct a DA from a function
          *
@@ -483,6 +482,11 @@ class DA
 
         #endif
 };
+
+
+template class DA<2u>;
+template class DA<3u>;
+template class DA<4u>;
 
 } // end of namespace ot.
 
