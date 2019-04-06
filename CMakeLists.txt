@@ -145,6 +145,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/parUtils.tcc
                   include/tsort.h
                   include/oda.h
+                  include/oda.tcc
                   include/nsort.h
                   include/nsort.tcc
                   include/tsearchCmpx.h
@@ -158,6 +159,10 @@ set(DENDRO_KT_INC include/dendro.h
                   FEM/include/refel.h
                   FEM/include/basis.h
                   FEM/include/lapac.h
+                  FEM/include/feMat.h
+                  FEM/include/feMatrix.h
+                  FEM/include/feVec.h
+                  FEM/include/feVector.h
                   )
 
 set(DENDRO_KT_SRC src/binUtils.cpp
@@ -271,6 +276,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testScatterUniq.cpp)
 add_executable(tstScatterUniq ${SRC_FILES})
 target_include_directories(tstScatterUniq PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstScatterUniq dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testODA.cpp)
+add_executable(tstODA ${SRC_FILES})
+target_include_directories(tstODA PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstODA dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/tsort_bench.h ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/tsort_bench.cpp)
 add_executable(tsortBench ${SRC_FILES})
