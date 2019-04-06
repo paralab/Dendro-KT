@@ -100,12 +100,48 @@ void testMatvec(MPI_Comm comm)
   distPrune(tree, comm);
   ot::SFC_Tree<T,dim>::distTreeSort(tree, sfc_tol, comm);
 
-  // Make a distributed oda, which distributes and coordinates element nodes across procs.
+  // Make a DA (distributed array), which distributes and coordinates element nodes across procs.
   ot::DA<dim> oda(&(*tree.cbegin()), tree.size(), comm, order);
 
-  // Define some data vector and elemental matrix operator.
+  unsigned int dof = 1;
+
+  // Make data vectors that are aligned with oda.
+  std::vector<double> inVec, outVec;
+  oda.template createVector<double>(inVec, false, false, dof);
+  oda.template createVector<double>(outVec, false, false, dof);
+
+  for (unsigned int ii = 0; ii < inVec.size(); ii++)
+    inVec[ii] = ii % 5;
+
+  // Define some (data vector and) elemental matrix operator.
   // The matrix operator is defined above in myConcreteFeMatrix.
-  //TODO
+  //TODO What should be the template parameter T for feMatrix?
+  myConcreteFeMatrix<std::nullptr_t, dim> feMtx(&oda, dof);
+
+  // Perform the matvec.
+  feMtx.matVec(&(*inVec.cbegin()), &(*outVec.begin()));
+
+  // Show results.
+  printf("Input\n");
+  unsigned int ii = 0;
+  for (auto &&x : inVec)
+  {
+    printf("\t%6.3f", x);
+    if (!((++ii) % 15))
+      printf("\n");
+  }
+  printf("\n\nOutput\n");
+  ii = 0;
+  for (auto &&x : outVec)
+  {
+    printf("\t%6.3f", x);
+    if (!((++ii) % 15))
+      printf("\n");
+  }
+  printf("\n");
+
+  oda.template destroyVector<double>(inVec);
+  oda.template destroyVector<double>(outVec);
 
   _DestroyHcurve();
 }

@@ -32,10 +32,10 @@ namespace fem
   using EleOpT = std::function<void(const da *in, da *out, double *coords, double scale)>;
 
     // Declaring the matvec at the top.
-    template<typename T,typename TN, typename RE,  unsigned int dim>
+    template<typename T,typename TN, typename RE>
     void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement);
 
-    template<typename T,typename TN, typename RE,  unsigned int dim>
+    template<typename T,typename TN, typename RE>
     void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild);
 
     /**
@@ -204,6 +204,7 @@ namespace fem
         unsigned int child_sfc;
         for (unsigned int src = 0; src < numChildren && (child_sfc = scatterMap[ii*numChildren + src]) != -1; src++)
         {
+          // TODO what can we 0-initialize to eliminate this if-else?
           if (initialized)
             vec[ii] += vec_contrib[offsetsWrite[child_sfc]++];
           else
@@ -226,18 +227,23 @@ namespace fem
      * @param [in] eleOp: Elemental operator (i.e. elemental matvec)
      * @param [in] refElement: reference element.
      */
-    template<typename T,typename TN, typename RE,  unsigned int dim>
+    template<typename T,typename TN, typename RE>
     void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
+      // Initialize output vector to 0.
+      std::fill(vecOut, vecOut + sz, 0);
+
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
-      matvec_rec<T,TN,RE,dim>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, scale, refElement, nullptr, nullptr, nullptr, 0, true);
+      matvec_rec<T,TN,RE>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, scale, refElement, nullptr, nullptr, nullptr, 0, true);
     }
 
     // Recursive implementation.
-    template<typename T,typename TN, typename RE,  unsigned int dim>
+    template<typename T,typename TN, typename RE>
     void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild)
     {
+        constexpr unsigned int dim = TN::coordDim;
+
         if (sz == 0)
           return;
 
@@ -323,7 +329,7 @@ namespace fem
                 chBeforePart &= (bool) (willMeetFront && !(tnChild == partFront || tnChild.isAncestor(partFront)));
 
                 if (!chBeforePart && !chAfterPart)
-                    matvec_rec<T,TN,RE,dim>(&(*ibufs[pLev].vec_in_dup.cbegin())      + offset[child_sfc],
+                    matvec_rec<T,TN,RE>(&(*ibufs[pLev].vec_in_dup.cbegin())      + offset[child_sfc],
                                             &(*ibufs[pLev].vec_out_contrib.begin()) + offset[child_sfc],
                                             &(*ibufs[pLev].coords_dup.cbegin())       + offset[child_sfc],
                                             tnChild, cRot,
@@ -461,6 +467,7 @@ namespace fem
 
                     if (!leafEleFill[nodeRank])
                     {
+                      // TODO Initialize parent vector to 0 in parent-of-leaf, elimintate this if-else.
                       if (!isFirstChild)
                         pVecOut[ii] += leafEleBufferOut[nodeRank];
                       else

@@ -651,7 +651,7 @@ void testDummyMatvec()
     vecIn[ii] = 1;
   RE refElement{dim, order};
 
-  fem::matvec<da, TN, RE, dim>(&(*vecIn.cbegin()), &(*vecOut.begin()), &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, scale, &refElement);
+  fem::matvec<da, TN, RE>(&(*vecIn.cbegin()), &(*vecOut.begin()), &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, scale, &refElement);
 
   std::cout << "Input\n";
   for (unsigned int ii = 0; ii < sz; )

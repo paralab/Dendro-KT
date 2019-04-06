@@ -98,6 +98,7 @@ namespace ot
         if(!isAllocated)
             createVector<T>(out,false,true,dof);
 
+        //TODO transpose to [abc][abc]
         for(unsigned int var=0;var<dof;var++)
         {
             std::memcpy((out+var*m_uiTotalNodalSz+m_uiLocalNodeBegin),(in+var*m_uiLocalNodalSz),sizeof(T)*(m_uiLocalNodalSz));
@@ -116,6 +117,7 @@ namespace ot
         if(!isAllocated)
             createVector(local,false,false,dof);
 
+        //TODO transpose to [abc][abc]
         for(unsigned int var=0;var<dof;var++)
             std::memcpy((local + var*m_uiLocalNodalSz ),(gVec+(var*m_uiTotalNodalSz)+m_uiLocalNodeBegin),sizeof(T)*(m_uiLocalNodalSz));
 
@@ -141,7 +143,7 @@ namespace ot
           // 1. Prepare asynchronous exchange context.
           const unsigned int nUpstProcs = m_gm.m_recvProc.size();
           const unsigned int nDnstProcs = m_sm.m_sendProc.size();
-          m_uiMPIContexts.push_back({vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs});
+          m_uiMPIContexts.emplace_back(vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs);
           AsyncExchangeContex &ctx = m_uiMPIContexts.back();
 
           const unsigned int upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
@@ -218,11 +220,11 @@ namespace ot
         // 2. Wait on recvs and sends.
         reql = ctxPtr->getUpstRequestList();
         for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
-          MPI_Wait(reql[upstIdx], &status);
+          MPI_Wait(&reql[upstIdx], &status);
 
         reql = ctxPtr->getDnstRequestList();
         for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
-          MPI_Wait(reql[dnstIdx], &status);
+          MPI_Wait(&reql[dnstIdx], &status);
 
         // 3. Release the asynchronous exchange context.
         /// ctxPtr->deAllocateRecvBuffer();
@@ -249,7 +251,7 @@ namespace ot
           // 1. Prepare asynchronous exchange context.
           const unsigned int nUpstProcs = m_gm.m_recvProc.size();
           const unsigned int nDnstProcs = m_sm.m_sendProc.size();
-          m_uiMPIContexts.push_back({vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs});
+          m_uiMPIContexts.emplace_back(vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs);
           AsyncExchangeContex &ctx = m_uiMPIContexts.back();
 
           const unsigned int upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
@@ -327,7 +329,7 @@ namespace ot
         // 2. Wait on recvs.
         reql = ctxPtr->getDnstRequestList();
         for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
-          MPI_Wait(reql[dnstIdx], &status);
+          MPI_Wait(&reql[dnstIdx], &status);
 
         // 3. "De-stage" the received downstream data.
         for (unsigned int k = 0; k < dnstBSz; k++)
@@ -339,7 +341,7 @@ namespace ot
         // 4. Wait on sends.
         reql = ctxPtr->getUpstRequestList();
         for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
-          MPI_Wait(reql[upstIdx], &status);
+          MPI_Wait(&reql[upstIdx], &status);
 
         // 5. Release the asynchronous exchange context.
         /// ctxPtr->deAllocateRecvBuffer();

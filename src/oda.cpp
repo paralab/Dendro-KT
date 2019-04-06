@@ -11,7 +11,7 @@
 namespace ot
 {
     template <unsigned int dim>
-    DA<dim>::DA(){
+    DA<dim>::DA() : m_refel{dim,1} {
         // Does nothing!
         m_uiTotalNodalSz = 0;
         m_uiLocalNodalSz = 0;
@@ -42,6 +42,7 @@ namespace ot
      * */
     template <unsigned int dim>
     DA<dim>::DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+        : m_refel{dim, order}
     {
         //TODO
         // ???  leftover uninitialized member variables.
@@ -76,8 +77,8 @@ namespace ot
         m_uiCommTag = 0;
 
         // Splitters for distributed exchanges.
-        const ot::TreeNode<C,dim> treeFront = inTree[0];
-        const ot::TreeNode<C,dim> treeBack = inTree[nEle-1];
+        m_treePartFront = inTree[0];
+        m_treePartBack = inTree[nEle-1];
 
         // Generate nodes from the tree. First, element-exterior nodes.
         std::vector<ot::TNPoint<C,dim>> nodeList;
@@ -85,7 +86,7 @@ namespace ot
             ot::Element<C,dim>(inTree[ii]).appendExteriorNodes(order, nodeList);
 
         // Count unique element-exterior nodes.
-        unsigned int glbExtNodes = ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList, order, &treeFront, &treeBack, m_uiActiveComm);
+        unsigned int glbExtNodes = ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList, order, &m_treePartFront, &m_treePartBack, m_uiActiveComm);
 
         // Finish generating nodes from the tree - element-interior nodes.
         // TODO measure if keeping interior nodes at end of list good/bad for performance.
@@ -100,7 +101,7 @@ namespace ot
         m_uiGlobalNodeSz = glbExtNodes + glbIntNodes;
 
         // Create scatter/gather maps. Scatter map reflects whatever ordering is in nodeList.
-        m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(nodeList, &treeFront, m_uiActiveComm);
+        m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(nodeList, &m_treePartFront, m_uiActiveComm);
         m_gm = ot::SFC_NodeSort<C,dim>::scatter2gather(m_sm, m_uiLocalNodalSz, m_uiActiveComm);
 
         // Export from gm: dividers between local and ghost segments.

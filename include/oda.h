@@ -14,6 +14,8 @@
 #include "mpi.h"
 #include "treeNode.h"
 #include "mathUtils.h"
+#include "refel.h"
+
 #include <iostream>
 #include <vector>
 #include <functional>
@@ -118,8 +120,18 @@ class DA
     /**@brief: global rank w.r.t. to global comm. */  
     unsigned int m_uiRankGlobal;
 
+    /**@brief: First treeNode in the local partition of the tree.*/
+    ot::TreeNode<C,dim> m_treePartFront;
+
+    /**@brief: Last treeNode in the local partition of the tree.*/
+    ot::TreeNode<C,dim> m_treePartBack;
+
     /**@brief: coordinates of nodes in the vector. */
     std::vector<ot::TreeNode<C,dim>> m_tnCoords;
+
+    //TODO I don't think RefElement member belongs in DA (distributed array),
+    //  but it has to go somewhere that the polyOrder is known.
+    RefElement m_refel;
 
   public:
 
@@ -207,6 +219,18 @@ class DA
        
         /**@brief: get the dimensionality of the octree*/
         inline unsigned int getDimension() const { return m_uiDim; };
+
+        /**@brief: get pointer to the (ghosted) array of nodal coordinates. */
+        inline const ot::TreeNode<C,dim> * getTNCoords() const { return &(*m_tnCoords.cbegin()); }
+
+        /**@brief: get first treeNode of the local partition of the tree (front splitter). */
+        inline const ot::TreeNode<C,dim> * getTreePartFront() const { return &m_treePartFront; }
+
+        /**@brief: get last treeNode of the local partition of the tree (back splitter). */
+        inline const ot::TreeNode<C,dim> * getTreePartBack() const { return &m_treePartBack; }
+
+        //TODO again, I don't think RefElement belongs in DA, but it is for now.
+        inline const RefElement * getRefEl() const { return &m_refel; }
 
         /**
           * @brief Creates a ODA vector
