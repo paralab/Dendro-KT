@@ -61,7 +61,7 @@ public:
 
     /**@brief elemental compute vec which evaluate the elemental RHS of the weak formulation
      * */
-    virtual void elementalComputVec(const VECType* in,VECType* out,double* coords=NULL,double scale=1.0)=0;
+    virtual void elementalComputeVec(const VECType* in,VECType* out,double* coords=NULL,double scale=1.0)=0;
 
     #ifdef BUILD_WITH_PETSC
 
@@ -120,59 +120,41 @@ feVector<T,dim>::~feVector()
 template <typename T, unsigned int dim>
 void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
 {
+  using namespace std::placeholders;   // Convenience for std::bind().
 
-    // todo: very simillar to matvec, but with different elemental operator. 
-    /*VECType* _in=NULL;
-    VECType* _out=NULL;
+  // Shorter way to refer to our member DA.
+  ot::DA<dim> * &m_oda = feVec<dim>::m_uiOctDA;
 
-    if(!(m_uiOctDA->isActive()))
-        return;
+  // Static buffers for ghosting. Check/increase size.
+  static std::vector<VECType> inGhosted, outGhosted;
+  m_oda->template createVector<VECType>(inGhosted, false, true, m_uiDof);
+  m_oda->template createVector<VECType>(outGhosted, false, true, m_uiDof);
+  VECType *inGhostedPtr = inGhosted.data();
+  VECType *outGhostedPtr = outGhosted.data();
 
-    preComputeVec(in,out,scale);
+  // 1. Copy input data to ghosted buffer.
+  m_oda->template nodalVecToGhostedNodal<VECType>(in, inGhostedPtr, true, m_uiDof);
 
-    m_uiOctDA->nodalVecToGhostedNodal(in,_in,false,m_uiDof);
-    m_uiOctDA->createVector(_out,false,true,m_uiDof);
+  // 2. Upstream->downstream ghost exchange.
+  m_oda->template readFromGhostBegin<VECType>(inGhostedPtr, m_uiDof);
+  m_oda->template readFromGhostEnd<VECType>(inGhostedPtr, m_uiDof);
 
-    VECType * val=new VECType[m_uiDof];
-    for(unsigned int var=0;var<m_uiDof;var++)
-        val[var]=(VECType)0;
+  // 3. Local matvec().
+  const auto * tnCoords = m_oda->getTNCoords();
+  std::function<void(const VECType *, VECType *, double *, double)> eleOp =
+      std::bind(&feVector<T,dim>::elementalComputeVec, this, _1, _2, _3, _4);
 
-    m_uiOctDA->setVectorByScalar(_out,val,false,true,m_uiDof);
+  fem::matvec(inGhostedPtr, outGhostedPtr, tnCoords, m_oda->getTotalNodalSz(),
+      *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
+      eleOp, scale, m_oda->getRefEl());
+  //TODO I think refel won't always be provided by oda.
 
-    delete [] val;
+  // 4. Downstream->Upstream ghost exchange.
+  m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof);
+  m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, m_uiDof);
 
-
-    m_uiOctDA->readFromGhostBegin(_in,m_uiDof);
-
-    for(m_uiOctDA->init<ot::DA_FLAGS::INDEPENDENT>();m_uiOctDA->curr()<m_uiOctDA->end<ot::DA_FLAGS::INDEPENDENT>();m_uiOctDA->next<ot::DA_FLAGS::INDEPENDENT>())
-    {
-
-        m_uiOctDA->getElementNodalValues(_in,m_uiEleVecIn,m_uiOctDA->curr(),m_uiDof);
-        m_uiOctDA->getElementalCoords(m_uiOctDA->curr(),m_uiEleCoords);
-        elementalComputVec(m_uiEleVecIn,m_uiEleVecOut,m_uiEleCoords,scale);
-        m_uiOctDA->eleVecToVecAccumilation(_out,m_uiEleVecOut,m_uiOctDA->curr(),m_uiDof);
-    }
-
-    m_uiOctDA->readFromGhostEnd(_in,m_uiDof);
-
-    for(m_uiOctDA->init<ot::DA_FLAGS::W_DEPENDENT>();m_uiOctDA->curr()<m_uiOctDA->end<ot::DA_FLAGS::W_DEPENDENT>();m_uiOctDA->next<ot::DA_FLAGS::W_DEPENDENT>())
-    {
-        m_uiOctDA->getElementNodalValues(_in,m_uiEleVecIn,m_uiOctDA->curr(),m_uiDof);
-        m_uiOctDA->getElementalCoords(m_uiOctDA->curr(),m_uiEleCoords);
-        elementalComputVec(m_uiEleVecIn,m_uiEleVecOut,m_uiEleCoords,scale);
-        m_uiOctDA->eleVecToVecAccumilation(_out,m_uiEleVecOut,m_uiOctDA->curr(),m_uiDof);
-    }
-
-    m_uiOctDA->ghostedNodalToNodalVec(_out,out,true,m_uiDof);
-
-    m_uiOctDA->destroyVector(_in);
-    m_uiOctDA->destroyVector(_out);
-
-    postComputeVec(in,out,scale);
-
-    return;*/
-
-
+  // 5. Copy output data from ghosted buffer.
+  m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, m_uiDof);
 }
 
 

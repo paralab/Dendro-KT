@@ -30,6 +30,9 @@ void testMatvec(MPI_Comm comm);
 template <typename T, unsigned int dim>
 class myConcreteFeMatrix;
 
+template <typename T, unsigned int dim>
+class myConcreteFeVector;
+
 // ---------------------------------------------------------------------
 
 
@@ -79,6 +82,29 @@ void myConcreteFeMatrix<T,dim>::elementalMatVec(const VECType *in, VECType *out,
   for (int ii = 0; ii < nPe; ii++)
       out[ii] = in[ii];
 }
+
+
+//
+// myConcreteFeVector
+//
+template <typename T, unsigned int dim>
+class myConcreteFeVector : public feVector<T, dim>
+{
+  public:
+    static constexpr unsigned int order = 1;   // Only support a static order for now.  //TODO add order paramter to elementalMatVec()
+    using feVector<T,dim>::feVector;
+    virtual void elementalComputeVec(const VECType *in, VECType *out, double *coords, double scale) override;
+};
+
+template <typename T, unsigned int dim>
+void myConcreteFeVector<T,dim>::elementalComputeVec(const VECType *in, VECType *out, double *coords, double scale)
+{
+  // Dummy identity.
+  const unsigned int nPe = intPow(order + 1, dim);
+  for (int ii = 0; ii < nPe; ii++)
+      out[ii] = in[ii];
+}
+
 
 
 //
@@ -138,6 +164,10 @@ void testMatvec(MPI_Comm comm)
       printf("\n");
   }
   printf("\n");
+
+  // Get feVector compiling.
+  myConcreteFeVector<std::nullptr_t, dim> feVct(&oda, dof);
+  feVct.computeVec(&(*inVec.cbegin()), &(*outVec.begin()));
 
   oda.template destroyVector<VECType>(inVec);
   oda.template destroyVector<VECType>(outVec);
