@@ -46,8 +46,8 @@ int main(int argc, char *argv[])
   MPI_Comm_size(comm, &nProc);
 
   constexpr unsigned int dim = 2;
-  const unsigned int endL = 3;
-  const unsigned int order = 2;
+  const unsigned int endL = 2;
+  const unsigned int order = 1;
 
   testMatvec<dim,endL,order>(comm);
 
@@ -77,8 +77,7 @@ void myConcreteFeMatrix<T,dim>::elementalMatVec(const VECType *in, VECType *out,
   // Dummy identity.
   const unsigned int nPe = intPow(order + 1, dim);
   for (int ii = 0; ii < nPe; ii++)
-    for (int d = 0; d < dim; d++)
-      out[dim*ii + d] = in[dim*ii + d];
+      out[ii] = in[ii];
 }
 
 
@@ -106,9 +105,9 @@ void testMatvec(MPI_Comm comm)
   unsigned int dof = 1;
 
   // Make data vectors that are aligned with oda.
-  std::vector<double> inVec, outVec;
-  oda.template createVector<double>(inVec, false, false, dof);
-  oda.template createVector<double>(outVec, false, false, dof);
+  std::vector<VECType> inVec, outVec;
+  oda.template createVector<VECType>(inVec, false, false, dof);
+  oda.template createVector<VECType>(outVec, false, false, dof);
 
   for (unsigned int ii = 0; ii < inVec.size(); ii++)
     inVec[ii] = ii % 5;
@@ -140,8 +139,8 @@ void testMatvec(MPI_Comm comm)
   }
   printf("\n");
 
-  oda.template destroyVector<double>(inVec);
-  oda.template destroyVector<double>(outVec);
+  oda.template destroyVector<VECType>(inVec);
+  oda.template destroyVector<VECType>(outVec);
 
   _DestroyHcurve();
 }
