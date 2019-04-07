@@ -98,13 +98,8 @@ namespace ot
         if(!isAllocated)
             createVector<T>(out,false,true,dof);
 
-        //TODO transpose to [abc][abc]
-        for(unsigned int var=0;var<dof;var++)
-        {
-            std::memcpy((out+var*m_uiTotalNodalSz+m_uiLocalNodeBegin),(in+var*m_uiLocalNodalSz),sizeof(T)*(m_uiLocalNodalSz));
-        }
-
-
+        // Assumes layout [abc][abc][...], so just need single shift.
+        std::copy(in, in + dof*m_uiLocalNodalSz, out + dof*m_uiLocalNodeBegin);
     }
 
     template <unsigned int dim>
@@ -117,10 +112,9 @@ namespace ot
         if(!isAllocated)
             createVector(local,false,false,dof);
 
-        //TODO transpose to [abc][abc]
-        for(unsigned int var=0;var<dof;var++)
-            std::memcpy((local + var*m_uiLocalNodalSz ),(gVec+(var*m_uiTotalNodalSz)+m_uiLocalNodeBegin),sizeof(T)*(m_uiLocalNodalSz));
-
+        // Assumes layout [abc][abc][...], so just need single shift.
+        const T* srcStart = gVec + dof*m_uiLocalNodeBegin;
+        std::copy(srcStart, srcStart + dof*m_uiLocalNodalSz, local);
     }
 
 
