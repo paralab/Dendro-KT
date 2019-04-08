@@ -3,26 +3,28 @@
 //
 
 
-#include "TreeNode.h"
+#include "treeNode.h"
 #include "mpi.h"
-#include "genPts_par.h"
-#include "sfcSort.h"
-#include "mesh.h"
+/// #include "genPts_par.h"
+#include "tsort.h"
+/// #include "mesh.h"
 #include "dendro.h"
-#include "dendroIO.h"
+/// #include "dendroIO.h"
 #include "octUtils.h"
 #include "functional"
-#include "fdCoefficient.h"
-#include "stencil.h"
-#include "rkTransport.h"
+/// #include "fdCoefficient.h"
+/// #include "stencil.h"
+/// #include "rkTransport.h"
 #include "refel.h"
-#include "operators.h"
-#include "cg.h"
+/// #include "operators.h"
+/// #include "cg.h"
 #include "heatMat.h"
 #include "heatVec.h"
 
 int main (int argc, char** argv)
 {
+    constexpr unsigned int dim = 3;
+    unsigned int m_uiDim = dim;
 
     MPI_Init(&argc, &argv);
     MPI_Comm comm = MPI_COMM_WORLD;
@@ -64,11 +66,11 @@ int main (int argc, char** argv)
     const unsigned int DOF=3;
 
 
-    Point grid_min(0, 0, 0);
-    Point grid_max((1u << m_uiMaxDepth), (1u << m_uiMaxDepth), (1u << m_uiMaxDepth));
+    Point<dim> grid_min(0, 0, 0);
+    Point<dim> grid_max(1, 1, 1);
 
-    Point domain_min(-0.5,-0.5,-0.5);
-    Point domain_max(0.5,0.5,0.5);
+    Point<dim> domain_min(-0.5,-0.5,-0.5);
+    Point<dim> domain_max(0.5,0.5,0.5);
 
     double Rg_x=(grid_max.x()-grid_min.x());
     double Rg_y=(grid_max.y()-grid_min.y());
@@ -78,11 +80,11 @@ int main (int argc, char** argv)
     double Rd_y=(domain_max.y()-domain_min.y());
     double Rd_z=(domain_max.z()-domain_min.z());
 
-    const Point d_min=domain_min;
-    const Point d_max=domain_max;
+    const Point<dim> d_min=domain_min;
+    const Point<dim> d_max=domain_max;
 
-    const Point g_min=grid_min;
-    const Point g_max=grid_max;
+    const Point<dim> g_min=grid_min;
+    const Point<dim> g_max=grid_max;
 
     std::function<void(double,double,double,double*)> f_rhs =[d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z](const double x,const double y,const double z,double* var){
         var[0]=(-12*M_PI*M_PI*sin(2*M_PI*(((x-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((y-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((z-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
@@ -99,18 +101,18 @@ int main (int argc, char** argv)
 
     /*std::vector<ot::TreeNode> oct;
     createRegularOctree(oct,4,m_uiDim,m_uiMaxDepth,comm);
-    ot::DA* octDA=new ot::DA(oct,comm,eOrder,2,0.2);*/
+    ot::DA<dim>* octDA=new ot::DA<dim>(oct,comm,eOrder,2,0.2);*/
 
-    ot::DA* octDA=new ot::DA(f_rhs,1,comm,eOrder,wavelet_tol,100,partition_tol);
+    ot::DA<dim>* octDA=new ot::DA<dim>(f_rhs,1,comm,eOrder,wavelet_tol,100,partition_tol);
 
     std::vector<double> uSolVec;
     octDA->createVector(uSolVec,false,false,DOF);
     double *uSolVecPtr=&(*(uSolVec.begin()));
 
-    HeatEq::HeatMat heatMat(octDA,1);
+    HeatEq::HeatMat<dim> heatMat(octDA,1);
     heatMat.setProblemDimensions(domain_min,domain_max);
 
-    HeatEq::HeatVec heatVec(octDA,1);
+    HeatEq::HeatVec<dim> heatVec(octDA,1);
     heatVec.setProblemDimensions(domain_min,domain_max);
 
 

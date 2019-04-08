@@ -10,19 +10,26 @@
 
 namespace HeatEq
 {
-    class HeatVec : public feVector<HeatVec>{
+    template <unsigned int dim>
+    class HeatVec : public feVector<HeatVec<dim>,dim> {
 
     private:
 
         double * imV1;
         double * imV2;
 
+        ot::DA<dim> * &m_uiOctDA = feVec<dim>::m_uiOctDA;
+        Point<dim> &m_uiPtMin = feVec<dim>::m_uiPtMin;
+        Point<dim> &m_uiPtMax = feVec<dim>::m_uiPtMax;
+
+        static constexpr unsigned int m_uiDim = dim;
+
     public:
-        HeatVec(ot::DA* da,unsigned int dof=1);
+        HeatVec(ot::DA<dim>* da,unsigned int dof=1);
         ~HeatVec();
 
         /**@biref elemental compute vec for rhs*/
-        virtual void elementalComputVec(const VECType* in,VECType* out, double*coords=NULL,double scale=1.0);
+        virtual void elementalComputeVec(const VECType* in,VECType* out, double*coords=NULL,double scale=1.0) override;
 
 
         bool preComputeVec(const VECType* in,VECType* out, double scale=1.0);
@@ -39,6 +46,10 @@ namespace HeatEq
 
 
     };
+
+    template class HeatVec<2u>;
+    template class HeatVec<3u>;
+    template class HeatVec<4u>;
 }
 
 

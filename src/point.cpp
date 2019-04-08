@@ -19,101 +19,139 @@
  ***************************************************************************/
 #include "point.h"
 
-Point::Point() : _x(0.0), _y(0.0), _z(0.0)
+template <unsigned int dim>
+Point<dim>::Point()
 {
+  _coords.fill(0.0);
 }
 
-Point::Point(double newx, double newy, double newz) : _x(newx), _y(newy), _z(newz)
+template <unsigned int dim>
+Point<dim>::Point(const std::array<double, dim> &newCoords)
 {
+  std::copy(&newCoords[0], &newCoords[dim], &_coords[0]);
+  std::fill(&_coords[dim], &_coords[m_uiDim], 0.0);
 }
 
-Point::Point(int newx, int newy, int newz) : _x(static_cast<double>(newx)),
-	_y(static_cast<double>(newy)), _z(static_cast<double>(newz)) 
+template <unsigned int dim>
+Point<dim>::Point(double newx, double newy, double newz)
+{
+  initialize3(newx, newy, newz);
+}
+
+template <unsigned int dim>
+Point<dim>::Point(int newx, int newy, int newz)
 { 
+  initialize3(static_cast<double>(newx),
+      static_cast<double>(newy),
+      static_cast<double>(newz));
 }
 
-Point::Point(unsigned int newx, unsigned int newy, unsigned int newz) :
-	_x(static_cast<double> (newx)), _y(static_cast<double> (newy)), _z(static_cast<double> (newz))
+template <unsigned int dim>
+Point<dim>::Point(unsigned int newx, unsigned int newy, unsigned int newz)
 { 
+  initialize3(static_cast<double>(newx),
+      static_cast<double>(newy),
+      static_cast<double>(newz));
 }
 
-Point::Point(const Point &newposition) :
-  _x(newposition._x), _y(newposition._y), _z(newposition._z)
+template <unsigned int dim>
+Point<dim>::Point(const Point &newposition)
 {
+  _coords = newposition._coords;
 }
 /*
-Point::~Point()
+template <unsigned int dim>
+Point<dim>::~Point()
 {
 
 }
 */
 
-Point Point::operator - () const {
+template <unsigned int dim>
+inline void Point<dim>::initialize3(double newx, double newy, double newz)
+{
+  _x = newx;  _y = newy;  _z = newz;
+}
+
+template <unsigned int dim>
+Point<dim> Point<dim>::operator - () const {
 	return Point(-_x, -_y, -_z);
 }
 
-void Point::operator *= (const int factor){
+template <unsigned int dim>
+void Point<dim>::operator *= (const int factor){
 	_x*=factor;
 	_y*=factor;
 	_z*=factor;
 }
 
-void Point::operator *= (const double factor){
+template <unsigned int dim>
+void Point<dim>::operator *= (const double factor){
 	_x*=factor;
 	_y*=factor;
 	_z*=factor;
 }
 
-void Point::operator /= (const int divisor){
+template <unsigned int dim>
+void Point<dim>::operator /= (const int divisor){
 	if (divisor == 0) return;
 	_x /= static_cast<double>(divisor);
 	_y /= static_cast<double>(divisor);
 	_z /= static_cast<double>(divisor);
 }
 
-void Point::operator /= (const double divisor){
+template <unsigned int dim>
+void Point<dim>::operator /= (const double divisor){
 	if (divisor == 0) return;
 	_x /= divisor;
 	_y /= divisor;
 	_z /= divisor;
 }
 
-void Point::operator += (const Point& other){
+template <unsigned int dim>
+void Point<dim>::operator += (const Point& other){
 	_x += other._x;
 	_y += other._y;
 	_z += other._z;
 }
 
-Point Point::operator - (const Point &other){
+template <unsigned int dim>
+Point<dim> Point<dim>::operator - (const Point &other){
 	return Point(_x-other._x,_y-other._y, _z-other._z);
 }
 
-Point Point::operator - (const Point &other) const {
+template <unsigned int dim>
+Point<dim> Point<dim>::operator - (const Point &other) const {
 	return Point(_x-other._x,_y-other._y, _z-other._z);
 }
 
-Point Point::operator + (const Point &other){
+template <unsigned int dim>
+Point<dim> Point<dim>::operator + (const Point &other){
 	return Point(_x+other._x,_y+other._y, _z+other._z);
 }
 
-Point& Point::operator=(const Point &other){
+template <unsigned int dim>
+Point<dim>& Point<dim>::operator=(const Point &other){
 	_x = other._x;
 	_y = other._y;
 	_z = other._z;
 	return *this;
 }
 
-Point Point::operator /(const double divisor)
+template <unsigned int dim>
+Point<dim> Point<dim>::operator /(const double divisor)
 {
 	return Point(_x/divisor,_y/divisor, _z/divisor);
 }
 
-Point Point::operator *(const double factor)
+template <unsigned int dim>
+Point<dim> Point<dim>::operator *(const double factor)
 {
 	return Point(_x*factor,_y*factor, _z*factor);
 }
 
-Point Point::TransMatMultiply(double *transMat, Point inPoint)
+template <unsigned int dim>
+Point<dim> Point<dim>::TransMatMultiply(double *transMat, Point inPoint)
 {
 	Point outPoint;
 
@@ -127,12 +165,14 @@ Point Point::TransMatMultiply(double *transMat, Point inPoint)
 	return outPoint;
 }
 
-void Point::normalize() {
+template <unsigned int dim>
+void Point<dim>::normalize() {
 	double abs = sqrt(_x*_x + _y*_y + _z*_z);
 	_x /= abs; _y /= abs; _z /= abs;
 }
 
-double Point::magnitude()
+template <unsigned int dim>
+double Point<dim>::magnitude()
 {
   double abs = sqrt(_x*_x + _y*_y + _z*_z);
   return abs;

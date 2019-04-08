@@ -4,7 +4,10 @@
 
 #include "heatVec.h"
 
-HeatEq::HeatVec::HeatVec(ot::DA* da,unsigned int dof) : feVector(da,dof)
+namespace HeatEq {
+
+template <unsigned int dim>
+HeatVec<dim>::HeatVec(ot::DA<dim>* da,unsigned int dof) : feVector<HeatVec<dim>, dim>(da,dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     imV1=new double[nPe];
@@ -13,7 +16,8 @@ HeatEq::HeatVec::HeatVec(ot::DA* da,unsigned int dof) : feVector(da,dof)
 
 }
 
-HeatEq::HeatVec::~HeatVec()
+template <unsigned int dim>
+HeatVec<dim>::~HeatVec()
 {
     delete [] imV1;
     delete [] imV2;
@@ -23,7 +27,8 @@ HeatEq::HeatVec::~HeatVec()
 
 }
 
-void HeatEq::HeatVec::elementalComputVec(const VECType* in,VECType* out, double*coords,double scale)
+template <unsigned int dim>
+void HeatVec<dim>::elementalComputeVec(const VECType* in,VECType* out, double*coords,double scale)
 {
 
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
@@ -33,11 +38,11 @@ void HeatEq::HeatVec::elementalComputVec(const VECType* in,VECType* out, double*
     const double * W1d=refEl->getWgq();
 
     const unsigned int eleOrder=refEl->getOrder();
-    const unsigned int nPe=(eleOrder+1)*(eleOrder+1)*(eleOrder+1);
+    const unsigned int nPe=intPow(eleOrder+1, dim);
     const unsigned int nrp=eleOrder+1;
 
-    Point eleMin(coords[0*m_uiDim+0],coords[0*m_uiDim+1],coords[0*m_uiDim+2]);
-    Point eleMax(coords[(nPe-1)*m_uiDim+0],coords[(nPe-1)*m_uiDim+1],coords[(nPe-1)*m_uiDim+2]);
+    Point<dim> eleMin(coords[0*m_uiDim+0],coords[0*m_uiDim+1],coords[0*m_uiDim+2]);
+    Point<dim> eleMax(coords[(nPe-1)*m_uiDim+0],coords[(nPe-1)*m_uiDim+1],coords[(nPe-1)*m_uiDim+2]);
 
 
     const double refElSz=refEl->getElementSz();
@@ -76,14 +81,16 @@ void HeatEq::HeatVec::elementalComputVec(const VECType* in,VECType* out, double*
 
 
 
-bool HeatEq::HeatVec::preComputeVec(const VECType* in,VECType* out, double scale)
+template <unsigned int dim>
+bool HeatVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale)
 {
 
     // apply boundary conditions.
     std::vector<unsigned int> bdyIndex;
     std::vector<double> bdyCoords;
 
-    m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
+    //TODO
+    /// m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -91,13 +98,15 @@ bool HeatEq::HeatVec::preComputeVec(const VECType* in,VECType* out, double scale
 
 }
 
-bool HeatEq::HeatVec::postComputeVec(const VECType* in,VECType* out, double scale) {
+template <unsigned int dim>
+bool HeatVec<dim>::postComputeVec(const VECType* in,VECType* out, double scale) {
 
     // apply boundary conditions.
     std::vector<unsigned int> bdyIndex;
     std::vector<double> bdyCoords;
 
-    m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
+    //TODO
+    /// m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -106,21 +115,26 @@ bool HeatEq::HeatVec::postComputeVec(const VECType* in,VECType* out, double scal
 }
 
 
-double HeatEq::HeatVec::gridX_to_X(double x)
+template <unsigned int dim>
+double HeatVec<dim>::gridX_to_X(double x)
 {
-    double Rg_x=((1u<<m_uiMaxDepth)-0);
+    double Rg_x=1.0;
     return (((x)/(Rg_x))*((m_uiPtMax.x()-m_uiPtMin.x()))+m_uiPtMin.x());
 }
 
-double HeatEq::HeatVec::gridY_to_Y(double y)
+template <unsigned int dim>
+double HeatVec<dim>::gridY_to_Y(double y)
 {
-    double Rg_y=((1u<<m_uiMaxDepth)-0);
+    double Rg_y=1.0;
     return (((y)/(Rg_y))*((m_uiPtMax.y()-m_uiPtMin.y()))+m_uiPtMin.y());
 }
 
 
-double HeatEq::HeatVec::gridZ_to_Z(double z)
+template <unsigned int dim>
+double HeatVec<dim>::gridZ_to_Z(double z)
 {
-    double Rg_z=((1u<<m_uiMaxDepth)-0);
+    double Rg_z=1.0;
     return (((z)/(Rg_z))*((m_uiPtMax.z()-m_uiPtMin.z()))+m_uiPtMin.z());
 }
+
+}//namespace HeatEq

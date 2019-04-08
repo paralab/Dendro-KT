@@ -27,6 +27,9 @@ void distPrune(std::vector<X> &list, MPI_Comm comm);
 template<unsigned int dim, unsigned int endL, unsigned int order>
 void testMatvec(MPI_Comm comm);
 
+template<unsigned int dim, unsigned int order>
+void testRegularGrid(unsigned int grainSz, MPI_Comm comm);
+
 template <typename T, unsigned int dim>
 class myConcreteFeMatrix;
 
@@ -52,7 +55,17 @@ int main(int argc, char *argv[])
   const unsigned int endL = 2;
   const unsigned int order = 1;
 
+  /// std::cout << "=============\n";
+  /// std::cout << "testMatvec():\n";
+  /// std::cout << "=============\n";
   testMatvec<dim,endL,order>(comm);
+  /// std::cout << "\n";
+
+  /// std::cout << "==================\n";
+  /// std::cout << "testRegularGrid():\n";
+  /// std::cout << "==================\n";
+  /// testRegularGrid<dim, order>(100, comm);
+  /// std::cout << "\n";
 
   MPI_Finalize();
 
@@ -175,6 +188,24 @@ void testMatvec(MPI_Comm comm)
   _DestroyHcurve();
 }
 
+
+template<unsigned int dim, unsigned int order>
+void testRegularGrid(unsigned int grainSz, MPI_Comm comm)
+{
+  _InitializeHcurve(dim);
+
+  double sfc_tol = 0.3;
+
+  using XT = double;
+
+  std::function<void(XT,XT,XT,XT*)> func = [](XT a, XT b, XT c, XT *y) { *y = a; };
+  unsigned int dofSz = 1;
+  double interp_tol = 1.0;
+
+  ot::DA<dim> oda(func, dofSz, comm, order, interp_tol, grainSz, sfc_tol);
+
+  _DestroyHcurve();
+}
 
 //
 // distPrune()

@@ -27,19 +27,26 @@
 #define __POINT_H
 
 #include  <cmath>
+#include  <array>
+
+//TODO finish extending the point class to multi-d, right now it is projection to 3d.
 
 /**
   @brief A point class
   @author Hari Sundar
+  @author Masado Ishii
   */
+template <unsigned int dim>
 class Point{
   public:
+    static constexpr unsigned int m_uiDim = (dim > 3 ? dim : 3);
 
     /** @name Constructors and Destructor */
     //@{
     Point();
     // virtual ~Point();
 
+    Point(const std::array<double, dim> &newCoords);
     Point(double newx, double newy, double newz);
     Point(int newx, int newy, int newz);
     Point(unsigned int newx, unsigned int newy, unsigned int newz);
@@ -99,9 +106,17 @@ class Point{
 
     static Point TransMatMultiply( double* transMat, Point inPoint);
   protected:
-    double _x;
-    double _y;
-    double _z;
+    inline void initialize3(double newx, double newy, double newz);
+
+    std::array<double,m_uiDim> _coords;
+    double &_x = _coords[0];
+    double &_y = _coords[1];
+    double &_z = _coords[2];
 };
+
+// Template instantiations.
+template class Point<2u>;
+template class Point<3u>;
+template class Point<4u>;
 
 #endif // POINT_H

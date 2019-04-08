@@ -15,6 +15,7 @@
 #include "treeNode.h"
 #include "mathUtils.h"
 #include "refel.h"
+#include "binUtils.h"
 
 #include <iostream>
 #include <vector>
@@ -44,6 +45,8 @@ class DA
 
     /**@brief: dim of the problem*/  
     static constexpr unsigned int m_uiDim = dim; 
+
+    //TODO m_uiBdyNodeIds, getOctreeBoundaryNodeIndices()
    
     /// /**@brief domain boundary node ids*/
     /// std::vector<unsigned int> m_uiBdyNodeIds;
@@ -149,6 +152,7 @@ class DA
         /**@biref: Construct a DA from a function
          *
          * */
+        //TODO implement this!
         template <typename T>
         DA(std::function<void(T, T, T, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz = 100, double sfc_tol = 0.3);
 
@@ -229,8 +233,8 @@ class DA
         /**@brief: get last treeNode of the local partition of the tree (back splitter). */
         inline const ot::TreeNode<C,dim> * getTreePartBack() const { return &m_treePartBack; }
 
-        //TODO again, I don't think RefElement belongs in DA, but it is for now.
-        inline const RefElement * getRefEl() const { return &m_refel; }
+        //TODO again, I don't think RefElement belongs in DA, but it is for now. Maybe it belongs?
+        inline const RefElement * getReferenceElement() const { return &m_refel; }
 
         /**
           * @brief Creates a ODA vector

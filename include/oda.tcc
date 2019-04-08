@@ -9,6 +9,57 @@
 namespace ot
 {
 
+    template <unsigned int dim>
+    template <typename T>
+    DA<dim>::DA(std::function<void(T, T, T, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
+    {
+        //TODO This should iteratively refine subtrees until the parent->child interpolation
+        // introduces only error up to interp_tol.
+
+        int nProc, rProc;
+        MPI_Comm_size(comm, &nProc);
+        MPI_Comm_rank(comm, &rProc);
+
+        // For now, ignore interp_tol and just pick a uniform refinement level to satisfy grainSz.
+        // numElements == pow(2, dim*endL); --> endL = roundUp(log(numElements)/dim);
+        const unsigned int endL = (binOp::binLength(nProc*grainSz) + dim - 1) / dim;
+        const unsigned int numElem1D = 1u << endL;
+        const unsigned int globNumElem = 1u << (endL*dim);
+        const unsigned int len = 1u << (m_uiMaxDepth - endL);
+
+        // To make a distributed regular grid (regular implies balanced),
+        // follow the lexicographic order and then use distTreeSort().
+        const unsigned int locEleCount = globNumElem / nProc + (rProc < globNumElem % nProc ? 1 : 0);
+        const unsigned int locEleRank = globNumElem / nProc * rProc + (rProc < globNumElem % nProc ? rProc : globNumElem % nProc);
+
+        std::array<C,dim> eleMultiIdx;
+        unsigned int r = locEleRank, q = 0;
+        eleMultiIdx[0] = 1;
+        for (int d = 1; d < dim; d++)                // Build up strides.
+          eleMultiIdx[d] = eleMultiIdx[d-1] * numElem1D;
+
+        for (int d = 0; d < dim; d++)                // Compute start coords.
+        {
+          q = r / eleMultiIdx[dim-1 - d];
+          r = r % eleMultiIdx[dim-1 - d];
+          eleMultiIdx[dim-1 - d] = q;
+        }
+
+        std::vector<ot::TreeNode<C,dim>> tree(locEleCount);   // Create part of tree.
+        for (unsigned int ii = 0; ii < locEleCount; ii++)
+        {
+          std::array<C,dim> eleCoords;
+          for (int d = 0; d < dim; d++)
+            eleCoords[d] = len * eleMultiIdx[d];
+          tree[ii] = ot::TreeNode<C,dim>(1, eleCoords, endL);
+
+          incrementBaseB<C,dim>(eleMultiIdx, numElem1D);    // Lexicographic advancement.
+        }
+
+        SFC_Tree<C,dim>::distTreeSort(tree, sfc_tol, comm);
+
+        DA(&(*tree.cbegin()), locEleCount, comm, order, grainSz, sfc_tol);
+    }
 
     template <unsigned int dim>
     template <typename T>

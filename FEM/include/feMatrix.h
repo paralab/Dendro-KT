@@ -12,7 +12,7 @@
 #include "matvec.h"
 #include "refel.h"
 
-template <typename T, unsigned int dim>
+template <typename LeafT, unsigned int dim>
 class feMatrix : public feMat<dim> {
 
 protected:
@@ -77,7 +77,7 @@ protected:
 #endif
 
         /**@brief static cast to the leaf node of the inheritance*/
-        T& asLeaf() { return static_cast<T&>(*this);}
+        LeafT& asLeaf() { return static_cast<LeafT&>(*this);}
 
 
         /**
@@ -125,8 +125,8 @@ protected:
 
 };
 
-template <typename T, unsigned int dim>
-feMatrix<T,dim>::feMatrix(ot::DA<dim>* da,unsigned int dof) : feMat<dim>(da)
+template <typename LeafT, unsigned int dim>
+feMatrix<LeafT,dim>::feMatrix(ot::DA<dim>* da,unsigned int dof) : feMat<dim>(da)
 {
     m_uiDof=dof;
     const unsigned int nPe=feMat<dim>::m_uiOctDA->getNumNodesPerElement();
@@ -136,8 +136,8 @@ feMatrix<T,dim>::feMatrix(ot::DA<dim>* da,unsigned int dof) : feMat<dim>(da)
     m_uiEleCoords= new double[m_uiDim*nPe];
 
 }
-template <typename T, unsigned int dim>
-feMatrix<T,dim>::~feMatrix()
+template <typename LeafT, unsigned int dim>
+feMatrix<LeafT,dim>::~feMatrix()
 {
     delete [] m_uiEleVecIn;
     delete [] m_uiEleVecOut;
@@ -149,8 +149,8 @@ feMatrix<T,dim>::~feMatrix()
 
 }
 
-template <typename T, unsigned int dim>
-void feMatrix<T,dim>::matVec(const VECType *in, VECType *out, double scale)
+template <typename LeafT, unsigned int dim>
+void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
 {
   using namespace std::placeholders;   // Convenience for std::bind().
 
@@ -174,11 +174,11 @@ void feMatrix<T,dim>::matVec(const VECType *in, VECType *out, double scale)
   // 3. Local matvec().
   const auto * tnCoords = m_oda->getTNCoords();
   std::function<void(const VECType *, VECType *, double *, double)> eleOp =
-      std::bind(&feMatrix<T,dim>::elementalMatVec, this, _1, _2, _3, _4);
+      std::bind(&feMatrix<LeafT,dim>::elementalMatVec, this, _1, _2, _3, _4);
 
   fem::matvec(inGhostedPtr, outGhostedPtr, tnCoords, m_oda->getTotalNodalSz(),
       *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
-      eleOp, scale, m_oda->getRefEl());
+      eleOp, scale, m_oda->getReferenceElement());
   //TODO I think refel won't always be provided by oda.
 
   // 4. Downstream->Upstream ghost exchange.
@@ -191,8 +191,8 @@ void feMatrix<T,dim>::matVec(const VECType *in, VECType *out, double scale)
 
 #ifdef BUILD_WITH_PETSC
 
-template <typename T, unsigned int dim>
-void feMatrix<T,dim>::matVec(const Vec &in, Vec &out, double scale)
+template <typename LeafT, unsigned int dim>
+void feMatrix<LeafT,dim>::matVec(const Vec &in, Vec &out, double scale)
 {
 
     PetscScalar * inArry=NULL;
@@ -210,8 +210,8 @@ void feMatrix<T,dim>::matVec(const Vec &in, Vec &out, double scale)
 
 
 
-template <typename T, unsigned int dim>
-bool feMatrix<T,dim>::getAssembledMatrix(Mat *J, MatType mtype)
+template <typename LeafT, unsigned int dim>
+bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {
     // todo we can skip this part for sc. 
     // Octree part ...

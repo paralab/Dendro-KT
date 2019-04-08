@@ -3,8 +3,13 @@
 //
 
 #include "heatMat.h"
+#include "mathUtils.h"
 
-HeatEq::HeatMat::HeatMat(ot::DA* da,unsigned int dof) : feMatrix(da,dof)
+namespace HeatEq
+{
+
+template <unsigned int dim>
+HeatMat<dim>::HeatMat(ot::DA<dim>* da,unsigned int dof) : feMatrix<HeatMat<dim>,dim>(da,dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     imV1=new double[nPe];
@@ -16,7 +21,8 @@ HeatEq::HeatMat::HeatMat(ot::DA* da,unsigned int dof) : feMatrix(da,dof)
 
 }
 
-HeatEq::HeatMat::~HeatMat()
+template <unsigned int dim>
+HeatMat<dim>::~HeatMat()
 {
 
     delete [] imV1;
@@ -36,7 +42,8 @@ HeatEq::HeatMat::~HeatMat()
 
 }
 
-void HeatEq::HeatMat::elementalMatVec(const VECType* in,VECType* out, double*coords,double scale)
+template <unsigned int dim>
+void HeatMat<dim>::elementalMatVec(const VECType* in,VECType* out, double*coords,double scale)
 {
 
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
@@ -48,11 +55,11 @@ void HeatEq::HeatMat::elementalMatVec(const VECType* in,VECType* out, double*coo
     const double * W1d=refEl->getWgq();
 
     const unsigned int eleOrder=refEl->getOrder();
-    const unsigned int nPe=(eleOrder+1)*(eleOrder+1)*(eleOrder+1);
+    const unsigned int nPe=intPow(eleOrder+1, dim);
     const unsigned int nrp=eleOrder+1;
 
-    Point eleMin(coords[0*m_uiDim+0],coords[0*m_uiDim+1],coords[0*m_uiDim+2]);
-    Point eleMax(coords[(nPe-1)*m_uiDim+0],coords[(nPe-1)*m_uiDim+1],coords[(nPe-1)*m_uiDim+2]);
+    Point<dim> eleMin(coords[0*m_uiDim+0],coords[0*m_uiDim+1],coords[0*m_uiDim+2]);
+    Point<dim> eleMax(coords[(nPe-1)*m_uiDim+0],coords[(nPe-1)*m_uiDim+1],coords[(nPe-1)*m_uiDim+2]);
 
     const double refElSz=refEl->getElementSz();
     //x derivative
@@ -109,13 +116,15 @@ void HeatEq::HeatMat::elementalMatVec(const VECType* in,VECType* out, double*coo
         out[i]=Qx[i]+Qy[i]+Qz[i];
 }
 
-bool HeatEq::HeatMat::preMatVec(const VECType* in,VECType* out,double scale)
+template <unsigned int dim>
+bool HeatMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 {
     // apply boundary conditions.
     std::vector<unsigned int> bdyIndex;
     std::vector<double> bdyCoords;
 
-    m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
+    //TODO
+    /// m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -124,13 +133,15 @@ bool HeatEq::HeatMat::preMatVec(const VECType* in,VECType* out,double scale)
 
 }
 
-bool HeatEq::HeatMat::postMatVec(const VECType* in,VECType* out,double scale) {
+template <unsigned int dim>
+bool HeatMat<dim>::postMatVec(const VECType* in,VECType* out,double scale) {
 
     // apply boundary conditions.
     std::vector<unsigned int> bdyIndex;
     std::vector<double> bdyCoords;
 
-    m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
+    //TODO
+    /// m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -138,26 +149,30 @@ bool HeatEq::HeatMat::postMatVec(const VECType* in,VECType* out,double scale) {
 }
 
 
-double HeatEq::HeatMat::gridX_to_X(double x)
+template <unsigned int dim>
+double HeatMat<dim>::gridX_to_X(double x)
 {
-    double Rg_x=((1u<<m_uiMaxDepth)-0);
+    double Rg_x=1.0;
     return (((x)/(Rg_x))*((m_uiPtMax.x()-m_uiPtMin.x()))+m_uiPtMin.x());
 }
 
-double HeatEq::HeatMat::gridY_to_Y(double y)
+template <unsigned int dim>
+double HeatMat<dim>::gridY_to_Y(double y)
 {
-    double Rg_y=((1u<<m_uiMaxDepth)-0);
+    double Rg_y=1.0;
     return (((y)/(Rg_y))*((m_uiPtMax.y()-m_uiPtMin.y()))+m_uiPtMin.y());
 }
 
 
-double HeatEq::HeatMat::gridZ_to_Z(double z)
+template <unsigned int dim>
+double HeatMat<dim>::gridZ_to_Z(double z)
 {
-    double Rg_z=((1u<<m_uiMaxDepth)-0);
+    double Rg_z=1.0;
     return (((z)/(Rg_z))*((m_uiPtMax.z()-m_uiPtMin.z()))+m_uiPtMin.z());
 }
 
-int HeatEq::HeatMat::cgSolve(double * x ,double * b,int max_iter, double& tol,unsigned int var)
+template <unsigned int dim>
+int HeatMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,unsigned int var)
 {
     double resid,alpha,beta,rho,rho_1;
     int status=1; // 0 indicates it has solved the system within the specified max_iter, 1 otherwise.
@@ -197,7 +212,7 @@ int HeatEq::HeatMat::cgSolve(double * x ,double * b,int max_iter, double& tol,un
         if(!activeRank)
             std::cout<<"normb = "<<normb<<std::endl;
 
-        matVec(x,Ax);
+        this->matVec(x,Ax);
 
         /*char fPrefix[256];
         sprintf(fPrefix,"%s_%d","cg",0);
@@ -241,7 +256,7 @@ int HeatEq::HeatMat::cgSolve(double * x ,double * b,int max_iter, double& tol,un
             for(unsigned int i=1;i<=max_iter;i++)
             {
 
-                matVec(p,Ap);
+                this->matVec(p,Ap);
 
                 alpha=(dot(r0,r0,local_dof,activeComm)/dot(p,Ap,local_dof,activeComm));
                 par::Mpi_Bcast(&alpha,1,0,activeComm);
@@ -318,3 +333,5 @@ int HeatEq::HeatMat::cgSolve(double * x ,double * b,int max_iter, double& tol,un
     par::Mpi_Bcast(&tol,1,0,globalComm);
     return status;
 }
+
+}//namespace HeatEq

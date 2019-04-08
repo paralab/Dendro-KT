@@ -37,6 +37,7 @@ option(DENDRO_VTK_BINARY "write vtk/vtu files in binary mode " ON)
 option(DENDRO_VTK_ZLIB_COMPRES "write vtk/vtu files in binary mode with zlib compression (only compatible with binary mode) " OFF)
 option(BUILD_WITH_PETSC " build dendro with PETSC " OFF)
 option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" OFF)
+option(BUILD_EXAMPLES "build example programs" ON)
 
 set(KWAY 128 CACHE INT 128)
 set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
@@ -286,3 +287,21 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/tsort_bench.h ${CMAKE_CU
 add_executable(tsortBench ${SRC_FILES})
 target_include_directories(tsortBench PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/bench/include)
 target_link_libraries(tsortBench dendroKT ${MPI_LIBRARIES} m)
+
+
+## Examples
+if(BUILD_EXAMPLES)
+  ## Heat equation.
+  set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/heatMat.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/heatVec.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/heatVec.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/heatMat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/heatEq.cpp)
+  add_executable(exHeatEq ${SRC_FILES})
+  set_property(TARGET exHeatEq PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+  target_include_directories(exHeatEq PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+  target_link_libraries(exHeatEq dendroKT ${MPI_LIBRARIES} m)
+
+endif(BUILD_EXAMPLES)
+
+

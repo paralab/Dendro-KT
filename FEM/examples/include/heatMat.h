@@ -10,7 +10,8 @@
 
 namespace HeatEq
 {
-    class HeatMat : public feMatrix<HeatMat>{
+    template <unsigned int dim>
+    class HeatMat : public feMatrix<HeatMat<dim>, dim>{
 
     private:
         // some additional work space variables to perform elemental MatVec
@@ -20,10 +21,15 @@ namespace HeatEq
         double* Qy;
         double* Qz;
 
+        ot::DA<dim> * &m_uiOctDA = feMat<dim>::m_uiOctDA;
+        Point<dim> &m_uiPtMin = feMat<dim>::m_uiPtMin;
+        Point<dim> &m_uiPtMax = feMat<dim>::m_uiPtMax;
+
+        static constexpr unsigned int m_uiDim = dim;
 
     public:
         /**@brief: constructor*/
-        HeatMat(ot::DA* da,unsigned int dof=1);
+        HeatMat(ot::DA<dim>* da,unsigned int dof=1);
 
         /**@brief default destructor*/
         ~HeatMat();
@@ -50,7 +56,10 @@ namespace HeatEq
 
     };
 
-
+    // Template instantiations.
+    template class HeatMat<2u>;
+    template class HeatMat<3u>;
+    template class HeatMat<4u>;
 }
 
 

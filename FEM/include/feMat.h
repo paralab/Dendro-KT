@@ -28,10 +28,10 @@ protected:
     /// ot::DAType m_uiDaType;
 
     /**@brief problem domain min point*/
-    Point m_uiPtMin;
+    Point<dim> m_uiPtMin;
 
     /**@brief problem domain max point*/
-    Point m_uiPtMax;
+    Point<dim> m_uiPtMax;
 
 
 #ifdef BUILD_WITH_PETSC
@@ -63,7 +63,7 @@ public:
     virtual void matVec(const VECType * in, VECType* out,double scale=1.0)=0;
 
     /**@brief set the problem dimension*/
-    inline void setProblemDimensions(const Point& pt_min, const Point& pt_max)
+    inline void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max)
     {
         m_uiPtMin=pt_min;
         m_uiPtMax=pt_max;
