@@ -87,15 +87,10 @@ bool HeatVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale)
 
     // apply boundary conditions.
     std::vector<unsigned int> bdyIndex;
-    std::vector<double> bdyCoords;
-
-    //TODO
-    /// m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
+    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
-
-
 }
 
 template <unsigned int dim>
@@ -103,15 +98,10 @@ bool HeatVec<dim>::postComputeVec(const VECType* in,VECType* out, double scale) 
 
     // apply boundary conditions.
     std::vector<unsigned int> bdyIndex;
-    std::vector<double> bdyCoords;
-
-    //TODO
-    /// m_uiOctDA->getOctreeBoundaryNodeIndices(bdyIndex,bdyCoords);
+    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
-
-
 }
 
 

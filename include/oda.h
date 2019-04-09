@@ -46,10 +46,8 @@ class DA
     /**@brief: dim of the problem*/  
     static constexpr unsigned int m_uiDim = dim; 
 
-    //TODO m_uiBdyNodeIds, getOctreeBoundaryNodeIndices()
-   
-    /// /**@brief domain boundary node ids*/
-    /// std::vector<unsigned int> m_uiBdyNodeIds;
+    /**@brief domain boundary node ids*/
+    std::vector<unsigned int> m_uiBdyNodeIds;
 
     /**@brief total nodal size (with ghost nodes)*/
     unsigned int m_uiTotalNodalSz;
@@ -235,6 +233,9 @@ class DA
 
         //TODO again, I don't think RefElement belongs in DA, but it is for now. Maybe it belongs?
         inline const RefElement * getReferenceElement() const { return &m_refel; }
+
+        /**@brief replaces bdyIndex with a copy of the boundary node indices. */
+        inline void getBoundaryNodeIndices(std::vector<unsigned int> &bdyIndex) const { bdyIndex = m_uiBdyNodeIds; }
 
         /**
           * @brief Creates a ODA vector

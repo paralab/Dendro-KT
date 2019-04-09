@@ -47,7 +47,6 @@ namespace ot
         //TODO
         // ???  leftover uninitialized member variables.
         //
-        /// std::vector<unsigned int> m_uiBdyNodeIds;
         /// unsigned int m_uiLocalElementSz;
         /// unsigned int m_uiTotalElementSz;
 
@@ -127,6 +126,14 @@ namespace ot
         ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::TreeNode<C,dim>>(
             &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, m_uiActiveComm);
         //TODO transfer ghostExchange into this class, then use new method.
+
+        // Identify the domain boundary nodes.
+        m_uiBdyNodeIds.clear();
+        for (unsigned int ii = 0; ii < m_uiTotalNodalSz; ii++)
+        {
+          if (m_tnCoords[ii].isOnDomainBoundary())
+            m_uiBdyNodeIds.push_back(ii);
+        }
     }
 
 
