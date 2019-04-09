@@ -133,11 +133,12 @@ namespace ot
             &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, m_uiActiveComm);
         //TODO transfer ghostExchange into this class, then use new method.
 
-        // Identify the domain boundary nodes.
+        // Identify the (local ids of) domain boundary nodes in local vector.
+        // To use the ids in the ghosted vector you need to shift by m_uiLocalNodeBegin.
         m_uiBdyNodeIds.clear();
-        for (unsigned int ii = 0; ii < m_uiTotalNodalSz; ii++)
+        for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
         {
-          if (m_tnCoords[ii].isOnDomainBoundary())
+          if (m_tnCoords[ii + m_uiLocalNodeBegin].isOnDomainBoundary())
             m_uiBdyNodeIds.push_back(ii);
         }
     }

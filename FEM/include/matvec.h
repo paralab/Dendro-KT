@@ -24,6 +24,8 @@ namespace fem
   using LevI = ot::LevI;
   using RotI = ot::RotI;
 
+  // TODO support moving/accumulating tuples with dof>1
+
   /**
    * @tparam da: Type of scalar components of data.
    * @param coords: Flattened array of coordinate tuples, [xyz][xyz][...]
