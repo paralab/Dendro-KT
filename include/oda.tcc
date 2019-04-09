@@ -12,6 +12,7 @@ namespace ot
     template <unsigned int dim>
     template <typename T>
     DA<dim>::DA(std::function<void(T, T, T, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
+        : m_refel{dim, order}
     {
         //TODO This should iteratively refine subtrees until the parent->child interpolation
         // introduces only error up to interp_tol.
@@ -58,7 +59,7 @@ namespace ot
 
         SFC_Tree<C,dim>::distTreeSort(tree, sfc_tol, comm);
 
-        DA(&(*tree.cbegin()), locEleCount, comm, order, grainSz, sfc_tol);
+        construct(&(*tree.cbegin()), locEleCount, comm, order, grainSz, sfc_tol);
     }
 
     template <unsigned int dim>

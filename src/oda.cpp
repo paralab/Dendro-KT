@@ -44,6 +44,12 @@ namespace ot
     DA<dim>::DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
+        construct(inTree, nEle, comm, order, grainSz, sfc_tol);
+    }
+
+    template <unsigned int dim>
+    void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    {
         //TODO
         // ???  leftover uninitialized member variables.
         //

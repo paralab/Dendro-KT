@@ -159,6 +159,11 @@ class DA
          * */
         ~DA();
 
+        /**
+         * @brief does the work for the constructors.
+         */
+        void construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
+
         /**@brief returns the local nodal size*/
         inline unsigned int getLocalNodalSz() const { return m_uiLocalNodalSz; }
 
