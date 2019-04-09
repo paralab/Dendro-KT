@@ -167,6 +167,10 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   // 1. Copy input data to ghosted buffer.
   m_oda->template nodalVecToGhostedNodal<VECType>(in, inGhostedPtr, true, m_uiDof);
 
+  // 1.a. Override input data with pre-matvec initialization.
+  preMatVec(in, inGhostedPtr + m_oda->getLocalNodeBegin(), scale);
+  // TODO what is the return value supposed to represent?
+
   // 2. Upstream->downstream ghost exchange.
   m_oda->template readFromGhostBegin<VECType>(inGhostedPtr, m_uiDof);
   m_oda->template readFromGhostEnd<VECType>(inGhostedPtr, m_uiDof);
@@ -187,6 +191,10 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
 
   // 5. Copy output data from ghosted buffer.
   m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, m_uiDof);
+
+  // 5.a. Override output data with post-matvec re-initialization.
+  postMatVec(outGhostedPtr + m_oda->getLocalNodeBegin(), out, scale);
+  // TODO what is the return value supposed to represent?
 }
 
 #ifdef BUILD_WITH_PETSC

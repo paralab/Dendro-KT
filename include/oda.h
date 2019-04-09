@@ -167,6 +167,9 @@ class DA
         /**@brief returns the local nodal size*/
         inline unsigned int getLocalNodalSz() const { return m_uiLocalNodalSz; }
 
+        /**@brief returns the start offset for local node segment in ghosted vector. */
+        inline unsigned int getLocalNodeBegin() const { return m_uiLocalNodeBegin; }
+
         /**@brief returns the pre ghost nodal size*/
         inline unsigned int getPreNodalSz() const { return (m_uiPreNodeEnd-m_uiPreNodeBegin); }
 
