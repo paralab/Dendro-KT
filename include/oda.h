@@ -147,6 +147,10 @@ class DA
 
         DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
 
+
+        /** @brief Construct oda for regular grid. */
+        DA(MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+
         /**@biref: Construct a DA from a function
          *
          * */

@@ -9,19 +9,15 @@
 namespace ot
 {
 
-    template <unsigned int dim>
-    template <typename T>
-    DA<dim>::DA(std::function<void(T, T, T, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
-        : m_refel{dim, order}
+    namespace util
     {
-        //TODO This should iteratively refine subtrees until the parent->child interpolation
-        // introduces only error up to interp_tol.
-
+      template <typename C, unsigned int dim>
+      void constructRegularGrid(MPI_Comm comm, unsigned int grainSz, double sfc_tol, std::vector<ot::TreeNode<C,dim>> &outTree)
+      {
         int nProc, rProc;
         MPI_Comm_size(comm, &nProc);
         MPI_Comm_rank(comm, &rProc);
 
-        // For now, ignore interp_tol and just pick a uniform refinement level to satisfy grainSz.
         // numElements == pow(2, dim*endL); --> endL = roundUp(log(numElements)/dim);
         const unsigned int endL = (binOp::binLength(nProc*grainSz) + dim - 1) / dim;
         const unsigned int numElem1D = 1u << endL;
@@ -46,20 +42,44 @@ namespace ot
           eleMultiIdx[dim-1 - d] = q;
         }
 
-        std::vector<ot::TreeNode<C,dim>> tree(locEleCount);   // Create part of tree.
+        // Create part of the tree in lexicographic order.
+        outTree.resize(locEleCount);
         for (unsigned int ii = 0; ii < locEleCount; ii++)
         {
           std::array<C,dim> eleCoords;
           for (int d = 0; d < dim; d++)
             eleCoords[d] = len * eleMultiIdx[d];
-          tree[ii] = ot::TreeNode<C,dim>(1, eleCoords, endL);
+          outTree[ii] = ot::TreeNode<C,dim>(1, eleCoords, endL);
 
           incrementBaseB<C,dim>(eleMultiIdx, numElem1D);    // Lexicographic advancement.
         }
 
-        SFC_Tree<C,dim>::distTreeSort(tree, sfc_tol, comm);
+        SFC_Tree<C,dim>::distTreeSort(outTree, sfc_tol, comm);
+      }
 
-        construct(&(*tree.cbegin()), locEleCount, comm, order, grainSz, sfc_tol);
+    }//namespace ot::util
+
+
+
+    template <unsigned int dim>
+    template <typename T>
+    DA<dim>::DA(std::function<void(T, T, T, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
+        : DA(comm, order, grainSz, sfc_tol)
+    {
+        //TODO This should iteratively refine subtrees until the parent->child interpolation
+        // introduces only error up to interp_tol.
+        // Intead, we delegate to the regular-grid constructor.
+    }
+
+    template <unsigned int dim>
+    DA<dim>::DA(MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+        : m_refel{dim, order}
+    {
+        // Ignore interp_tol and just pick a uniform refinement level to satisfy grainSz.
+        std::vector<ot::TreeNode<C,dim>> tree;
+        util::constructRegularGrid<C,dim>(comm, grainSz, sfc_tol, tree);
+
+        construct(&(*tree.cbegin()), (unsigned int) tree.size(), comm, order, grainSz, sfc_tol);
     }
 
     template <unsigned int dim>
