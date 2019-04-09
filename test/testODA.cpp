@@ -30,10 +30,10 @@ void testMatvec(MPI_Comm comm);
 template<unsigned int dim, unsigned int order>
 void testRegularGrid(unsigned int grainSz, MPI_Comm comm);
 
-template <typename T, unsigned int dim>
+template <unsigned int dim>
 class myConcreteFeMatrix;
 
-template <typename T, unsigned int dim>
+template <unsigned int dim>
 class myConcreteFeVector;
 
 // ---------------------------------------------------------------------
@@ -78,17 +78,18 @@ int main(int argc, char *argv[])
 //
 // myConcreteFeMatrix
 //
-template <typename T, unsigned int dim>
-class myConcreteFeMatrix : public feMatrix<T, dim>
+template <unsigned int dim>
+class myConcreteFeMatrix : public feMatrix<myConcreteFeMatrix<dim>, dim>
 {
+  using T = myConcreteFeMatrix;
   public:
     static constexpr unsigned int order = 1;   // Only support a static order for now.  //TODO add order paramter to elementalMatVec()
     using feMatrix<T,dim>::feMatrix;
     virtual void elementalMatVec(const VECType *in, VECType *out, double *coords, double scale) override;
 };
 
-template <typename T, unsigned int dim>
-void myConcreteFeMatrix<T,dim>::elementalMatVec(const VECType *in, VECType *out, double *coords, double scale)
+template <unsigned int dim>
+void myConcreteFeMatrix<dim>::elementalMatVec(const VECType *in, VECType *out, double *coords, double scale)
 {
   // Dummy identity.
   const unsigned int nPe = intPow(order + 1, dim);
@@ -100,17 +101,18 @@ void myConcreteFeMatrix<T,dim>::elementalMatVec(const VECType *in, VECType *out,
 //
 // myConcreteFeVector
 //
-template <typename T, unsigned int dim>
-class myConcreteFeVector : public feVector<T, dim>
+template <unsigned int dim>
+class myConcreteFeVector : public feVector<myConcreteFeVector<dim>, dim>
 {
+  using T = myConcreteFeVector;
   public:
     static constexpr unsigned int order = 1;   // Only support a static order for now.  //TODO add order paramter to elementalMatVec()
     using feVector<T,dim>::feVector;
     virtual void elementalComputeVec(const VECType *in, VECType *out, double *coords, double scale) override;
 };
 
-template <typename T, unsigned int dim>
-void myConcreteFeVector<T,dim>::elementalComputeVec(const VECType *in, VECType *out, double *coords, double scale)
+template <unsigned int dim>
+void myConcreteFeVector<dim>::elementalComputeVec(const VECType *in, VECType *out, double *coords, double scale)
 {
   // Dummy identity.
   const unsigned int nPe = intPow(order + 1, dim);
@@ -153,8 +155,7 @@ void testMatvec(MPI_Comm comm)
 
   // Define some (data vector and) elemental matrix operator.
   // The matrix operator is defined above in myConcreteFeMatrix.
-  //TODO What should be the template parameter T for feMatrix?
-  myConcreteFeMatrix<std::nullptr_t, dim> feMtx(&oda, dof);
+  myConcreteFeMatrix<dim> feMtx(&oda, dof);
 
   // Perform the matvec.
   feMtx.matVec(&(*inVec.cbegin()), &(*outVec.begin()));
@@ -179,7 +180,7 @@ void testMatvec(MPI_Comm comm)
   printf("\n");
 
   // Get feVector compiling.
-  myConcreteFeVector<std::nullptr_t, dim> feVct(&oda, dof);
+  myConcreteFeVector<dim> feVct(&oda, dof);
   feVct.computeVec(&(*inVec.cbegin()), &(*outVec.begin()));
 
   oda.template destroyVector<VECType>(inVec);

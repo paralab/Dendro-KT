@@ -115,6 +115,10 @@ int main (int argc, char** argv)
     HeatEq::HeatVec<dim> heatVec(octDA,1);
     heatVec.setProblemDimensions(domain_min,domain_max);
 
+    // TODO The DOF pointers are going to be wrong because
+    //   variables are stored [abc][abc], not stored contiguously.
+    //   Neet to correct the implementation of getVecPointerToDof()
+    //   and then use the returned pointers with some stride.
 
     double * ux=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI_U, false,false);
     double * frhs=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI_F, false,false);

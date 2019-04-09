@@ -299,12 +299,25 @@ namespace fem
             leafCoordBuffer.resize(dim * nElePoints);
         }
 
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+        bench::t_topdown.start();
+#endif
+
         // For now, this may increase the size of coords_dup and vec_in_dup.
         // We can get the proper size for vec_out_contrib from the result.
         bool isLeaf = top_down<T,TN,dim>(coords, ibufs[pLev].coords_dup, vecIn, ibufs[pLev].vec_in_dup, sz, offset, counts, ibufs[pLev].smap, subtreeRoot, pRot);
 
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+        bench::t_topdown.stop();
+#endif
+
         if(!isLeaf)
         {
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+          bench::t_treeinterior.start();
+#endif
+
             ibufs[pLev].vec_out_contrib.resize(ibufs[pLev].vec_in_dup.size());
 
             constexpr unsigned int rotOffset = 2*(1u<<dim);  // num columns in rotations[].
@@ -343,9 +356,18 @@ namespace fem
 
                 childIsFirst = false;
             }
-        
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+            bench::t_treeinterior.stop();
+#endif
+
         }else
         {
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+          bench::t_elemental.start();
+#endif
+
             /// // DEBUG print the leaft element.
             /// fprintf(stderr, "Leaf: (%u) \t%s\n", pLev, subtreeRoot.getBase32Hex(m_uiMaxDepth).data());
 
@@ -477,11 +499,23 @@ namespace fem
                     }
                 }
             }
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+            bench::t_elemental.stop();
+#endif
+
         }
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+        bench::t_bottomup.start();
+#endif
 
         if (!isLeaf)
           bottom_up<T,TN,dim>(vecOut, ibufs[pLev].vec_out_contrib, sz, offset, ibufs[pLev].smap);
 
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+        bench::t_bottomup.stop();
+#endif
 
         delete [] offset;
         delete [] counts;

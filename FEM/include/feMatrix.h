@@ -171,9 +171,17 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   preMatVec(in, inGhostedPtr + m_oda->getLocalNodeBegin(), scale);
   // TODO what is the return value supposed to represent?
 
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+  bench::t_ghostexchange.start();
+#endif
+
   // 2. Upstream->downstream ghost exchange.
   m_oda->template readFromGhostBegin<VECType>(inGhostedPtr, m_uiDof);
   m_oda->template readFromGhostEnd<VECType>(inGhostedPtr, m_uiDof);
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+  bench::t_ghostexchange.stop();
+#endif
 
   // 3. Local matvec().
   const auto * tnCoords = m_oda->getTNCoords();
@@ -185,9 +193,17 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
       eleOp, scale, m_oda->getReferenceElement());
   //TODO I think refel won't always be provided by oda.
 
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+  bench::t_ghostexchange.start();
+#endif
+
   // 4. Downstream->Upstream ghost exchange.
   m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof);
   m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, m_uiDof);
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+  bench::t_ghostexchange.stop();
+#endif
 
   // 5. Copy output data from ghosted buffer.
   m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, m_uiDof);
