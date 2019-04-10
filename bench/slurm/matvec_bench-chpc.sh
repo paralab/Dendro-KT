@@ -4,8 +4,8 @@
                            # the first node (%N)
 #SBATCH -e timing/err-job-%j-node-%N.log      # name of the stderr, using job and first node values
 
-#SBATCH --nodes=4          # request 4 nodes, that's the most we'll use
-#SBATCH --ntasks=64      # maximum total number of mpi tasks across all nodes.
+#SBATCH --nodes=7          # request 4 nodes, that's the most we'll use
+#SBATCH --ntasks=228      # maximum total number of mpi tasks across all nodes.
 
 #SBATCH --job-name=matvec_bench
 #SBATCH --mail-type=ALL
