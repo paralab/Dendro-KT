@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=1:00:00     # walltime, abbreviated by -t
+#SBATCH --time=2:00:00     # walltime, abbreviated by -t
 #SBATCH -o ../results/out-job-%j-node-%N.tsv      # name of the stdout, using the job number (%j) and 
                            # the first node (%N)
 #SBATCH -e ../results/err-job-%j-node-%N.log      # name of the stderr, using job and first node values
@@ -25,52 +25,53 @@
 RUNPROGRAM=/home1/03727/tg830270/Research/Dendro-KT/build/matvecBenchAdaptive
 
 # The size of a 4D level==3 regular grid.
-PTS_PER_PROC=1024
+PTS_PER_PROC_STRONG=1024
+PTS_PER_PROC_WEAK=100
 
 # The starting level is 3, we need up to two more levels during weak scaling.
 # If there are not enough levels then we may get errors.
-MAX_DEPTH=$((3+2))
-
-
-## =============
-#Strong scaling.
-## =============
-ELE_ORDER=1
-for NP in 1 16 256 ; do
-  ibrun -np $NP $RUNPROGRAM $(($PTS_PER_PROC / $NP)) $MAX_DEPTH $ELE_ORDER "strong";
-  echo ;
-done
-
-ELE_ORDER=2
-for NP in 1 16 256 ; do
-  ibrun -np $NP $RUNPROGRAM $(($PTS_PER_PROC / $NP)) $MAX_DEPTH $ELE_ORDER "strong";
-  echo ;
-done
-
-ELE_ORDER=4
-for NP in 1 16 256 ; do
-  ibrun -np $NP $RUNPROGRAM $(($PTS_PER_PROC / $NP)) $MAX_DEPTH $ELE_ORDER "strong;"
-  echo ;
-done
+MAX_DEPTH=20
 
 
 ## =============
 #Weak scaling.
 ## =============
 ELE_ORDER=1
-for NP in 1 16 256 ; do
-  ibrun -np $NP $RUNPROGRAM $PTS_PER_PROC $MAX_DEPTH $ELE_ORDER "weak";
+for NP in 1 2 4 8 16 32 64 128 256 ; do
+  ibrun -np $NP $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak" ;
   echo ;
 done
 
 ELE_ORDER=2
-for NP in 1 16 256 ; do
-  ibrun -np $NP $RUNPROGRAM $PTS_PER_PROC $MAX_DEPTH $ELE_ORDER "weak";
+for NP in 1 2 4 8 16 32 64 128 256 ; do
+  ibrun -np $NP $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak" ;
+  echo ;
+done
+
+
+## =============
+#Strong scaling.
+## =============
+ELE_ORDER=1
+for NP in 1 2 4 8 16 32 64 128 256 ; do
+  ibrun -np $NP $RUNPROGRAM $(($PTS_PER_PROC_STRONG / $NP)) $MAX_DEPTH $ELE_ORDER "strong" ;
+  echo ;
+done
+
+ELE_ORDER=2
+for NP in 1 2 4 8 16 32 64 128 256 ; do
+  ibrun -np $NP $RUNPROGRAM $(($PTS_PER_PROC_STRONG / $NP)) $MAX_DEPTH $ELE_ORDER "strong" ;
   echo ;
 done
 
 ELE_ORDER=4
-for NP in 1 16 256 ; do
-  ibrun -np $NP $RUNPROGRAM $PTS_PER_PROC $MAX_DEPTH $ELE_ORDER "weak";
+for NP in 1 2 4 8 16 32 64 128 256 ; do
+  ibrun -np $NP $RUNPROGRAM $(($PTS_PER_PROC_STRONG / $NP)) $MAX_DEPTH $ELE_ORDER "strong" ;
+  echo ;
+done
+
+ELE_ORDER=4
+for NP in 1 2 4 8 16 32 64 128 256 ; do
+  ibrun -np $NP $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak" ;
   echo ;
 done
