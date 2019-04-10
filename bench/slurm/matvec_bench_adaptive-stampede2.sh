@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=0:20:00     # walltime, abbreviated by -t
+#SBATCH --time=1:00:00     # walltime, abbreviated by -t
 #SBATCH -o ../results/out-job-%j-node-%N.tsv      # name of the stdout, using the job number (%j) and 
                            # the first node (%N)
 #SBATCH -e ../results/err-job-%j-node-%N.log      # name of the stderr, using job and first node values
