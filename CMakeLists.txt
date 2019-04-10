@@ -282,11 +282,15 @@ add_executable(tstODA ${SRC_FILES})
 target_include_directories(tstODA PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstODA dendroKT ${MPI_LIBRARIES} m)
 
+## tsort_bench (./tsortBench)
+## -----------
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/tsort_bench.h ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/tsort_bench.cpp)
 add_executable(tsortBench ${SRC_FILES})
 target_include_directories(tsortBench PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/bench/include)
 target_link_libraries(tsortBench dendroKT ${MPI_LIBRARIES} m)
 
+## matvec_bench (./matvecBench)
+## ------------
 set(SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/matvec_bench.h
   ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/matvec_bench.cpp
@@ -299,6 +303,22 @@ target_include_directories(matvecBench PUBLIC ${MPI_INCLUDE_PATH}
                                               ${CMAKE_CURRENT_SOURCE_DIR}/bench/include
                                               ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
 target_link_libraries(matvecBench dendroKT ${MPI_LIBRARIES} m)
+
+## matvec_bench_adaptive (./matvecBenchAdaptive)
+## ---------------------
+set(SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/matvec_bench.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/matvec_bench_adaptive.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/heatMat.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/heatVec.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/heatVec.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/heatMat.cpp)
+add_executable(matvecBenchAdaptive ${SRC_FILES})
+target_include_directories(matvecBenchAdaptive PUBLIC ${MPI_INCLUDE_PATH}
+                                              ${CMAKE_CURRENT_SOURCE_DIR}/bench/include
+                                              ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+target_link_libraries(matvecBenchAdaptive dendroKT ${MPI_LIBRARIES} m)
+
 
 
 ## Examples
