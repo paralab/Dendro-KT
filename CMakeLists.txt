@@ -317,3 +317,5 @@ if(BUILD_EXAMPLES)
 endif(BUILD_EXAMPLES)
 
 
+## Airtight branch.
+add_subdirectory(airtight airtight)
