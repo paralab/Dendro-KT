@@ -42,6 +42,13 @@ namespace bench
     profiler_t t_treeinterior;
     profiler_t t_elemental;
 
+    struct ReportSizes
+    {
+      unsigned int b1_treeSortSz;
+      unsigned int b1_treeConstructionSz;
+      unsigned int b1_treeBalancingSz;
+      unsigned int b2_treeMatvecSz;
+    } gRptSz, gDistRptSz;
 
 
     void resetAllTimers()
@@ -98,18 +105,21 @@ namespace bench
             t_adaptive_tsort.start();
             ot::SFC_Tree<T,dim>::distTreeSort(points, loadFlexibility, comm);
             t_adaptive_tsort.stop();
+            gRptSz.b1_treeSortSz = points.size();
 
             // Time construction.
             tree.clear();
             t_adaptive_tconstr.start();
             ot::SFC_Tree<T,dim>::distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
             t_adaptive_tconstr.stop();
+            gRptSz.b1_treeConstructionSz = tree.size();
 
             // Time balanced construction.
             tree.clear();
             t_adaptive_tbal.start();
             ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
             t_adaptive_tbal.stop();
+            gRptSz.b1_treeBalancingSz = tree.size();
 
             // Generate DA from balanced tree.
             t_adaptive_oda.start();
@@ -127,7 +137,7 @@ namespace bench
             std::vector<TreeNode> points = ot::getPts<T,dim>(numPts);
             ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
             points.clear();
-            printf("[%d] tree.size()==%u\n", rank, (unsigned) tree.size());
+            gRptSz.b2_treeMatvecSz = tree.size();
 
             // DA based on adaptive grid.
             ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), tree.size(), comm, eleOrder, numPts, loadFlexibility);
@@ -234,6 +244,12 @@ namespace bench
  
         }
 
+        par::Mpi_Reduce(&gRptSz.b1_treeSortSz,         &gDistRptSz.b1_treeSortSz,         1, MPI_SUM, 0, comm);
+        par::Mpi_Reduce(&gRptSz.b1_treeConstructionSz, &gDistRptSz.b1_treeConstructionSz, 1, MPI_SUM, 0, comm);
+        par::Mpi_Reduce(&gRptSz.b1_treeBalancingSz,    &gDistRptSz.b1_treeBalancingSz,    1, MPI_SUM, 0, comm);
+        par::Mpi_Reduce(&gRptSz.b2_treeMatvecSz,       &gDistRptSz.b2_treeMatvecSz,       1, MPI_SUM, 0, comm);
+
+
         if(!rank)
         {
             fout << "msgPrefix\t" << "npes\t";
@@ -241,6 +257,7 @@ namespace bench
             {
               fout << paramNames[i] << "\t";
             }
+            fout << "treeSortSz\t" << "treeConstructionSz\t" << "treeBalancingSz\t" << "treeMatvecSz\t";
             for(unsigned int i=0; i<n; i++)
             {
                fout<<names[i]<<"(min)\t"<<names[i]<<"(mean)\t"<<names[i]<<"(max)\t";
@@ -259,6 +276,10 @@ namespace bench
             {
               fout << params[i] << "\t";
             }
+            fout << gDistRptSz.b1_treeSortSz << "\t"
+                 << gDistRptSz.b1_treeConstructionSz << "\t"
+                 << gDistRptSz.b1_treeBalancingSz << "\t"
+                 << gDistRptSz.b2_treeMatvecSz << "\t";
             for(unsigned int i=0; i<n; i++)
             {
                fout<<stat_g[3*i + 0]<<"\t"<<stat_g[3*i + 1]<<"\t"<<stat_g[3*i+2]<<"\t";
