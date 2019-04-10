@@ -183,6 +183,9 @@ class DA
         /**@brief returns the total nodal size (this includes the ghosted region as well.)*/
         inline unsigned int getTotalNodalSz() const { return m_uiTotalNodalSz; }
 
+        /**@brief returns the global number of nodes across all processors. */
+        inline unsigned int getGlobalNodeSz() const { return m_uiGlobalNodeSz; }
+
         /**@brief see if the current DA is active*/
         inline bool isActive() { return m_uiIsActive; }
 

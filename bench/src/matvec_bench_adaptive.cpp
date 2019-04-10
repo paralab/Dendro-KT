@@ -48,6 +48,9 @@ namespace bench
       unsigned int b1_treeConstructionSz;
       unsigned int b1_treeBalancingSz;
       unsigned int b2_treeMatvecSz;
+
+      unsigned int b1_globNodeSz;    // Only used globally.
+      unsigned int b2_globNodeSz;    // Only used globally.
     } gRptSz, gDistRptSz;
 
 
@@ -125,6 +128,7 @@ namespace bench
             t_adaptive_oda.start();
             ot::DA<dim> oda(&(*tree.cbegin()), (unsigned) tree.size(), comm, eleOrder, numPts, loadFlexibility);
             t_adaptive_oda.stop();
+            gDistRptSz.b1_globNodeSz = oda.getGlobalNodeSz();
         }
 
         // 2. Benchmark matvec on regular grid.
@@ -141,6 +145,7 @@ namespace bench
 
             // DA based on adaptive grid.
             ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), tree.size(), comm, eleOrder, numPts, loadFlexibility);
+            gDistRptSz.b2_globNodeSz = octDA->getGlobalNodeSz();
 
             const unsigned int DOF = 1;   // matvec only supports dof==1 right now.
 
@@ -257,7 +262,8 @@ namespace bench
             {
               fout << paramNames[i] << "\t";
             }
-            fout << "treeSortSz\t" << "treeConstructionSz\t" << "treeBalancingSz\t" << "treeMatvecSz\t";
+            fout << "treeSortSz\t" << "treeConstructionSz\t" << "treeBalancingSz\t" << "constrNumNodes\t"
+                 << "treeMatvecSz\t" << "matvecNumNodes\t";
             for(unsigned int i=0; i<n; i++)
             {
                fout<<names[i]<<"(min)\t"<<names[i]<<"(mean)\t"<<names[i]<<"(max)\t";
@@ -279,7 +285,9 @@ namespace bench
             fout << gDistRptSz.b1_treeSortSz << "\t"
                  << gDistRptSz.b1_treeConstructionSz << "\t"
                  << gDistRptSz.b1_treeBalancingSz << "\t"
-                 << gDistRptSz.b2_treeMatvecSz << "\t";
+                 << gDistRptSz.b1_globNodeSz << "\t"
+                 << gDistRptSz.b2_treeMatvecSz << "\t"
+                 << gDistRptSz.b2_globNodeSz << "\t";
             for(unsigned int i=0; i<n; i++)
             {
                fout<<stat_g[3*i + 0]<<"\t"<<stat_g[3*i + 1]<<"\t"<<stat_g[3*i+2]<<"\t";
