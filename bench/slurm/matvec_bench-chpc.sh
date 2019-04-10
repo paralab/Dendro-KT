@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --time=0:20:00     # walltime, abbreviated by -t
-#SBATCH -o timing/out-job-%j-node-%N.tsv      # name of the stdout, using the job number (%j) and 
+#SBATCH -o out-job-%j-node-%N.tsv      # name of the stdout, using the job number (%j) and 
                            # the first node (%N)
-#SBATCH -e timing/err-job-%j-node-%N.log      # name of the stderr, using job and first node values
+#SBATCH -e err-job-%j-node-%N.log      # name of the stderr, using job and first node values
 
 #SBATCH --nodes=7          # request 4 nodes, that's the most we'll use
-#SBATCH --ntasks=228      # maximum total number of mpi tasks across all nodes.
+#SBATCH --ntasks=196      # maximum total number of mpi tasks across all nodes.
 
 #SBATCH --job-name=matvec_bench
 #SBATCH --mail-type=ALL

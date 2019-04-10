@@ -5,7 +5,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
-find_package(GSL REQUIRED)
+### find_package(GSL REQUIRED)
 
 # For now we just make it compulsory to have LAPACK installed.
 #Later we will make it possible if LAPACK is not present to automaticall install before compiling dendro5
@@ -179,7 +179,6 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/treeNode.cpp
                   IO/vtk/src/oct2vtk.cpp
                   src/oda.cpp
-                  FEM/src/matvec.cpp
                   FEM/src/tensor.cpp
                   FEM/src/refel.cpp
                   FEM/src/basis.cpp
