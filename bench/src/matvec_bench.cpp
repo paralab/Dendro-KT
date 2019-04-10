@@ -24,6 +24,8 @@
 #include "heatMat.h"
 #include "heatVec.h"
 
+#include <cstring>
+
 
 
 namespace bench
@@ -196,7 +198,7 @@ namespace bench
     }
 
 
-    void dump_profile_info(std::ostream& fout, double *params, const char **paramNames, unsigned int numParams, profiler_t* timers, const char ** names, unsigned int n ,MPI_Comm comm)
+    void dump_profile_info(std::ostream& fout, const char *msgPrefix, double *params, const char **paramNames, unsigned int numParams, profiler_t* timers, const char ** names, unsigned int n ,MPI_Comm comm)
     {
 
         double stat;
@@ -221,7 +223,7 @@ namespace bench
 
         if(!rank)
         {
-            fout << "npes\t";
+            fout << "msgPrefix\t" << "npes\t";
             for (unsigned int i = 0; i < numParams; i++)
             {
               fout << paramNames[i] << "\t";
@@ -238,6 +240,7 @@ namespace bench
 
         if(!rank)
         {
+            fout << msgPrefix << "\t";
             fout << npes << "\t";
             for (unsigned int i = 0; i < numParams; i++)
             {
@@ -267,11 +270,13 @@ int main(int argc, char** argv)
     MPI_Comm comm = MPI_COMM_WORLD;
     MPI_Comm_rank(comm,&rank);
     MPI_Comm_size(comm,&npes);
+
+    const unsigned int msgPrefixLimit = 64;
     
     if(argc<=1)
     {
         if(!rank)
-            std::cout<<"usage :  "<<argv[0]<<" pts_per_core(weak scaling) maxdepth elementalOrder"<<std::endl;
+            std::cout<<"usage :  "<<argv[0]<<" pts_per_core(weak scaling) maxdepth elementalOrder msgPrefix(<" << msgPrefixLimit << ")"<<std::endl;
         
         MPI_Abort(comm,0);
     }
@@ -281,6 +286,12 @@ int main(int argc, char** argv)
     const unsigned int pts_per_core = atoi(argv[1]);
     m_uiMaxDepth = atoi(argv[2]);
     const unsigned int eleOrder = atoi(argv[3]);
+
+    char msgPrefix[2*msgPrefixLimit + 1];
+    msgPrefix[0] = '\0';
+    msgPrefix[msgPrefixLimit] = '\0';
+    if (argc > 4)
+      std::strncpy(msgPrefix, argv[4], msgPrefixLimit);
 
     _InitializeHcurve(dim);
 
@@ -326,7 +337,7 @@ int main(int argc, char** argv)
         bench::t_elemental, 
     };
 
-    bench::dump_profile_info(std::cout, params,param_names,2, counters,counter_names,9, comm);
+    bench::dump_profile_info(std::cout, msgPrefix, params,param_names,2, counters,counter_names,9, comm);
 
     _DestroyHcurve();
     MPI_Finalize();
