@@ -1,8 +1,8 @@
 /**
- * @file tryConstruction.cpp
+ * @file trySorting.cpp
  * @author Masado Ishii, University of Utah, School of Computing
  * @created 2019-04-09
- * @description Test distTreeConstruction().
+ * @description Test distTreeSort().
  */
 
 #include "tsort.h"
@@ -18,7 +18,7 @@
 struct Parameters
 {
   unsigned int ptsPerProc;
-  unsigned int maxPtsPerRegion;
+  /// unsigned int maxPtsPerRegion;
   double loadFlexibility;
   /// unsigned int endL;
   /// unsigned int elementOrder;
@@ -47,8 +47,8 @@ int main(int argc, char * argv[])
   Parameters pm;
 
   // Set up accepted options.
-  enum CmdOptions { progName, opDim, opPtsPerProc, opMaxPtsPerRegion, opLoadFlexibility, NUM_CMD_OPTIONS };
-  const char *cmdOptions[NUM_CMD_OPTIONS] = { argv[0], "dim", "ptsPerProc", "maxPtsPerRegion", "loadFlexibility"};
+  enum CmdOptions { progName, opDim, opPtsPerProc, opLoadFlexibility, NUM_CMD_OPTIONS };
+  const char *cmdOptions[NUM_CMD_OPTIONS] = { argv[0], "dim", "ptsPerProc", "loadFlexibility"};
   const unsigned int firstOptional = opPtsPerProc;
   std::array<const char *, NUM_CMD_OPTIONS> argVals;
   argVals.fill("");
@@ -74,7 +74,7 @@ int main(int argc, char * argv[])
   // Parse arguments.
   dim = static_cast<unsigned int>(strtol(argVals[1], NULL, 0));
   pm.ptsPerProc = argc > opPtsPerProc ? strtol(argVals[opPtsPerProc], NULL, 0) : 100;
-  pm.maxPtsPerRegion = argc > opMaxPtsPerRegion ? strtol(argVals[opMaxPtsPerRegion], NULL, 0) : 1;
+  /// pm.maxPtsPerRegion = argc > opMaxPtsPerRegion ? strtol(argVals[opMaxPtsPerRegion], NULL, 0) : 1;
   pm.loadFlexibility = argc > opLoadFlexibility ? strtol(argVals[opLoadFlexibility], NULL, 0) : 0.2;
 
   // Replay arguments.
@@ -124,18 +124,16 @@ void test(const Parameters &pm, MPI_Comm comm)
   fprintf(stderr, "[%d] Running %s() with "
                   "dim==%u; "
                   "ptsPerProc==%u; "
-                  "maxPtsPerRegion==%u; "
                   "loadFlexibility==%f; "  "\n",
       rProc, functionName,
       dim,
-      pm.ptsPerProc, pm.maxPtsPerRegion, pm.loadFlexibility);
+      pm.ptsPerProc, pm.loadFlexibility);
 
   using T = unsigned int;
 
   std::vector<ot::TreeNode<T,dim>> points = ot::getPts<T,dim>(pm.ptsPerProc);
 
-  std::vector<ot::TreeNode<T,dim>> tree;
-  ot::SFC_Tree<T,dim>::distTreeConstruction(points, tree, pm.maxPtsPerRegion, pm.loadFlexibility, comm);
+  ot::SFC_Tree<T,dim>::distTreeSort(points, pm.loadFlexibility, comm);
 
   fprintf(stderr, "[%d] Finished %s().\n", rProc, functionName);
 }

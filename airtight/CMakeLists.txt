@@ -19,3 +19,8 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/main/tryConstruction.cpp)
 add_executable(tryConstruction ${SRC_FILES})
 target_include_directories(tryConstruction  PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tryConstruction dktat ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/main/trySorting.cpp)
+add_executable(trySorting ${SRC_FILES})
+target_include_directories(trySorting  PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(trySorting dktat ${MPI_LIBRARIES} m)
