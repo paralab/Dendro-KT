@@ -27,7 +27,7 @@ namespace bench
         t_sm.clear();
     }
 
-    void bench_kernel(unsigned int numPts, unsigned int numIter, MPI_Comm comm)
+    void bench_kernel(unsigned int numPts, unsigned int numIter,unsigned int pOrder, MPI_Comm comm)
     {
 
         resetAllTimers();
@@ -39,7 +39,7 @@ namespace bench
         using RecvMap = ot::GatherMap;
         const unsigned int maxPtsPerRegion = 1;
         const T leafLevel = m_uiMaxDepth;
-        const unsigned int polyOrder = 1;
+        const unsigned int polyOrder = pOrder;
 
         const double loadFlexibility = 0.2;
        
@@ -164,21 +164,24 @@ int main(int argc, char** argv)
     MPI_Comm_rank(comm,&rank);
     MPI_Comm_size(comm,&npes);
     
-    if(argc<=1)
+    if(argc<4)
     {
         if(!rank)
-            std::cout<<"usage :  "<<argv[0]<<" pts_per_core(weak scaling) maxdepth"<<std::endl;
+            std::cout<<"usage :  "<<argv[0]<<" pts_per_core(weak scaling) maxdepth order iter"<<std::endl;
         
         MPI_Abort(comm,0);
     }
 
     const unsigned int pts_per_core = atoi(argv[1]);
     m_uiMaxDepth = atoi(argv[2]);
+    unsigned int pOrder =atoi(argv[3]);
+    unsigned int mIter = atoi(argv[4]);
+
     const unsigned int dim =4;
 
     _InitializeHcurve(dim);
 
-    bench::bench_kernel(100,5,comm);
+    bench::bench_kernel(pts_per_core,mIter,pOrder,comm);
     profiler_t counters []={bench::t_sort, bench::t_con, bench::t_bal, bench::t_cg, bench::t_sm};
     char * counter_names[] ={"sort","cons","bal","cg","sm"};
     bench::dump_profile_info(std::cout,counters,counter_names,5,comm);

@@ -51,7 +51,7 @@
          * @param [in] comm: MPI communicator
          * 
         */
-        void bench_kernel(unsigned int numPts, unsigned int numIter = 10, MPI_Comm comm=MPI_COMM_WORLD);
+        void bench_kernel(unsigned int numPts, unsigned int numIter,unsigned int pOrder, MPI_Comm comm=MPI_COMM_WORLD);
 
         void dump_profile_info(std::ostream& fout, profiler_t* timers, char ** names, unsigned int n ,MPI_Comm comm=MPI_COMM_WORLD);
 
