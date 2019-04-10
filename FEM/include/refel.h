@@ -19,6 +19,7 @@
 #include <iostream>
 #include <vector>
 #include <iomanip>
+#include "interpMatrices.h"
 template <typename T>
 void printArray_1D(const T *a, int length)
 {
