@@ -31,7 +31,7 @@ option(USE_64BIT_INDICES "Use 64-Bit indices. Reverts to 32-bit if turned off" O
 option(ALLTOALLV_FIX "Use K-way all to all v" OFF)
 option(SPLITTER_SELECTION_FIX "Turn on Splitter Selection fix" ON)
 option(DIM_2 "use the two dimentional sorting" OFF)
-option(WITH_BLAS_LAPACK "build using BLAS and LAPACk" OFF)
+option(WITH_BLAS_LAPACK "build using BLAS and LAPACk" ON)
 option(MANUAL_BLAS_LAPACK "configure BLAS and LAPACK Manually" OFF)
 option(DENDRO_VTK_BINARY "write vtk/vtu files in binary mode " ON)
 option(DENDRO_VTK_ZLIB_COMPRES "write vtk/vtu files in binary mode with zlib compression (only compatible with binary mode) " OFF)
