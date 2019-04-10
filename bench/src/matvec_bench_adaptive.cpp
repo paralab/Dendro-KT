@@ -62,7 +62,8 @@ namespace bench
     void bench_kernel(unsigned int numPts, unsigned int numWarmup, unsigned int numRuns, unsigned int eleOrder, MPI_Comm comm)
     {
         // numWarmup affects number of matVec warmup runs.
-        // numRuns affects both construction/balancing example and matvec example.
+        // numRuns affects number of matVec runs.
+        // The construction/balancing example executes 1 warmup run and 1 live run.
 
         int rank, npes;
         MPI_Comm_rank(comm,&rank);
@@ -88,32 +89,32 @@ namespace bench
             // Warmup run for adaptive grid.
             ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
 
+            //
             // Benchmark the adaptive grid example.
-            for (unsigned int ii = 0; ii < numRuns; ii++)
-            {
-                // Time sorting.
-                tree.clear();
-                t_adaptive_tsort.start();
-                ot::SFC_Tree<T,dim>::distTreeSort(points, loadFlexibility, comm);
-                t_adaptive_tsort.stop();
+            //
 
-                // Time construction.
-                tree.clear();
-                t_adaptive_tconstr.start();
-                ot::SFC_Tree<T,dim>::distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
-                t_adaptive_tconstr.stop();
+            // Time sorting.
+            tree.clear();
+            t_adaptive_tsort.start();
+            ot::SFC_Tree<T,dim>::distTreeSort(points, loadFlexibility, comm);
+            t_adaptive_tsort.stop();
 
-                // Time balanced construction.
-                tree.clear();
-                t_adaptive_tbal.start();
-                ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
-                t_adaptive_tbal.stop();
+            // Time construction.
+            tree.clear();
+            t_adaptive_tconstr.start();
+            ot::SFC_Tree<T,dim>::distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
+            t_adaptive_tconstr.stop();
 
-                // Generate DA from balanced tree.
-                t_adaptive_oda.start();
-                ot::DA<dim> oda(&(*tree.cbegin()), (unsigned) tree.size(), comm, eleOrder, numPts, loadFlexibility);
-                t_adaptive_oda.stop();
-            }
+            // Time balanced construction.
+            tree.clear();
+            t_adaptive_tbal.start();
+            ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
+            t_adaptive_tbal.stop();
+
+            // Generate DA from balanced tree.
+            t_adaptive_oda.start();
+            ot::DA<dim> oda(&(*tree.cbegin()), (unsigned) tree.size(), comm, eleOrder, numPts, loadFlexibility);
+            t_adaptive_oda.stop();
         }
 
         // 2. Benchmark matvec on regular grid.
@@ -128,8 +129,7 @@ namespace bench
             points.clear();
             printf("[%d] tree.size()==%u\n", rank, (unsigned) tree.size());
 
-            // Construct regular grid DA for regular grid benchmark.
-            /// ot::DA<dim> *octDA = new ot::DA<dim>(comm, eleOrder, numPts, loadFlexibility);
+            // DA based on adaptive grid.
             ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), tree.size(), comm, eleOrder, numPts, loadFlexibility);
 
             const unsigned int DOF = 1;   // matvec only supports dof==1 right now.
