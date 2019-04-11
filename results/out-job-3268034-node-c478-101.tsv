@@ -1,0 +1,138 @@
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	1	1024	1	0.000348401	0.000348401	0.000348401	0.000800276	0.000800276	0.000800276	0.0237139	0.0237139	0.0237139	0.167497	0.167497	0.167497	0	0	0	4.56149e-07	4.56149e-07	4.56149e-07	7.53892e-08	7.53892e-08	7.53892e-08	2.90332e-05	2.90332e-05	2.90332e-05	1.60384e-06	1.60384e-06	1.60384e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	16	64	1	7.42912e-05	0.000151773	0.000263333	0.000324607	0.000333788	0.000341439	0.0078867	0.00788702	0.00788743	0.167864	0.167988	0.168072	1.33872e-05	1.78181e-05	2.11596e-05	5.71421e-07	6.0415e-07	6.4112e-07	8.80582e-08	9.8402e-08	1.04765e-07	3.01931e-05	3.02886e-05	3.05229e-05	1.73859e-06	1.75054e-06	1.76355e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 119985 RUNNING AT c478-101
+=   EXIT CODE: 11
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+   Intel(R) MPI Library troubleshooting guide:
+      https://software.intel.com/node/561764
+===================================================================================
+TACC:  MPI job exited with code: 11 
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	1	1024	2	0.000348997	0.000348997	0.000348997	0.000788641	0.000788641	0.000788641	0.022896	0.022896	0.022896	2.01482	2.01482	2.01482	0	0	0	3.47167e-06	3.47167e-06	3.47167e-06	3.47936e-07	3.47936e-07	3.47936e-07	0.000109642	0.000109642	0.000109642	6.92498e-06	6.92498e-06	6.92498e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	16	64	2	0.000104594	0.000281936	0.000891685	0.000386262	0.000397231	0.000406909	0.00826931	0.00826992	0.00827079	2.06935	2.06941	2.06949	8.60691e-05	0.000232294	0.000348365	4.83476e-06	5.6014e-06	6.58662e-06	6.18844e-07	6.92175e-07	7.87129e-07	0.000114783	0.000115099	0.000115832	7.50227e-06	7.52952e-06	7.58488e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 120382 RUNNING AT c478-101
+=   EXIT CODE: 11
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+   Intel(R) MPI Library troubleshooting guide:
+      https://software.intel.com/node/561764
+===================================================================================
+TACC:  MPI job exited with code: 11 
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong;	1	1024	4	0.000353384	0.000353384	0.000353384	0.000800896	0.000800896	0.000800896	0.0220092	0.0220092	0.0220092	27.4634	27.4634	27.4634	2.86102e-07	2.86102e-07	2.86102e-07	4.80915e-05	4.80915e-05	4.80915e-05	3.86525e-06	3.86525e-06	3.86525e-06	0.000899597	0.000899597	0.000899597	5.88061e-05	5.88061e-05	5.88061e-05	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong;	16	64	4	0.000143909	0.000627184	0.00108323	0.000358462	0.000361066	0.000363278	0.0072659	0.00726718	0.007268	16.8094	16.81	16.8105	0.00120511	0.00360471	0.00552535	5.9409e-05	7.21225e-05	8.81916e-05	5.1823e-06	6.2519e-06	7.45919e-06	0.000772027	0.000773239	0.000778178	5.20109e-05	5.20777e-05	5.24483e-05	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 119962 RUNNING AT c491-052
+=   EXIT CODE: 11
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+   Intel(R) MPI Library troubleshooting guide:
+      https://software.intel.com/node/561764
+===================================================================================
+TACC:  MPI job exited with code: 11 
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	1	1024	1	0.000344062	0.000344062	0.000344062	0.000778794	0.000778794	0.000778794	0.02324	0.02324	0.02324	0.117867	0.117867	0.117867	0	0	0	4.60335e-07	4.60335e-07	4.60335e-07	7.59512e-08	7.59512e-08	7.59512e-08	2.91751e-05	2.91751e-05	2.91751e-05	1.61442e-06	1.61442e-06	1.61442e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	16	1024	1	0.000531077	0.000672489	0.000853562	0.000922203	0.00108323	0.00123088	0.00985236	0.00985305	0.00985377	0.204086	0.204109	0.204281	4.35591e-05	5.94489e-05	7.23839e-05	5.80246e-07	5.87779e-07	5.92036e-07	8.30591e-08	9.12643e-08	9.61749e-08	3.15616e-05	3.16313e-05	3.16951e-05	1.74699e-06	1.74985e-06	1.75203e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	256	1024	1	0.00281487	0.00311622	0.00605223	0.00616045	0.00927924	0.00955515	0.016159	0.0162108	0.0165425	0.0634968	0.0635595	0.063741	0.000174582	0.000442628	0.00175873	6.37207e-07	8.12175e-07	8.72821e-07	8.66129e-08	1.12188e-07	1.25957e-07	3.16394e-05	3.8395e-05	3.96243e-05	1.7536e-06	2.12778e-06	2.1954e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	1	1024	2	0.000348544	0.000348544	0.000348544	0.000778389	0.000778389	0.000778389	0.0223311	0.0223311	0.0223311	1.83172	1.83172	1.83172	0	0	0	3.47157e-06	3.47157e-06	3.47157e-06	3.48204e-07	3.48204e-07	3.48204e-07	0.000109402	0.000109402	0.000109402	6.91242e-06	6.91242e-06	6.91242e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	16	1024	2	0.00038662	0.000533509	0.00109959	0.000676107	0.000682943	0.000688934	0.0111349	0.0111364	0.0111372	2.44108	2.44112	2.44115	0.000530732	0.00120026	0.0018908	5.20059e-06	5.48544e-06	5.78534e-06	6.25895e-07	6.51003e-07	6.74441e-07	0.000119898	0.000120208	0.000120929	7.50348e-06	7.5229e-06	7.56995e-06	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 126084 RUNNING AT c491-044
+=   EXIT CODE: 11
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+   Intel(R) MPI Library troubleshooting guide:
+      https://software.intel.com/node/561764
+===================================================================================
+TACC:  MPI job exited with code: 11 
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	1	1024	4	0.000360656	0.000360656	0.000360656	0.000846219	0.000846219	0.000846219	0.0238668	0.0238668	0.0238668	26.9422	26.9422	26.9422	5.96046e-08	5.96046e-08	5.96046e-08	3.9545e-05	3.9545e-05	3.9545e-05	3.19281e-06	3.19281e-06	3.19281e-06	0.000737061	0.000737061	0.000737061	4.81823e-05	4.81823e-05	4.81823e-05	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3268034 
+TACC:  Starting parallel tasks... 

@@ -1,0 +1,200 @@
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	1	100	1	100	3076	16516	8689	21226	11894	0.000113964	0.000113964	0.000113964	0.00171113	0.00171113	0.00171113	0.182869	0.182869	0.182869	0.864407	0.864407	0.864407	1.55484	1.55484	1.55484	0	0	0	0.102504	0.102504	0.102504	0.0170739	0.0170739	0.0170739	0.620707	0.620707	0.620707	0.59351	0.59351	0.59351	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	2	100	1	200	3706	99331	67710	118141	81297	7.60555e-05	7.90358e-05	8.2016e-05	0.000835896	0.000840425	0.000844955	0.213306	0.213314	0.213322	3.14276	3.14279	3.14283	3.29654	3.71517	4.1338	0.00141764	0.210706	0.419994	0.29467	0.332263	0.369856	0.0437667	0.0499227	0.0560787	1.28902	1.45137	1.61372	1.16152	1.30938	1.45725	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	4	100	1	400	4966	175171	121905	190126	133254	9.39369e-05	0.000109971	0.000128031	0.00080204	0.000811279	0.000818968	0.243678	0.243701	0.243728	3.29274	3.29282	3.29288	2.43969	3.10185	3.8452	0.00150967	0.37245	0.705201	0.229039	0.292903	0.360644	0.0326951	0.0431968	0.0533993	0.928921	1.17785	1.472	0.847975	1.07711	1.33743	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	8	100	1	800	6871	220171	156203	237091	168036	0.000202894	0.000210881	0.000222921	0.0010581	0.00107166	0.00108314	0.234838	0.234848	0.234858	4.43987	4.43992	4.43998	1.45097	2.03079	2.64736	0.00139022	0.309588	0.599211	0.139635	0.201853	0.269778	0.0194457	0.0289991	0.0375679	0.557637	0.755366	0.995903	0.500444	0.69408	0.899906	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	16	100	1	1600	11836	286531	202059	281371	198243	0.000210047	0.000276327	0.000298023	0.00133801	0.00134778	0.00135803	0.280627	0.28064	0.280647	4.0502	4.05043	4.05052	1.2196	1.23944	1.26671	0.00156355	0.0149978	0.0245166	0.123953	0.128069	0.134751	0.0168226	0.0179865	0.0189335	0.439671	0.453409	0.464835	0.411937	0.417823	0.424984	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	32	100	1	3200	20896	365581	257350	369556	260197	0.000535965	0.000603929	0.000634909	0.00204301	0.00206952	0.00209212	0.293952	0.293963	0.293975	6.22045	6.22075	6.22095	0.592784	0.923675	1.2288	0.00107265	0.153977	0.319449	0.0534718	0.102876	0.143229	0.00795007	0.0138431	0.0183043	0.220819	0.333668	0.445062	0.202405	0.304179	0.403927	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	64	100	1	6400	38641	503026	359841	507016	363242	0.00256586	0.00354606	0.00397801	0.00248408	0.00260218	0.00265813	0.358084	0.358128	0.358147	5.67551	5.67616	5.67646	0.397044	0.681251	0.932266	0.00107002	0.126953	0.26926	0.0332808	0.0822736	0.123039	0.00525355	0.0105071	0.0145612	0.154416	0.241847	0.329173	0.138853	0.217923	0.292141	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	128	100	1	12800	74806	730456	512917	743341	519072	0.00216293	0.00325096	0.00375986	0.00339794	0.00347423	0.00351596	0.377736	0.377752	0.37777	4.56075	4.56135	4.56167	0.303172	0.521742	0.706717	0.00150323	0.0945081	0.202857	0.0267696	0.0647751	0.0978398	0.00436568	0.00807243	0.0111201	0.112763	0.184394	0.24804	0.106126	0.165181	0.221132	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	1	100	2	100	3286	17566	206475	12541	145865	0.000123024	0.000123024	0.000123024	0.00187802	0.00187802	0.00187802	0.197596	0.197596	0.197596	11.8476	11.8476	11.8476	5.4667	5.4667	5.4667	1.90735e-06	1.90735e-06	1.90735e-06	0.707057	0.707057	0.707057	0.0646772	0.0646772	0.0646772	1.69148	1.69148	1.69148	1.91051	1.91051	1.91051	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	2	100	2	200	3796	121516	1607545	118336	1566963	7.89165e-05	0.000104427	0.000129938	0.000908136	0.000910044	0.000911951	0.223128	0.223142	0.223155	59.598	59.598	59.5981	20.4422	21.7141	22.9859	0.0284796	0.648358	1.26824	3.82362	4.0571	4.29058	0.385124	0.408343	0.431562	5.87808	6.22719	6.57629	5.77495	6.12672	6.47848	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	4	100	2	400	4906	179731	2409821	176851	2371491	8.2016e-05	0.000116765	0.000146151	0.000735044	0.000736237	0.000736952	0.239378	0.239404	0.239431	53.5358	53.5361	53.5364	13.7452	17.8929	21.8093	0.0283263	2.00502	4.08429	2.70626	3.52291	4.28152	0.272443	0.354031	0.430021	3.7153	4.81238	5.87578	3.67571	4.8076	5.90329	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	8	100	2	800	7471	234676	3166223	232366	3141095	0.000125885	0.000138223	0.000156164	0.000937939	0.000959516	0.000969172	0.240097	0.240101	0.240106	43.7925	43.7931	43.7935	8.8658	12.1919	15.9305	0.0314958	1.91514	3.56149	1.83495	2.5288	3.37168	0.184454	0.252068	0.331408	2.29748	3.10599	4.02839	2.28357	3.12593	4.04405	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	16	100	2	1600	11656	285841	3856413	287806	3879057	0.000226021	0.000241742	0.000262022	0.00125885	0.00126657	0.00127482	0.257038	0.257047	0.257055	115.598	115.599	115.599	5.67289	7.95169	10.4537	0.0326743	1.2862	2.41893	1.16948	1.72154	2.37944	0.117949	0.168089	0.224888	1.48363	1.94842	2.55465	1.46345	1.96627	2.47488	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	32	100	2	3200	20356	364651	4919477	368281	4967691	0.000550985	0.00064452	0.000682831	0.00198388	0.00200728	0.00203109	0.309824	0.309835	0.309846	119.01	119.011	119.011	3.45904	6.08304	8.40805	0.0317292	1.18671	2.48542	0.634193	1.42156	2.06828	0.067152	0.13331	0.190104	0.962817	1.4147	1.83639	0.958898	1.39069	1.81533	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	64	100	2	6400	37741	490636	6666055	488386	6631867	0.000755072	0.000912119	0.00116706	0.00244498	0.00256614	0.00261712	0.329659	0.329691	0.329706	95.7427	95.7436	95.7445	2.16639	4.65625	6.63286	0.0259609	1.01445	2.23944	0.371645	1.16389	1.70184	0.0411925	0.104548	0.146921	0.637736	1.02107	1.45348	0.630005	0.977618	1.35895	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+weak	128	100	2	12800	73591	719296	9648877	736141	9870313	0.001127	0.00134603	0.00154114	0.0033648	0.00343538	0.00347686	0.356951	0.356972	0.357006	72.6672	72.6682	72.6687	1.73482	3.79761	5.32124	0.0175064	0.773066	1.79185	0.30371	0.998823	1.49022	0.0344312	0.087742	0.129271	0.469846	0.798262	1.07108	0.459681	0.750435	0.988411	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	1	1024	1	1024	8566	51886	33032	54196	34314	0.000941038	0.000941038	0.000941038	0.00690198	0.00690198	0.00690198	0.556552	0.556552	0.556552	2.34765	2.34765	2.34765	3.50356	3.50356	3.50356	9.53674e-07	9.53674e-07	9.53674e-07	0.284334	0.284334	0.284334	0.0435376	0.0435376	0.0435376	1.40754	1.40754	1.40754	1.27237	1.27237	1.27237	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	2	512	1	1024	8416	169036	117041	168736	116659	0.000291824	0.000314355	0.000336885	0.00231814	0.0023526	0.00238705	0.442716	0.442734	0.442751	5.50706	5.50709	5.50712	4.67853	5.34461	6.01069	0.00189447	0.332065	0.662236	0.442261	0.50556	0.56886	0.0636077	0.0736042	0.0836008	1.78313	2.02107	2.25901	1.62657	1.85435	2.08212	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	4	256	1	1024	8461	228976	162010	228631	160579	0.000153065	0.000188947	0.000224829	0.00141406	0.00144058	0.00145507	0.362405	0.362447	0.36249	4.53286	4.53291	4.53293	3.12284	3.73323	4.45883	0.00172544	0.364666	0.66962	0.307306	0.362714	0.434294	0.0450044	0.0528522	0.0641069	1.1717	1.39915	1.64256	1.07171	1.28643	1.53411	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	8	128	1	1024	8566	244156	172519	239881	169234	0.00019598	0.000214398	0.000235081	0.00115895	0.00118104	0.0011878	0.29768	0.297702	0.297724	6.16368	6.16375	6.16384	1.95974	2.05747	2.17436	0.00154567	0.0553289	0.100285	0.190748	0.201637	0.215884	0.0272796	0.0290664	0.0313396	0.736413	0.762654	0.791521	0.674123	0.702228	0.73499	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	16	64	1	1024	8611	247126	174047	257071	182536	0.000277996	0.000297397	0.000313044	0.00113297	0.00114046	0.00115108	0.215199	0.215209	0.215221	4.67615	4.67632	4.67645	0.789332	1.12545	1.44514	0.00141978	0.161031	0.328466	0.0754793	0.117431	0.151822	0.0106184	0.0165109	0.0204935	0.304291	0.410731	0.545753	0.272373	0.378356	0.486822	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	32	32	1	1024	8596	253231	179448	252736	178406	0.000483036	0.00053601	0.000570059	0.00147486	0.00147981	0.00148296	0.20352	0.203529	0.203537	4.33524	4.33559	4.33572	0.389296	0.617773	0.844492	0.000984907	0.114139	0.227791	0.0313828	0.0651643	0.0939589	0.00501561	0.00904842	0.0127866	0.155317	0.225108	0.301751	0.139722	0.206727	0.279023	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	64	16	1	1024	8401	251446	178561	250231	177558	0.000703096	0.000885505	0.00112009	0.0018599	0.00192967	0.002002	0.217427	0.21749	0.217514	2.59491	2.59562	2.59592	0.202662	0.324919	0.475419	0.000755548	0.0751395	0.136168	0.0166802	0.0351742	0.0602651	0.00269651	0.00484899	0.00717258	0.0734959	0.117713	0.17062	0.0673792	0.107873	0.15572	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	128	8	1	1024	8461	260131	184762	261676	186101	0.00134397	0.00151661	0.00172687	0.00325704	0.00334745	0.00338793	0.23913	0.23915	0.239187	1.48634	1.48679	1.48697	0.0977969	0.176067	0.262156	0.000685215	0.0442469	0.0836351	0.00815892	0.0198036	0.0362711	0.00140858	0.00266283	0.00419545	0.0381079	0.0631512	0.0900736	0.0342689	0.0577278	0.0801988	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	1	1024	2	1024	8476	52531	669387	53146	674257	0.000938892	0.000938892	0.000938892	0.00683808	0.00683808	0.00683808	0.565242	0.565242	0.565242	38.836	38.836	38.836	19.6326	19.6326	19.6326	3.8147e-06	3.8147e-06	3.8147e-06	3.45265	3.45265	3.45265	0.299417	0.299417	0.299417	5.90599	5.90599	5.90599	5.8563	5.8563	5.8563	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	2	512	2	1024	8431	166456	2225953	194266	2600127	0.000316143	0.00032413	0.000332117	0.00233603	0.00235546	0.00237489	0.428915	0.428947	0.428979	84.4235	84.4237	84.424	36.706	38.7368	40.7675	0.04775	1.33727	2.62679	7.26134	7.75361	8.24588	0.717475	0.765471	0.813466	9.56038	10.2477	10.9351	9.59054	10.3146	11.0386	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	4	256	2	1024	8341	234976	3162041	222631	2996145	0.000169039	0.000187516	0.000212908	0.00140905	0.00144118	0.00146699	0.362043	0.362092	0.362126	68.0821	68.0826	68.0831	16.6017	22.0209	26.7988	0.0324147	2.35163	5.08	3.36671	4.46945	5.41451	0.337654	0.444822	0.538582	4.2538	5.7246	6.88747	4.31588	5.76921	6.99312	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	8	128	2	1024	8461	240676	3250365	246886	3321591	0.000108957	0.00011909	0.000128984	0.000813961	0.000824004	0.000833988	0.241006	0.241009	0.241017	78.4693	78.4698	78.4704	12.6731	13.061	13.7596	0.0286059	0.351082	0.51712	2.59928	2.67377	2.82962	0.258741	0.265618	0.280871	3.29067	3.34469	3.47215	3.29483	3.37677	3.52169	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	16	64	2	1024	8506	251461	3397825	250441	3380429	0.000169992	0.000274733	0.000312805	0.00100493	0.00101066	0.00101614	0.246765	0.246779	0.246796	107.492	107.492	107.493	4.58508	6.92556	9.19901	0.0293357	1.16726	2.33026	0.903119	1.50592	2.07222	0.0925791	0.148101	0.199477	1.22258	1.70334	2.24967	1.22688	1.70625	2.19982	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	32	32	2	1024	8161	248806	3355137	247756	3344251	0.000444889	0.0005062	0.000544071	0.00143409	0.00144033	0.00147009	0.20858	0.208603	0.208612	65.6484	65.649	65.6496	2.32474	3.78536	5.16013	0.020268	0.70233	1.42524	0.40406	0.841749	1.19958	0.043968	0.0812988	0.112776	0.628077	0.924632	1.22437	0.621985	0.913	1.18645	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	64	16	2	1024	8191	246031	3332059	257116	3473859	0.000727177	0.000956774	0.00118613	0.00182295	0.00190111	0.00203586	0.204022	0.204038	0.204048	45.9027	45.9036	45.9044	1.20502	2.21359	3.38314	0.0134628	0.592585	1.09168	0.189614	0.512362	0.846491	0.0220566	0.0481058	0.0744345	0.363256	0.524202	0.751634	0.364704	0.513439	0.721974	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	128	8	2	1024	8701	264961	3569867	252166	3409271	0.000897884	0.00300148	0.00437689	0.00252891	0.00262532	0.00266981	0.228422	0.228443	0.228472	27.138	27.1385	27.1389	0.569373	1.14159	1.76831	0.0102944	0.323552	0.603371	0.0923123	0.271492	0.47287	0.0107946	0.0256183	0.0423567	0.168278	0.264986	0.383537	0.170706	0.256947	0.363674	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
+msgPrefix	npes	pts_per_core	eleOrder	treeSortSz	treeConstructionSz	treeBalancingSz	constrNumNodes	treeMatvecSz	matvecNumNodes	sort(min)	sort(mean)	sort(max)	constr(min)	constr(mean)	constr(max)	bal(min)	bal(mean)	bal(max)	adaptive_oda(min)	adaptive_oda(mean)	adaptive_oda(max)	matvec(min)	matvec(mean)	matvec(max)	ghostexchange(min)	ghostexchange(mean)	ghostexchange(max)	topdown(min)	topdown(mean)	topdown(max)	bottomup(min)	bottomup(mean)	bottomup(max)	treeinterior(min)	treeinterior(mean)	treeinterior(max)	elemental(min)	elemental(mean)	elemental(max)	
+strong	1	1024	4	1024	8416	51316	11708553	53281	12180441	0.00102186	0.00102186	0.00102186	0.00737119	0.00737119	0.00737119	0.55717	0.55717	0.55717	658.123	658.123	658.123	209.141	209.141	209.141	4.05312e-06	4.05312e-06	4.05312e-06	54.3674	54.3674	54.3674	4.20158	4.20158	4.20158	43.6629	43.6629	43.6629	44.1403	44.1403	44.1403	
+TACC:  Shutdown complete. Exiting. 
+
+TACC:  Starting up job 3271467 
+TACC:  Starting parallel tasks... 
