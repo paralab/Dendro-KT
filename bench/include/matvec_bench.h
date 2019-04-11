@@ -33,6 +33,7 @@
         extern profiler_t t_bottomup;
         extern profiler_t t_treeinterior;
         extern profiler_t t_elemental;
+        extern profiler_t t_matvec;
         
         /**@breif reset all the extern counters defined here.. */
         void resetAllTimers();

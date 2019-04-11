@@ -188,10 +188,18 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   std::function<void(const VECType *, VECType *, double *, double)> eleOp =
       std::bind(&feMatrix<LeafT,dim>::elementalMatVec, this, _1, _2, _3, _4);
 
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+  bench::t_matvec.start();
+#endif
   fem::matvec(inGhostedPtr, outGhostedPtr, tnCoords, m_oda->getTotalNodalSz(),
       *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
       eleOp, scale, m_oda->getReferenceElement());
   //TODO I think refel won't always be provided by oda.
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+  bench::t_matvec.stop();
+#endif
+
 
 #ifdef DENDRO_KT_MATVEC_BENCH_H
   bench::t_ghostexchange.start();

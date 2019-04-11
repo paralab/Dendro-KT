@@ -41,6 +41,7 @@ namespace bench
     profiler_t t_bottomup;
     profiler_t t_treeinterior;
     profiler_t t_elemental;
+    profiler_t t_matvec;
 
     struct ReportSizes
     {
@@ -66,6 +67,8 @@ namespace bench
         t_bottomup.clear();
         t_treeinterior.clear();
         t_elemental.clear();
+        t_matvec.clear();
+        
     }
 
     template <unsigned int dim>
@@ -239,7 +242,7 @@ namespace bench
 
         for(unsigned int i=0; i<n; i++)
         {
-           stat=(timers[i].seconds) / timers[i].num_calls ;     
+           stat=(timers[i].seconds); /// timers[i].num_calls ;     
            
            par::Mpi_Reduce(&stat,stat_g + 3*i + 0 ,1, MPI_MIN,0,comm);
            par::Mpi_Reduce(&stat,stat_g + 3*i + 1 ,1, MPI_SUM,0,comm);
@@ -359,6 +362,7 @@ int main(int argc, char** argv)
         "bal", 
         "adaptive_oda", 
 
+        "matvec",
         "ghostexchange", 
         "topdown", 
         "bottomup", 
@@ -372,6 +376,7 @@ int main(int argc, char** argv)
         bench::t_adaptive_tbal, 
         bench::t_adaptive_oda, 
 
+        bench::t_matvec,
         bench::t_ghostexchange, 
         bench::t_topdown, 
         bench::t_bottomup, 
@@ -379,7 +384,7 @@ int main(int argc, char** argv)
         bench::t_elemental, 
     };
 
-    bench::dump_profile_info(std::cout, msgPrefix, params,param_names,2, counters,counter_names,9, comm);
+    bench::dump_profile_info(std::cout, msgPrefix, params,param_names,2, counters,counter_names,10, comm);
 
     _DestroyHcurve();
     MPI_Finalize();
