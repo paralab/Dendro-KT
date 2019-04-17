@@ -5,59 +5,47 @@
 
 #include "treeNode.h"
 #include "mpi.h"
-/// #include "genPts_par.h"
 #include "tsort.h"
-/// #include "mesh.h"
 #include "dendro.h"
-/// #include "dendroIO.h"
 #include "octUtils.h"
 #include "functional"
-/// #include "fdCoefficient.h"
-/// #include "stencil.h"
-/// #include "rkTransport.h"
 #include "refel.h"
-/// #include "operators.h"
-/// #include "cg.h"
 #include "heatMat.h"
 #include "heatVec.h"
 
-int main (int argc, char** argv)
-{
-    constexpr unsigned int dim = 3;
-    unsigned int m_uiDim = dim;
 
-    MPI_Init(&argc, &argv);
-    MPI_Comm comm = MPI_COMM_WORLD;
+// =======================================================
+// Parameters: Change these and the options in get_args().
+// =======================================================
+struct Parameters
+{
+  unsigned int dim;
+  unsigned int maxDepth;
+  double waveletTol;
+  double partitionTol;
+  unsigned int eleOrder;
+};
+// =======================================================
+
+// ==============================================================
+// main_(): Implementation after parsing, getting dimension, etc.
+// ==============================================================
+template <unsigned int dim>
+int main_ (Parameters &pm, MPI_Comm comm)
+{
+    const unsigned int m_uiDim = dim;
 
     int rank, npes;
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &npes);
 
-    if (argc < 4) {
-        if (!rank)
-            std::cout << "Usage: " << argv[0]
-                      << " maxDepth wavelet_tol partition_tol eleOrder "
-                      << std::endl;
-        return 0;
-    }
-
-    m_uiMaxDepth = atoi(argv[1]);
-    double wavelet_tol = atof(argv[2]);
-    double partition_tol = atof(argv[3]);
-    unsigned int eOrder = atoi(argv[4]);
-
+    m_uiMaxDepth = pm.maxDepth;
+    const double wavelet_tol = pm.waveletTol;
+    const double partition_tol = pm.partitionTol;
+    const unsigned int eOrder = pm.eleOrder;
 
     double tBegin = 0, tEnd = 10, th = 0.01;
 
-    if (!rank) {
-        std::cout << YLW << "maxDepth: " << m_uiMaxDepth << NRM << std::endl;
-        std::cout << YLW << "wavelet_tol: " << wavelet_tol << NRM << std::endl;
-        std::cout << YLW << "partition_tol: " << partition_tol << NRM << std::endl;
-        std::cout << YLW << "eleOrder: " << eOrder << NRM << std::endl;
-
-    }
-
-    _InitializeHcurve(m_uiDim);
     RefElement refEl(m_uiDim,eOrder);
 
 
@@ -145,6 +133,114 @@ int main (int argc, char** argv)
 
     delete octDA;
 
-    MPI_Finalize();
+    /// MPI_Finalize();
     return 0;
 }
+// ==============================================================
+
+
+//
+// get_args()
+//
+bool get_args(int argc, char * argv[], Parameters &pm, MPI_Comm comm)
+{
+  int rProc, nProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  // ========================
+  // Set up accepted options.
+  // ========================
+  enum CmdOptions                           { progName, opDim, opMaxDepth, opWaveletTol, opPartitionTol, opEleOrder, NUM_CMD_OPTIONS };
+  const char *cmdOptions[NUM_CMD_OPTIONS] = { argv[0], "dim", "maxDepth", "waveletTol", "partitionTol", "eleOrder", };
+  const unsigned int firstOptional = NUM_CMD_OPTIONS;  // All required.
+  // ========================
+
+  // Fill argVals.
+  std::array<const char *, NUM_CMD_OPTIONS> argVals;
+  argVals.fill("");
+  for (unsigned int op = 0; op < argc; op++)
+    argVals[op] = argv[op];
+
+  // Check if we have the required arguments.
+  if (argc < firstOptional)
+  {
+    if (!rProc)
+    {
+      std::cerr << "Usage: ";
+      unsigned int op = 0;
+      for (; op < firstOptional; op++)
+        std::cerr << cmdOptions[op] << " ";
+      for (; op < NUM_CMD_OPTIONS; op++)
+        std::cerr << "[" << cmdOptions[op] << "] ";
+      std::cerr << "\n";
+    }
+    return false;
+  }
+
+  // ================
+  // Parse arguments.
+  // ================
+  pm.dim      = static_cast<unsigned int>(strtoul(argVals[opDim], NULL, 0));
+  pm.maxDepth = static_cast<unsigned int>(strtoul(argVals[opMaxDepth], NULL, 0));
+  pm.eleOrder = static_cast<unsigned int>(strtoul(argVals[opEleOrder], NULL, 0));
+  pm.waveletTol   = strtod(argVals[opWaveletTol], NULL);
+  pm.partitionTol = strtod(argVals[opPartitionTol], NULL);
+  // ================
+
+  // Replay arguments.
+  constexpr bool replayArguments = true;
+  if (replayArguments && !rProc)
+  {
+    for (unsigned int op = 1; op < NUM_CMD_OPTIONS; op++)
+      std::cout << YLW << cmdOptions[op] << "==" << argVals[op] << NRM << " \n";
+    std::cout << "\n";
+  }
+
+  return true;
+}
+
+
+//
+// main()
+//
+int main(int argc, char * argv[])
+{
+  MPI_Init(&argc, &argv);
+
+  int rProc, nProc;
+  MPI_Comm comm = MPI_COMM_WORLD;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  int returnCode = 1;
+
+  Parameters pm;
+  unsigned int &dim = pm.dim;
+  if (get_args(argc, argv, pm, comm))
+  {
+    int synchronize;
+    MPI_Bcast(&synchronize, 1, MPI_INT, 0, comm);
+
+    _InitializeHcurve(dim);
+
+    // Convert dimension argument to template parameter.
+    switch(dim)
+    {
+      case 2: returnCode = main_<2>(pm, comm); break;
+      case 3: returnCode = main_<3>(pm, comm); break;
+      case 4: returnCode = main_<4>(pm, comm); break;
+      default:
+        if (!rProc)
+          std::cerr << "Dimension " << dim << " not currently supported.\n";
+    }
+
+    _DestroyHcurve();
+  }
+
+  MPI_Finalize();
+
+  return returnCode;
+}
+
+
