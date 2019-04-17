@@ -48,12 +48,6 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     RefElement refEl(m_uiDim,eOrder);
 
-
-    enum VAR{M_UI_U=0,M_UI_F,M_UI_MF};
-    const char * VAR_NAMES[]={"m_uiU","m_uiFrhs","m_uiMFrhs"};
-    const unsigned int DOF=3;
-
-
     Point<dim> grid_min(0, 0, 0);
     Point<dim> grid_max(1, 1, 1);
 
@@ -87,15 +81,14 @@ int main_ (Parameters &pm, MPI_Comm comm)
     };
 
 
-    /*std::vector<ot::TreeNode> oct;
-    createRegularOctree(oct,4,m_uiDim,m_uiMaxDepth,comm);
-    ot::DA<dim>* octDA=new ot::DA<dim>(oct,comm,eOrder,2,0.2);*/
-
+    // Currently the constructor with function actually creates a regular grid.
     ot::DA<dim>* octDA=new ot::DA<dim>(f_rhs,1,comm,eOrder,wavelet_tol,100,partition_tol);
 
-    std::vector<double> uSolVec;
-    octDA->createVector(uSolVec,false,false,DOF);
-    double *uSolVecPtr=&(*(uSolVec.begin()));
+    // There are three vectors that happen to have the same sizes but are logically separate.
+    std::vector<double> ux, frhs, Mfrhs;
+    octDA->createVector(ux, false, false, 1);
+    octDA->createVector(frhs, false, false, 1);
+    octDA->createVector(Mfrhs, false, false, 1);
 
     HeatEq::HeatMat<dim> heatMat(octDA,1);
     heatMat.setProblemDimensions(domain_min,domain_max);
@@ -103,30 +96,23 @@ int main_ (Parameters &pm, MPI_Comm comm)
     HeatEq::HeatVec<dim> heatVec(octDA,1);
     heatVec.setProblemDimensions(domain_min,domain_max);
 
-    // TODO The DOF pointers are going to be wrong because
-    //   variables are stored [abc][abc], not stored contiguously.
-    //   Neet to correct the implementation of getVecPointerToDof()
-    //   and then use the returned pointers with some stride.
+    octDA->setVectorByFunction(ux.data(),f_init,false,false,1);
+    octDA->setVectorByFunction(Mfrhs.data(),f_init,false,false,1);
+    octDA->setVectorByFunction(frhs.data(),f_rhs,false,false,1);
 
-    double * ux=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI_U, false,false);
-    double * frhs=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI_F, false,false);
-    double * Mfrhs=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI_MF, false,false);
-
-
-    octDA->setVectorByFunction(ux,f_init,false,false,1);
-    octDA->setVectorByFunction(Mfrhs,f_init,false,false,1);
-    octDA->setVectorByFunction(frhs,f_rhs,false,false,1);
-
-    heatVec.computeVec(frhs,Mfrhs,1.0);
+    heatVec.computeVec(&(*frhs.cbegin()), &(*Mfrhs.begin()), 1.0);
 
 
     double tol=1e-6;
     unsigned int max_iter=1000;
-    heatMat.cgSolve(ux,Mfrhs,max_iter,tol,0);
+    heatMat.cgSolve(&(*ux.begin()), &(*Mfrhs.begin()), max_iter, tol);
 
-    const char * vNames[]={"m_uiU","m_uiFrhs","m_uiMFrhs"};
-    octDA->vecTopvtu(uSolVecPtr,"heatEq",(char**)vNames,false,false,DOF);
-    octDA->destroyVector(uSolVec);
+    // TODO
+    // octDA->vecTopvtu(...);
+
+    octDA->destroyVector(ux);
+    octDA->destroyVector(frhs);
+    octDA->destroyVector(Mfrhs);
 
     if(!rank)
         std::cout<<" end of heatEq: "<<std::endl;
