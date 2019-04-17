@@ -433,18 +433,15 @@ namespace ot
         if (!isElemental)
         {
             const unsigned int nodalSz = (isGhosted ? m_uiTotalNodalSz : m_uiLocalNodalSz);
-            // Assumes end-to-end variables.
-            for (unsigned int var = 0; var < dof; var++)
+            // Assumes interleaved variables, [abc][abc].
+            for (unsigned int k = 0; k < nodalSz; k++)
             {
-                for (unsigned int k = 0; k < nodalSz; k++)
-                {
-                    m_tnCoords[var*nodalSz + k].getAnchor(tnCoords);
-                    #pragma unroll(edim)
-                    for (int d = 0; d < edim; d++)
-                      fCoords[d] = scale * tnCoords[d];
+                m_tnCoords[k].getAnchor(tnCoords);
+                #pragma unroll(edim)
+                for (int d = 0; d < edim; d++)
+                  fCoords[d] = scale * tnCoords[d];
 
-                    func(fCoords[0], fCoords[1], fCoords[2], &local[var*nodalSz + k]);
-                }
+                func(fCoords[0], fCoords[1], fCoords[2], &local[dof*k]);
             }
         }
         else
@@ -456,7 +453,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::setVectorByScalar(T* local,const T* value,bool isElemental, bool isGhosted, unsigned int dof) const
+    void DA<dim>::setVectorByScalar(T* local,const T* value,bool isElemental, bool isGhosted, unsigned int dof, unsigned int initDof) const
     {
 
         unsigned int arrSz;
@@ -470,14 +467,12 @@ namespace ot
                 arrSz=m_uiLocalNodalSz;
             }
 
-            for(unsigned int var=0;var<dof;var++)
-            {
-                for(unsigned int node=0;node<arrSz;node++)
-                    local[ (var*arrSz) + node]=value[var];
-            }
-
+            for(unsigned int node=0;node<arrSz;node++)
+                for(unsigned int var = 0; var < initDof; var++)
+                    local[dof*node + var] = value[var];
 
         }else{
+            // TODO, haven't considered elemental case.
 
             if(isGhosted) {
                 arrSz = m_uiTotalElementSz;
@@ -498,7 +493,7 @@ namespace ot
 
     template <unsigned int dim>
     template<typename T>
-    T* DA<dim>::getVecPointerToDof(T* in ,unsigned int dofInex, bool isElemental,bool isGhosted) const
+    T* DA<dim>::getVecPointerToDof(T* in ,unsigned int dofInex, bool isElemental,bool isGhosted, unsigned int dof) const
     {
 
         if(!(m_uiIsActive))
@@ -506,27 +501,26 @@ namespace ot
 
         unsigned int arrSz;
 
-        if(!isElemental)
-        {
-            if(isGhosted) {
-                arrSz = m_uiTotalNodalSz;
-            }else{
-                arrSz=m_uiLocalNodalSz;
-            }
+        /// if(!isElemental)
+        /// {
+        ///     if(isGhosted) {
+        ///         arrSz = m_uiTotalNodalSz;
+        ///     }else{
+        ///         arrSz=m_uiLocalNodalSz;
+        ///     }
 
 
-        }else{
+        /// }else{
 
-            if(isGhosted) {
-                arrSz = m_uiTotalElementSz;
-            }else{
-                arrSz=m_uiLocalElementSz;
-            }
+        ///     if(isGhosted) {
+        ///         arrSz = m_uiTotalElementSz;
+        ///     }else{
+        ///         arrSz=m_uiLocalElementSz;
+        ///     }
 
-        }
+        /// }
 
-        return (T*)(&in[dofInex*arrSz]);
-
+        return in + dofInex;
     }
 
 
@@ -534,7 +528,7 @@ namespace ot
     template <typename T>
     void DA<dim>::vecTopvtu(T* local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof)
     {
-
+      //TODO
 
     }
 

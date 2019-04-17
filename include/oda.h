@@ -333,11 +333,12 @@ class DA
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
-             * @param[in/out] local: allocated vector, initialized vector
+             * @param[in/out] local: allocated vector, initialized vector -- offset by the dofIdx
              * @param[in] func: user specified function
              * @param [in] isElemental: True if creating a elemental vector (cell data vector) false for a nodal vector
              * @param [in] isGhosted: True will allocate ghost nodal values as well, false will only allocate memory for local nodes.
-             * @param [in] dof: degrees of freedoms
+             * @param [in] dof: degrees of freedoms -- dofStride
+             * @note: Only iterates for a single variable. But, the variables are stored [abc][abc], so your function receives output ptr &[abc].
              *
              * */
         template <typename T>
@@ -345,16 +346,17 @@ class DA
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
-             * @param[in/out] local: allocated vector, initialized vector
+             * @param[in/out] local: allocated vector, initialized vector -- offset by the dofIdx
              * @param[in] value: user specified scalar values (size should be the  dof size)
              * @param [in] isElemental: True if creating a elemental vector (cell data vector) false for a nodal vector
              * @param [in] isGhosted: True will allocate ghost nodal values as well, false will only allocate memory for local nodes.
-             * @param [in] dof: degrees of freedoms
+             * @param [in] dof: total degrees of freedoms -- dofStride
+             * @param [in] initDof: number of degrees of freedom to initialize
              * Note: Initialize the ghost region as well.
              *
              * */
         template <typename T>
-        void setVectorByScalar(T *local, const T *value, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
+        void setVectorByScalar(T *local, const T *value, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1, unsigned int initDof = 1) const;
 
         /**@brief write the vec to pvtu file
              * @param[in] local: variable vector
@@ -375,7 +377,7 @@ class DA
              * @return pointer to dofIndex.
              * */
         template <typename T>
-        T *getVecPointerToDof(T *in, unsigned int dofInex, bool isElemental = false, bool isGhosted = false) const;
+        T *getVecPointerToDof(T *in, unsigned int dofInex, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
 
         /**
              * @brief copy vecotor to sorce to destination, assumes the same number of dof.
