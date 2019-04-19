@@ -505,22 +505,6 @@ class DA
             * @note records will be cleared inside the function
             */
         //PetscErrorCode petscSetValuesInMatrix(Mat mat, std::vector<ot::MatRecord> &records, unsigned int dof, InsertMode mode) const;
-
-        /** 
-             * @brief: Dendro 5 vectors with multiple dof values are stored in 00000000,11111111 for multiple dof values, 
-             * if the user wants to perform matrix based computations (i.e. not use matrix free option), this will reorder the 
-             * vector valules 01,01,01,...  
-             * @param [in,out] v1: input and out put vector, 
-             * @param [in] dof: number of dof.  
-             */
-        PetscErrorCode petscChangeVecToMatBased(Vec &v1, bool isElemental, bool isGhosted, unsigned int dof = 1) const;
-
-        /** 
-             * @brief: This is the inverse function for the "petscChangeVecToMatBased"
-             * @param [in,out] v1: input and out put vector, 
-             * @param [in] dof: number of dof.  
-             */
-        PetscErrorCode petscChangeVecToMatFree(Vec &v1, bool isElemental, bool isGhosted, unsigned int dof = 1) const;
      
         /**@brief: dealloc the petsc vector
          * */  

@@ -8,6 +8,8 @@
 
 #include "oda.h"
 
+#include <algorithm>
+
 namespace ot
 {
     template <unsigned int dim>
@@ -246,7 +248,6 @@ namespace ot
     template <unsigned int dim>
     PetscErrorCode DA<dim>::petscNodalVecToGhostedNodal(const Vec& in,Vec& out,bool isAllocated,unsigned int dof) const
     {
-
         if(!(m_uiIsActive))
             return 0 ;
 
@@ -260,15 +261,12 @@ namespace ot
         VecGetArray(in,&inArry);
         VecGetArray(out,&outArry);
 
-        
-        for(unsigned int var=0;var<dof;var++)
-            std::memcpy((outArry+var*m_uiTotalNodalSz+m_uiLocalNodeBegin),(inArry+var*m_uiLocalNodalSz),sizeof(PetscScalar)*(m_uiLocalNodalSz));
+        std::copy(inArry, inArry + dof*m_uiLocalNodalSz, outArry + dof*m_uiLocalNodeBegin);
 
         VecRestoreArray(in,&inArry);
         VecRestoreArray(out,&outArry);
 
         return status;
-
     }
 
 
@@ -288,14 +286,12 @@ namespace ot
         VecGetArray(gVec,&gVecArry);
         VecGetArray(local,&localArry);
 
-        for(unsigned int var=0;var<dof;var++)
-            std::memcpy((localArry + var*m_uiLocalNodalSz ),(gVecArry+var*m_uiTotalNodalSz+m_uiLocalNodeBegin),sizeof(PetscScalar)*(m_uiLocalNodalSz));
+        std::copy(gVecArry + dof*m_uiLocalNodeBegin, gVecArry + dof*m_uiLocalNodeEnd, localArry);
 
         VecRestoreArray(gVec,&gVecArry);
         VecRestoreArray(local,&localArry);
 
         return status;
-
     }
 
 
@@ -308,7 +304,6 @@ namespace ot
         readFromGhostBegin(vecArry,dof);
 
         return;
-
     }
 
     template <unsigned int dim>
@@ -320,116 +315,20 @@ namespace ot
         readFromGhostEnd(vecArry,dof);
 
         return;
-
     }
 
 
     template <unsigned int dim>
     void DA<dim>::petscVecTopvtu(const Vec& local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof) 
     {
-
         PetscScalar *arry=NULL;
         VecGetArray(local,&arry);
 
         vecTopvtu(arry,fPrefix,nodalVarNames,isElemental,isGhosted,dof);
 
         VecRestoreArray(local,&arry);
-
     }
 
-
-    
-    template <unsigned int dim>
-    PetscErrorCode DA<dim>::petscChangeVecToMatBased(Vec& v1,bool isElemental,bool isGhosted, unsigned int dof) const
-    {
-        Vec tmp;
-        petscCreateVector(tmp,isElemental,isGhosted,dof);
-        unsigned int sz;
-        if(isElemental)
-        {
-            if(isGhosted)
-                sz=m_uiTotalElementSz;
-            else
-                sz=m_uiLocalElementSz;
-
-        }else {
-
-            if(isGhosted)
-                sz=m_uiTotalNodalSz;
-            else
-                sz=m_uiLocalNodalSz;
-        }
-        
-        PetscScalar * tmpArry=NULL;
-        PetscScalar * v1Arry=NULL;
-
-        VecGetArray(tmp,&tmpArry);
-        VecGetArray(v1,&v1Arry);
-        
-        for(unsigned int node=0;node<sz;node++)
-        {
-            for(unsigned int var=0;var<dof;var++)
-            {
-                tmpArry[dof*node+var]=v1Arry[var*sz+node];
-            }
-        }
-        
-        VecRestoreArray(tmp,&tmpArry);
-        VecRestoreArray(v1,&v1Arry);
-        
-       
-        std::swap(tmp,v1);
-        VecDestroy(&tmp);
-        
-        return 0;
-    }
-
-    
-    
-    template <unsigned int dim>
-    PetscErrorCode DA<dim>::petscChangeVecToMatFree(Vec& v1,bool isElemental,bool isGhosted,unsigned int dof) const
-    {
-        Vec tmp;
-        petscCreateVector(tmp,isElemental,isGhosted,dof);
-        unsigned int sz;
-        if(isElemental)
-        {
-            if(isGhosted)
-                sz=m_uiTotalElementSz;
-            else
-                sz=m_uiLocalElementSz;
-
-        }else {
-
-            if(isGhosted)
-                sz=m_uiTotalNodalSz;
-            else
-                sz=m_uiLocalNodalSz;
-        }
-        
-        PetscScalar * tmpArry=NULL;
-        PetscScalar * v1Arry=NULL;
-
-        VecGetArray(tmp,&tmpArry);
-        VecGetArray(v1,&v1Arry);
-        
-        for(unsigned int node=0;node<sz;node++)
-        {
-            for(unsigned int var=0;var<dof;var++)
-            {
-                tmpArry[var*sz+node]=v1Arry[dof*node+var];
-            }
-        }
-        
-        VecRestoreArray(tmp,&tmpArry);
-        VecRestoreArray(v1,&v1Arry);
-        
-       
-        std::swap(tmp,v1);
-        VecDestroy(&tmp);
-        
-        return 0;
-    }
 
 
     template <unsigned int dim>

@@ -13,6 +13,11 @@
 #include "heatMat.h"
 #include "heatVec.h"
 
+#ifdef BUILD_WITH_PETSC
+  #include <petsc.h>
+  #include <petscvec.h>
+  #include <petscksp.h>
+#endif
 
 // =======================================================
 // Parameters: Change these and the options in get_args().
@@ -80,9 +85,13 @@ int main_ (Parameters &pm, MPI_Comm comm)
         //var[2]=0;
     };
 
-
     // Currently the constructor with function actually creates a regular grid.
     ot::DA<dim>* octDA=new ot::DA<dim>(f_rhs,1,comm,eOrder,wavelet_tol,100,partition_tol);
+
+#ifndef BUILD_WITH_PETSC
+    //
+    // Non-PETSc version.
+    //
 
     // There are three vectors that happen to have the same sizes but are logically separate.
     std::vector<double> ux, frhs, Mfrhs;
@@ -113,6 +122,72 @@ int main_ (Parameters &pm, MPI_Comm comm)
     octDA->destroyVector(ux);
     octDA->destroyVector(frhs);
     octDA->destroyVector(Mfrhs);
+
+#else
+    //
+    // PETSc version.
+    //
+
+    // There are three vectors that happen to have the same sizes but are logically separate.
+    Vec ux, frhs, Mfrhs;
+    octDA->petscCreateVector(ux, false, false, 1);
+    octDA->petscCreateVector(frhs, false, false, 1);
+    octDA->petscCreateVector(Mfrhs, false, false, 1);
+    // TODO debug the problem occuring with PETSc, called MPI_Abort(), in petscCreateVector().
+
+    HeatEq::HeatMat<dim> heatMat(octDA,1);
+    heatMat.setProblemDimensions(domain_min,domain_max);
+
+    HeatEq::HeatVec<dim> heatVec(octDA,1);
+    heatVec.setProblemDimensions(domain_min,domain_max);
+
+    octDA->petscSetVectorByFunction(ux, f_init, false, false, 1);
+    octDA->petscSetVectorByFunction(Mfrhs, f_init, false, false, 1);
+    octDA->petscSetVectorByFunction(frhs, f_rhs, false, false, 1);
+
+    heatVec.computeVec(frhs, Mfrhs, 1.0);
+
+    double tol=1e-6;
+    unsigned int max_iter=1000;
+
+    // TODO maybe this should go inside HeatMat, feMat, or feMatrix.
+
+    // Matrix-free matrix.
+    std::function<void(Mat,Vec,Vec)> userMult = [&heatMat] (Mat mat, Vec x, Vec y)
+    {
+        heatMat.matVec(x, y);
+    };
+    PetscInt localM = octDA->getLocalNodalSz();
+    PetscInt globalM = octDA->getGlobalNodeSz();
+    Mat matrixFreeMat;
+    MatCreateShell(comm, localM, localM, globalM, globalM, nullptr, &matrixFreeMat);
+    MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void))&userMult);
+
+    // PETSc solver context.
+    KSP ksp;
+    PetscInt numIterations;
+
+    KSPCreate(comm, &ksp);
+    KSPSetOperators(ksp, matrixFreeMat, matrixFreeMat);
+
+    KSPSolve(ksp, Mfrhs, ux);
+    KSPGetIterationNumber(ksp, &numIterations);
+
+    std::cout << " iteration " << numIterations << " ...\n";
+    // TODO get convergence status.
+
+    KSPDestroy(&ksp);
+
+    /// heatMat.cgSolve(&(*ux.begin()), &(*Mfrhs.begin()), max_iter, tol);
+
+    // TODO
+    // octDA->vecTopvtu(...);
+
+    octDA->petscDestroyVec(ux);
+    octDA->petscDestroyVec(frhs);
+    octDA->petscDestroyVec(Mfrhs);
+
+#endif
 
     if(!rank)
         std::cout<<" end of heatEq: "<<std::endl;
@@ -192,7 +267,11 @@ bool get_args(int argc, char * argv[], Parameters &pm, MPI_Comm comm)
 //
 int main(int argc, char * argv[])
 {
+#ifdef BUILD_WITH_PETSC
   MPI_Init(&argc, &argv);
+#else
+  PetscInitialize(&argc, &argv, NULL, NULL);
+#endif
 
   int rProc, nProc;
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -224,7 +303,11 @@ int main(int argc, char * argv[])
     _DestroyHcurve();
   }
 
+#ifdef BUILD_WITH_PETSC
   MPI_Finalize();
+#else
+  PetscFinalize();
+#endif
 
   return returnCode;
 }

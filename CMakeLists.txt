@@ -34,7 +34,7 @@ option(WITH_BLAS_LAPACK "build using BLAS and LAPACk" ON)
 option(MANUAL_BLAS_LAPACK "configure BLAS and LAPACK Manually" OFF)
 option(DENDRO_VTK_BINARY "write vtk/vtu files in binary mode " ON)
 option(DENDRO_VTK_ZLIB_COMPRES "write vtk/vtu files in binary mode with zlib compression (only compatible with binary mode) " OFF)
-option(BUILD_WITH_PETSC " build dendro with PETSC " OFF)
+option(BUILD_WITH_PETSC " build dendro with PETSC " ON)
 option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" OFF)
 option(BUILD_EXAMPLES "build example programs" ON)
 
