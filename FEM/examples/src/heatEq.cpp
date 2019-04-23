@@ -267,7 +267,7 @@ bool get_args(int argc, char * argv[], Parameters &pm, MPI_Comm comm)
 //
 int main(int argc, char * argv[])
 {
-#ifdef BUILD_WITH_PETSC
+#ifndef BUILD_WITH_PETSC
   MPI_Init(&argc, &argv);
 #else
   PetscInitialize(&argc, &argv, NULL, NULL);
@@ -303,7 +303,7 @@ int main(int argc, char * argv[])
     _DestroyHcurve();
   }
 
-#ifdef BUILD_WITH_PETSC
+#ifndef BUILD_WITH_PETSC
   MPI_Finalize();
 #else
   PetscFinalize();
