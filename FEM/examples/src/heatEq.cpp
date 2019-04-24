@@ -34,19 +34,6 @@ struct Parameters
 // =======================================================
 
 
-//
-// Matrix-free matrix.
-//
-template <unsigned int dim>
-void userMult(Mat mat, Vec x, Vec y)
-{
-    HeatEq::HeatMat<dim> *hm;
-    MatShellGetContext(mat, &hm);
-    hm->matVec(x, y);
-};
-
-
-
 // ==============================================================
 // main_(): Implementation after parsing, getting dimension, etc.
 // ==============================================================
@@ -164,11 +151,8 @@ int main_ (Parameters &pm, MPI_Comm comm)
     double tol=1e-6;
     unsigned int max_iter=1000;
 
-    PetscInt localM = octDA->getLocalNodalSz();
-    PetscInt globalM = octDA->getGlobalNodeSz();
     Mat matrixFreeMat;
-    MatCreateShell(comm, localM, localM, globalM, globalM, &heatMat, &matrixFreeMat);
-    MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void))userMult<dim>);
+    heatMat.petscMatCreateShell(matrixFreeMat);
 
     // PETSc solver context.
     KSP ksp;

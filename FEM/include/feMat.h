@@ -80,6 +80,28 @@ public:
     **/
     virtual void matVec(const Vec& in, Vec& out,double scale=1.0)=0;
 
+    /** @brief The 'user defined' matvec we give to petsc to make a matrix-free matrix. Don't call this directly. */
+    static void petscUserMult(Mat mat, Vec x, Vec y)
+    {
+      feMat<dim> *feMatPtr;
+      MatShellGetContext(mat, &feMatPtr);
+      feMatPtr->matVec(x, y);
+    };
+
+    /**
+     * @brief Calls MatCreateShell and MatShellSetOperation to create a matrix-free matrix usable by petsc, e.g. in KSPSetOperators().
+     * @param [out] matrixFreeMat Petsc shell matrix, representing a matrix-free matrix that uses this instance.
+     */
+    void petscMatCreateShell(Mat &matrixFreeMat)
+    {
+      PetscInt localM = m_uiOctDA->getLocalNodalSz();
+      PetscInt globalM = m_uiOctDA->getGlobalNodeSz();
+      MPI_Comm comm = m_uiOctDA->getGlobalComm();
+
+      MatCreateShell(comm, localM, localM, globalM, globalM, this, &matrixFreeMat);
+      MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void)) feMat<dim>::petscUserMult);
+    }
+
     /**
      * @brief Performs the matrix assembly.
      * @param [in/out] J: Matrix assembled
