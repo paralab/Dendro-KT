@@ -32,6 +32,20 @@ struct Parameters
 };
 // =======================================================
 
+
+//
+// Matrix-free matrix.
+//
+template <unsigned int dim>
+void userMult(Mat mat, Vec x, Vec y)
+{
+    HeatEq::HeatMat<dim> *hm;
+    MatShellGetContext(mat, &hm);
+    hm->matVec(x, y);
+};
+
+
+
 // ==============================================================
 // main_(): Implementation after parsing, getting dimension, etc.
 // ==============================================================
@@ -152,16 +166,19 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     // TODO maybe this should go inside HeatMat, feMat, or feMatrix.
 
-    // Matrix-free matrix.
-    std::function<void(Mat,Vec,Vec)> userMult = [&heatMat] (Mat mat, Vec x, Vec y)
-    {
-        heatMat.matVec(x, y);
-    };
+    /// // Matrix-free matrix.
+    /// std::function<void(Mat,Vec,Vec)> userMult = [] (Mat mat, Vec x, Vec y)
+    /// {
+    ///     HeatEq::HeatMat<dim> *hm;
+    ///     MatShellGetContext(mat, &hm);
+    ///     /// heatMat.matVec(x, y);
+    ///     hm->matVec(x, y);
+    /// };
     PetscInt localM = octDA->getLocalNodalSz();
     PetscInt globalM = octDA->getGlobalNodeSz();
     Mat matrixFreeMat;
-    MatCreateShell(comm, localM, localM, globalM, globalM, nullptr, &matrixFreeMat);
-    MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void))&userMult);
+    MatCreateShell(comm, localM, localM, globalM, globalM, &heatMat, &matrixFreeMat);
+    MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void))userMult<dim>);
 
     // PETSc solver context.
     KSP ksp;

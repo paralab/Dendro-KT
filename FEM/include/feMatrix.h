@@ -230,8 +230,12 @@ void feMatrix<LeafT,dim>::matVec(const Vec &in, Vec &out, double scale)
     PetscScalar * inArry=NULL;
     PetscScalar * outArry=NULL;
 
+    // TODO there is an error happening when we try to do VecGetArray() on the readonly const Vec &in.
+    fprintf(stderr, "Hello!! Before VecGetArray(in).\n");
     VecGetArray(in,&inArry);
+    fprintf(stderr, "Hello!! Before VecGetArray(out).\n");
     VecGetArray(out,&outArry);
+    fprintf(stderr, "Hello!! After VecGetArray(out).\n");
 
     matVec(inArry,outArry,scale);
 
