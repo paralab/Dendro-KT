@@ -148,7 +148,6 @@ int main_ (Parameters &pm, MPI_Comm comm)
     octDA->petscCreateVector(ux, false, false, 1);
     octDA->petscCreateVector(frhs, false, false, 1);
     octDA->petscCreateVector(Mfrhs, false, false, 1);
-    // TODO debug the problem occuring with PETSc, called MPI_Abort(), in petscCreateVector().
 
     HeatEq::HeatMat<dim> heatMat(octDA,1);
     heatMat.setProblemDimensions(domain_min,domain_max);
@@ -206,6 +205,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
     octDA->petscDestroyVec(ux);
     octDA->petscDestroyVec(frhs);
     octDA->petscDestroyVec(Mfrhs);
+    octDA->petscDestroyVec(residual);
 
 #endif
 
