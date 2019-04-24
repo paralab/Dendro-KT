@@ -1,5 +1,6 @@
 //
 // Created by milinda on 11/21/18.
+// Modified by masado on 04/24/19.
 //
 
 
@@ -164,16 +165,6 @@ int main_ (Parameters &pm, MPI_Comm comm)
     double tol=1e-6;
     unsigned int max_iter=1000;
 
-    // TODO maybe this should go inside HeatMat, feMat, or feMatrix.
-
-    /// // Matrix-free matrix.
-    /// std::function<void(Mat,Vec,Vec)> userMult = [] (Mat mat, Vec x, Vec y)
-    /// {
-    ///     HeatEq::HeatMat<dim> *hm;
-    ///     MatShellGetContext(mat, &hm);
-    ///     /// heatMat.matVec(x, y);
-    ///     hm->matVec(x, y);
-    /// };
     PetscInt localM = octDA->getLocalNodalSz();
     PetscInt globalM = octDA->getGlobalNodeSz();
     Mat matrixFreeMat;
@@ -186,16 +177,28 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     KSPCreate(comm, &ksp);
     KSPSetOperators(ksp, matrixFreeMat, matrixFreeMat);
+    KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter);
 
     KSPSolve(ksp, Mfrhs, ux);
     KSPGetIterationNumber(ksp, &numIterations);
 
-    std::cout << " iteration " << numIterations << " ...\n";
-    // TODO get convergence status.
+    if (!rank)
+      std::cout << " finished at iteration " << numIterations << " ...\n";
 
     KSPDestroy(&ksp);
 
-    /// heatMat.cgSolve(&(*ux.begin()), &(*Mfrhs.begin()), max_iter, tol);
+    // Now that we have an approximate solution, test convergence by evaluating the residual.
+    Vec residual;
+    octDA->petscCreateVector(residual, false, false, 1);
+    heatMat.matVec(ux, residual);
+    VecAXPY(residual, -1.0, Mfrhs);
+    PetscScalar normr, normb;
+    VecNorm(Mfrhs, NORM_INFINITY, &normb);
+    VecNorm(residual, NORM_INFINITY, &normr);
+    PetscScalar rel_resid_err = normr / normb;
+
+    if (!rank)
+      std::cout << "Final relative residual error == " << rel_resid_err << ".\n";
 
     // TODO
     // octDA->vecTopvtu(...);
@@ -328,5 +331,3 @@ int main(int argc, char * argv[])
 
   return returnCode;
 }
-
-
