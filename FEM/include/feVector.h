@@ -174,15 +174,15 @@ void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
 template <typename T, unsigned int dim>
 void feVector<T,dim>::computeVec(const Vec &in, Vec &out, double scale)
 {
-    PetscScalar * inArry=NULL;
+    const PetscScalar * inArry=NULL;
     PetscScalar * outArry=NULL;
 
-    VecGetArray(in,&inArry);
+    VecGetArrayRead(in,&inArry);
     VecGetArray(out,&outArry);
 
     computeVec(inArry,outArry,scale);
 
-    VecRestoreArray(in,&inArry);
+    VecRestoreArrayRead(in,&inArry);
     VecRestoreArray(out,&outArry);
 }
 #endif

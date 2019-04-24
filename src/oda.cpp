@@ -255,15 +255,15 @@ namespace ot
         if(!isAllocated)
             status=petscCreateVector(out,false,true,dof);
 
-        PetscScalar * inArry=NULL;
+        const PetscScalar * inArry=NULL;
         PetscScalar * outArry=NULL;
 
-        VecGetArray(in,&inArry);
+        VecGetArrayRead(in,&inArry);
         VecGetArray(out,&outArry);
 
         std::copy(inArry, inArry + dof*m_uiLocalNodalSz, outArry + dof*m_uiLocalNodeBegin);
 
-        VecRestoreArray(in,&inArry);
+        VecRestoreArrayRead(in,&inArry);
         VecRestoreArray(out,&outArry);
 
         return status;
@@ -280,15 +280,15 @@ namespace ot
         if(!isAllocated)
             status=petscCreateVector(local,false,false,dof);
 
-        PetscScalar * gVecArry=NULL;
+        const PetscScalar * gVecArry=NULL;
         PetscScalar * localArry=NULL;
 
-        VecGetArray(gVec,&gVecArry);
+        VecGetArrayRead(gVec,&gVecArry);
         VecGetArray(local,&localArry);
 
         std::copy(gVecArry + dof*m_uiLocalNodeBegin, gVecArry + dof*m_uiLocalNodeEnd, localArry);
 
-        VecRestoreArray(gVec,&gVecArry);
+        VecRestoreArrayRead(gVec,&gVecArry);
         VecRestoreArray(local,&localArry);
 
         return status;
@@ -321,12 +321,12 @@ namespace ot
     template <unsigned int dim>
     void DA<dim>::petscVecTopvtu(const Vec& local, const char * fPrefix,char** nodalVarNames,bool isElemental,bool isGhosted,unsigned int dof) 
     {
-        PetscScalar *arry=NULL;
-        VecGetArray(local,&arry);
+        const PetscScalar *arry=NULL;
+        VecGetArrayRead(local,&arry);
 
         vecTopvtu(arry,fPrefix,nodalVarNames,isElemental,isGhosted,dof);
 
-        VecRestoreArray(local,&arry);
+        VecRestoreArrayRead(local,&arry);
     }
 
 
