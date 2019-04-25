@@ -16,6 +16,7 @@
 #include "mathUtils.h"
 #include "refel.h"
 #include "binUtils.h"
+#include "octUtils.h"
 
 #include <iostream>
 #include <vector>
@@ -142,7 +143,7 @@ class DA
          * @param [in] order: order of the element.
          * @param [in] grainSz: Number of suggested elements per processor,
          * @param [in] sfc_tol: SFC partitioning tolerance,
-         * */
+         */
         DA();
 
         DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
@@ -151,10 +152,14 @@ class DA
         /** @brief Construct oda for regular grid. */
         DA(MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
 
-        /**@biref: Construct a DA from a function
-         *
-         * */
-        //TODO implement this!
+        /**@brief: Construct a DA from a function
+         * @param [in] func : input function, we will produce a 2:1 balanced unique sorted octree from this.
+         * @param [in] comm: MPI global communicator for mesh generation.
+         * @param [in] order: order of the element.
+         * @param [in] interp_tol: allowable interpolation error against func; controls refinement.
+         * @param [in] grainSz: Number of suggested elements per processor.
+         * @param [in] sfc_tol: SFC partitioning tolerance,
+         */
         template <typename T>
         DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz = 100, double sfc_tol = 0.3);
 

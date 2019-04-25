@@ -28,7 +28,10 @@ template<unsigned int dim, unsigned int endL, unsigned int order>
 void testMatvec(MPI_Comm comm);
 
 template<unsigned int dim, unsigned int order>
-void testRegularGrid(unsigned int grainSz, MPI_Comm comm);
+void testLinearFunc(unsigned int grainSz, MPI_Comm comm);
+
+template<unsigned int dim, unsigned int order>
+void testSinusoidalFunc(unsigned int grainSz, MPI_Comm comm);
 
 template <unsigned int dim>
 class myConcreteFeMatrix;
@@ -51,21 +54,27 @@ int main(int argc, char *argv[])
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  constexpr unsigned int dim = 2;
+  constexpr unsigned int dim = 3;
   const unsigned int endL = 2;
-  const unsigned int order = 1;
+  const unsigned int order = 3;
 
   /// std::cout << "=============\n";
   /// std::cout << "testMatvec():\n";
   /// std::cout << "=============\n";
-  testMatvec<dim,endL,order>(comm);
+  /// testMatvec<dim,endL,order>(comm);
   /// std::cout << "\n";
 
   /// std::cout << "==================\n";
-  /// std::cout << "testRegularGrid():\n";
+  /// std::cout << "testLinearFunc():\n";
   /// std::cout << "==================\n";
-  /// testRegularGrid<dim, order>(100, comm);
+  /// testLinearFunc<dim, order>(100, comm);
   /// std::cout << "\n";
+
+  std::cout << "=====================\n";
+  std::cout << "testSinusoidalFunc():\n";
+  std::cout << "=====================\n";
+  testSinusoidalFunc<dim, order>(100, comm);
+  std::cout << "\n";
 
   MPI_Finalize();
 
@@ -191,7 +200,7 @@ void testMatvec(MPI_Comm comm)
 
 
 template<unsigned int dim, unsigned int order>
-void testRegularGrid(unsigned int grainSz, MPI_Comm comm)
+void testLinearFunc(unsigned int grainSz, MPI_Comm comm)
 {
   _InitializeHcurve(dim);
 
@@ -207,6 +216,34 @@ void testRegularGrid(unsigned int grainSz, MPI_Comm comm)
 
   _DestroyHcurve();
 }
+
+
+
+template<unsigned int dim, unsigned int order>
+void testSinusoidalFunc(unsigned int grainSz, MPI_Comm comm)
+{
+  _InitializeHcurve(dim);
+
+  double sfc_tol = 0.3;
+
+  using XT = double;
+
+  std::function<void(const XT *, XT*)> func = [](const XT *x, XT *v)
+  {
+    *v = dim * -4.0 * M_PI * M_PI;
+    for (int d = 0; d < dim; d++)
+      *v *= sin(2*M_PI*x[d]);
+  };
+
+  unsigned int dofSz = 1;
+  double interp_tol = 0.005;
+
+  ot::DA<dim> oda(func, dofSz, comm, order, interp_tol, grainSz, sfc_tol);
+
+  _DestroyHcurve();
+}
+
+
 
 //
 // distPrune()

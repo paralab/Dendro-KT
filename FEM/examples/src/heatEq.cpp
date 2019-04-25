@@ -87,7 +87,6 @@ int main_ (Parameters &pm, MPI_Comm comm)
         //var[2]=0;
     };
 
-    // Currently the constructor with function actually creates a regular grid.
     ot::DA<dim>* octDA=new ot::DA<dim>(f_rhs,1,comm,eOrder,wavelet_tol,100,partition_tol);
 
 #ifndef BUILD_WITH_PETSC

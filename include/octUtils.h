@@ -8,9 +8,14 @@
 #define DENDRO_KT_OCTUTILS_H
 
 #include <vector>
+#include <functional>
 #include <random>
 #include <iostream>
 #include <stdio.h>
+
+#include "refel.h"
+#include "nsort.h"
+#include "tsort.h"
 #include "treeNode.h"
 
 namespace ot
@@ -146,6 +151,259 @@ namespace ot
          out.push_back(tempNode);
        }
      }
+
+
+
+/**
+   * @author  Hari Sundar
+   * @author  Milinda Fernando
+   * @author  Masado Ishii
+   * @brief   Generates an octree based on a function provided by the user based on the Wavelet method to decide on adaptivity.
+   * @param[in] fx:        the function that taxes $x,y,z$ coordinates and returns the the value at that point
+   * @param[in] numVars: number of total variables computed from fx function.
+   * @param[in] varIndex: variable index location that can be used to ascess double * pointer in fx, to determine the refinement of octree.
+   * @param[in] numInterpVars: Number of variables considered during the refinement
+   * @param[in] maxDepth:  The maximum depth that the octree should be refined to.
+   * @param[in] interp_tol: user specified tolerance for the wavelet representation of the function.
+   * @param[in] sfc_tol: sfc tree partitioning tolerance to control communication/load balance tradeoff.
+   * @param[in] elementOrder order of the element when defining the wavelet representation of the function.
+   * @param[in] comm      The MPI communicator to be use for parallel computation.
+   *
+   * Generates an octree based on a function provided by the user. The function is expected to return the
+   * signed distance to the surface that needs to be meshed. The coordinates are expected to be in [0,1]^3.
+   *
+   * Works on arbitrary dimensionality.
+   *
+   * Ported from Dendro-5.0.
+   */
+
+template <typename T, unsigned int dim>
+int function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<ot::TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm );
+
+template <typename T, unsigned int dim>
+int function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<ot::TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm )
+{
+  int size, rank;
+  MPI_Comm_size(comm, &size);
+  MPI_Comm_rank(comm, &rank);
+
+  constexpr unsigned int NUM_CHILDREN = 1u << dim;
+
+  // "nodes" meaning TreeNodes here.
+  nodes.clear();
+  std::vector<ot::TreeNode<T,dim>> nodes_new;
+
+  unsigned int depth = 1;
+  unsigned int num_intersected=1;
+  unsigned int num_intersected_g=1;
+  const unsigned int nodesPerElement = intPow(elementOrder+1, dim);
+
+  double* varVal=new double [numVars];
+  double* dist_parent=new double[numVars*nodesPerElement];
+  double* dist_child=new double[numVars*nodesPerElement];
+  double* dist_child_ip=new double[numVars*nodesPerElement];
+
+  // "nodes" meaning element nodes here.
+  std::vector<ot::TreeNode<T,dim>> tmpENodes(nodesPerElement);
+  tmpENodes.clear();
+  double ptCoords[dim];
+
+  const double domScale = 1.0 / (1u << m_uiMaxDepth);
+  RefElement refEl(dim, elementOrder);
+  double l2_norm=0;
+  bool splitOctant=false;
+
+
+  if (!rank) {
+    // root does the initial refinement
+    //std::cout<<"initial ref:"<<std::endl;
+    ot::TreeNode<T,dim> root;
+    for (unsigned int cnum = 0; cnum < NUM_CHILDREN; cnum++)
+      nodes.push_back(root.getChildMorton(cnum));
+
+    while ( (num_intersected > 0 ) && (num_intersected < size/**size*/ ) && (depth < maxDepth) ) {
+      std::cout << "Depth: " << depth << " n = " << nodes.size() << std::endl;
+      num_intersected = 0;
+
+      for (auto elem: nodes ){
+        splitOctant=false;
+        if ( elem.getLevel() != depth ) {
+          nodes_new.push_back(elem);
+          continue;
+        }
+
+        // check and split
+
+        // Evaluate fx() on positions of (e)nodes of elem.
+        tmpENodes.clear();
+        ot::Element<T,dim>(elem).appendNodes(elementOrder, tmpENodes);
+        for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
+        {
+          for (int d = 0; d < dim; d++)
+            ptCoords[d] = domScale * tmpENodes[eNodeIdx].getX(d);   // TODO this is what class Point is for.
+          fx(ptCoords, varVal);
+          for (unsigned int var = 0; var < numInterpVars; var++)
+            dist_parent[varIndex[var]*nodesPerElement + eNodeIdx] = varVal[varIndex[var]];
+        }
+        tmpENodes.clear();  // Yeah this is redundant but it makes clear how 'tmp' the buffer really is.
+
+        // Interpolate each parent->child and check if within error tolerance.
+        for(unsigned int cnum=0;cnum<NUM_CHILDREN;cnum++)
+        {
+          ot::TreeNode<T,dim> elemChild = elem.getChildMorton(cnum);
+
+          // Evaluate fx() on positions of (e)nodes of elemChild.
+          tmpENodes.clear();
+          ot::Element<T,dim>(elemChild).appendNodes(elementOrder, tmpENodes);
+          for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
+          {
+            for (int d = 0; d < dim; d++)
+              ptCoords[d] = domScale * tmpENodes[eNodeIdx].getX(d);   // TODO this is what class Point is for.
+            fx(ptCoords, varVal);
+            for (unsigned int var = 0; var < numInterpVars; var++)
+              dist_child[varIndex[var]*nodesPerElement + eNodeIdx] = varVal[varIndex[var]];
+          }
+          tmpENodes.clear();
+
+          for(unsigned int var=0;var<numInterpVars;var++)
+          {
+            refEl.IKD_Parent2Child<dim>(dist_parent+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, cnum);
+            l2_norm=normLInfty(dist_child+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, nodesPerElement);
+            if(l2_norm>interp_tol)
+            {
+              splitOctant=true;
+              break;
+            }
+          }
+
+          if(splitOctant) break;
+        }
+
+        if (!splitOctant) {
+          nodes_new.push_back(elem);
+        }else {
+          for (unsigned int cnum = 0; cnum < NUM_CHILDREN; cnum++)
+            nodes_new.push_back(elem.getChildMorton(cnum));
+          num_intersected++;
+        }
+      }
+      depth++;
+      std::swap(nodes, nodes_new);
+      nodes_new.clear();
+    }
+  } // !rank
+
+  // now scatter the elements.
+  DendroIntL totalNumOcts = nodes.size(), numOcts;
+
+  par::Mpi_Bcast<DendroIntL>(&totalNumOcts, 1, 0, comm);
+
+  // TODO do proper load balancing.
+  numOcts = totalNumOcts/size + (rank < totalNumOcts%size);
+  par::scatterValues<ot::TreeNode<T,dim>>(nodes, nodes_new, numOcts, comm);
+  std::swap(nodes, nodes_new);
+  nodes_new.clear();
+
+
+  // now refine in parallel.
+  par::Mpi_Bcast(&depth, 1, 0, comm);
+  num_intersected=1;
+
+  ot::TreeNode<T,dim> root;
+
+  while ( (num_intersected > 0 ) && (depth < maxDepth) ) {
+    if(!rank)std::cout << "Depth: " << depth << " n = " << nodes.size() << std::endl;
+    num_intersected = 0;
+
+    for (auto elem: nodes ){
+      splitOctant=false;
+      if ( elem.getLevel() != depth ) {
+        nodes_new.push_back(elem);
+        continue;
+      }
+
+      // Evaluate fx() on positions of (e)nodes of elem.
+      tmpENodes.clear();
+      ot::Element<T,dim>(elem).appendNodes(elementOrder, tmpENodes);
+      for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
+      {
+        for (int d = 0; d < dim; d++)
+          ptCoords[d] = domScale * tmpENodes[eNodeIdx].getX(d);   // TODO this is what class Point is for.
+        fx(ptCoords, varVal);
+        for (unsigned int var = 0; var < numInterpVars; var++)
+          dist_parent[varIndex[var]*nodesPerElement + eNodeIdx] = varVal[varIndex[var]];
+      }
+      tmpENodes.clear(); 
+
+      // check and split
+
+      // Interpolate each parent->child and check if within error tolerance.
+      for(unsigned int cnum=0;cnum<NUM_CHILDREN;cnum++)
+      {
+        ot::TreeNode<T,dim> elemChild = elem.getChildMorton(cnum);
+
+        // Evaluate fx() on positions of (e)nodes of elemChild.
+        tmpENodes.clear();
+        ot::Element<T,dim>(elemChild).appendNodes(elementOrder, tmpENodes);
+        for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
+        {
+          for (int d = 0; d < dim; d++)
+            ptCoords[d] = domScale * tmpENodes[eNodeIdx].getX(d);   // TODO this is what class Point is for.
+          fx(ptCoords, varVal);
+          for (unsigned int var = 0; var < numInterpVars; var++)
+            dist_child[varIndex[var]*nodesPerElement + eNodeIdx] = varVal[varIndex[var]];
+        }
+        tmpENodes.clear();
+
+        for(unsigned int var=0;var<numInterpVars;var++)
+        {
+          refEl.IKD_Parent2Child<dim>(dist_parent+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, cnum);
+          l2_norm=normLInfty(dist_child+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, nodesPerElement);
+          //std::cout<<"rank: "<<rank<<" node: "<<elem<<" l2 norm : "<<l2_norm<<" var: "<<varIndex[var]<<std::endl;
+          if(l2_norm>interp_tol)
+          {
+            splitOctant=true;
+            break;
+          }
+        }
+
+        if(splitOctant) break;
+      }
+
+      if (!splitOctant) {
+        nodes_new.push_back(elem);
+      }else {
+        for (unsigned int cnum = 0; cnum < NUM_CHILDREN; cnum++)
+          nodes_new.push_back(elem.getChildMorton(cnum));
+        num_intersected++;
+      }
+    }
+    depth++;
+    std::swap(nodes, nodes_new);
+    nodes_new.clear();
+
+    // The tree is already a complete tree, just need to re-partition and remove dups.
+    // Dendro-KT distTreeSort() doesn't remove duplicates automatically;
+    // however, distTreeConstruction() does. Calling distTreeConstruction()
+    // on an already complete tree should do exactly what we want.
+    ot::SFC_Tree<T,dim>::distTreeConstruction(nodes, nodes_new, 1, sfc_tol, comm);
+
+    std::swap(nodes,nodes_new);
+    nodes_new.clear();
+
+    par::Mpi_Allreduce(&num_intersected,&num_intersected_g,1,MPI_MAX,comm);
+    num_intersected=num_intersected_g;
+  }
+
+  delete[] dist_child;
+  delete[] dist_child_ip;
+  delete[] dist_parent;
+  delete[] varVal;
+}
+
+
+
+
 
 
 

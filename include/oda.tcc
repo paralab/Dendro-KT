@@ -64,11 +64,24 @@ namespace ot
     template <unsigned int dim>
     template <typename T>
     DA<dim>::DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
-        : DA(comm, order, grainSz, sfc_tol)
+        : m_refel{dim, order}
     {
-        //TODO This should iteratively refine subtrees until the parent->child interpolation
-        // introduces only error up to interp_tol.
-        // Intead, we delegate to the regular-grid constructor.
+      std::vector<unsigned int> varIndex(dofSz);
+      for (unsigned int ii = 0; ii < dofSz; ii++)
+        varIndex[ii] = ii;
+
+      // Get a complete tree sufficiently granular to represent func with accuracy interp_tol.
+      std::vector<ot::TreeNode<C,dim>> completeTree;
+      function2Octree<C,dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, m_uiMaxDepth, interp_tol, sfc_tol, order, comm);
+
+      // Make the tree balanced, using completeTree as a minimal set of TreeNodes.
+      // Calling distTreeBalancing() on a complete tree with ptsPerElement==1
+      // should do exactly what we want.
+      std::vector<ot::TreeNode<C,dim>> balancedTree;
+      ot::SFC_Tree<C,dim>::distTreeBalancing(completeTree, balancedTree, 1, sfc_tol, comm);
+
+      // Create ODA based on balancedTree.
+      construct(&(*balancedTree.cbegin()), (RankI) balancedTree.size(), comm, order, grainSz, sfc_tol);
     }
 
     template <unsigned int dim>

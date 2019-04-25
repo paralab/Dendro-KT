@@ -30,7 +30,6 @@ HeatVec<dim>::~HeatVec()
 template <unsigned int dim>
 void HeatVec<dim>::elementalComputeVec(const VECType* in,VECType* out, double*coords,double scale)
 {
-
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
     const double * Q1d=refEl->getQ1d();
     const double * QT1d=refEl->getQT1d();
