@@ -199,7 +199,7 @@ void testRegularGrid(unsigned int grainSz, MPI_Comm comm)
 
   using XT = double;
 
-  std::function<void(XT,XT,XT,XT*)> func = [](XT a, XT b, XT c, XT *y) { *y = a; };
+  std::function<void(const XT *, XT*)> func = [](const XT *a, XT *y) { *y = *a; };
   unsigned int dofSz = 1;
   double interp_tol = 1.0;
 

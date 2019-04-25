@@ -63,7 +63,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    DA<dim>::DA(std::function<void(T, T, T, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
         : DA(comm, order, grainSz, sfc_tol)
     {
         //TODO This should iteratively refine subtrees until the parent->child interpolation
@@ -417,7 +417,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::setVectorByFunction(T* local,std::function<void(T,T,T,T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
+    void DA<dim>::setVectorByFunction(T* local,std::function<void(const T *, T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
     {
         // todo @massado can you please write this part.
 
@@ -441,7 +441,7 @@ namespace ot
                 for (int d = 0; d < edim; d++)
                   fCoords[d] = scale * tnCoords[d];
 
-                func(fCoords[0], fCoords[1], fCoords[2], &local[dof*k]);
+                func(fCoords, &local[dof*k]);
             }
         }
         else
@@ -607,7 +607,7 @@ namespace ot
 
     template <unsigned int dim>
     template<typename T>
-    void DA<dim>::petscSetVectorByFunction(Vec& local,std::function<void(T,T,T,T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
+    void DA<dim>::petscSetVectorByFunction(Vec& local,std::function<void(const T *, T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
     {
 
         PetscScalar * arry=NULL;

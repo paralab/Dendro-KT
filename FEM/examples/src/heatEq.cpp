@@ -75,14 +75,14 @@ int main_ (Parameters &pm, MPI_Comm comm)
     const Point<dim> g_min=grid_min;
     const Point<dim> g_max=grid_max;
 
-    std::function<void(double,double,double,double*)> f_rhs =[d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z](const double x,const double y,const double z,double* var){
-        var[0]=(-12*M_PI*M_PI*sin(2*M_PI*(((x-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((y-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((z-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
-        //var[1]=(-12*M_PI*M_PI*sin(2*M_PI*(((x-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((y-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((z-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
-        //var[2]=(-12*M_PI*M_PI*sin(2*M_PI*(((x-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((y-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((z-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
+    std::function<void(const double *, double*)> f_rhs =[d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z](const double *x, double* var){
+        var[0]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
+        //var[1]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
+        //var[2]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
     };
 
-    std::function<void(double,double,double,double*)> f_init =[d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z](const double x,const double y,const double z,double *var){
-        var[0]=0;//(-12*M_PI*M_PI*sin(2*M_PI*(((x-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((y-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((z-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
+    std::function<void(const double *, double*)> f_init =[d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z](const double *x, double *var){
+        var[0]=0;//(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
         //var[1]=0;
         //var[2]=0;
     };

@@ -150,13 +150,13 @@ namespace bench
             /// double *Mfrhs = mfVecPtr;
             double *dummy = dummyVecPtr;
 
-            //TODO these interfaces don't support 4D coordinates yet.
+            //TODO check if these interface are ready for 4D coordinates.
 
             /// std::function<void(double,double,double,double*)> f_rhs =[](const double x,const double y,const double z,double* var){
             ///     var[0]=1;
             /// };
 
-            std::function<void(double,double,double,double*)> f_init =[](const double x,const double y,const double z,double *var){
+            std::function<void(const double *, double*)> f_init =[](const double * xyz,double *var){
                 var[0]=1;
             };
 

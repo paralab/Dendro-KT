@@ -156,7 +156,7 @@ class DA
          * */
         //TODO implement this!
         template <typename T>
-        DA(std::function<void(T, T, T, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz = 100, double sfc_tol = 0.3);
 
         /**
          * @brief deconstructor for the DA class.
@@ -342,7 +342,7 @@ class DA
              *
              * */
         template <typename T>
-        void setVectorByFunction(T *local, std::function<void(T, T, T, T *)> func, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
+        void setVectorByFunction(T *local, std::function<void(const T *, T *)> func, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
@@ -468,7 +468,7 @@ class DA
              *
              * */
         template <typename T>
-        void petscSetVectorByFunction(Vec &local, std::function<void(T, T, T, T *)> func, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
+        void petscSetVectorByFunction(Vec &local, std::function<void(const T *, T *)> func, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
