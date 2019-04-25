@@ -784,10 +784,18 @@ namespace ot {
     points.resize(segEnd - segBegin);
     //TODO Does the interface require that we set_isSelected(TNP::Yes)?
 
-    RankI numOwnedPoints = points.size();
+    long numOwnedPoints = points.size();
 
-    RankI numCGNodes = 0;  // The return variable for counting.
+    // Compute global node count.
+    long numCGNodes = 0;  // The return variable for counting.
     par::Mpi_Allreduce(&numOwnedPoints, &numCGNodes, 1, MPI_SUM, comm);
+
+    // Compute global node ranks.
+    long globNodeId = -1;
+    par::Mpi_Scan(&numOwnedPoints, &globNodeId, 1, MPI_SUM, comm);
+    globNodeId -= numOwnedPoints;
+    for (auto &pt : points)
+      pt.set_globId(globNodeId++);
 
     return numCGNodes;
   }

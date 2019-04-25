@@ -127,6 +127,9 @@ namespace ot {
       int get_owner() const { return m_owner; }
       void set_owner(int owner) { m_owner = owner; }
 
+      long get_globId() const { return m_globId; }
+      void set_globId(long globId) { m_globId = globId; }
+
       /**
        * @brief The point may be incident on one or more grid lines (hyperplanes) at coarseness level `hlev'.
        *   If so, this method returns the smallest-indexed such hyperplane.
@@ -168,6 +171,7 @@ namespace ot {
       IsSelected m_isSelected;
       unsigned char m_numInstances = 1;
       int m_owner = -1;
+      long m_globId = -1;
       //TODO These members could be overlayed in a union if we are careful.
   };
 
