@@ -127,8 +127,8 @@ namespace ot {
       int get_owner() const { return m_owner; }
       void set_owner(int owner) { m_owner = owner; }
 
-      long get_globId() const { return m_globId; }
-      void set_globId(long globId) { m_globId = globId; }
+      /// long get_globId() const { return m_globId; }
+      /// void set_globId(long globId) { m_globId = globId; }
 
       /**
        * @brief The point may be incident on one or more grid lines (hyperplanes) at coarseness level `hlev'.

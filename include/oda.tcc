@@ -413,8 +413,11 @@ namespace ot
         // 3. "De-stage" the received downstream data.
         for (unsigned int k = 0; k < dnstBSz; k++)
         {
+          // Instead of simply copying from the downstream data, we need to accumulate it.
           const T *nodeSrc = dnstB + dof * k;
-          std::copy(nodeSrc, nodeSrc + dof, vec + dof * m_sm.m_map[k]);
+          /// std::copy(nodeSrc, nodeSrc + dof, vec + dof * m_sm.m_map[k]);
+          for (unsigned int v = 0; v < dof; v++)
+            vec[dof * m_sm.m_map[k] + v] += nodeSrc[v];
         }
 
         // 4. Wait on sends.

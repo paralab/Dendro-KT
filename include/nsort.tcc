@@ -790,12 +790,12 @@ namespace ot {
     long numCGNodes = 0;  // The return variable for counting.
     par::Mpi_Allreduce(&numOwnedPoints, &numCGNodes, 1, MPI_SUM, comm);
 
-    // Compute global node ranks.
-    long globNodeId = -1;
-    par::Mpi_Scan(&numOwnedPoints, &globNodeId, 1, MPI_SUM, comm);
-    globNodeId -= numOwnedPoints;
-    for (auto &pt : points)
-      pt.set_globId(globNodeId++);
+    /// // Compute global node ranks.
+    /// long globNodeId = -1;
+    /// par::Mpi_Scan(&numOwnedPoints, &globNodeId, 1, MPI_SUM, comm);
+    /// globNodeId -= numOwnedPoints;
+    /// for (auto &pt : points)
+    ///   pt.set_globId(globNodeId++);
 
     return numCGNodes;
   }

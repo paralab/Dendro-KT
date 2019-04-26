@@ -123,6 +123,11 @@ namespace ot
         // Note: We will offset the starting address whenever we copy with scattermap.
         // Otherwise we should build-in the offset to the scattermap here.
 
+        // Find offset into the global array.
+        unsigned long locSz = m_uiLocalNodalSz;
+        par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, comm);
+        m_uiGlobalRankBegin -= locSz;
+
         // Create vector of node coordinates, with ghost segments allocated.
         m_tnCoords.resize(m_uiTotalNodalSz);
         for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
