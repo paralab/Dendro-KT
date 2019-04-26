@@ -14,6 +14,7 @@
 
 template <typename LeafT, unsigned int dim>
 class feMatrix : public feMat<dim> {
+  //TODO I don't really get why we use LeafT and not just virtual methods.
 
 protected:
          static constexpr unsigned int m_uiDim = dim;
@@ -88,7 +89,16 @@ protected:
          **/
 
         bool preMatVec(const VECType* in, VECType* out,double scale=1.0) {
-           return asLeaf().preMatVec(in,out,scale);
+            // If this is asLeaf().preMatVec(), i.e. there is not an override, don't recurse.
+            static bool entered = false;
+            bool ret = false;
+            if (!entered)
+            {
+              entered = true;
+              ret = asLeaf().preMatVec(in,out,scale);
+              entered = false;
+            }
+            return ret;
         }
 
 
@@ -99,17 +109,44 @@ protected:
          * */
 
         bool postMatVec(const VECType* in, VECType* out,double scale=1.0) {
-             return asLeaf().postMatVec(in,out,scale);
+            // If this is asLeaf().postMatVec(), i.e. there is not an override, don't recurse.
+            static bool entered = false;
+            bool ret = false;
+            if (!entered)
+            {
+              entered = true;
+              ret = asLeaf().postMatVec(in,out,scale);
+              entered = false;
+            }
+            return ret;
         }
 
         /**@brief executed before the matrix assembly */
         bool preMat() {
-            return asLeaf().preMat();
+            // If this is asLeaf().preMat(), i.e. there is not an override, don't recurse.
+            static bool entered = false;
+            bool ret = false;
+            if (!entered)
+            {
+              entered = true;
+              ret = asLeaf().preMat();
+              entered = false;
+            }
+            return ret;
         }
 
         /**@brief executed after the matrix assembly */
         bool postMat() {
-            return asLeaf().preMat();
+            // If this is asLeaf().postMat(), i.e. there is not an override, don't recurse.
+            static bool entered = false;
+            bool ret = false;
+            if (!entered)
+            {
+              entered = true;
+              ret = asLeaf().postMat();
+              entered = false;
+            }
+            return ret;
         }
 
         /// /**
