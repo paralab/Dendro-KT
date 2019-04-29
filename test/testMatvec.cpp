@@ -153,7 +153,7 @@ int testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  const unsigned int numPtsPerProc = (1u<<depth) / nProc;
+  const unsigned int numPtsPerProc = (1u<<(depth*dim)) / nProc;
   const double loadFlexibility = 0.3;
 
   // Uniform grid ODA.
