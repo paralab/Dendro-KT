@@ -24,10 +24,10 @@
 
 
 template <unsigned int dim>
-bool testInstances(MPI_Comm comm, unsigned int depth, unsigned int order);
+int testInstances(MPI_Comm comm, unsigned int depth, unsigned int order);
 
 template <unsigned int dim>
-bool testMatching(MPI_Comm comm, unsigned int depth, unsigned int order);
+int testMatching(MPI_Comm comm, unsigned int depth, unsigned int order);
 
 // ==============================
 // main()
@@ -63,6 +63,9 @@ int main(int argc, char * argv[])
   if (!rProc)
     printf("Test results: ");
 
+  const char * resultColor;
+  const char * resultName;
+
   int result_testInstances, globResult_testInstances;
   switch (inDim)
   {
@@ -72,8 +75,10 @@ int main(int argc, char * argv[])
     default: if (!rProc) printf("Dimension not supported.\n"); exit(1); break;
   }
   par::Mpi_Reduce(&result_testInstances, &globResult_testInstances, 1, MPI_SUM, 0, comm);
+  resultColor = globResult_testInstances ? RED : GRN;
+  resultName = globResult_testInstances ? "FAILURE" : "success";
   if (!rProc)
-    printf("\t[testInstances](%s)", (globResult_testInstances ? GRN "success" NRM : RED "FAILURE" NRM));
+    printf("\t[testInstances](%s%s %d%s)", resultColor, resultName, globResult_testInstances, NRM);
 
   if(!rProc)
     printf("\n");
@@ -140,9 +145,9 @@ void myConcreteFeMatrix<dim>::elementalMatVec(const VECType *in, VECType *out, d
 
 
 template <unsigned int dim>
-bool testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
+int testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
 {
-  bool testResult = true;
+  int testResult = 0;
 
   int rProc, nProc;
   MPI_Comm_rank(comm, &rProc);
@@ -155,8 +160,8 @@ bool testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
   ot::DA<dim> *octDA = new ot::DA<dim>(comm, order, numPtsPerProc, loadFlexibility);
 
   std::vector<double> vecIn, vecOut;
-  octDA->createVector(vecIn, false, false, order);
-  octDA->createVector(vecOut, false, false, order);
+  octDA->createVector(vecIn, false, false, 1);
+  octDA->createVector(vecOut, false, false, 1);
 
   // Fill the in vector with all ones.
   std::fill(vecIn.begin(), vecIn.end(), 1.0);
@@ -167,7 +172,7 @@ bool testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
 
   // Check that the output vector contains the grid intersection degree at each node.
   const ot::TreeNode<unsigned int, dim> *nodeCoords = octDA->getTNCoords() + octDA->getLocalNodeBegin();
-  for (unsigned int ii = 0; testResult && ii < vecOut.size(); ii++)
+  for (unsigned int ii = 0; ii < vecOut.size(); ii++)
   {
     unsigned int domMask = (1u << m_uiMaxDepth) - 1;
     unsigned int gridMask = (1u << (m_uiMaxDepth - nodeCoords[ii].getLevel())) - 1;
@@ -175,7 +180,7 @@ bool testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
     for (int d = 0; d < dim; d++)
       interxDeg -= ((bool)(gridMask & nodeCoords[ii].getX(d)) || !(bool)(domMask & nodeCoords[ii].getX(d)));
 
-    testResult &= (vecOut[ii] == (1u << interxDeg));
+    testResult += !(vecOut[ii] == (1u << interxDeg));
   }
 
   octDA->destroyVector(vecIn);
@@ -189,7 +194,7 @@ bool testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
 
 
 template <unsigned int dim>
-bool testMatching(MPI_Comm comm, unsigned int depth, unsigned int order)
+int testMatching(MPI_Comm comm, unsigned int depth, unsigned int order)
 {
 
 }
