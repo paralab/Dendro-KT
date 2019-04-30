@@ -320,10 +320,12 @@ namespace fem
 
             // As descend subtrees in sfc order, check their intersection with the local partition:
             // Partially contained, disjointly contained, or disjointly uncontained.
-            bool chBeforePart = true;
+            /// bool chBeforePart = true;
+            /// bool chAfterPart = false;
+            /// const bool willMeetFront = subtreeRoot.isAncestor(partFront);
+            /// const bool willMeetBack = subtreeRoot.isAncestor(partBack);
+            bool chBeforePart = subtreeRoot.isAncestor(partFront);
             bool chAfterPart = false;
-            const bool willMeetFront = subtreeRoot.isAncestor(partFront);
-            const bool willMeetBack = subtreeRoot.isAncestor(partBack);
 
             bool childIsFirst = true;
 
@@ -334,7 +336,8 @@ namespace fem
                 RotI   cRot = orientLookup[child_m];
                 TN tnChild = subtreeRoot.getChildMorton(child_m);
 
-                chBeforePart &= (bool) (willMeetFront && !(tnChild == partFront || tnChild.isAncestor(partFront)));
+                /// chBeforePart &= (bool) (willMeetFront && !(tnChild == partFront || tnChild.isAncestor(partFront)));
+                chBeforePart &= !(tnChild == partFront || tnChild.isAncestor(partFront));
 
                 if (!chBeforePart && !chAfterPart)
                     matvec_rec<T,TN,RE>(&(*ibufs[pLev].vec_in_dup.cbegin())      + offset[child_sfc],
@@ -345,7 +348,8 @@ namespace fem
                                             eleOp, scale, refElement,
                                             vecIn, vecOut, coords, sz, childIsFirst);
 
-                chAfterPart |= (bool) (willMeetBack && (tnChild == partBack || tnChild.isAncestor(partBack)));
+                /// chAfterPart |= (bool) (willMeetBack && (tnChild == partBack || tnChild.isAncestor(partBack)));
+                chAfterPart |= (tnChild == partBack || tnChild.isAncestor(partBack));
 
                 childIsFirst = false;
             }
@@ -441,7 +445,7 @@ namespace fem
 
             // Get element node coordinates in lexicographic order.
             leafNodeBuffer.clear();
-            const double domainScale = 1.0 / m_uiMaxDepth;
+            const double domainScale = 1.0 / (1u << m_uiMaxDepth);
             ot::Element<typename TN::coordType, dim>(subtreeRoot).template appendNodes<TN>(polyOrder, leafNodeBuffer);
             for (unsigned int n = 0; n < leafNodeBuffer.size(); n++)
               for (int d = 0; d < dim; d++)
