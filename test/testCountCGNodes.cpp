@@ -49,7 +49,7 @@ void distPrune(std::vector<X> &list, MPI_Comm comm)
 
 
 template <unsigned int dim, unsigned int order>
-void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistributed, double tol, MPI_Comm comm);
+void testExample(const char *msgPrefix, unsigned int expected, Tree<dim> &tree, const bool RunDistributed, double tol, MPI_Comm comm);
 
 
 int main(int argc, char * argv[])
@@ -62,8 +62,8 @@ int main(int argc, char * argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &nProc);
   MPI_Comm comm = MPI_COMM_WORLD;
 
-  constexpr unsigned int dim = 3;
-  const unsigned int endL = 4;
+  constexpr unsigned int dim = 2;
+  const unsigned int endL = 3;
   const unsigned int order = 3;
 
   double tol = 0.05;
@@ -100,19 +100,19 @@ int main(int argc, char * argv[])
   // Example1
   Example1<dim>::fill_tree(endL, tree);
   sprintf(msgPrefix, "Example1");
-  testExample<dim,order>(msgPrefix, tree, RunDistributed, tol, comm);
+  testExample<dim,order>(msgPrefix, Example1<dim>::num_points(endL, order), tree, RunDistributed, tol, comm);
   tree.clear();
 
   // Example2
   Example2<dim>::fill_tree(endL, tree);
   sprintf(msgPrefix, "Example2");
-  testExample<dim,order>(msgPrefix, tree, RunDistributed, tol, comm);
+  testExample<dim,order>(msgPrefix, Example2<dim>::num_points(endL, order), tree, RunDistributed, tol, comm);
   tree.clear();
 
   // Example3
   Example3<dim>::fill_tree(endL, tree);
   sprintf(msgPrefix, "Example3");
-  testExample<dim,order>(msgPrefix, tree, RunDistributed, tol, comm);
+  testExample<dim,order>(msgPrefix, Example3<dim>::num_points(endL, order), tree, RunDistributed, tol, comm);
   tree.clear();
 
   _DestroyHcurve();
@@ -128,7 +128,7 @@ int main(int argc, char * argv[])
 // testExample()
 //
 template <unsigned int dim, unsigned int order>
-void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistributed, double tol, MPI_Comm comm)
+void testExample(const char *msgPrefix, unsigned int expected, Tree<dim> &tree, const bool RunDistributed, double tol, MPI_Comm comm)
 {
   NodeList<dim> nodeListExterior;
   NodeList<dim> nodeListInterior;
@@ -167,7 +167,7 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
     numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListCombined.begin()), &(*nodeListCombined.end()), order);
   }
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
-  printf("%s: Algorithm says # points == %u \t [Int:%u] [Ext:%u] [Comb:%u].\n", msgPrefix, numUniqueNodes, numUniqueInteriorNodes, numUniqueExteriorNodes, numUniqueCombinedNodes);
+  printf("%s: Algorithm says # points == %s%u%s \t [Int:%u] [Ext:%u] [Comb:%u].\n", msgPrefix, (numUniqueNodes == expected ? GRN : RED), numUniqueNodes, NRM, numUniqueInteriorNodes, numUniqueExteriorNodes, numUniqueCombinedNodes);
   nodeListInterior.clear();
   nodeListExterior.clear();
   nodeListCombined.clear();
