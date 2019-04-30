@@ -258,7 +258,7 @@ namespace ot
             // 3a. Stage the send data.
             for (unsigned int k = 0; k < dnstBSz; k++)
             {
-              const T *nodeSrc = vec + dof * m_sm.m_map[k];
+              const T *nodeSrc = vec + dof * (m_sm.m_map[k] + m_uiLocalNodeBegin);
               std::copy(nodeSrc, nodeSrc + dof, dnstB + dof * k);
             }
 
@@ -420,7 +420,7 @@ namespace ot
           const T *nodeSrc = dnstB + dof * k;
           /// std::copy(nodeSrc, nodeSrc + dof, vec + dof * m_sm.m_map[k]);
           for (unsigned int v = 0; v < dof; v++)
-            vec[dof * m_sm.m_map[k] + v] += nodeSrc[v];
+            vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] += nodeSrc[v];
         }
 
         // 4. Wait on sends.
