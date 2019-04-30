@@ -24,22 +24,22 @@
 
 
 
-template<typename X>
-void distPrune(std::vector<X> &list, MPI_Comm comm)
-{
-  int nProc, rProc;
-  MPI_Comm_rank(comm, &rProc);
-  MPI_Comm_size(comm, &nProc);
-
-  const int listSize = list.size();
-  const int baseSeg = listSize / nProc;
-  const int remainder = listSize - baseSeg * nProc;
-  const int myStart = rProc * baseSeg + (rProc < remainder ? rProc : remainder);
-  const int mySeg = baseSeg + (rProc < remainder ? 1 : 0);
-
-  list.erase(list.begin(), list.begin() + myStart);
-  list.resize(mySeg);
-}
+/// template<typename X>
+/// void distPrune(std::vector<X> &list, MPI_Comm comm)
+/// {
+///   int nProc, rProc;
+///   MPI_Comm_rank(comm, &rProc);
+///   MPI_Comm_size(comm, &nProc);
+/// 
+///   const int listSize = list.size();
+///   const int baseSeg = listSize / nProc;
+///   const int remainder = listSize - baseSeg * nProc;
+///   const int myStart = rProc * baseSeg + (rProc < remainder ? rProc : remainder);
+///   const int mySeg = baseSeg + (rProc < remainder ? 1 : 0);
+/// 
+///   list.erase(list.begin(), list.begin() + myStart);
+///   list.resize(mySeg);
+/// }
 
 template<unsigned int dim, unsigned int endL, unsigned int order>
 void testGatherMap(MPI_Comm comm);
