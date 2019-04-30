@@ -132,7 +132,7 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
 
   for (auto &&x : nodeListExterior)
   {
-    outfile << "[" << rProc << "] lev==" << x.getLevel() << "\t" << x.getBase32Hex(m_uiMaxDepth).data() << "\t" << x.get_globId() << "\n";
+    outfile << "[" << rProc << "] lev==" << x.getLevel() << "\t" << x.getBase32Hex(m_uiMaxDepth).data() << /*"\t" << x.get_globId() <<*/ "\n";
   }
 
   outfile.close();
