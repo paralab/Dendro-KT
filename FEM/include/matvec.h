@@ -202,17 +202,9 @@ namespace fem
 
       for (unsigned int ii = 0; ii < sz; ii++)
       {
-        bool initialized = false;
         unsigned int child_sfc;
         for (unsigned int src = 0; src < numChildren && (child_sfc = scatterMap[ii*numChildren + src]) != -1; src++)
-        {
-          // TODO what can we 0-initialize to eliminate this if-else?
-          if (initialized)
-            vec[ii] += vec_contrib[offsetsWrite[child_sfc]++];
-          else
-            vec[ii] = vec_contrib[offsetsWrite[child_sfc]++];
-          initialized = true;
-        }
+          vec[ii] += vec_contrib[offsetsWrite[child_sfc]++];
       }
     }
 
