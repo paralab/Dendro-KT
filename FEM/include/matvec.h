@@ -252,9 +252,9 @@ namespace fem
         const LevI pLev = subtreeRoot.getLevel();
         const int nElePoints = intPow(refElement->getOrder() + 1, dim);
 
-        // 1. initialize the output vector to zero. 
-        for(unsigned int i=0;i<sz;i++)
-            vecOut[i] = (T)0;
+        /// // 1. initialize the output vector to zero.   // This is done at top level in matvec() and mid-level by resetting vec_out_contrib[].
+        /// for(unsigned int i=0;i<sz;i++)
+        ///     vecOut[i] = (T)0;
 
         const unsigned int numChildren=1u<<dim;
 
@@ -319,6 +319,7 @@ namespace fem
 #endif
 
             ibufs[pLev].vec_out_contrib.resize(ibufs[pLev].vec_in_dup.size());
+            std::fill(ibufs[pLev].vec_out_contrib.begin(), ibufs[pLev].vec_out_contrib.end(), 0);
 
             constexpr unsigned int rotOffset = 2*(1u<<dim);  // num columns in rotations[].
             const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren]; // child_m = rot_perm[child_sfc]
