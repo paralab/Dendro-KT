@@ -18,8 +18,11 @@ namespace ot
         MPI_Comm_size(comm, &nProc);
         MPI_Comm_rank(comm, &rProc);
 
+        if (grainSz == 0)
+          grainSz = 1;
+
         // numElements == pow(2, dim*endL); --> endL = roundUp(log(numElements)/dim);
-        const unsigned int endL = (binOp::binLength(nProc*grainSz) + dim - 1) / dim;
+        const unsigned int endL = (binOp::binLength(nProc*grainSz - 1) + dim - 1) / dim;
         const unsigned int numElem1D = 1u << endL;
         const unsigned int globNumElem = 1u << (endL*dim);
         const unsigned int len = 1u << (m_uiMaxDepth - endL);
