@@ -184,14 +184,18 @@ namespace ot {
     constexpr unsigned int dim = SrcType::coordDim;
     std::array<T,dim> coords;
     pt.getAnchor(coords);
-    const unsigned int lev = pt.getLevel();
+    /// const unsigned int lev = pt.getLevel();            // Container.
+    const unsigned int lev = m_uiMaxDepth;             // Nearest in-bounds point.
     const unsigned int len = 1u << (m_uiMaxDepth-lev);
     const unsigned int domainUpper = (1u<<m_uiMaxDepth) - 1;
 
     for (int d = 0; d < dim; d++)
     {
       if (coords[d] > domainUpper)
-        coords[d] -= len;
+      {
+        /// coords[d] -= len;            // Container.
+        coords[d] = domainUpper;      // Nearest in-bounds point.
+      }
     }
 
     return {coords, lev};   // Erases resolution below lev.
