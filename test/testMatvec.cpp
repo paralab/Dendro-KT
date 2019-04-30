@@ -80,6 +80,20 @@ int main(int argc, char * argv[])
   if (!rProc)
     printf("\t[testInstances](%s%s %d%s)", resultColor, resultName, globResult_testInstances, NRM);
 
+  int result_testMatching, globResult_testMatching;
+  switch (inDim)
+  {
+    case 2: result_testMatching = testMatching<2>(comm, inDepth, inOrder); break;
+    case 3: result_testMatching = testMatching<3>(comm, inDepth, inOrder); break;
+    case 4: result_testMatching = testMatching<4>(comm, inDepth, inOrder); break;
+    default: if (!rProc) printf("Dimension not supported.\n"); exit(1); break;
+  }
+  par::Mpi_Reduce(&result_testMatching, &globResult_testMatching, 1, MPI_SUM, 0, comm);
+  resultColor = globResult_testMatching ? RED : GRN;
+  resultName = globResult_testMatching ? "FAILURE" : "success";
+  if (!rProc)
+    printf("\t[testMatching](%s%s %d%s)", resultColor, resultName, globResult_testMatching, NRM);
+
   if(!rProc)
     printf("\n");
 
@@ -196,5 +210,46 @@ int testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
 template <unsigned int dim>
 int testMatching(MPI_Comm comm, unsigned int depth, unsigned int order)
 {
+  int testResult = 0;
 
+  int rProc, nProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  const unsigned int numPtsPerProc = (1u<<(depth*dim)) / nProc;
+  const double loadFlexibility = 0.3;
+
+  // Uniform grid ODA.
+  ot::DA<dim> *octDA = new ot::DA<dim>(comm, order, numPtsPerProc, loadFlexibility);
+
+  std::vector<double> vecIn, vecOut;
+  octDA->createVector(vecIn, false, false, 1);
+  octDA->createVector(vecOut, false, false, 1);
+
+  unsigned int globNodeRank = octDA->getGlobalRankBegin();
+
+  // Fill the in vector with all ones.
+  std::iota(vecIn.begin(), vecIn.end(), globNodeRank);
+
+  myConcreteFeMatrix<dim> mat(octDA, 1);
+  mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
+
+  // Check that the output vector contains the grid intersection degree at each node.
+  const ot::TreeNode<unsigned int, dim> *nodeCoords = octDA->getTNCoords() + octDA->getLocalNodeBegin();
+  for (unsigned int ii = 0; ii < vecOut.size(); ii++)
+  {
+    unsigned int domMask = (1u << m_uiMaxDepth) - 1;
+    unsigned int gridMask = (1u << (m_uiMaxDepth - nodeCoords[ii].getLevel())) - 1;
+    unsigned int interxDeg = dim;
+    for (int d = 0; d < dim; d++)
+      interxDeg -= ((bool)(gridMask & nodeCoords[ii].getX(d)) || !(bool)(domMask & nodeCoords[ii].getX(d)));
+
+    testResult += !(vecOut[ii] == (1u << interxDeg)*(globNodeRank++));
+  }
+
+  octDA->destroyVector(vecIn);
+  octDA->destroyVector(vecOut);
+  delete octDA;
+
+  return testResult;
 }
