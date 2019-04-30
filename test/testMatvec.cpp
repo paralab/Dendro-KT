@@ -29,6 +29,13 @@ int testInstances(MPI_Comm comm, unsigned int depth, unsigned int order);
 template <unsigned int dim>
 int testMatching(MPI_Comm comm, unsigned int depth, unsigned int order);
 
+template <unsigned int dim>
+int testAdaptive(MPI_Comm comm, unsigned int depth, unsigned int order);
+
+/// // Run a single matvec sequentially, then compare results with distributed.
+/// template <unsigned int dim>
+/// int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order);
+
 // ==============================
 // main()
 // ==============================
@@ -66,6 +73,7 @@ int main(int argc, char * argv[])
   const char * resultColor;
   const char * resultName;
 
+  // testInstances
   int result_testInstances, globResult_testInstances;
   switch (inDim)
   {
@@ -80,6 +88,7 @@ int main(int argc, char * argv[])
   if (!rProc)
     printf("\t[testInstances](%s%s %d%s)", resultColor, resultName, globResult_testInstances, NRM);
 
+  // testMatching
   int result_testMatching, globResult_testMatching;
   switch (inDim)
   {
@@ -93,6 +102,21 @@ int main(int argc, char * argv[])
   resultName = globResult_testMatching ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testMatching](%s%s %d%s)", resultColor, resultName, globResult_testMatching, NRM);
+
+  // testAdaptive
+  int result_testAdaptive, globResult_testAdaptive;
+  switch (inDim)
+  {
+    case 2: result_testAdaptive = testAdaptive<2>(comm, inDepth, inOrder); break;
+    case 3: result_testAdaptive = testAdaptive<3>(comm, inDepth, inOrder); break;
+    case 4: result_testAdaptive = testAdaptive<4>(comm, inDepth, inOrder); break;
+    default: if (!rProc) printf("Dimension not supported.\n"); exit(1); break;
+  }
+  par::Mpi_Reduce(&result_testAdaptive, &globResult_testAdaptive, 1, MPI_SUM, 0, comm);
+  resultColor = globResult_testAdaptive ? RED : GRN;
+  resultName = globResult_testAdaptive ? "FAILURE" : "success";
+  if (!rProc)
+    printf("\t[testAdaptive](%s%s %d%s)", resultColor, resultName, globResult_testAdaptive, NRM);
 
   if(!rProc)
     printf("\n");
@@ -245,6 +269,63 @@ int testMatching(MPI_Comm comm, unsigned int depth, unsigned int order)
       interxDeg -= ((bool)(gridMask & nodeCoords[ii].getX(d)) || !(bool)(domMask & nodeCoords[ii].getX(d)));
 
     testResult += !(vecOut[ii] == (1u << interxDeg)*(globNodeRank++));
+  }
+
+  octDA->destroyVector(vecIn);
+  octDA->destroyVector(vecOut);
+  delete octDA;
+
+  return testResult;
+}
+
+
+template <unsigned int dim>
+int testAdaptive(MPI_Comm comm, unsigned int depth, unsigned int order)
+{
+  int testResult = 0;
+
+  int rProc, nProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  /// const unsigned int numPtsPerProc = (1u<<(depth*dim)) / nProc;
+  const double loadFlexibility = 0.3;
+
+  using MeshGen = Example1<dim>;
+  std::vector<ot::TreeNode<unsigned int, dim>> tree;
+  MeshGen::fill_tree(depth, tree);
+  distPrune(tree, comm);
+  ot::SFC_Tree<unsigned int, dim>::distTreeSort(tree, loadFlexibility, comm);
+
+  // Adaptive grid ODA.
+  ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), (unsigned int) tree.size(), comm, order, (unsigned int) tree.size(), loadFlexibility);
+  tree.clear();
+
+  std::vector<double> vecIn, vecOut;
+  octDA->createVector(vecIn, false, false, 1);
+  octDA->createVector(vecOut, false, false, 1);
+
+  unsigned int globNodeRank = octDA->getGlobalRankBegin();
+
+  // Fill the in vector with all ones.
+  std::fill(vecIn.begin(), vecIn.end(), 1.0);
+  /// std::iota(vecIn.begin(), vecIn.end(), globNodeRank);
+
+  myConcreteFeMatrix<dim> mat(octDA, 1);
+  mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
+
+  // Check that the output vector contains the grid intersection degree at each node.
+  const ot::TreeNode<unsigned int, dim> *nodeCoords = octDA->getTNCoords() + octDA->getLocalNodeBegin();
+  for (unsigned int ii = 0; ii < vecOut.size(); ii++)
+  {
+    unsigned int domMask = (1u << m_uiMaxDepth) - 1;
+    unsigned int gridMask = (1u << (m_uiMaxDepth - nodeCoords[ii].getLevel())) - 1;
+    unsigned int interxDeg = dim;
+    for (int d = 0; d < dim; d++)
+      interxDeg -= ((bool)(gridMask & nodeCoords[ii].getX(d)) || !(bool)(domMask & nodeCoords[ii].getX(d)));
+
+    testResult += !(fabs(vecOut[ii] - (1u << interxDeg)) < 0.0001);
+    /// testResult += !(vecOut[ii] == (1u << interxDeg)*(globNodeRank++));
   }
 
   octDA->destroyVector(vecIn);
