@@ -293,7 +293,8 @@ namespace ot {
     {
       // Round up here, since we round down when we generate the nodes.
       // The inequalities of integer division work out, as long as polyOrder < len.
-      unsigned int index1D = polyOrder - polyOrder * (hostCell.getX(d) + len - TreeNode::m_uiCoords[d]) / len;
+      //TODO is there a noticeable performance cost for preserving precision?
+      unsigned int index1D = polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - TreeNode::m_uiCoords[d]) / len;
       rank += index1D * stride;
       stride *= (polyOrder + 1);
     }
@@ -323,7 +324,8 @@ namespace ot {
       std::array<T,dim> nodeCoords;
       #pragma unroll(dim)
       for (int d = 0; d < dim; d++)
-        nodeCoords[d] = len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
+        nodeCoords[d] = (unsigned long) len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
+      //TODO is there a noticeable performance cost for preserving precision?
       nodeList.push_back({1, nodeCoords, TreeNode::m_uiLevel});
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
