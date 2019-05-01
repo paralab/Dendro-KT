@@ -114,6 +114,13 @@ namespace fem
       std::fill(scattermap.begin(), scattermap.end(), (ChildI) -1);
       for (RankI ii = 0; ii < sz; ii++)
       {
+        // This was only useful if we wanted to consider nodes which are
+        // shared between finer and coarser elements as though they are hanging.
+        // ------
+        /// // Each point is duplicated to one or more children UNLESS the point is owned by parent level.
+        /// if (coords[ii].getLevel() <= subtreeRoot.getLevel())
+        ///   continue;
+
         // TODO these type casts are ugly and they might even induce more copying than necessary.
         std::array<typename TN::coordType,dim> ptCoords;
         ot::TNPoint<typename TN::coordType,dim> pt(1, (coords[ii].getAnchor(ptCoords), ptCoords), coords[ii].getLevel());
@@ -372,6 +379,7 @@ namespace fem
 
             // Put leaf points in order and check if leaf has all the nodes it needs.
             std::fill(leafEleFill.begin(), leafEleFill.end(), false);
+            unsigned int countCheck = 0;
             for (int ii = 0; ii < sz; ii++)
             {
                 // TODO these type casts are ugly and they might even induce more copying than necessary.
@@ -382,8 +390,10 @@ namespace fem
                 assert((nodeRank < intPow(polyOrder+1, dim)));
 
                 leafEleFill[nodeRank] = true;
+                countCheck++;
                 leafEleBufferIn[nodeRank] = vecIn[ii];
             }
+            assert((countCheck <= nElePoints));
 
             bool leafHasAllNodes = true;
             for (int nr = 0; leafHasAllNodes && nr < intPow(polyOrder+1, dim); nr++)
@@ -401,6 +411,7 @@ namespace fem
                 // Copy parent nodes.
                 TN subtreeParent = subtreeRoot.getParent();
                 std::fill(parentEleFill.begin(), parentEleFill.end(), false);
+                countCheck = 0;
                 for (int ii = 0; ii < pSz; ii++)
                 {
                     if (pCoords[ii].getLevel() != pLev-1)
@@ -415,8 +426,10 @@ namespace fem
                     /// fprintf(stderr, "parent nodeRank==%u\n", nodeRank);
 
                     parentEleFill[nodeRank] = true;
+                    countCheck++;
                     parentEleBuffer[nodeRank] = pVecIn[ii];
                 }
+                assert((countCheck <= nElePoints));
 
                 // Interpolate.
 
@@ -438,9 +451,9 @@ namespace fem
                 //TODO
 
                 // Transfer the needed interpolated values. (Invalid values are skipped).
-                for (int ii = 0; ii < sz; ii++)
-                    if (!leafEleFill[ii])
-                        leafEleBufferIn[ii] = parentEleBuffer[ii];
+                for (int nr = 0; nr < leafEleBufferIn.size(); nr++)
+                    if (!leafEleFill[nr])
+                        leafEleBufferIn[nr] = parentEleBuffer[nr];
             }
 
             // Get element node coordinates in lexicographic order.
@@ -462,6 +475,7 @@ namespace fem
                 ot::TNPoint<typename TN::coordType,dim> pt(1, (coords[ii].getAnchor(ptCoords), ptCoords), coords[ii].getLevel());
 
                 unsigned int nodeRank = pt.get_lexNodeRank(subtreeRoot, polyOrder);
+                assert((leafEleFill[nodeRank]));
                 vecOut[ii] = leafEleBufferOut[nodeRank];
             }
 
@@ -469,6 +483,20 @@ namespace fem
             {
                 // Perform the transpose interpolation in the leaf buffer,
                 // and then accumulate directly into pVecOut.
+              
+                // TODO To do the interpolation and back-interpolation properly, should
+                // divide into separate cases by decomposing the topology. That is,
+                // do volumetric, face, and edge interpolations separately.
+                // Avoiding full 4D interpolations is likely to pay off in the high-order case,
+                // in terms of loads/stores.
+                //
+                // For now, because the logic is simpler, we will execute full
+                // 4D interpolations. To get this right it is necessary to nullify
+                // the contributions from non-hanging nodes before the back-interpolation.
+
+                for (unsigned int nr = 0; nr < nElePoints; nr++)
+                  if (leafEleFill[nr])
+                    leafEleBufferOut[nr] = 0.0;  // Nullify prior to back-interpolation.
 
                 // Transpose of interpolation.   (in==out is safe -- but not necessary).
                 refElement->template IKD_Child2Parent<dim>(leafEleBufferOut.data(), leafEleBufferOut.data(), subtreeRoot.getMortonIndex());
@@ -488,11 +516,7 @@ namespace fem
 
                     if (!leafEleFill[nodeRank])
                     {
-                      // TODO Initialize parent vector to 0 in parent-of-leaf, elimintate this if-else.
-                      if (!isFirstChild)
-                        pVecOut[ii] += leafEleBufferOut[nodeRank];
-                      else
-                        pVecOut[ii] = leafEleBufferOut[nodeRank];
+                      pVecOut[ii] += leafEleBufferOut[nodeRank];
                     }
                 }
             }
