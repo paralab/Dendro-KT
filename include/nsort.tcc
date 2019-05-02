@@ -908,20 +908,24 @@ namespace ot {
     // Counting/resolving/marking task.
     if (classify)
     {
-      // Count the domain boundary points.
+      // Classify and count the domain boundary points.
       //
       for (TNP *bdryIter = end - numDomBdryPoints; bdryIter < end; bdryIter++)
         bdryIter->set_isSelected(TNP::No);
       RankI numUniqBdryPoints = 0;
-      TNP *bdryIter = end - numDomBdryPoints;
-      TNP *firstCoarsest, *unused_firstFinest;
-      unsigned int unused_numDups;
-      while (bdryIter < end)
-      {
-        scanForDuplicates(bdryIter, end, firstCoarsest, unused_firstFinest, bdryIter, unused_numDups);
-        firstCoarsest->set_isSelected(TNP::Yes);
-        numUniqBdryPoints++;
-      }
+      //// TNP *bdryIter = end - numDomBdryPoints;
+      //// TNP *firstCoarsest, *unused_firstFinest;
+      //// unsigned int unused_numDups;
+      //// while (bdryIter < end)
+      //// {
+      ////   scanForDuplicates(bdryIter, end, firstCoarsest, unused_firstFinest, bdryIter, unused_numDups);
+      ////   firstCoarsest->set_isSelected(TNP::Yes);
+      ////   numUniqBdryPoints++;
+      //// }
+      // Yes, must also classify the boundary--must remove hanging nodes in dim > 2.
+      numUniqBdryPoints = (order <= 2 ?
+          resolveInterface_lowOrder(end - numDomBdryPoints, end, order) :
+          resolveInterface_highOrder(end - numDomBdryPoints, end, order));
 
       totalUniquePoints += numUniqBdryPoints;
 
@@ -1215,17 +1219,23 @@ namespace ot {
     }
 
     // Process own interface. (In this case hlev == sLev).
-    std::array<RankI, dim+1> hSplitters;
-    bucketByHyperplane(start + ancStart, start + ancEnd, sLev, hSplitters);
-    for (int d = 0; d < dim; d++)
-    {
-      locTreeSortAsPoints(
-          start + ancStart, hSplitters[d], hSplitters[d+1],
-          sLev, m_uiMaxDepth, pRot);
 
-      // The actual counting happens here.
-      numUniqPoints += resolveInterface(start + ancStart + hSplitters[d], start + ancStart + hSplitters[d+1], order);
-    }
+    // I guess we don't really need to split by hyperplane.... Works without it.
+    /// std::array<RankI, dim+1> hSplitters;
+    /// bucketByHyperplane(start + ancStart, start + ancEnd, sLev, hSplitters);
+    /// for (int d = 0; d < dim; d++)
+    /// {
+    ///   locTreeSortAsPoints(
+    ///       start + ancStart, hSplitters[d], hSplitters[d+1],
+    ///       sLev, m_uiMaxDepth, pRot);
+
+    ///   // The actual counting happens here.
+    ///   numUniqPoints += resolveInterface(start + ancStart + hSplitters[d], start + ancStart + hSplitters[d+1], order);
+    /// }
+
+    // Instead, we can just sort the whole interface at once.
+    locTreeSortAsPoints(start, ancStart, ancEnd, sLev, m_uiMaxDepth, pRot);
+    numUniqPoints += resolveInterface(start + ancStart, start + ancEnd, order);
 
     return numUniqPoints;
   }
@@ -1300,7 +1310,10 @@ namespace ot {
       else            // All same level and cell type. Test whether hanging or not.
       {
         unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
-        unsigned int expectedDups = 1u << (dim - cdim);
+        unsigned char bdim = firstCoarsest->get_cellType(0).get_dim_flag(); // Domain boundary test.
+        // If a dimension aligns with dom bdry, it necessarily aligns with grid at lev.
+        unsigned char numIntersecting = bdim - cdim; //(dim - cdim) - (dim - bdim);
+        unsigned int expectedDups = 1u << numIntersecting;
         if (numDups == expectedDups)
         {
           firstCoarsest->set_isSelected(TNP::Yes);
@@ -1319,6 +1332,8 @@ namespace ot {
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
+    //
+    // @author Masado Ishii
     //
     // The high-order counting method (order>=3) cannot assume that a winning node
     // will co-occur with finer level nodes in the same exact coordinate location.
