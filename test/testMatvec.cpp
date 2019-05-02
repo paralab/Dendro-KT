@@ -482,54 +482,21 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 
   if (rProc == 0)
   {
-    MPI_Status status;
-    par::Mpi_Sendrecv(&tree.back(), 1, 0, 0,
-        &treeBack, 1, nProc-1, 0,
-        comm, &status);
+    treeFront = tree.front();
 
-    treeFront = tree[0];
-
-    /// MPI_Recv(&treeBack, 1, par::Mpi_datatype<TN>::value(), nProc-1, 0, comm, &status);
-    // DEBUG
-    printf("treeFront==(%u)(%s) treeBack==(%u)(%s)\n",
-        treeFront.getLevel(), treeFront.getBase32Hex(m_uiMaxDepth).data(),
-        treeBack.getLevel(), treeBack.getBase32Hex(m_uiMaxDepth).data());
+    if (nProc > 1)
+    {
+      MPI_Status status;
+      MPI_Recv(&treeBack, 1, par::Mpi_datatype<TN>::value(), nProc-1, 0, comm, &status);
+    }
+    else
+      treeBack = tree.back();
   }
-  else if (rProc == nProc-1)
+  if (rProc == nProc-1 && nProc > 1)
   {
     MPI_Status status;
-    par::Mpi_Sendrecv(&tree.back(), 1, 0, 0,
-        &treeBack, 1, nProc-1, 0,
-        comm, &status);
-    ///   MPI_Send(&tree.back(), 1, par::Mpi_datatype<TN>::value(), 0, 0, comm);
+    MPI_Send(&tree.back(), 1, par::Mpi_datatype<TN>::value(), 0, 0, comm);
   }
-
-
-  /// // DEBUG
-  /// int glob_ii = 0;
-  /// for (unsigned int r = 0; r < nProc; r++)
-  /// {
-  ///   if (r == rProc)
-  ///     for (unsigned int ii = 0; ii < tree.size(); ii++, glob_ii++)
-  ///     {
-  ///       fprintf(stderr, "[%d] TreeNode (%3lu): (%u)|%s\n", rProc, glob_ii,
-  ///           tree[ii].getLevel(), tree[ii].getBase32Hex(m_uiMaxDepth).data());
-  ///     }
-
-  ///   par::Mpi_Bcast(&glob_ii, 1, r, comm);
-  /// }
-
-  /// //DEBUG - Make sure the tree reached depth.
-  /// unsigned long locTreeSz = tree.size(), globTreeSz;
-  /// unsigned int locTreeDepth = 0, globTreeDepth;
-  /// for (typename std::vector<TN>::const_iterator node = tree.begin(); node != tree.end(); node++)
-  ///   if (node->getLevel() > locTreeDepth)
-  ///     locTreeDepth = node->getLevel();
-  /// par::Mpi_Reduce(&locTreeSz, &globTreeSz, 1, MPI_SUM, 0, comm);
-  /// par::Mpi_Reduce(&locTreeDepth, &globTreeDepth, 1, MPI_MAX, 0, comm);
-  /// if (!rProc)
-  ///   printf("[Tree .size==%lu, .depth==%u]", globTreeSz, globTreeDepth);
-
 
 
   //
@@ -548,26 +515,6 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   unsigned long myNodeRank = octDA->getGlobalRankBegin();
   unsigned long globNumNodes = octDA->getGlobalNodeSz();
 
-
-  /// // DEBUG
-  /// for (unsigned int r = 0; r < nProc; r++)
-  /// {
-  ///   int sync;    par::Mpi_Bcast(&sync, 1, 0, comm);
-  ///   if (r != rProc)
-  ///     continue;
-
-  ///   for (unsigned int ii = 0; ii < myNodeSz; ii++)
-  ///   {
-  ///     const unsigned int sh = (m_uiMaxDepth - 4);
-  ///     bool highlighted = (tnCoords[ii].getX(0) == (2<<sh) && tnCoords[ii].getX(1) == (7<<sh) && tnCoords[ii].getX(2) == (0<<sh));
-  ///     if (highlighted) fprintf(stderr, CYN);
-  ///     fprintf(stderr, "[%d] Node (%3lu): (%u)|%s\n", rProc, ii+myNodeRank,
-  ///         tnCoords[ii].getLevel(), tnCoords[ii].getBase32Hex(m_uiMaxDepth).data());
-  ///     if (highlighted) fprintf(stderr, NRM);
-  ///   }
-  /// }
-
-
   // Initialize the in vector using twister.
   const double uiScale = pow(1.0 / (1u<<(4*sizeof(unsigned int))), 2);
   twister.discard(myNodeRank);
@@ -575,10 +522,10 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   twister.discard(globNumNodes - myNodeRank);
 
   // Distributed matvec.
-  if (!rProc) fprintf(stderr, "[dbg] Starting distributed matvec.\n");
+  /// if (!rProc) fprintf(stderr, "[dbg] Starting distributed matvec.\n");
   myConcreteFeMatrix<dim> mat(octDA, 1);
   mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
-  if (!rProc) fprintf(stderr, "[dbg] Finished distributed matvec.\n");
+  /// if (!rProc) fprintf(stderr, "[dbg] Finished distributed matvec.\n");
 
   // Set up communication to compare result to sequential run.
   std::vector<double> vecInSeqCopy;
@@ -616,22 +563,15 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   // Sequential matvec and comparison.
   if (!rProc)
   {
-    /// //DEBUG output - print all nodes.
-    /// for (unsigned int ii = 0; ii < globNumNodes; ii++)
-    /// {
-    ///   fprintf(stderr, "Node (%3u): (%u)|%s\n", ii, tnCoordsSeqCopy[ii].getLevel(), tnCoordsSeqCopy[ii].getBase32Hex(depth).data());
-    /// }
-
-
     std::vector<double> vecOutSeq(globNumNodes);
 
-    fprintf(stderr, "[dbg] Starting sequential matvec.\n");
+    /// fprintf(stderr, "[dbg] Starting sequential matvec.\n");
     using namespace std::placeholders;   // Convenience for std::bind().
     std::function<void(const double *, double *, double *, double)> eleOp =
         std::bind(&myConcreteFeMatrix<dim>::elementalMatVec, &mat, _1, _2, _3, _4);
     fem::matvec(&(*vecInSeqCopy.cbegin()), &(*vecOutSeq.begin()), &(*tnCoordsSeqCopy.cbegin()),
         globNumNodes, treeFront, treeBack, eleOp, 1.0, octDA->getReferenceElement());
-    fprintf(stderr, "[dbg] Finished sequential matvec.\n");
+    /// fprintf(stderr, "[dbg] Finished sequential matvec.\n");
 
     // Compare outputs of global and sequential matvec.
     for (unsigned int ii = 0; ii < globNumNodes; ii++)
