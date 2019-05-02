@@ -428,6 +428,9 @@ int testAdaptive(MPI_Comm comm, unsigned int depth, unsigned int order)
 //
 // testEqualSeq()
 //
+// Test:
+//   for DIM in {2,3,4} ; do for DEPTH in {2,3,4} ; do for ORDER in {1,2,3} ; do for NP in {1,2,3,7,9} ; do printf "NP==$NP dim==$DIM depth==$DEPTH order==$ORDER \t" && mpirun -np $NP ./tstMatvec $DIM $DEPTH $ORDER ; done ; done ; done ; done
+//
 template <unsigned int dim>
 int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 {
@@ -449,7 +452,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   const unsigned int numSources = fmax(2, (1u<<(dim*dim))/25) + 0.5;
   const double loadFlexibility = 0.1;
 
-  const double floatTol = 0.00001;
+  const double floatTol = 1e-12;
 
   std::vector<TN> sources;
   std::vector<TN> tree;
@@ -555,7 +558,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   MPI_Gatherv(&(*vecOut.cbegin()), myNodeSz, MPI_DOUBLE,
       &(*vecOutSeqCopy.begin()), &(*counts.cbegin()), &(*offsets.cbegin()), MPI_DOUBLE,
       0, comm);
-  MPI_Gatherv(tnCoords, myNodeSz, par::Mpi_datatype<TN>::value(),
+  MPI_Gatherv(tnCoords + octDA->getLocalNodeBegin(), myNodeSz, par::Mpi_datatype<TN>::value(),
       &(*tnCoordsSeqCopy.begin()), &(*counts.cbegin()), &(*offsets.cbegin()), par::Mpi_datatype<TN>::value(),
       0, comm);
 
@@ -575,6 +578,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 
     // Compare outputs of global and sequential matvec.
     for (unsigned int ii = 0; ii < globNumNodes; ii++)
+      /// if (!(vecOutSeq[ii] == vecOutSeqCopy[ii]))
       if (!(fabs(vecOutSeq[ii] - vecOutSeqCopy[ii]) < floatTol))
         testResult++;
   }
