@@ -209,7 +209,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   MPI_Comm_size(comm, &nProc);
 
   // The heavy lifting to globally sort/partition.
-  distTreePartition(points, loadFlexibility, comm);
+  distTreePartition(points, 0, loadFlexibility, comm);
 
   // Finish with a local TreeSort to ensure all points are in order.
   locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
@@ -227,6 +227,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 template<typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
+                          unsigned int noSplitThresh,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
@@ -265,6 +266,9 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   // As long as there are `pending splitters', we will refine their corresponding buckets.
   // Initially all splitters are pending.
   std::vector<RankI> splitters(nProc, 0);
+  std::vector<LevI> finalSplitterLevels(nProc, 0);
+  typedef struct { RankI globSz; RankI locEnd; } splitterBucketGridT;
+  std::vector<splitterBucketGridT> splitterBucketGrid(nProc * (m_uiMaxDepth+1));
   BarrierQueue<RankI> pendingSplitterIdx(nProc);
   for (RankI sIdx = 0; sIdx < nProc; sIdx++)
     pendingSplitterIdx.q[sIdx] = sIdx;
@@ -364,12 +368,14 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
             // Too far. Mark bucket for refinment. Send splitter back to queue.
             selectBucket = true;
             pendingSplitterIdx.enqueue(r);
-            splitters[r] = refBkt.end;      // Will be overwritten. Uncomment if want to see progress.
+            finalSplitterLevels[r] = refBkt.lev;      // Will be overwritten. Uncomment if want to see progress.
+            splitterBucketGrid[r * m_uiMaxDepth + refBkt.lev] = {bktCountG, refBkt.end};
           }
           else
           {
             // Good enough. Accept the bucket by recording the local splitter.
-            splitters[r] = refBkt.end;
+            finalSplitterLevels[r] = refBkt.lev;
+            splitterBucketGrid[r * m_uiMaxDepth + refBkt.lev] = {bktCountG, refBkt.end};
           }
           DBG_splitterIteration[r]++;   //DEBUG
         }
@@ -403,6 +409,31 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   ///   std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
   /// std::cout << spaces.data() << "------------------------------------\n";
   /// }
+
+  //
+  // Adjust splitters to respect noSplitThresh.
+  //
+  // Look for a level such that 0 < globSz[lev] <= noSplitThresh and globSz[lev-1] > noSplitThresh.
+  // If such a level exists, then set final level to lev-1.
+  for (int r = 0; r < nProc; r++)
+  {
+    LevI lLev = finalSplitterLevels[r];
+    LevI pLev = (lLev > 0 ? lLev - 1 : lLev);
+
+    if (0 < splitterBucketGrid[r * m_uiMaxDepth + lLev].globSz)
+    {
+      while (pLev > 0 && splitterBucketGrid[r * m_uiMaxDepth + pLev].globSz <= noSplitThresh)
+        pLev--;
+
+      if (splitterBucketGrid[r * m_uiMaxDepth + lLev].globSz <= noSplitThresh &&
+          splitterBucketGrid[r * m_uiMaxDepth + pLev].globSz > noSplitThresh)
+        finalSplitterLevels[r] = pLev;
+    }
+  }
+
+  // The output of the bucketing is a list of splitters marking ends of partition.
+  for (int r = 0; r < nProc; r++)
+    splitters[r] = splitterBucketGrid[r * m_uiMaxDepth + finalSplitterLevels[r]].locEnd;
 
   //
   // All to all exchange of the points arrays.
@@ -608,7 +639,7 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
   tree.clear();
 
   // The heavy lifting to globally sort/partition.
-  distTreePartition(points, loadFlexibility, comm);
+  distTreePartition(points, maxPtsPerRegion, loadFlexibility, comm);
 
   // Instead of locally sorting, locally complete the tree.
   // Since we don't have info about the global buckets, construct from the top.
@@ -624,13 +655,28 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
   // We have now introduced duplicate sections of subtrees at the
   // edges of the partition.
 
+  distRemoveDuplicates(tree, loadFlexibility, false, comm);
+}
+
+
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree, double loadFlexibility, bool strict, MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
   // For now:
   // Rather than do a complicated elimination of duplicates,
   // perform another global sort, removing duplicates locally, and then
   // eliminate at most one duplicate from the end of each processor's partition.
 
   distTreeSort(tree, loadFlexibility, comm);
-  locRemoveDuplicates(tree);
+  if (!strict)
+    locRemoveDuplicates(tree);
+  else
+    locRemoveDuplicatesStrict(tree);
 
   // Some processors could end up being empty, so exclude them from communicator.
   MPI_Comm nonemptys;
@@ -819,8 +865,9 @@ SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
 
   distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
   propagateNeighbours(tree);
+  distRemoveDuplicates(tree, loadFlexibility, true, comm);   // Duplicate neighbours could cause over-refinement.
   std::vector<TreeNode<T,D>> newTree;
-  distTreeConstruction(tree, newTree, 1, loadFlexibility, comm);
+  distTreeConstruction(tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
 
   tree = newTree;
 }

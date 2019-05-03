@@ -237,9 +237,17 @@ struct SFC_Tree
   // If it is NULL then it is unused.
   // If it is not NULL then it is cleared and filled with the output data.
   //
+  // @param noSplitThresh takes precedence over loadFlexibility,
+  //        such that, for any non-empty bucket of global contents <= noSplitThresh
+  //        whose parent has global contents > noSplitThresh,
+  //        the parent will not be split across processors, but will
+  //        land completely onto a single processor.
+  //        To ignore this parameter, set noSplitThresh=0.
+  //
   // Notes:
   //   - points will be replaced/resized with globally sorted data.
   static void distTreePartition(std::vector<TreeNode<T,D>> &points,
+                           unsigned int noSplitThresh,
                            double loadFlexibility,
                            MPI_Comm comm);
 
@@ -271,6 +279,11 @@ struct SFC_Tree
                                    std::vector<TreeNode<T,D>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
+                                   MPI_Comm comm);
+
+  static void distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree,
+                                   double loadFlexibility,
+                                   bool strict,
                                    MPI_Comm comm);
 
   // Removes duplicate/ancestor TreeNodes from a sorted list of TreeNodes.
