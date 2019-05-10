@@ -267,8 +267,7 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   // Initially all splitters are pending.
   std::vector<RankI> splitters(nProc, 0);
   std::vector<LevI> finalSplitterLevels(nProc, 0);
-  typedef struct { RankI globSz; RankI locEnd; } splitterBucketGridT;
-  std::vector<splitterBucketGridT> splitterBucketGrid(nProc * (m_uiMaxDepth+1));
+  std::vector<RankI> splitterBucketGrid(nProc * (m_uiMaxDepth+1));
   BarrierQueue<RankI> pendingSplitterIdx(nProc);
   for (RankI sIdx = 0; sIdx < nProc; sIdx++)
     pendingSplitterIdx.q[sIdx] = sIdx;
@@ -369,13 +368,13 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
             selectBucket = true;
             pendingSplitterIdx.enqueue(r);
             finalSplitterLevels[r] = refBkt.lev;      // Will be overwritten. Uncomment if want to see progress.
-            splitterBucketGrid[r * m_uiMaxDepth + refBkt.lev] = {bktCountG, refBkt.end};
+            splitterBucketGrid[refBkt.lev * nProc + r] = refBkt.end;
           }
           else
           {
             // Good enough. Accept the bucket by recording the local splitter.
             finalSplitterLevels[r] = refBkt.lev;
-            splitterBucketGrid[r * m_uiMaxDepth + refBkt.lev] = {bktCountG, refBkt.end};
+            splitterBucketGrid[refBkt.lev * nProc + r] = refBkt.end;
           }
           DBG_splitterIteration[r]++;   //DEBUG
         }
@@ -410,6 +409,32 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   /// std::cout << spaces.data() << "------------------------------------\n";
   /// }
 
+  // TODO might be able to reduce communication time here by only using relevant levels?
+  std::vector<unsigned long> partitionCountsL(nProc*(m_uiMaxDepth+1));
+  std::vector<unsigned long> partitionCountsG(nProc*(m_uiMaxDepth+1));
+  for (unsigned l = 0; l <= m_uiMaxDepth; l++)
+  {
+    unsigned long prev = 0;
+    for (int r = 0; r < nProc; r++)
+    {
+      partitionCountsL[l * nProc + r] = splitterBucketGrid[l * nProc + r] - prev;
+      prev = splitterBucketGrid[l * nProc + r];
+    }
+  }
+  par::Mpi_Allreduce<unsigned long>(&(*partitionCountsL.begin()), &(*partitionCountsG.begin()), nProc*(m_uiMaxDepth+1), MPI_SUM, comm);
+
+  /// static int dbgRound = 0;
+  /// //DEBUG
+  /// for (int r = 0; r < nProc; r++)
+  /// {
+  ///   for (unsigned int lev = 0; lev <= m_uiMaxDepth; lev++)
+  ///   {
+  ///     auto &sb = splitterBucketGrid[lev * nProc + r];
+  ///     fprintf(stderr, "<%d> [%d] (%d,%02u): {%lu,%u}\n", dbgRound, rProc, r, lev, partitionCountsG[lev * nProc + r], sb);
+  ///   }
+  /// }
+  /// dbgRound++;
+
   //
   // Adjust splitters to respect noSplitThresh.
   //
@@ -420,20 +445,20 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
     LevI lLev = finalSplitterLevels[r];
     LevI pLev = (lLev > 0 ? lLev - 1 : lLev);
 
-    if (0 < splitterBucketGrid[r * m_uiMaxDepth + lLev].globSz)
+    if (0 < partitionCountsG[lLev * nProc + r])
     {
-      while (pLev > 0 && splitterBucketGrid[r * m_uiMaxDepth + pLev].globSz <= noSplitThresh)
+      while (pLev > 0 && partitionCountsG[pLev * nProc + r] <= noSplitThresh)
         pLev--;
 
-      if (splitterBucketGrid[r * m_uiMaxDepth + lLev].globSz <= noSplitThresh &&
-          splitterBucketGrid[r * m_uiMaxDepth + pLev].globSz > noSplitThresh)
+      if (partitionCountsG[lLev * nProc + r] <= noSplitThresh &&
+          partitionCountsG[pLev * nProc + r] > noSplitThresh)
         finalSplitterLevels[r] = pLev;
     }
   }
 
   // The output of the bucketing is a list of splitters marking ends of partition.
   for (int r = 0; r < nProc; r++)
-    splitters[r] = splitterBucketGrid[r * m_uiMaxDepth + finalSplitterLevels[r]].locEnd;
+    splitters[r] = splitterBucketGrid[finalSplitterLevels[r] * nProc + r];
 
   //
   // All to all exchange of the points arrays.
@@ -446,6 +471,10 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   RankI sPrev = 0;
   for (RankI s : splitters)     // Sequential counting and displacement.
   {
+    //DEBUG
+    if ((long) s - (long) sPrev < 0)
+      fprintf(stderr, "[%d] Negative count: %u - %u\n", rProc, s, sPrev);
+
     sendDspl.push_back(sPrev);
     sendCnt.push_back(s - sPrev);
     sPrev = s;
