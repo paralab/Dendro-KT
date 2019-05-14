@@ -449,7 +449,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   using TN = ot::TreeNode<unsigned int, dim>;
 
   const unsigned int domMask = (1u<<m_uiMaxDepth) - 1;
-  const unsigned int numSources = fmax(2, (1u<<(dim*dim))/25) + 0.5;
+  const unsigned int numSources = fmax(2, (1u<<((dim-1)*depth))/10) + 0.5;
   const double loadFlexibility = 0.1;
 
   const double floatTol = 1e-12;
@@ -472,9 +472,11 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
     {
       std::generate_n(ptCoords.data(), dim, [&twister, domMask]{return twister() & domMask;});
       sources.emplace_back(ptCoords, depth);
+      /// fprintf(stderr, "Rank 0 pushed (%u)|%s\n", sources.back().getLevel(), sources.back().getBase32Hex(depth+order-1).data());
 
       ptCoords[0] = ptCoords[0] ^ (1u << (m_uiMaxDepth - depth));  // Force tree to depth.
       sources.emplace_back(ptCoords, depth);
+      /// fprintf(stderr, "Rank 0 pushed (%u)|%s\n", sources.back().getLevel(), sources.back().getBase32Hex(depth+order-1).data());
     }
   }
   else
@@ -482,6 +484,20 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
     twister.discard(dim*numSources);
   }
   ot::SFC_Tree<TNT, dim>::distTreeBalancing(sources, tree, 1, loadFlexibility, comm);
+
+  /// //DEBUG
+  /// for (unsigned int r = 0; r < nProc; r++)
+  /// {
+  ///   int sync;
+  ///   par::Mpi_Bcast(&sync, 1, 0, comm);
+
+  ///   if (r != rProc)
+  ///     continue;
+
+  ///   fprintf(stderr, "Begin [%d].\n", rProc);
+  ///   for (unsigned int ii = 0; ii < tree.size(); ii++)
+  ///     fprintf(stderr, "[%d] treeNode %u: (%u)|%s\n", rProc, ii, tree[ii].getLevel(), tree[ii].getBase32Hex(depth + order - 1).data());
+  /// }
 
   if (rProc == 0)
   {
