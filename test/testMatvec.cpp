@@ -492,22 +492,41 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   locTreeSz = tree.size();
   par::Mpi_Reduce(&locTreeSz, &globTreeSz, 1, MPI_SUM, 0, comm);
 
-  if (rProc == 0)
+  // Get the front and back of the tree onto proc 0 for sequential matvec.
+  // In case some procs are empty, need to find out where front and back live.
+  // Make MPI do this for us by splitting the communicator.
+  MPI_Comm nonemptys;
+  MPI_Comm_split(comm, (tree.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
+  MPI_Status statusFront, statusBack;
+  if (tree.size() > 0)
   {
-    treeFront = tree.front();
+    int nNE, rNE;
+    MPI_Comm_rank(nonemptys, &rNE);
+    MPI_Comm_size(nonemptys, &nNE);
 
-    if (nProc > 1 && locTreeSz < globTreeSz)
+    if (rNE == 0)  // Need to send or acquire treeFront.
     {
-      MPI_Status status;
-      MPI_Recv(&treeBack, 1, par::Mpi_datatype<TN>::value(), nProc-1, 0, comm, &status);
+      if (rProc != 0)
+        MPI_Send(&tree.front(), 1, par::Mpi_datatype<TN>::value(), 0, 0, comm);
+      else
+        treeFront = tree.front();
     }
-    else
-      treeBack = tree.back();
+
+    if (rNE == nNE-1)  // Need to send or acquire treeBack.
+    {
+      if (rProc != 0)
+        MPI_Send(&tree.back(), 1, par::Mpi_datatype<TN>::value(), 0, 1, comm);
+      else
+        treeBack = tree.back();
+    }
+
+    if (rProc == 0 && rNE < nNE-1)  // Need to receive back.
+      MPI_Recv(&treeBack, 1, par::Mpi_datatype<TN>::value(), MPI_ANY_SOURCE, 1, comm, &statusBack);
   }
-  if (rProc == nProc-1 && nProc > 1 && locTreeSz > 0)
+  else if (rProc == 0)  // Must receive front and back.
   {
-    MPI_Status status;
-    MPI_Send(&tree.back(), 1, par::Mpi_datatype<TN>::value(), 0, 0, comm);
+    MPI_Recv(&treeFront, 1, par::Mpi_datatype<TN>::value(), MPI_ANY_SOURCE, 0, comm, &statusFront);
+    MPI_Recv(&treeBack, 1, par::Mpi_datatype<TN>::value(), MPI_ANY_SOURCE, 1, comm, &statusBack);
   }
 
 
