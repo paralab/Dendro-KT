@@ -478,6 +478,9 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
       sources.emplace_back(ptCoords, depth);
       /// fprintf(stderr, "Rank 0 pushed (%u)|%s\n", sources.back().getLevel(), sources.back().getBase32Hex(depth+order-1).data());
     }
+
+    ot::SFC_Tree<TNT, dim>::locTreeSort(sources.data(), 0, sources.size(), 1, m_uiMaxDepth, 0);
+    ot::SFC_Tree<TNT, dim>::locRemoveDuplicatesStrict(sources);
   }
   else
   {
@@ -485,8 +488,8 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   }
   ot::SFC_Tree<TNT, dim>::distTreeBalancing(sources, tree, 1, loadFlexibility, comm);
 
-  if (!rProc) fprintf(stderr, "Sources:\n");
-  par::dbg_printTNList<TN>(&(*sources.cbegin()), sources.size(), depth + 2*order - 1, comm);
+  /// if (!rProc) fprintf(stderr, "Sources:\n");
+  /// par::dbg_printTNList<TN>(&(*sources.cbegin()), sources.size(), depth + 2*order - 1, comm);
   if (!rProc) fprintf(stderr, "\nTree:\n");
   par::dbg_printTNList<TN>(&(*tree.cbegin()), tree.size(), depth + 2*order - 1, comm);
 
