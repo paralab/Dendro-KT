@@ -894,7 +894,7 @@ SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
 
   distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
   propagateNeighbours(tree);
-  distRemoveDuplicates(tree, loadFlexibility, false, comm);   // Duplicate neighbours could cause over-refinement.
+  distRemoveDuplicates(tree, loadFlexibility, true, comm);   // Duplicate neighbours could cause over-refinement.
   std::vector<TreeNode<T,D>> newTree;
   distTreeConstruction(tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
 
