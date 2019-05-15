@@ -893,11 +893,8 @@ SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
   MPI_Comm_size(comm, &nProc);
 
   distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
-  if (!rProc) fprintf(stderr, "After first distTreeConstruction():\n"); par::dbg_printTNList(tree.data(), tree.size(), 0, comm);
   propagateNeighbours(tree);
-  if (!rProc) fprintf(stderr, "After propagateNeighbours():\n"); par::dbg_printTNList(tree.data(), tree.size(), 0, comm);
-  distRemoveDuplicates(tree, loadFlexibility, true, comm);   // Duplicate neighbours could cause over-refinement.
-  if (!rProc) fprintf(stderr, "After distRemoveDuplicates:\n"); par::dbg_printTNList(tree.data(), tree.size(), 0, comm);
+  distRemoveDuplicates(tree, loadFlexibility, false, comm);   // Duplicate neighbours could cause over-refinement.
   std::vector<TreeNode<T,D>> newTree;
   distTreeConstruction(tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
 
