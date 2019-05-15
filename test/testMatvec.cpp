@@ -488,16 +488,15 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   }
   ot::SFC_Tree<TNT, dim>::distTreeBalancing(sources, tree, 1, loadFlexibility, comm);
 
-  /// if (!rProc) fprintf(stderr, "Sources:\n");
-  /// par::dbg_printTNList<TN>(&(*sources.cbegin()), sources.size(), depth + 2*order - 1, comm);
-  if (!rProc) fprintf(stderr, "\nTree:\n");
-  par::dbg_printTNList<TN>(&(*tree.cbegin()), tree.size(), depth + 2*order - 1, comm);
+  unsigned long locTreeSz, globTreeSz;
+  locTreeSz = tree.size();
+  par::Mpi_Reduce(&locTreeSz, &globTreeSz, 1, MPI_SUM, 0, comm);
 
   if (rProc == 0)
   {
     treeFront = tree.front();
 
-    if (nProc > 1)
+    if (nProc > 1 && locTreeSz < globTreeSz)
     {
       MPI_Status status;
       MPI_Recv(&treeBack, 1, par::Mpi_datatype<TN>::value(), nProc-1, 0, comm, &status);
@@ -505,7 +504,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
     else
       treeBack = tree.back();
   }
-  if (rProc == nProc-1 && nProc > 1)
+  if (rProc == nProc-1 && nProc > 1 && locTreeSz > 0)
   {
     MPI_Status status;
     MPI_Send(&tree.back(), 1, par::Mpi_datatype<TN>::value(), 0, 0, comm);
