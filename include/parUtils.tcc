@@ -1862,5 +1862,30 @@ namespace par {
     scratch_list.clear();
   }//end function
 
+
+  template <class TN>
+  void dbg_printTNList(const TN *tnList, unsigned int listSz, unsigned int lev, MPI_Comm comm)
+  {
+    int rProc, nProc;
+    MPI_Comm_rank(comm, &rProc);
+    MPI_Comm_size(comm, &nProc);
+
+    for (unsigned int r = 0; r < nProc; r++)
+    {
+      int sync;
+      Mpi_Bcast(&sync, 1, r, comm);
+
+      if (r != rProc)
+        continue;
+
+      fprintf(stderr, "Begin [%d].\n", rProc);
+      for (unsigned int ii = 0; ii < listSz; ii++)
+        fprintf(stderr, "[%d] treeNode %u: (%u)|%s\n", rProc, ii, tnList[ii].getLevel(), tnList[ii].getBase32Hex(lev).data());
+    }
+
+    int sync;
+    Mpi_Bcast(&sync, 1, nProc-1, comm);
+  }
+
 }//end namespace
 

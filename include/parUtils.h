@@ -554,6 +554,17 @@ namespace par {
   template <typename T>
     void bitonicSort(std::vector<T> & in, MPI_Comm comm) ;
 
+
+  /**
+   * @brief Print a distributed list of treeNodes.
+   * @param tnList Pointer to the list of treeNodes.
+   * @param listSz Size of the list.
+   * @param lev Level for printing. Set to 0 to print native levels.
+   * @param comm The communicator to synchronize.
+   */
+  template <class TN>
+  void dbg_printTNList(const TN *tnList, unsigned int listSz, unsigned int lev, MPI_Comm comm);
+
 }//end namespace
 
 #ifdef USE_OLD_SORT

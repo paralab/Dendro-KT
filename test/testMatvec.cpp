@@ -485,19 +485,10 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   }
   ot::SFC_Tree<TNT, dim>::distTreeBalancing(sources, tree, 1, loadFlexibility, comm);
 
-  /// //DEBUG
-  /// for (unsigned int r = 0; r < nProc; r++)
-  /// {
-  ///   int sync;
-  ///   par::Mpi_Bcast(&sync, 1, 0, comm);
-
-  ///   if (r != rProc)
-  ///     continue;
-
-  ///   fprintf(stderr, "Begin [%d].\n", rProc);
-  ///   for (unsigned int ii = 0; ii < tree.size(); ii++)
-  ///     fprintf(stderr, "[%d] treeNode %u: (%u)|%s\n", rProc, ii, tree[ii].getLevel(), tree[ii].getBase32Hex(depth + order - 1).data());
-  /// }
+  if (!rProc) fprintf(stderr, "Sources:\n");
+  par::dbg_printTNList<TN>(&(*sources.cbegin()), sources.size(), depth + 2*order - 1, comm);
+  if (!rProc) fprintf(stderr, "\nTree:\n");
+  par::dbg_printTNList<TN>(&(*tree.cbegin()), tree.size(), depth + 2*order - 1, comm);
 
   if (rProc == 0)
   {
