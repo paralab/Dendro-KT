@@ -128,7 +128,7 @@ namespace ot
 
           // Find offset into the global array.
           unsigned long locSz = m_uiLocalNodalSz;
-          par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, comm);
+          par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiActiveComm);
           m_uiGlobalRankBegin -= locSz;
 
           // Create vector of node coordinates, with ghost segments allocated.
@@ -166,10 +166,6 @@ namespace ot
           m_uiPostNodeEnd    = 0;
 
           m_uiGlobalRankBegin = 0;
-
-          // Splitters for distributed exchanges.
-          m_treePartFront = inTree[0];
-          m_treePartBack = inTree[nEle-1];
         }
     }
 
