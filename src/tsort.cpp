@@ -732,7 +732,7 @@ SFC_Tree<T,D>:: distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree, double lo
     // If so, delete our end.
     if (rNE > 0)
       MPI_Wait(&request, &status);
-    if (rNE < nNE-1 && (tree.back() == nextBegin || tree.back().isAncestor(nextBegin)))
+    if (rNE < nNE-1 && (tree.back() == nextBegin || !strict && tree.back().isAncestor(nextBegin)))
       tree.pop_back();
   }
 }
