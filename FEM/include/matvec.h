@@ -234,6 +234,16 @@ namespace fem
       // Initialize output vector to 0.
       std::fill(vecOut, vecOut + sz, 0);
 
+      /// //DEBUG
+      /// fprintf(stderr, "\nBegin Matvec.\n");
+      /// for (unsigned int ii = 0; ii < sz; ii++)
+      /// {
+      ///   fprintf(stderr, "{%02u} (%u)|%s|%u\n", ii, coords[ii].getLevel(), coords[ii].getBase32Hex().data(),
+      ///       ot::TNPoint<typename TN::coordType,TN::coordDim>(1, {coords[ii].getX(0), coords[ii].getX(1)}, coords[ii].getLevel()).get_lexNodeRank(coords[ii].getParent().getChildMorton(coords[ii].getMortonIndex()), (unsigned int) refElement->getOrder()));
+      ///   if ((ii%8) == 7)
+      ///     fprintf(stderr, "\n");
+      /// }
+
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
       matvec_rec<T,TN,RE>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, scale, refElement, nullptr, nullptr, nullptr, 0, true);
