@@ -268,6 +268,7 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   std::vector<RankI> splitters(nProc, 0);
   std::vector<LevI> finalSplitterLevels(nProc, 0);
   std::vector<RankI> splitterBucketGrid(nProc * (m_uiMaxDepth+1));
+  std::vector<unsigned long> splitterCountsGrid(nProc * (m_uiMaxDepth+1));
   BarrierQueue<RankI> pendingSplitterIdx(nProc);
   for (RankI sIdx = 0; sIdx < nProc; sIdx++)
     pendingSplitterIdx.q[sIdx] = sIdx;
@@ -296,7 +297,6 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   RankI sizeG, sizeL = points.size();
   /// sizeG = sizeL;   // Proxy for summing, to test with one proc.
   par::Mpi_Allreduce<RankI>(&sizeL, &sizeG, 1, MPI_SUM, comm);
-
 
   /// //TEST  print all ideal splitters pictorally
   /// RankI oldLoc = 0;
@@ -369,12 +369,14 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
             pendingSplitterIdx.enqueue(r);
             finalSplitterLevels[r] = refBkt.lev;      // Will be overwritten. Uncomment if want to see progress.
             splitterBucketGrid[refBkt.lev * nProc + r] = refBkt.end;
+            splitterCountsGrid[refBkt.lev * nProc + r] = bktCountG;
           }
           else
           {
             // Good enough. Accept the bucket by recording the local splitter.
             finalSplitterLevels[r] = refBkt.lev;
             splitterBucketGrid[refBkt.lev * nProc + r] = refBkt.end;
+            splitterCountsGrid[refBkt.lev * nProc + r] = bktCountG;
           }
           DBG_splitterIteration[r]++;   //DEBUG
         }
@@ -409,28 +411,54 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   /// std::cout << spaces.data() << "------------------------------------\n";
   /// }
 
-  // TODO might be able to reduce communication time here by only using relevant levels?
-  std::vector<unsigned long> partitionCountsL(nProc*(m_uiMaxDepth+1));
-  std::vector<unsigned long> partitionCountsG(nProc*(m_uiMaxDepth+1));
-  for (unsigned l = 0; l <= m_uiMaxDepth; l++)
-  {
-    unsigned long prev = 0;
-    for (int r = 0; r < nProc; r++)
-    {
-      partitionCountsL[l * nProc + r] = splitterBucketGrid[l * nProc + r] - prev;
-      prev = splitterBucketGrid[l * nProc + r];
-    }
-  }
-  par::Mpi_Allreduce<unsigned long>(&(*partitionCountsL.begin()), &(*partitionCountsG.begin()), nProc*(m_uiMaxDepth+1), MPI_SUM, comm);
+  /// // TODO might be able to reduce communication time here by only using relevant levels?
+  /// std::vector<unsigned long> partitionCountsL(nProc*(m_uiMaxDepth+1));
+  /// std::vector<unsigned long> partitionCountsG(nProc*(m_uiMaxDepth+1));
+  /// for (unsigned l = 0; l <= m_uiMaxDepth; l++)
+  /// {
+  ///   unsigned long prev = 0;
+  ///   for (int r = 0; r < nProc; r++)
+  ///   {
+  ///     partitionCountsL[l * nProc + r] = splitterBucketGrid[l * nProc + r] - prev;
+  ///     prev = splitterBucketGrid[l * nProc + r];
+  ///   }
+  /// }
+  /// par::Mpi_Allreduce<unsigned long>(&(*partitionCountsL.begin()), &(*partitionCountsG.begin()), nProc*(m_uiMaxDepth+1), MPI_SUM, comm);
+
+  /// //DEBUG
+  /// if (!rProc)
+  /// {
+  ///   fprintf(stderr, "[0] --- Points ---\n");
+  ///   for (unsigned int ii = 0; ii < points.size(); ii++)
+  ///     fprintf(stderr, "(%u)%s\n", points[ii].getLevel(), points[ii].getBase32Hex(3).data());
+
+  ///   fprintf(stderr, "[0] --- Splitters ---\n");
+  ///   for (int r = 0; r < nProc; r++)
+  ///   {
+  ///     fprintf(stderr, "|%u",
+  ///         splitterBucketGrid[ finalSplitterLevels[r] * nProc + r ]);
+  ///   }
+  ///   fprintf(stderr, "|\n");
+  /// }
 
   /// static int dbgRound = 0;
   /// //DEBUG
-  /// for (int r = 0; r < nProc; r++)
+  /// if (!rProc)
   /// {
-  ///   for (unsigned int lev = 0; lev <= m_uiMaxDepth; lev++)
+  ///   fprintf(stderr, "[0] --- finalSplitterLevels ---\n");
+  ///   for (int r = 0; r < nProc; r++)
+  ///     fprintf(stderr, "%u ", finalSplitterLevels[r]);
+  ///   fprintf(stderr, "\n");
+
+  ///   fprintf(stderr, "[0] --- splitterBucketGrid ---\n");
+  ///   for (int r = 0; r < nProc; r++)
   ///   {
-  ///     auto &sb = splitterBucketGrid[lev * nProc + r];
-  ///     fprintf(stderr, "<%d> [%d] (%d,%02u): {%lu,%u}\n", dbgRound, rProc, r, lev, partitionCountsG[lev * nProc + r], sb);
+  ///     for (unsigned int lev = 0; lev <= m_uiMaxDepth; lev++)
+  ///     {
+  ///       auto &sb = splitterBucketGrid[lev * nProc + r];
+  ///       /// fprintf(stderr, "<%d> [%d] (%d,%02u): {%lu,%u}\n", dbgRound, rProc, r, lev, partitionCountsG[lev * nProc + r], sb);
+  ///       fprintf(stderr, "<%d> [%d] (%d,%02u): {%lu,%u}\n", dbgRound, rProc, r, lev, splitterCountsGrid[lev * nProc + r], sb);
+  ///     }
   ///   }
   /// }
   /// dbgRound++;
@@ -445,16 +473,25 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
     LevI lLev = finalSplitterLevels[r];
     LevI pLev = (lLev > 0 ? lLev - 1 : lLev);
 
-    if (0 < partitionCountsG[lLev * nProc + r])
+    if (0 < splitterCountsGrid[lLev * nProc + r])
     {
-      while (pLev > 0 && partitionCountsG[pLev * nProc + r] <= noSplitThresh)
+      while (pLev > 0 && splitterCountsGrid[pLev * nProc + r] <= noSplitThresh)
         pLev--;
 
-      if (partitionCountsG[lLev * nProc + r] <= noSplitThresh &&
-          partitionCountsG[pLev * nProc + r] > noSplitThresh)
+      if (splitterCountsGrid[lLev * nProc + r] <= noSplitThresh &&
+          splitterCountsGrid[pLev * nProc + r] > noSplitThresh)
         finalSplitterLevels[r] = pLev;
     }
   }
+
+  /// //DEBUG
+  /// if (!rProc)
+  /// {
+  ///   fprintf(stderr, "[0] --- New finalSplitterLevels ---\n");
+  ///   for (int r = 0; r < nProc; r++)
+  ///     fprintf(stderr, "%u ", finalSplitterLevels[r]);
+  ///   fprintf(stderr, "\n");
+  /// }
 
   // The output of the bucketing is a list of splitters marking ends of partition.
   for (int r = 0; r < nProc; r++)
