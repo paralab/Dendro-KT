@@ -23,7 +23,7 @@ namespace ot
 {
 
 using LevI   = unsigned int;
-using RankI  = unsigned int;
+using RankI  = DendroIntL;
 using RotI   = int;
 using ChildI = char;
 
