@@ -236,7 +236,7 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
 
   // The goal of this function, as explained in Fernando and Sundar's paper,
   // is to refine the list of points into finer sorted buckets until
-  // the balancing criterion has been met. Therefore the hyperoctree is
+  // the load-balancing criterion has been met. Therefore the hyperoctree is
   // traversed in breadth-first order.
   //
   // I've considered two ways to do a breadth first traversal:
@@ -254,7 +254,10 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
 
   if (nProc == 1)
   {
-    locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
+    // Note: distTreePartition() is only responsible for partitioning the points,
+    // which is a no-op with nProc==1.
+
+    /// locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
     return;
   }
 
@@ -263,249 +266,177 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 
   // The outcome of the BFT will be a list of splitters, i.e. refined buckets.
-  // As long as there are `pending splitters', we will refine their corresponding buckets.
-  // Initially all splitters are pending.
-  std::vector<RankI> splitters(nProc, 0);
-  std::vector<LevI> finalSplitterLevels(nProc, 0);
-  std::vector<RankI> splitterBucketGrid(nProc * (m_uiMaxDepth+1));
-  std::vector<unsigned long> splitterCountsGrid(nProc * (m_uiMaxDepth+1));
-  BarrierQueue<RankI> pendingSplitterIdx(nProc);
-  for (RankI sIdx = 0; sIdx < nProc; sIdx++)
-    pendingSplitterIdx.q[sIdx] = sIdx;
-  pendingSplitterIdx.reset_barrier();
+  std::vector<unsigned int> splitters(nProc, 0);
 
-  //
-  // Phase 1: move down the levels until we have enough buckets
+  std::vector<BucketInfo<RankI>> newBuckets, allBuckets, mergedBuckets;
+  std::vector<RankI> newCountsL, newCountsG, allCountsG, allCountsGScan, mergedCountsG;
+  std::vector<RankI> splitBucketIndex;
+
+  // TODO a more efficient way to do splitterBucketGrid when nProc is large.
+  
+  // Phase 1: move down the levels until we have roughly enough buckets
   //   to test our load-balancing criterion.
-  BarrierQueue<BucketInfo<RankI>> bftQueue;
   const int initNumBuckets = nProc;
   const BucketInfo<RankI> rootBucket = {0, 0, 0, (RankI) points.size()};
-  bftQueue.q.push_back(rootBucket);
+  newBuckets.push_back(rootBucket);
         // No-runaway, in case we run out of points.
         // It is `<' because refining m_uiMaxDepth would make (m_uiMaxDepth+1).
-  while (bftQueue.q.size() < initNumBuckets && bftQueue.q[0].lev < m_uiMaxDepth)
+
+  // @masado: There is a condition that you need to handle, what is initNumBuckets cannot be reached my the m_uiMaxDepth. 
+  // May be you need to perform, communicator split, or something. This can cause problems for larger nProc. - Milinda.  
+  while (newBuckets.size() < initNumBuckets && newBuckets[0].lev < m_uiMaxDepth)
   {
-    treeBFTNextLevel(&(*points.begin()), bftQueue.q);
+    // Prep for phase 2.
+    splitBucketIndex.resize(newBuckets.size());
+    std::iota(splitBucketIndex.begin(), splitBucketIndex.end(), 0);
+    allBuckets = newBuckets;
+
+    // Actual work of phase 1.
+    treeBFTNextLevel(&(*points.begin()), newBuckets);
   }
   // Remark: Due to the no-runaway clause, we are not guaranteed
-  // that bftQueue actually holds `initNumBuckets' buckets.
+  // that bftQueue actually holds `initNumBuckets' buckets. Is this important?
+  // @masado : You need to handdle this case, - Milinda. 
+  // TODO what are the repercussions of having too few buckets?
 
-  //
   // Phase 2: Count bucket sizes, communicate bucket sizes,
   //   test load balance, select buckets and refine, repeat.
-
   RankI sizeG, sizeL = points.size();
-  /// sizeG = sizeL;   // Proxy for summing, to test with one proc.
   par::Mpi_Allreduce<RankI>(&sizeL, &sizeG, 1, MPI_SUM, comm);
 
-  /// //TEST  print all ideal splitters pictorally
-  /// RankI oldLoc = 0;
-  /// for (int rr = 0; rr < nProc; rr++)
-  /// {
-  ///   RankI idealSplitter = (rr+1) * sizeG / nProc;
-  ///   for ( ; oldLoc < idealSplitter; oldLoc++) { std::cout << ' '; }
-  ///   std::cout << 'I';     oldLoc++;
-  /// }
-  /// std::cout << '\n';
-
-  std::vector<unsigned int> DBG_splitterIteration(nProc, 0);  //DEBUG
-
-  // To avoid communicating buckets that did not get updated, we'll cycle:
-  //   Select buckets from old queue, -> enqueue in a "new" queue, -> ...
-  //   Use the class BarrierQueue to separate old from new.
-  // I also group buckets into "blocks" of contiguous siblings before scanning.
-  std::vector<RankI> bktCountsL, bktCountsG;  // As single-use containers per level.
-  BarrierQueue<RankI> blkBeginG;              // As queue with barrier, to bridge levels.
-  blkBeginG.enqueue(0);
-  RankI blkNumBkt = bftQueue.size();  // The first block is special. It contains all buckets.
-  while (pendingSplitterIdx.size() > 0)
+  while (newBuckets.size() > 0)
   {
-    /// // TEST Print all new buckets pictorally.
-    /// { RankI DBG_oldLoc = 0;
-    ///   for (BucketInfo<RankI> b : bftQueue.q) { while(DBG_oldLoc < b.end) { std::cout << ' '; DBG_oldLoc++; } if (DBG_oldLoc == b.end) { std::cout << '|'; DBG_oldLoc++; } }
-    ///   std::cout << '\n';
-    /// }
+    // Count sizes of new buckets locally and globally.
+    newCountsL.resize(newBuckets.size());
+    newCountsG.resize(newBuckets.size());
+    for (unsigned int ii = 0; ii < newBuckets.size(); ii++)
+      newCountsL[ii] = newBuckets[ii].end - newBuckets[ii].begin;
+    par::Mpi_Allreduce<RankI>(&(*newCountsL.begin()), &(*newCountsG.begin()),
+        (int) newCountsL.size(), MPI_SUM, comm);
 
-    bftQueue.reset_barrier();
-    blkBeginG.reset_barrier();
-    pendingSplitterIdx.reset_barrier();
-
-    // Count buckets locally and globally.
-    bktCountsL.clear();
-    for (BucketInfo<RankI> b : bftQueue.leading())
-      bktCountsL.push_back(b.end - b.begin);
-    bktCountsG.resize(bktCountsL.size());
-    /// bktCountsG = bktCountsL;              // Proxy for summing, to test with one proc.
-    par::Mpi_Allreduce<RankI>(&(*bktCountsL.begin()), &(*bktCountsG.begin()), (int) bktCountsL.size(), MPI_SUM, comm);
-
-    // Compute ranks, test load balance, and collect buckets for refinement.
-    // Process each bucket in sequence, one block of buckets at a time.
-    RankI bktBeginG;
-    while (blkBeginG.dequeue(bktBeginG))
+    // Merge new buckets with the rest of the buckets.
+    unsigned int splitIndex=0;
+    unsigned int bIndex=0;
+    for (unsigned int ii = 0; ii < allBuckets.size(); ii++)
     {
-      for (RankI ii = 0; ii < blkNumBkt; ii++)
+      if( (splitIndex < splitBucketIndex.size()) && (ii==splitBucketIndex[splitIndex]))
       {
-        const RankI bktCountG = bktCountsG[0];
-        const RankI bktEndG = bktBeginG + bktCountG;
-        bktCountsG.erase(bktCountsG.begin());
-
-        BucketInfo<RankI> refBkt;
-        bftQueue.dequeue(refBkt);
-        bool selectBucket = false;
-        const bool bktCanBeRefined = (refBkt.lev < m_uiMaxDepth);
-        
-        // Test the splitter indices that may fall into the current bucket.
-        RankI idealSplitterG;
-        while (pendingSplitterIdx.get_barrier()
-            && (idealSplitterG = (pendingSplitterIdx.front()+1) * sizeG / nProc) <= bktEndG)
-        {
-          RankI r;
-          pendingSplitterIdx.dequeue(r);
-          RankI absTolerance = ((r+1) * sizeG / nProc - r * sizeG / nProc) * loadFlexibility;
-          if (bktCanBeRefined && (bktEndG - idealSplitterG) > absTolerance)
+        if(allBuckets[ii].lev<m_uiMaxDepth)
+        { 
+          // is actually splitted. 
+          assert( (bIndex + numChildren) <= newBuckets.size() );
+          for(unsigned int w=bIndex; w < (bIndex + numChildren); w++)
           {
-            // Too far. Mark bucket for refinment. Send splitter back to queue.
-            selectBucket = true;
-            pendingSplitterIdx.enqueue(r);
-            finalSplitterLevels[r] = refBkt.lev;      // Will be overwritten. Uncomment if want to see progress.
-            splitterBucketGrid[refBkt.lev * nProc + r] = refBkt.end;
-            splitterCountsGrid[refBkt.lev * nProc + r] = bktCountG;
+            mergedBuckets.push_back(newBuckets[w]);
+            mergedCountsG.push_back(newCountsG[w]);
           }
-          else
-          {
-            // Good enough. Accept the bucket by recording the local splitter.
-            finalSplitterLevels[r] = refBkt.lev;
-            splitterBucketGrid[refBkt.lev * nProc + r] = refBkt.end;
-            splitterCountsGrid[refBkt.lev * nProc + r] = bktCountG;
-          }
-          DBG_splitterIteration[r]++;   //DEBUG
+          
+          bIndex+=numChildren;
         }
-
-        if (selectBucket)
+        else
         {
-          bftQueue.enqueue(refBkt);      // For refinment.
-          blkBeginG.enqueue(bktBeginG);  // Bucket-begin becomes block-begin on next iteration.
+          mergedBuckets.push_back(allBuckets[ii]); 
+          mergedCountsG.push_back(allCountsG[ii]);
         }
-
-        bktBeginG = bktEndG;
+        splitIndex++;
+      }
+      else
+      {
+        mergedBuckets.push_back(allBuckets[ii]);
+        mergedCountsG.push_back(allCountsG[ii]);
       }
     }
+    std::swap(mergedBuckets, allBuckets);
+    std::swap(mergedCountsG, allCountsG);
+    mergedBuckets.clear();
+    mergedCountsG.clear();
 
-    /// // TEST Print all splitters.
-    /// { RankI DBG_oldLoc = 0;
-    ///   for (RankI s : splitters) { while(DBG_oldLoc < s) { std::cout << '_'; DBG_oldLoc++; }  if (DBG_oldLoc == s) { std::cout << 'x'; DBG_oldLoc++; } }
-    ///   std::cout << '\n';
-    /// }
-    
-    // Refine the buckets that we have set aside.
-    treeBFTNextLevel(&(*points.begin()), bftQueue.q);
+    // Inclusive scan of bucket counts before comparing w/ ideal splitters.
+    allCountsGScan.resize(allCountsG.size());
+    allCountsGScan[0] = allCountsG[0];
+    for(unsigned int k=1;k<allCountsG.size();k++)
+      allCountsGScan[k] = allCountsGScan[k-1] + allCountsG[k];
 
-    blkNumBkt = numChildren;  // After the first level, blocks result from refining a single bucket.
-  }
+    newBuckets.clear();
+    splitBucketIndex.clear();
 
-  /// // DEBUG: print out all the points.
-  /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
-  /// spaces.back() = '\0';
-  /// for (const TreeNode tn : points)
-  ///   std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
-  /// std::cout << spaces.data() << "------------------------------------\n";
-  /// }
-
-  /// // TODO might be able to reduce communication time here by only using relevant levels?
-  /// std::vector<unsigned long> partitionCountsL(nProc*(m_uiMaxDepth+1));
-  /// std::vector<unsigned long> partitionCountsG(nProc*(m_uiMaxDepth+1));
-  /// for (unsigned l = 0; l <= m_uiMaxDepth; l++)
-  /// {
-  ///   unsigned long prev = 0;
-  ///   for (int r = 0; r < nProc; r++)
-  ///   {
-  ///     partitionCountsL[l * nProc + r] = splitterBucketGrid[l * nProc + r] - prev;
-  ///     prev = splitterBucketGrid[l * nProc + r];
-  ///   }
-  /// }
-  /// par::Mpi_Allreduce<unsigned long>(&(*partitionCountsL.begin()), &(*partitionCountsG.begin()), nProc*(m_uiMaxDepth+1), MPI_SUM, comm);
-
-  /// //DEBUG
-  /// if (!rProc)
-  /// {
-  ///   fprintf(stderr, "[0] --- Points ---\n");
-  ///   for (unsigned int ii = 0; ii < points.size(); ii++)
-  ///     fprintf(stderr, "(%u)%s\n", points[ii].getLevel(), points[ii].getBase32Hex(3).data());
-
-  ///   fprintf(stderr, "[0] --- Splitters ---\n");
-  ///   for (int r = 0; r < nProc; r++)
-  ///   {
-  ///     fprintf(stderr, "|%u",
-  ///         splitterBucketGrid[ finalSplitterLevels[r] * nProc + r ]);
-  ///   }
-  ///   fprintf(stderr, "|\n");
-  /// }
-
-  /// static int dbgRound = 0;
-  /// //DEBUG
-  /// if (!rProc)
-  /// {
-  ///   fprintf(stderr, "[0] --- finalSplitterLevels ---\n");
-  ///   for (int r = 0; r < nProc; r++)
-  ///     fprintf(stderr, "%u ", finalSplitterLevels[r]);
-  ///   fprintf(stderr, "\n");
-
-  ///   fprintf(stderr, "[0] --- splitterBucketGrid ---\n");
-  ///   for (int r = 0; r < nProc; r++)
-  ///   {
-  ///     for (unsigned int lev = 0; lev <= m_uiMaxDepth; lev++)
-  ///     {
-  ///       auto &sb = splitterBucketGrid[lev * nProc + r];
-  ///       /// fprintf(stderr, "<%d> [%d] (%d,%02u): {%lu,%u}\n", dbgRound, rProc, r, lev, partitionCountsG[lev * nProc + r], sb);
-  ///       fprintf(stderr, "<%d> [%d] (%d,%02u): {%lu,%u}\n", dbgRound, rProc, r, lev, splitterCountsGrid[lev * nProc + r], sb);
-  ///     }
-  ///   }
-  /// }
-  /// dbgRound++;
-
-  //
-  // Adjust splitters to respect noSplitThresh.
-  //
-  // Look for a level such that 0 < globSz[lev] <= noSplitThresh and globSz[lev-1] > noSplitThresh.
-  // If such a level exists, then set final level to lev-1.
-  for (int r = 0; r < nProc; r++)
-  {
-    LevI lLev = finalSplitterLevels[r];
-    LevI pLev = (lLev > 0 ? lLev - 1 : lLev);
-
-    if (0 < splitterCountsGrid[lLev * nProc + r])
+    // Index the buckets that need to be refined.
+    RankI idealLoadBalance=0;
+    for(int i=0;i<nProc-1;i++)
     {
-      while (pLev > 0 && splitterCountsGrid[pLev * nProc + r] <= noSplitThresh)
-        pLev--;
+      idealLoadBalance+=((i+1)*sizeG/nProc -i*sizeG/nProc);
+      DendroIntL toleranceLoadBalance = ((i+1)*sizeG/nProc -i*sizeG/nProc) * loadFlexibility;
+      unsigned int loc=(std::lower_bound(allCountsGScan.begin(), allCountsGScan.end(), idealLoadBalance) - allCountsGScan.begin());
 
-      if (splitterCountsGrid[lLev * nProc + r] <= noSplitThresh &&
-          splitterCountsGrid[pLev * nProc + r] > noSplitThresh)
-        finalSplitterLevels[r] = pLev;
+      if((abs(allCountsGScan[loc]-idealLoadBalance) > toleranceLoadBalance) && (allBuckets[loc].lev < m_uiMaxDepth))
+      {
+        if(!splitBucketIndex.size()  || splitBucketIndex.back()!=loc)
+          splitBucketIndex.push_back(loc);
+      }
+      else
+      {
+        if ((loc + 1) < allBuckets.size())
+          splitters[i] = allBuckets[loc + 1].begin;
+        else
+          splitters[i] = allBuckets[loc].begin;
+        //TODO probably easier to just use allBuckets[loc].end
+      }
     }
+    splitters[nProc-1] = points.size();
+
+    // Filter the buckets that need to be refined, using (a subset of) splitBucketIndex[].
+    for (int k = 0; k < splitBucketIndex.size(); k++)
+    {
+      const BucketInfo<RankI> b = allBuckets[splitBucketIndex[k]];
+      if (b.lev < m_uiMaxDepth)
+        newBuckets.push_back(b);
+    }
+
+    // Refining step.
+    treeBFTNextLevel(&(*points.begin()), newBuckets);
   }
 
-  /// //DEBUG
-  /// if (!rProc)
+  /// //
+  /// // Adjust splitters to respect noSplitThresh.
+  /// //
+  /// // Look for a level such that 0 < globSz[lev] <= noSplitThresh and globSz[lev-1] > noSplitThresh.
+  /// // If such a level exists, then set final level to lev-1.
+  /// for (int r = 0; r < nProc; r++)
   /// {
-  ///   fprintf(stderr, "[0] --- New finalSplitterLevels ---\n");
-  ///   for (int r = 0; r < nProc; r++)
-  ///     fprintf(stderr, "%u ", finalSplitterLevels[r]);
-  ///   fprintf(stderr, "\n");
+  ///   LevI lLev = finalSplitterLevels[r];
+  ///   LevI pLev = (lLev > 0 ? lLev - 1 : lLev);
+
+  ///   if (0 < splitterCountsGrid[lLev * nProc + r])
+  ///   {
+  ///     while (pLev > 0 && splitterCountsGrid[pLev * nProc + r] <= noSplitThresh)
+  ///       pLev--;
+
+  ///     if (splitterCountsGrid[lLev * nProc + r] <= noSplitThresh &&
+  ///         splitterCountsGrid[pLev * nProc + r] > noSplitThresh)
+  ///       finalSplitterLevels[r] = pLev;
+  ///   }
   /// }
 
-  // The output of the bucketing is a list of splitters marking ends of partition.
-  for (int r = 0; r < nProc; r++)
-    splitters[r] = splitterBucketGrid[finalSplitterLevels[r] * nProc + r];
+  /// // The output of the bucketing is a list of splitters marking ends of partition.
+  /// for (int r = 0; r < nProc; r++)
+  ///   splitters[r] = splitterBucketGrid[finalSplitterLevels[r] * nProc + r];
 
   //
   // All to all exchange of the points arrays.
-
+    
   std::vector<unsigned int> sendCnt, sendDspl;
   std::vector<unsigned int> recvCnt(splitters.size()), recvDspl;
   sendCnt.reserve(splitters.size());
   sendDspl.reserve(splitters.size());
   recvDspl.reserve(splitters.size());
-  RankI sPrev = 0;
+  unsigned int sPrev = 0;
+
+  /*for(unsigned int i=1;i<splitters.size();i++)
+  {
+    if(splitters[i-1]>splitters[i])
+      std::cout<<"rank: "<<rProc<<" spliter["<<(i-1)<<"] : "<<splitters[i-1]<<" < splitter["<<i<<"]: "<<splitters[i]<<std::endl;
+  }*/
+
   for (RankI s : splitters)     // Sequential counting and displacement.
   {
     //DEBUG
@@ -513,17 +444,18 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
       fprintf(stderr, "[%d] Negative count: %u - %u\n", rProc, s, sPrev);
 
     sendDspl.push_back(sPrev);
+    assert((s - sPrev) >=0);
     sendCnt.push_back(s - sPrev);
     sPrev = s;
   }
-  par::Mpi_Alltoall<RankI>(&(*sendCnt.begin()), &(*recvCnt.begin()), 1, comm);
+  par::Mpi_Alltoall<unsigned int>(&(*sendCnt.begin()), &(*recvCnt.begin()), 1, comm);
   sPrev = 0;
   for (RankI c : recvCnt)       // Sequential scan.
   {
     recvDspl.push_back(sPrev);
     sPrev += c;
   }
-  RankI sizeNew = sPrev;
+  unsigned int sizeNew = sPrev;
 
   std::vector<TreeNode> origPoints = points;   // Sendbuffer is a copy.
 
@@ -537,13 +469,6 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
 
   points.resize(sizeNew);
 
-  /// // DEBUG: print out all the points.
-  /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
-  /// spaces.back() = '\0';
-  /// for (const TreeNode tn : points)
-  ///   std::cout << spaces.data() << tn.getBase32Hex().data() << "\n";
-  /// std::cout << spaces.data() << "------------------------------------\n";
-  /// }
 
   //TODO figure out the 'staged' part with k-parameter.
 
