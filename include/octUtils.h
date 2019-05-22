@@ -18,6 +18,8 @@
 #include "tsort.h"
 #include "treeNode.h"
 
+#include "parUtils.h"
+
 namespace ot
 {
 
@@ -386,10 +388,11 @@ int function2Octree(std::function<void(const double *, double*)> fx,const unsign
     // Dendro-KT distTreeSort() doesn't remove duplicates automatically;
     // however, distTreeConstruction() does. Calling distTreeConstruction()
     // on an already complete tree should do exactly what we want.
-    ot::SFC_Tree<T,dim>::distTreeConstruction(nodes, nodes_new, 1, sfc_tol, comm);
+    ot::SFC_Tree<T,dim>::distRemoveDuplicates(nodes, sfc_tol, false, comm);
 
-    std::swap(nodes,nodes_new);
-    nodes_new.clear();
+    // This is buggy because distTreeConstruction doesn't respect maxPtsPerRegion,
+    // because distTreePartition() doesn't respect noSplitThresh.
+    /// ot::SFC_Tree<T,dim>::distTreeConstruction(nodes, nodes_new, 1, sfc_tol, comm);
 
     par::Mpi_Allreduce(&num_intersected,&num_intersected_g,1,MPI_MAX,comm);
     num_intersected=num_intersected_g;
