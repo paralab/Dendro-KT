@@ -208,7 +208,8 @@ namespace bench
             t_bottomup.clear();
             t_treeinterior.clear();
             t_elemental.clear();
-            resetAllTimers();
+            t_matvec.clear();
+            //resetAllTimers();
             // Benchmark the matvec.
             for (int ii = 0; ii < numRuns; ii++)
             {
