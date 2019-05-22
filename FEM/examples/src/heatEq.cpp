@@ -55,33 +55,49 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     RefElement refEl(m_uiDim,eOrder);
 
-    Point<dim> grid_min(0, 0, 0);
-    Point<dim> grid_max(1, 1, 1);
+    /// Point<dim> grid_min(0, 0, 0);
+    /// Point<dim> grid_max(1, 1, 1);
 
-    Point<dim> domain_min(-0.5,-0.5,-0.5);
-    Point<dim> domain_max(0.5,0.5,0.5);
+    /// Point<dim> domain_min(-0.5,-0.5,-0.5);
+    /// Point<dim> domain_max(0.5,0.5,0.5);
 
-    double Rg_x=(grid_max.x()-grid_min.x());
-    double Rg_y=(grid_max.y()-grid_min.y());
-    double Rg_z=(grid_max.z()-grid_min.z());
+    /// double Rg_x=(grid_max.x()-grid_min.x());
+    /// double Rg_y=(grid_max.y()-grid_min.y());
+    /// double Rg_z=(grid_max.z()-grid_min.z());
 
-    double Rd_x=(domain_max.x()-domain_min.x());
-    double Rd_y=(domain_max.y()-domain_min.y());
-    double Rd_z=(domain_max.z()-domain_min.z());
+    /// double Rd_x=(domain_max.x()-domain_min.x());
+    /// double Rd_y=(domain_max.y()-domain_min.y());
+    /// double Rd_z=(domain_max.z()-domain_min.z());
 
-    const Point<dim> d_min=domain_min;
-    const Point<dim> d_max=domain_max;
+    /// const Point<dim> d_min=domain_min;
+    /// const Point<dim> d_max=domain_max;
 
-    const Point<dim> g_min=grid_min;
-    const Point<dim> g_max=grid_max;
+    /// const Point<dim> g_min=grid_min;
+    /// const Point<dim> g_max=grid_max;
 
-    std::function<void(const double *, double*)> f_rhs =[d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z](const double *x, double* var){
-        var[0]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
-        //var[1]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
-        //var[2]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
+    // For now must be anisotropic.
+    double g_min = 0.0;
+    double g_max = 1.0;
+    double d_min = -0.5;
+    double d_max =  0.5;
+    double Rg = g_max - g_min;
+    double Rd = d_max - d_min;
+    const Point<dim> domain_min(d_min, d_min, d_min);
+    const Point<dim> domain_max(d_max, d_max, d_max);
+
+    /// std::function<void(const double *, double*)> f_rhs =[d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z](const double *x, double* var){
+    ///     var[0]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
+    ///     //var[1]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
+    ///     //var[2]=(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
+    /// };
+    std::function<void(const double *, double*)> f_rhs = [d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
+    {
+      var[0] = -12*M_PI*M_PI;
+      for (unsigned int d = 0; d < dim; d++)
+        var[0] *= sin(2*M_PI*(((x[d]-g_min)/Rg)*Rd+d_min));
     };
 
-    std::function<void(const double *, double*)> f_init =[d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z](const double *x, double *var){
+    std::function<void(const double *, double*)> f_init =[/*d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z*/](const double *x, double *var){
         var[0]=0;//(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
         //var[1]=0;
         //var[2]=0;
