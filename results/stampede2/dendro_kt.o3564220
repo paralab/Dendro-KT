@@ -1,0 +1,79 @@
+/home1/03727/tg830270/Research/Dendro-KT
+Tue May 14 14:05:18 CDT 2019
+======================================sbatch file ======================================
+#!/bin/bash
+#SBATCH -J dendro_kt              # Job name
+#SBATCH -o results/stampede2/dendro_kt.o%j       # Name of stdout output file
+#SBATCH -e results/stampede2/dendro_kt.e%j       # Name of stderr error file
+#SBATCH -p skx-dev        # Queue (partition) name
+#SBATCH -N 2               # Total # of nodes 
+#SBATCH -n 96              # Total # of mpi tasks
+#SBATCH --tasks-per-node=48
+#SBATCH -t 2:00:00           # Run time (hh:mm:ss)
+#SBATCH --mail-user=milindasf@gmail.com 
+#SBATCH --mail-type=all      # Send email at begin and end of job
+#SBATCH -A TG-DPP130002      # Allocation name (req'd if you have more than 1)
+
+# Other commands must follow all #SBATCH directives...
+module list
+pwd
+date
+
+
+WORK_DIR=/home1/03727/tg830270/Research/Dendro-KT
+PROGRAM_NAME=tsortBench
+
+echo "======================================sbatch file ======================================"
+
+
+cat $WORK_DIR/run_sc19.sbatch
+
+echo "========================================================================================"
+
+
+
+
+cd $WORK_DIR/build
+cmake ..
+make $PROGRAM_NAME
+
+
+echo "=================================== make end ==========================================="
+
+
+numPts=500
+maxDepth=20
+eleOrder=1
+iter=5
+
+
+for npes in 24 48
+do 
+ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+done
+
+
+
+
+
+
+
+
+
+========================================================================================
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home1/03727/tg830270/Research/Dendro-KT/build
+[ 89%] Built target dendroKT
+[100%] Built target tsortBench
+=================================== make end ===========================================
+TACC:  Starting up job 3564220 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.000614452	0.00102085	0.00295911	0.00275159	0.00280613	0.00283179	0.172584	0.172595	0.172657	0.911662	0.913155	0.914939	3.14837	3.14837	3.14838	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564220 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.000605154	0.000961064	0.00187783	0.00300479	0.00307204	0.0031208	0.230778	0.230802	0.230842	1.10704	1.10886	1.11158	4.20054	4.20055	4.20055	
+TACC:  Shutdown complete. Exiting. 

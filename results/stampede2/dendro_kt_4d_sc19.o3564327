@@ -1,0 +1,151 @@
+/home1/03727/tg830270/Research/Dendro-KT
+Wed May 15 10:31:11 CDT 2019
+======================================sbatch file ======================================
+#!/bin/bash
+#SBATCH -J dendro_kt              # Job name
+#SBATCH -o results/stampede2/dendro_kt_4d_sc19.o%j       # Name of stdout output file
+#SBATCH -e results/stampede2/dendro_kt_4d_sc19.e%j       # Name of stderr error file
+#SBATCH -p skx-normal        # Queue (partition) name
+#SBATCH -N 128               # Total # of nodes 
+#SBATCH -n 6144              # Total # of mpi tasks
+#SBATCH --tasks-per-node=48
+#SBATCH -t 2:00:00           # Run time (hh:mm:ss)
+#SBATCH --mail-user=milindasf@gmail.com 
+#SBATCH --mail-type=all      # Send email at begin and end of job
+#SBATCH -A TG-DPP130002      # Allocation name (req'd if you have more than 1)
+
+# Other commands must follow all #SBATCH directives...
+module list
+pwd
+date
+
+
+WORK_DIR=/home1/03727/tg830270/Research/Dendro-KT
+PROGRAM_NAME=tsortBench
+
+echo "======================================sbatch file ======================================"
+
+
+cat $WORK_DIR/run_sc19.sbatch
+
+echo "========================================================================================"
+
+
+
+
+cd $WORK_DIR/build
+cmake ..
+make $PROGRAM_NAME
+
+
+echo "=================================== make end ==========================================="
+
+
+numPts=500
+maxDepth=20
+eleOrder=1
+iter=5
+
+
+for npes in 48 96 192 384 768 1536 3072 6144
+do 
+ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+done
+
+
+
+
+numPts=250
+maxDepth=20
+eleOrder=2
+iter=5
+
+
+for npes in 48 96 192 384 768 1536 3072 6144
+do 
+ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+done
+
+
+
+
+
+========================================================================================
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home1/03727/tg830270/Research/Dendro-KT/build
+[ 89%] Built target dendroKT
+[100%] Built target tsortBench
+=================================== make end ===========================================
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.000778627	0.0012563	0.00576978	0.00362105	0.00370438	0.00375099	0.234321	0.234341	0.234418	1.13242	1.13468	1.14461	4.06287	4.06288	4.06289	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00123234	0.00262298	0.00537877	0.00543675	0.00627905	0.00710282	0.250504	0.251314	0.252143	1.08715	1.09018	1.09783	4.39882	4.39884	4.39885	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00232868	0.00359944	0.0067132	0.00732722	0.00840037	0.00915804	0.266989	0.267698	0.268761	1.24284	1.24744	1.2539	3.77469	3.77471	3.77473	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.0103378	0.0124333	0.0146912	0.0234843	0.024872	0.026128	0.324375	0.325662	0.327048	1.46849	1.47283	1.47967	4.23116	4.23125	4.23129	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+TACC:  MPI job exited with code: 2 
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+TACC:  MPI job exited with code: 2 
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+TACC:  MPI job exited with code: 2 
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+TACC:  MPI job exited with code: 2 
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.000472975	0.00227962	0.00474343	0.00209064	0.00213433	0.00217562	0.140899	0.140924	0.140965	10.671	10.6946	10.7023	39.6351	39.6351	39.6351	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.000653505	0.00263986	0.00503292	0.00411363	0.00495995	0.00576944	0.147923	0.148703	0.149575	9.501	9.50705	9.51306	38.6388	38.6388	38.6389	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00135736	0.00340367	0.00606437	0.00576067	0.00677636	0.00752959	0.176349	0.177108	0.17812	9.9309	9.93937	9.95549	38.5401	38.5401	38.5402	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.0113469	0.0135234	0.0165204	0.0244514	0.0256171	0.0268746	0.215548	0.216789	0.217931	11.1725	11.1794	11.1892	34.7449	34.745	34.7451	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+TACC:  MPI job exited with code: 2 
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+TACC:  MPI job exited with code: 2 
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+TACC:  MPI job exited with code: 2 
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3564327 
+TACC:  Starting parallel tasks... 
+TACC:  MPI job exited with code: 2 
+TACC:  Shutdown complete. Exiting. 

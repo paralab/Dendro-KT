@@ -1,0 +1,16 @@
+
+Currently Loaded Modules:
+  1) intel/18.0.0   3) cmake/3.10.2   5) gsl/2.3
+  2) impi/18.0.0    4) git/2.9.0      6) autotools/1.1
+
+ 
+
+slurmstepd: error: *** JOB 3613267 ON c476-131 CANCELLED AT 2019-05-20T17:30:07 ***
+[proxy:0:0@c476-131.stampede2.tacc.utexas.edu] HYDT_bscu_wait_for_completion (../../tools/bootstrap/utils/bscu_wait.c:151): one of the processes terminated badly; aborting
+[proxy:0:0@c476-131.stampede2.tacc.utexas.edu] HYDT_bsci_wait_for_completion (../../tools/bootstrap/src/bsci_wait.c:36): launcher returned error waiting for completion
+[proxy:0:0@c476-131.stampede2.tacc.utexas.edu] HYD_pmci_wait_for_childs_completion (../../pm/pmiserv/pmip_utils.c:2002): bootstrap server returned error waiting for completion
+[proxy:0:0@c476-131.stampede2.tacc.utexas.edu] main (../../pm/pmiserv/pmip.c:525): error waiting for event children completion
+[mpiexec@c476-131.stampede2.tacc.utexas.edu] control_cb (../../pm/pmiserv/pmiserv_cb.c:834): connection to proxy 0 at host c476-131 failed
+[mpiexec@c476-131.stampede2.tacc.utexas.edu] HYDT_dmxu_poll_wait_for_event (../../tools/demux/demux_poll.c:76): callback returned error status
+[mpiexec@c476-131.stampede2.tacc.utexas.edu] HYD_pmci_wait_for_completion (../../pm/pmiserv/pmiserv_pmci.c:507): error waiting for event
+[mpiexec@c476-131.stampede2.tacc.utexas.edu] main (../../ui/mpich/mpiexec.c:1148): process manager error waiting for completion

@@ -1,0 +1,78 @@
+/home1/03727/tg830270/Research/Dendro-KT
+Mon May 20 15:52:13 CDT 2019
+======================================sbatch file ======================================
+#!/bin/bash
+#SBATCH -J dendro_kt              # Job name
+#SBATCH -o results/stampede2/dendro_kt_4d_sc19.o%j       # Name of stdout output file
+#SBATCH -e results/stampede2/dendro_kt_4d_sc19.e%j       # Name of stderr error file
+#SBATCH -p skx-normal        # Queue (partition) name
+#SBATCH -N 128              # Total # of nodes 
+#SBATCH -n 1536             # Total # of mpi tasks
+#SBATCH --tasks-per-node=48
+#SBATCH -t 2:00:00           # Run time (hh:mm:ss)
+#SBATCH --mail-user=milindasf@gmail.com 
+#SBATCH --mail-type=all      # Send email at begin and end of job
+#SBATCH -A TG-DPP130002      # Allocation name (req'd if you have more than 1)
+
+# Other commands must follow all #SBATCH directives...
+module list
+pwd
+date
+
+
+WORK_DIR=/home1/03727/tg830270/Research/Dendro-KT
+PROGRAM_NAME=tsortBench
+
+echo "======================================sbatch file ======================================"
+
+
+cat $WORK_DIR/run_sc19.sbatch
+
+echo "========================================================================================"
+
+
+
+
+cd $WORK_DIR/build
+cmake ..
+make $PROGRAM_NAME
+
+
+echo "=================================== make end ==========================================="
+
+
+numPts=500
+maxDepth=20
+eleOrder=1
+iter=5
+
+
+for npes in 48 96 192 384 768 1536 3072 6144
+do 
+ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+done
+
+
+numPts=250
+maxDepth=20
+eleOrder=2
+iter=5
+
+for npes in 48 96 192 384 768 1536 3072 6144
+do 
+ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+done
+
+
+
+
+
+========================================================================================
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home1/03727/tg830270/Research/Dendro-KT/build
+[ 89%] Built target dendroKT
+[100%] Built target tsortBench
+=================================== make end ===========================================
+TACC:  Starting up job 3613267 
+TACC:  Starting parallel tasks... 

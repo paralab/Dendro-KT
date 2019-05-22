@@ -1,0 +1,105 @@
+/home1/03727/tg830270/Research/Dendro-KT
+Wed May 22 04:19:01 CDT 2019
+======================================sbatch file ======================================
+#!/bin/bash
+#SBATCH -J dendro_kt              # Job name
+#SBATCH -o results/stampede2/dendro_kt_4d_sc19_ss.o%j       # Name of stdout output file
+#SBATCH -e results/stampede2/dendro_kt_4d_sc19_ss.e%j       # Name of stderr error file
+#SBATCH -p skx-normal        # Queue (partition) name
+#SBATCH -N 128              # Total # of nodes 
+#SBATCH -n 6144             # Total # of mpi tasks
+#SBATCH --tasks-per-node=48
+#SBATCH -t 2:00:00           # Run time (hh:mm:ss)
+#SBATCH --mail-user=milindasf@gmail.com 
+#SBATCH --mail-type=all      # Send email at begin and end of job
+#SBATCH -A TG-DPP130002     # Allocation name (req'd if you have more than 1)
+
+# Other commands must follow all #SBATCH directives...
+module list
+pwd
+date
+
+
+WORK_DIR=/home1/03727/tg830270/Research/Dendro-KT
+PROGRAM_NAME=tsortBench
+
+echo "======================================sbatch file ======================================"
+
+
+cat $WORK_DIR/run_sc19_ss.sbatch
+
+echo "========================================================================================"
+
+
+
+
+cd $WORK_DIR/build
+cmake ..
+make $PROGRAM_NAME
+
+
+echo "=================================== make end ==========================================="
+
+
+#numPts=500
+
+maxDepth=20
+eleOrder=1
+iter=2
+
+ibrun -np  6144 ./$PROGRAM_NAME 500 $maxDepth $eleOrder $iter
+ibrun -np  3072 ./$PROGRAM_NAME 1000 $maxDepth $eleOrder $iter
+ibrun -np  1536 ./$PROGRAM_NAME 2000 $maxDepth $eleOrder $iter
+ibrun -np  768 ./$PROGRAM_NAME 4000 $maxDepth $eleOrder $iter
+ibrun -np  384 ./$PROGRAM_NAME 8000 $maxDepth $eleOrder $iter
+#ibrun -np  192 ./$PROGRAM_NAME 3200 $maxDepth $eleOrder $iter
+#ibrun -np  96 ./$PROGRAM_NAME 6400 $maxDepth $eleOrder $iter
+
+
+
+#maxDepth=20
+#eleOrder=2
+#iter=2
+
+#ibrun -np  6144 ./$PROGRAM_NAME 100 $maxDepth $eleOrder $iter
+#ibrun -np  3072 ./$PROGRAM_NAME 200 $maxDepth $eleOrder $iter
+#ibrun -np  1536 ./$PROGRAM_NAME 400 $maxDepth $eleOrder $iter
+#ibrun -np  768 ./$PROGRAM_NAME 800 $maxDepth $eleOrder $iter
+##ibrun -np  384 ./$PROGRAM_NAME 1600 $maxDepth $eleOrder $iter
+#ibrun -np  192 ./$PROGRAM_NAME 3200 $maxDepth $eleOrder $iter
+#ibrun -np  96 ./$PROGRAM_NAME 6400 $maxDepth $eleOrder $iter
+
+
+#for npes in 48 96 192 384 768 1536 3072 6144
+#do 
+#ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+#done
+
+
+#numPts=250
+#maxDepth=20
+#eleOrder=2
+#iter=5
+
+#for npes in 48 96 192 384 768 1536 3072 6144
+#do 
+#ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+#done
+
+
+
+
+
+========================================================================================
+-- A library with BLAS API found.
+-- A library with BLAS API found.
+-- A library with LAPACK API found.
+-- /home1/apps/intel/18.0.0/compilers_and_libraries_2018.0.128/linux/mkl/lib/intel64_lin/libmkl_intel_lp64.so/home1/apps/intel/18.0.0/compilers_and_libraries_2018.0.128/linux/mkl/lib/intel64_lin/libmkl_intel_thread.so/home1/apps/intel/18.0.0/compilers_and_libraries_2018.0.128/linux/mkl/lib/intel64_lin/libmkl_core.so/home1/apps/intel/18.0.0/compilers_and_libraries_2018.0.128/linux/compiler/lib/intel64_lin/libiomp5.so-lm
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home1/03727/tg830270/Research/Dendro-KT/build
+[ 89%] Built target dendroKT
+[100%] Built target tsortBench
+=================================== make end ===========================================
+TACC:  Starting up job 3615318 
+TACC:  Starting parallel tasks... 

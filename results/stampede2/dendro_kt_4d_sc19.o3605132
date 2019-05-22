@@ -1,0 +1,156 @@
+/home1/03727/tg830270/Research/Dendro-KT
+Sun May 19 09:55:47 CDT 2019
+======================================sbatch file ======================================
+#!/bin/bash
+#SBATCH -J dendro_kt              # Job name
+#SBATCH -o results/stampede2/dendro_kt_4d_sc19.o%j       # Name of stdout output file
+#SBATCH -e results/stampede2/dendro_kt_4d_sc19.e%j       # Name of stderr error file
+#SBATCH -p skx-normal        # Queue (partition) name
+#SBATCH -N 128              # Total # of nodes 
+#SBATCH -n 1536             # Total # of mpi tasks
+#SBATCH --tasks-per-node=48
+#SBATCH -t 2:00:00           # Run time (hh:mm:ss)
+#SBATCH --mail-user=milindasf@gmail.com 
+#SBATCH --mail-type=all      # Send email at begin and end of job
+#SBATCH -A TG-DPP130002      # Allocation name (req'd if you have more than 1)
+
+# Other commands must follow all #SBATCH directives...
+module list
+pwd
+date
+
+
+WORK_DIR=/home1/03727/tg830270/Research/Dendro-KT
+PROGRAM_NAME=tsortBench
+
+echo "======================================sbatch file ======================================"
+
+
+cat $WORK_DIR/run_sc19.sbatch
+
+echo "========================================================================================"
+
+
+
+
+cd $WORK_DIR/build
+cmake ..
+make $PROGRAM_NAME
+
+
+echo "=================================== make end ==========================================="
+
+
+numPts=500
+maxDepth=20
+eleOrder=1
+iter=5
+
+
+for npes in 48 96 192 384 768 1536 3072 6144
+do 
+ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+done
+
+
+numPts=250
+maxDepth=20
+eleOrder=2
+iter=5
+
+for npes in 48 96 192 384 768 1536 3072 6144
+do 
+ibrun -np $npes ./$PROGRAM_NAME $numPts $maxDepth $eleOrder $iter
+done
+
+
+
+
+
+========================================================================================
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home1/03727/tg830270/Research/Dendro-KT/build
+[ 89%] Built target dendroKT
+[100%] Built target tsortBench
+=================================== make end ===========================================
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.000854588	0.00126582	0.00247464	0.00332551	0.00335905	0.00341454	0.213171	0.213185	0.213221	1.13875	1.14184	1.1521	4.01305	4.01306	4.01307	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00113659	0.00267944	0.00621724	0.00610104	0.00654745	0.00699258	0.248012	0.248433	0.248956	1.16935	1.17327	1.18029	4.61342	4.61346	4.61349	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00180001	0.00399406	0.00711565	0.00764236	0.00829705	0.0089036	0.285591	0.286231	0.286904	1.28059	1.28426	1.29056	3.95771	3.95773	3.95775	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00306978	0.00629154	0.00766964	0.00878725	0.0104496	0.0118078	0.304331	0.305713	0.307386	1.45526	1.45895	1.46564	4.61145	4.61149	4.61153	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00548711	0.00801079	0.00954461	0.0173016	0.0189444	0.0200286	0.324786	0.325819	0.327386	2.34852	2.35353	2.36058	5.56606	5.56611	5.56616	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00690098	0.00913346	0.0100656	0.030795	0.0322624	0.0338151	0.375994	0.377492	0.378908	2.99766	3.00298	3.00932	5.35775	5.3578	5.35785	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.0128338	0.0154331	0.0165062	0.0732351	0.0759479	0.0779894	0.522549	0.524376	0.527246	4.05584	4.06187	4.07239	5.56302	5.56314	5.56326	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.238115	0.241256	0.24314	0.641972	0.645621	0.647819	1.88952	1.89133	1.89464	6.34177	6.34673	6.35973	7.27483	7.27506	7.27534	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.000605392	0.00239951	0.00598707	0.002174	0.00220007	0.00222664	0.142851	0.142867	0.142902	9.98915	10.0135	10.0222	38.4103	38.4103	38.4103	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00072341	0.00276908	0.00594435	0.00488825	0.00528837	0.00569	0.158677	0.159065	0.159461	10.2846	10.2912	10.2984	39.4141	39.4141	39.4142	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00131297	0.00315939	0.00604224	0.00554843	0.00607053	0.00649543	0.172047	0.172431	0.172944	10.0526	10.0595	10.0703	41.365	41.3651	41.3651	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00292101	0.00491288	0.00836525	0.00703273	0.00861955	0.00955982	0.199865	0.200745	0.202311	11.3539	11.3615	11.3868	36.6525	36.6526	36.6526	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.0043654	0.00698874	0.00947785	0.0208686	0.0224367	0.0234188	0.222147	0.223072	0.224619	13.4688	13.4772	13.4899	43.9199	43.9201	43.9202	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.00626731	0.00940708	0.0112072	0.0280108	0.0293858	0.0307186	0.269145	0.270388	0.271721	16.3008	16.3092	16.3449	51.032	51.0321	51.0322	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.0117449	0.0149439	0.0176231	0.0715754	0.0742604	0.0757676	0.43203	0.433361	0.436282	20.5144	20.5228	20.5671	48.2103	48.2105	48.2107	
+TACC:  Shutdown complete. Exiting. 
+TACC:  Starting up job 3605132 
+TACC:  Starting parallel tasks... 
+sort(min)	sort(mean)	sort(max)	cons(min)	cons(mean)	cons(max)	bal(min)	bal(mean)	bal(max)	cg(min)	cg(mean)	cg(max)	sm(min)	sm(mean)	sm(max)	
+0.233331	0.238196	0.241555	0.662309	0.665575	0.667848	1.7917	1.79349	1.79717	31.6798	31.6873	31.7405	52.4336	52.4339	52.4342	
+TACC:  Shutdown complete. Exiting. 
