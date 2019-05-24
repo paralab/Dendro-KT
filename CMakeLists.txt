@@ -287,6 +287,11 @@ add_executable(tstMatvec ${SRC_FILES})
 target_include_directories(tstMatvec PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstMatvec dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testFunction2Octree.cpp)
+add_executable(tstFunction2Octree ${SRC_FILES})
+target_include_directories(tstFunction2Octree PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstFunction2Octree dendroKT ${MPI_LIBRARIES} m)
+
 ## tsort_bench (./tsortBench)
 ## -----------
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/tsort_bench.h ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/tsort_bench.cpp)
