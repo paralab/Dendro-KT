@@ -45,6 +45,7 @@ class Point{
     // virtual ~Point();
 
     Point(const std::array<double, dim> &newCoords);
+    Point(const double * newCoords);
     Point(double newx, double newy, double newz);
     Point(int newx, int newy, int newz);
     Point(unsigned int newx, unsigned int newy, unsigned int newz);
@@ -144,6 +145,13 @@ template <unsigned int dim>
 Point<dim>::Point(const std::array<double, dim> &newCoords)
 {
   std::copy(&newCoords[0], &newCoords[dim], &_coords[0]);
+  std::fill(&_coords[dim], &_coords[m_uiDim], 0.0);   // 2d or 1d
+}
+
+template <unsigned int dim>
+Point<dim>::Point(const double * newCoords)
+{
+  std::copy(newCoords, newCoords + dim, &_coords[0]);
   std::fill(&_coords[dim], &_coords[m_uiDim], 0.0);   // 2d or 1d
 }
 
