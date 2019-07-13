@@ -25,7 +25,7 @@ namespace PoissonEq
 
         static constexpr unsigned int m_uiDim = dim;
 
-        void getImPtrs(const double * fromPtrs[], const double * toPtrs[], const double *in, const double *out) const
+        void getImPtrs(const double * fromPtrs[], double * toPtrs[], const double *in, double *out) const
         {
           fromPtrs[0] = in;
           toPtrs[dim-1] = out;

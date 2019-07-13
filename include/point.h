@@ -77,12 +77,11 @@ class Point{
     inline void operator *= (const double factor);
 
     inline Point& operator=(const Point &other);
-    inline Point  operator+(const Point &other);
-    inline Point  operator-(const Point &other);
+    inline Point  operator+(const Point &other) const;
     inline Point  operator-(const Point &other) const;
 
-    inline Point  operator/(const double divisor);
-    inline Point  operator*(const double factor);
+    inline Point  operator/(const double divisor) const;
+    inline Point  operator*(const double factor) const;
     
     double magnitude();
 
@@ -250,21 +249,14 @@ void Point<dim>::operator -= (const Point& other){
 }
 
 template <unsigned int dim>
-Point<dim> Point<dim>::operator - (const Point &other){
+Point<dim> Point<dim>::operator - (const Point &other) const{
   Point ret(*this);
   ret -= other;
   return ret;
 }
 
 template <unsigned int dim>
-Point<dim> Point<dim>::operator - (const Point &other) const {
-  Point ret(*this);
-  ret -= other;
-  return ret;
-}
-
-template <unsigned int dim>
-Point<dim> Point<dim>::operator + (const Point &other){
+Point<dim> Point<dim>::operator + (const Point &other) const{
   Point ret(*this);
   ret += other;
   return ret;
@@ -279,7 +271,7 @@ Point<dim>& Point<dim>::operator=(const Point &other){
 }
 
 template <unsigned int dim>
-Point<dim> Point<dim>::operator /(const double divisor)
+Point<dim> Point<dim>::operator /(const double divisor) const
 {
   Point ret(*this);
   ret /= divisor;
@@ -287,7 +279,7 @@ Point<dim> Point<dim>::operator /(const double divisor)
 }
 
 template <unsigned int dim>
-Point<dim> Point<dim>::operator *(const double factor)
+Point<dim> Point<dim>::operator *(const double factor) const
 {
   Point ret(*this);
   ret *= factor;

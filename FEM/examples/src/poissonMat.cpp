@@ -49,7 +49,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, double*coo
     const double * DgT=refEl->getDgT1d();
     const double * W1d=refEl->getWgq();
 
-    const double mat1dPtrs[dim];
+    const double * mat1dPtrs[dim];
 
 
     const unsigned int eleOrder=refEl->getOrder();
@@ -67,7 +67,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, double*coo
     for (unsigned int d = 0; d < dim; d++)
     {
       const double * imFromPtrs[dim];
-      const double * imToPtrs[dim];
+      double * imToPtrs[dim];
 
       mat1dPtrs[d] = Dg;
       getImPtrs(imFromPtrs, imToPtrs, in, Qx[d]);
@@ -92,41 +92,71 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, double*coo
     /// DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Dg,imV2,Qz);
 
 
-    const Point<dim> sz = gridX_to_x(eleMax) - gridX_to_X(eleMin);
+    const Point<dim> sz = gridX_to_X(eleMax) - gridX_to_X(eleMin);
     const Point<dim> J = sz * (1.0 / refElSz);
+
+    //TODO what was this representing mathematically? Need to generalize correctly.
+    double J_quotient[dim];
+    for (unsigned int d = 0; d < dim; d++)
+    {
+      J_quotient[d] = 1.0;
+      for (unsigned int dd = 0; dd < dim; dd++)
+        if (dd != d)
+          J_quotient[d] *= J.x(dd);
+        else
+          J_quotient[d] /= J.x(dd);
+    }
 
     //std::cout<<"Stifness:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
 
-    //TODO half way through converting PoissonMat to arbitrary dimension.
-    //     this nested for-loop needs to be made nd.
-    //     Can we perform this using KroneckerProduct?
+    for (unsigned int d = 0; d < dim; d++)
+      SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, Qx[d], W1d, J_quotient[d]);
 
-    for(unsigned int k=0;k<(eleOrder+1);k++)
-        for(unsigned int j=0;j<(eleOrder+1);j++)
-            for(unsigned int i=0;i<(eleOrder+1);i++)
-            {
-                Qx[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jy*Jz)/Jx)*W1d[i]*W1d[j]*W1d[k]);
-                Qy[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jz)/Jy)*W1d[i]*W1d[j]*W1d[k]);
-                Qz[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jy)/Jz)*W1d[i]*W1d[j]*W1d[k]);
-            }
+    // Backup.
+    /// for(unsigned int k=0;k<(eleOrder+1);k++)
+    ///     for(unsigned int j=0;j<(eleOrder+1);j++)
+    ///         for(unsigned int i=0;i<(eleOrder+1);i++)
+    ///         {
+    ///             Qx[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jy*Jz)/Jx)*W1d[i]*W1d[j]*W1d[k]);
+    ///             Qy[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jz)/Jy)*W1d[i]*W1d[j]*W1d[k]);
+    ///             Qz[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=( ((Jx*Jy)/Jz)*W1d[i]*W1d[j]*W1d[k]);
+    ///         }
 
 
+    for (unsigned int d = 0; d < dim; d++)
+      mat1dPtrs[d] = QT1d;
+    for (unsigned int d = 0; d < dim; d++)
+    {
+      const double * imFromPtrs[dim];
+      double * imToPtrs[dim];
 
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,DgT,Qx,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qx);
+      mat1dPtrs[d] = DgT;
+      getImPtrs(imFromPtrs, imToPtrs, Qx[d], Qx[d]);
+      KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs);
+      mat1dPtrs[d] = QT1d;
+    }
 
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qy,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,DgT,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qy);
+    // Backup.
+    /// DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,DgT,Qx,imV1);
+    /// DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+    /// DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qx);
 
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qz,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,Qz);
+    /// DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qy,imV1);
+    /// DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,DgT,imV1,imV2);
+    /// DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,Qy);
+
+    /// DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,Qz,imV1);
+    /// DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+    /// DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,Qz);
 
     for(unsigned int i=0;i<nPe;i++)
-        out[i]=Qx[i]+Qy[i]+Qz[i];
+    {
+      out[i] = Qx[0][i];
+      for (unsigned int d = 1; d < dim; d++)
+        out[i]=Qx[d][i];
+    }
 }
+
 
 template <unsigned int dim>
 bool PoissonMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)

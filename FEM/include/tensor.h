@@ -31,6 +31,36 @@
 template <unsigned int dim, typename da, bool forward>
 void KroneckerProduct(unsigned M, const da **A, const da **in, da **out);
 
+/**
+ * @brief Forall (i,j,k), Q_ijk *= A * P_ijk, where P_ijk == W_i * W_j * W_k;
+ * @tparam dim Order of the tensor.
+ * @tparam T Component type.
+ */
+template <typename T, unsigned int dim>
+struct SymmetricOuterProduct
+{
+  inline static void applyHadamardProduct(unsigned int length1d, T *Q, const T *W1d, const T premult = 1);
+};
+
+template <typename T, unsigned int dim>
+inline void SymmetricOuterProduct<T,dim>::applyHadamardProduct(
+    unsigned int length1d, T *Q, const T *W1d, const T premult)
+{
+  const unsigned int stride = intPow(length1d, dim-1);
+  for (unsigned int ii = 0; ii < length1d; ii++)
+    SymmetricOuterProduct<T, dim-1>::applyHadamardProduct(length1d, &Q[stride * ii], W1d, premult * W1d[ii]);
+}
+
+template <typename T>
+struct SymmetricOuterProduct<T, 1>
+{
+  inline static void applyHadamardProduct(unsigned int length1d, T *Q, const T *W1d, const T premult = 1)
+  {
+    for (unsigned int ii = 0; ii < length1d; ii++)
+      Q[ii] *= premult * W1d[ii];
+  }
+};
+
 
 
 template <typename da>
