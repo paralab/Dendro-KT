@@ -10,21 +10,18 @@ template <unsigned int dim>
 PoissonVec<dim>::PoissonVec(ot::DA<dim>* da,unsigned int dof) : feVector<PoissonVec<dim>, dim>(da,dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
-    imV1=new double[nPe];
-    imV2=new double[nPe];
-
-
+    for (unsigned int d = 0; d < dim-1; d++)
+      imV[d] = new double[nPe];
 }
 
 template <unsigned int dim>
 PoissonVec<dim>::~PoissonVec()
 {
-    delete [] imV1;
-    delete [] imV2;
-
-    imV1=NULL;
-    imV2=NULL;
-
+    for (unsigned int d = 0; d < dim-1; d++)
+    {
+      delete [] imV[d];
+      imV[d] = nullptr;
+    }
 }
 
 template <unsigned int dim>
@@ -36,45 +33,54 @@ void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, double
     const double * Dg=refEl->getDg1d();
     const double * W1d=refEl->getWgq();
 
+    const double * mat1dPtrs[dim];
+
     const unsigned int eleOrder=refEl->getOrder();
     const unsigned int nPe=intPow(eleOrder+1, dim);
     const unsigned int nrp=eleOrder+1;
 
-    Point<dim> eleMin(coords[0*m_uiDim+0],coords[0*m_uiDim+1],coords[0*m_uiDim+2]);
-    Point<dim> eleMax(coords[(nPe-1)*m_uiDim+0],coords[(nPe-1)*m_uiDim+1],coords[(nPe-1)*m_uiDim+2]);
+    Point<dim> eleMin(&coords[0*m_uiDim]);
+    Point<dim> eleMax(&coords[(nPe-1)*m_uiDim]);
 
+    // Pointers to define chains of intermediate variables.
+    const double * imFromPtrs[dim];
+    double * imToPtrs[dim];
 
     const double refElSz=refEl->getElementSz();
 
     // interpolate to quadrature points.
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,out);
+    getImPtrs(imFromPtrs, imToPtrs, in, out);
+    for (unsigned int d = 0; d < dim; d++)
+      mat1dPtrs[d] = Q1d;
+    KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs);
+
+    // Backup
+    /// DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
+    /// DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,Q1d,imV1,imV2);
+    /// DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,Q1d,imV2,out);
 
 
+    const Point<dim> sz = gridX_to_X(eleMax) - gridX_to_X(eleMin);
+    const Point<dim> J = sz * (1.0 / refElSz);
 
-    const double szX=gridX_to_X(eleMax.x())-gridX_to_X(eleMin.x());
-    const double szY=gridY_to_Y(eleMax.y())-gridY_to_Y(eleMin.y());
-    const double szZ=gridZ_to_Z(eleMax.z())-gridZ_to_Z(eleMin.z());
-
-
-    const double Jx = 1.0/(refElSz/(double (szX)));
-    const double Jy = 1.0/(refElSz/(double (szY)));
-    const double Jz = 1.0/(refElSz/(double (szZ)));
-
+    double J_product = 1.0;
+    for (unsigned int d = 0; d < dim; d++)
+      J_product *= J.x(d);
 
     //std::cout<<"Mass:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
 
-    for(unsigned int k=0;k<(eleOrder+1);k++)
-        for(unsigned int j=0;j<(eleOrder+1);j++)
-            for(unsigned int i=0;i<(eleOrder+1);i++)
-                out[k*(eleOrder+1)*(eleOrder+1)+j*(eleOrder+1)+i]*=(Jx*Jy*Jz*W1d[i]*W1d[j]*W1d[k]);
-
+    SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, out, W1d, J_product);
 
     // apply transpose operator
-    DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out,imV1);
-    DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
-    DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out);
+    getImPtrs(imFromPtrs, imToPtrs, out, out);
+    for (unsigned int d = 0; d < dim; d++)
+      mat1dPtrs[d] = QT1d;
+    KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs);
+
+    // Backup
+    /// DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out,imV1);
+    /// DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
+    /// DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,QT1d,imV2,out);
 }
 
 
@@ -83,7 +89,6 @@ void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, double
 template <unsigned int dim>
 bool PoissonVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale)
 {
-
     // apply boundary conditions.
     std::vector<unsigned int> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
@@ -93,8 +98,8 @@ bool PoissonVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale
 }
 
 template <unsigned int dim>
-bool PoissonVec<dim>::postComputeVec(const VECType* in,VECType* out, double scale) {
-
+bool PoissonVec<dim>::postComputeVec(const VECType* in,VECType* out, double scale)
+{
     // apply boundary conditions.
     std::vector<unsigned int> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
@@ -105,25 +110,19 @@ bool PoissonVec<dim>::postComputeVec(const VECType* in,VECType* out, double scal
 
 
 template <unsigned int dim>
-double PoissonVec<dim>::gridX_to_X(double x)
+double PoissonVec<dim>::gridX_to_X(unsigned int d, double x) const
 {
-    double Rg_x=1.0;
-    return (((x)/(Rg_x))*((m_uiPtMax.x()-m_uiPtMin.x()))+m_uiPtMin.x());
+  double Rg=1.0;
+  return (((x)/(Rg))*((m_uiPtMax.x(d)-m_uiPtMin.x(d)))+m_uiPtMin.x(d));
 }
 
 template <unsigned int dim>
-double PoissonVec<dim>::gridY_to_Y(double y)
+Point<dim> PoissonVec<dim>::gridX_to_X(Point<dim> x) const
 {
-    double Rg_y=1.0;
-    return (((y)/(Rg_y))*((m_uiPtMax.y()-m_uiPtMin.y()))+m_uiPtMin.y());
-}
-
-
-template <unsigned int dim>
-double PoissonVec<dim>::gridZ_to_Z(double z)
-{
-    double Rg_z=1.0;
-    return (((z)/(Rg_z))*((m_uiPtMax.z()-m_uiPtMin.z()))+m_uiPtMin.z());
+  double newCoords[dim];
+  for (unsigned int d = 0; d < dim; d++)
+    newCoords[d] = gridX_to_X(d, x.x(d));
+  return Point<dim>(newCoords);
 }
 
 }//namespace PoissonEq

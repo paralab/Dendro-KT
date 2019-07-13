@@ -15,14 +15,25 @@ namespace PoissonEq
 
     private:
 
-        double * imV1;
-        double * imV2;
+        double * imV[dim-1];
 
         ot::DA<dim> * &m_uiOctDA = feVec<dim>::m_uiOctDA;
         Point<dim> &m_uiPtMin = feVec<dim>::m_uiPtMin;
         Point<dim> &m_uiPtMax = feVec<dim>::m_uiPtMax;
 
         static constexpr unsigned int m_uiDim = dim;
+
+        void getImPtrs(const double * fromPtrs[], double * toPtrs[], const double *in, double *out) const
+        {
+          fromPtrs[0] = in;
+          toPtrs[dim-1] = out;
+          for (unsigned int d = 0; d < dim-1; d++)
+          {
+            toPtrs[d] = imV[d];
+            fromPtrs[d+1] = toPtrs[d];
+          }
+        }
+
 
     public:
         PoissonVec(ot::DA<dim>* da,unsigned int dof=1);
@@ -36,15 +47,11 @@ namespace PoissonEq
 
         bool postComputeVec(const VECType* in,VECType* out, double scale=1.0);
 
-        /**@brief octree grid x to domin x*/
-        double gridX_to_X(double x);
-        /**@brief octree grid y to domin y*/
-        double gridY_to_Y(double y);
-        /**@brief octree grid z to domin z*/
-        double gridZ_to_Z(double z);
 
-
-
+        /**@brief octree grid xyz to domanin xyz*/
+        double gridX_to_X(unsigned int d, double x) const;
+        /**@brief octree grid xyz to domanin xyz*/
+        Point<dim> gridX_to_X(Point<dim> x) const;
     };
 
     template class PoissonVec<2u>;
