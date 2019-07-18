@@ -8,6 +8,7 @@
 #ifndef __BIN_UTILS_H_
 #define __BIN_UTILS_H_
 #include <vector>
+#include <array>
 
 /**
   @namespace binOp
@@ -78,6 +79,53 @@ namespace binOp{
   }
 
 
+  /**
+   * @brief Expand/collapse bits in a bit string.
+   * @description TallBitMatrix expands bits in a bit string.
+   * @tparam W width of the tall matrix.
+   * @tparam B underlying type representing bit strings.
+   */
+  template <unsigned char W, typename B = unsigned char>
+  class TallBitMatrix
+  {
+    protected:
+      std::array<B, W> m_columns;
+      unsigned char m_numNonzeroColumns;
+
+    public:
+      void clear() { m_columns.fill(0);  m_numNonzeroColumns = 0; }
+
+      /**@brief Use the places of the first W set bits as basis vectors in a matrix. */
+      TallBitMatrix static generateColumns(B ones)
+      {
+        TallBitMatrix M;
+        M.clear();
+        B new_col = 1u;
+        int c = 0;
+        while (new_col && c < W)
+        {
+          if (ones & new_col)
+            M.m_columns[c++] = new_col;
+          new_col <<= 1;
+        }
+        M.m_numNonzeroColumns = c;
+        return M;
+      }
+
+      /**@brief Performs matrix multiplication, i.e. inserts zeroed places into the string. */
+      B expandBitstring(B vec)
+      {
+        B vecInSubspace = 0u;
+        vec &= ((1u << m_numNonzeroColumns) - 1u);
+        int c = 0;
+        while (vec)
+        {
+          vecInSubspace ^= m_columns[c++] & (0u - bool(vec & 1u));
+          vec >>= 1;
+        }
+        return vecInSubspace;
+      }
+  };
 
 }//end namespace
 

@@ -434,6 +434,44 @@ namespace ot {
   }
 
 
+  /**
+   * @brief Using bit-wise ops, identifies which children are touching a point.
+   * @param [in] pointCoords Coordinates of the point incident on 0 or more children.
+   * @param [out] incidenceOffset The Morton child # of the first incident child.
+   * @param [out] incidenceSubspace A bit string of axes, with a '1'
+   *                for each incident child that is adjacent to the first incident child.
+   * @param [out] incidenceSubspaceDim The number of set ones in incidenceSubspace.
+   *                The number of incident children is pow(2, incidenceSubspaceDim).
+   * @note Use with TallBitMatrix to easily iterate over the child numbers of incident children.
+   */
+  template <typename T, unsigned int dim>
+  void Element<T,dim>::incidentChildren(
+      const ot::TreeNode<T,dim> &pointCoords,
+      typename ot::CellType<dim>::FlagType &incidenceOffset,
+      typename ot::CellType<dim>::FlagType &incidenceSubspace,
+      typename ot::CellType<dim>::FlagType &incidenceSubspaceDim) const
+  {
+    // TODO these type casts are ugly and they might even induce more copying than necessary.
+    std::array<T, dim> justCoords;
+    ot::TNPoint<T, dim> pt(
+        1,
+        (pointCoords.getAnchor(justCoords), justCoords),
+        pointCoords.getLevel());
+
+    const LevI pLev = this->getLevel();
+
+    incidenceOffset = (pt.getMortonIndex(pLev) ^ this->getMortonIndex(pLev))  | pt.getMortonIndex(pLev + 1);  // One of the duplicates.
+    ot::CellType<dim> paCellt = pt.get_cellType(pLev);
+    ot::CellType<dim> chCellt = pt.get_cellType(pLev+1);
+
+    // Note that dupDim is the number of set bits in dupOrient.
+    incidenceSubspace =    paCellt.get_orient_flag() & ~chCellt.get_orient_flag();
+    incidenceSubspaceDim = paCellt.get_dim_flag()    -  chCellt.get_dim_flag();
+
+    incidenceOffset = ~incidenceSubspace & incidenceOffset;  // The least Morton-child among all duplicates.
+  }
+
+
   // ============================ End: Element ============================ //
 
 

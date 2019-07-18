@@ -228,6 +228,22 @@ namespace ot {
       void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
 
       void appendKFaces(CellType<dim> kface, std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const;
+
+      /**
+       * @brief Using bit-wise ops, identifies which children are touching a point.
+       * @param [in] pointCoords Coordinates of the point incident on 0 or more children.
+       * @param [out] incidenceOffset The Morton child # of the first incident child.
+       * @param [out] incidenceSubspace A bit string of axes, with a '1'
+       *                for each incident child that is adjacent to the first incident child.
+       * @param [out] incidenceSubspaceDim The number of set ones in incidenceSubspace.
+       *                The number of incident children is pow(2, incidenceSubspaceDim).
+       * @note Use with TallBitMatrix to easily iterate over the child numbers of incident children.
+       */
+      void incidentChildren(
+          const ot::TreeNode<T,dim> &pointCoords,
+          typename ot::CellType<dim>::FlagType &incidenceOffset,
+          typename ot::CellType<dim>::FlagType &incidenceSubspace,
+          typename ot::CellType<dim>::FlagType &incidenceSubspaceDim) const;
   };
 
 
