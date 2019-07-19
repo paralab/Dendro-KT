@@ -49,12 +49,12 @@ struct TreeAddr
     {
       for (int d = 0; d < dim; d++)
       {
-        carry &= (m_coords[d] & mask);
+        carry &= bool(m_coords[d] & mask);
         m_coords[d] ^= mask;
         if (!carry)
           return;
       }
-      mask >>= 1;
+      mask <<= 1;
     }
   }
 
@@ -185,7 +185,7 @@ class EleTreeIterator
       // Deeper than this, firstElement and lastElement follow different paths.
       m_endTreeAddr.m_coords = m_beginTreeAddr.m_coords;
       m_beginTreeAddr.m_lev = firstElement.getLevel();
-      m_endTreeAddr.m_lev = firstElement.getLevel();
+      m_endTreeAddr.m_lev = lastElement.getLevel();
 
       /// // Stash ancestor address in curTreeAddr.
       /// m_curTreeAddr.m_coords = m_beginTreeAddr.m_coords;
@@ -193,25 +193,29 @@ class EleTreeIterator
 
         // m_addrBegin <-- first element
       ot::RotI rot = ancestorRot;
+      T levBit = 1u << (m_uiMaxDepth - L0);
       for (unsigned int l = L0 + 1; l <= firstElement.getLevel(); l++)
       {
         ot::ChildI child_sfc = rotations[rot * 2*NumChildren +
                                      1*NumChildren +
                                      firstElement.getMortonIndex(l)];
+        levBit >>= 1;
         for (int d = 0; d < dim; d++)
-          m_beginTreeAddr.m_coords[d] |= (bool) (child_sfc & (1u << d));
+          m_beginTreeAddr.m_coords[d] |= levBit * (bool) (child_sfc & (1u << d));
         rot = HILBERT_TABLE[rot*NumChildren + firstElement.getMortonIndex(l)];
       }
 
         // m_addrEnd <-- last element + 1
       rot = ancestorRot;
+      levBit = 1u << (m_uiMaxDepth - L0);
       for (unsigned int l = L0 + 1; l <= lastElement.getLevel(); l++)
       {
         ot::ChildI child_sfc = rotations[rot * 2*NumChildren +
                                      1*NumChildren +
                                      lastElement.getMortonIndex(l)];
+        levBit >>= 1;
         for (int d = 0; d < dim; d++)
-          m_endTreeAddr.m_coords[d] |= (bool) (child_sfc & (1u << d));
+          m_endTreeAddr.m_coords[d] |= levBit * (bool) (child_sfc & (1u << d));
         rot = HILBERT_TABLE[rot*NumChildren + lastElement.getMortonIndex(l)];
       }
       m_endTreeAddr.step();  // Just computed lastElement, need to go one more.
@@ -263,10 +267,11 @@ template <typename T, unsigned int dim, typename NodeT>
 bool EleTreeIterator<T, dim, NodeT>::topDownNodes()
 {
   // The stacks only go as deep as m_uiMaxDepth, can't topDownNodes() further.
-  if (m_curTreeAddr.m_lev >= m_uiMaxDepth)
+  const unsigned int curLev = m_curSubtree.getLevel();
+
+  if (curLev >= m_uiMaxDepth)
     return true;
 
-  unsigned int &curLev = m_curTreeAddr.m_lev;
   const ot::ChildI curChildNum = m_curTreeAddr.getIndex();
   const ot::RankI curBegin = m_childTable[curLev - m_L0][curChildNum];
   const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum+1];
@@ -403,7 +408,7 @@ void EleTreeIterator<T, dim, NodeT>::descendToLeafAddress()
     m_curSubtree = m_curSubtree.getChildMorton(child_m);
   }
 
-  // topDownNodes() finally failed, which means the current level is a leaf.
+  // topDownNodes() finally returned false, which means the current level is a leaf.
   // (Or we hit m_uiMaxDepth).
   //TODO copy nodes in lexicographic order to leaf buffer,
   // optionally copy parent nodes, and interpolate if there are hanging nodes.
