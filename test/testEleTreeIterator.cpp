@@ -51,9 +51,26 @@ int main(int argc, char *argv[])
 
   const bool assumeHilbert = false;
   int lastChild = (assumeHilbert ? 2 : 3);
-  EleTreeIterator<C, dim, T> it(9, &(*nineCoords.begin()), &(*nineVals.begin()), 1, ot::TreeNode<C,dim>().getChildMorton(0), ot::TreeNode<C,dim>().getChildMorton(lastChild));
+  ElementLoop<C, dim, T> loop(
+      9,
+      &(*nineCoords.begin()),
+      1,
+      ot::TreeNode<C,dim>().getChildMorton(0),
+      ot::TreeNode<C,dim>().getChildMorton(lastChild));
+  loop.initialize(&(*nineVals.begin()));
 
+  int eleCounter = 0;
 
+  while (!loop.isExhausted())
+  {
+    std::cerr << "Not exhausted, eleCounter == "
+              << eleCounter++ << " "
+              << loop.m_curTreeAddr << ".\n";
+    loop.next();
+  }
+  std::cerr << "Finally exhausted.\n";
+
+  loop.finalize(&(*nineVals.begin()));
 
   _DestroyHcurve();
 
