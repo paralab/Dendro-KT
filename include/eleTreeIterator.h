@@ -5,15 +5,14 @@
  * @brief: Stateful const iterator over implicit mesh, giving access to element nodes.
  */
 
+#ifndef DENDRO_KT_ELE_TREE_ITERATOR_H
+#define DENDRO_KT_ELE_TREE_ITERATOR_H
 
 #include "nsort.h"
 #include "tsort.h"
 #include "treeNode.h"
 #include "mathUtils.h"
 #include "binUtils.h"
-
-#ifndef DENDRO_KT_ELE_TREE_ITERATOR_H
-#define DENDRO_KT_ELE_TREE_ITERATOR_H
 
 template <typename T, unsigned int dim, typename NodeT> class ElementLoop;
 template <typename T, unsigned int dim, typename NodeT> class ELIterator;
@@ -408,7 +407,7 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   if (curLev >= m_uiMaxDepth)
     return true;
 
-  const ot::ChildI curChildNum = m_curTreeAddr.getIndex();
+  const ot::ChildI curChildNum = m_curTreeAddr.getIndex(curLev);
   const ot::RankI curBegin = m_childTable[curLev - m_L0][curChildNum];
   const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum+1];
 
@@ -557,7 +556,7 @@ void ElementLoop<T, dim, NodeT>::goToTreeAddr()
 
     // child_m = rot_perm[child_sfc]
     const ot::ChildI * const rot_perm = &rotations[pRot*2*NumChildren + 0*NumChildren];
-    const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NumChildren];
+    /// const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NumChildren];
     const ot::ChildI child_sfc = m_curTreeAddr.getIndex(commonLev+1);
     const ot::ChildI child_m = rot_perm[child_sfc];
   
@@ -581,7 +580,7 @@ void ElementLoop<T, dim, NodeT>::goToTreeAddr()
 
     // child_m = rot_perm[child_sfc]
     const ot::ChildI * const rot_perm = &rotations[pRot*2*NumChildren + 0*NumChildren];
-    const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NumChildren];
+    /// const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NumChildren];
     const ot::ChildI child_sfc = m_curTreeAddr.getIndex(pLev+1);
     const ot::ChildI child_m = rot_perm[child_sfc];
 
