@@ -87,7 +87,7 @@ struct TreeAddr
   unsigned int m_lev;
   std::array<T,dim> m_coords;
 
-  bool operator==(const TreeAddr &other);
+  bool operator==(const TreeAddr &other) const;
   void step(unsigned int l);
   void step() { step(m_lev); }
   unsigned int getIndex(unsigned int level) const;
@@ -199,6 +199,8 @@ class ELIterator
     ElementLoop<T,dim,NodeT> &m_host_loop;
 
   public:
+    ELIterator() = delete;
+    ELIterator(TreeAddr<T,dim> pos, ElementLoop<T,dim,NodeT> &host_loop);
 
     /** @brief Compare iterator positions. */
     bool operator!=(const ELIterator &other) const;
@@ -208,6 +210,8 @@ class ELIterator
 
     /** @brief Dereference iterator position, i.e. get current element values. */
     ElementNodeBuffer<T,dim,NodeT> operator*();
+
+    ot::TreeNode<T,dim> getElemTreeNode();
 };
 
 
@@ -649,8 +653,36 @@ void ElementLoop<T, dim, NodeT>::next()
 }
 
 
+template <typename T, unsigned int dim, typename NodeT>
+ELIterator<T,dim,NodeT> ElementLoop<T, dim, NodeT>::current()
+{
+  return {m_curTreeAddr, *this};
+}
+
+template <typename T, unsigned int dim, typename NodeT>
+ELIterator<T,dim,NodeT> ElementLoop<T, dim, NodeT>::begin()
+{
+  return {m_beginTreeAddr, *this};
+}
+
+template <typename T, unsigned int dim, typename NodeT>
+ELIterator<T,dim,NodeT> ElementLoop<T, dim, NodeT>::end()
+{
+  return {m_endTreeAddr, *this};
+}
+
 
 // -------------- ELIterator Definitions -----------------
+
+template <typename T, unsigned int dim, typename NodeT>
+ELIterator<T,dim,NodeT>::ELIterator(
+    TreeAddr<T,dim> pos,
+    ElementLoop<T,dim,NodeT> &host_loop)
+
+  : m_pos(pos),
+    m_host_loop(host_loop)
+{
+}
 
 template <typename T, unsigned int dim, typename NodeT>
 bool ELIterator<T,dim,NodeT>::operator!=(const ELIterator &other) const
@@ -672,12 +704,17 @@ ElementNodeBuffer<T,dim,NodeT> ELIterator<T,dim,NodeT>::operator*()
   return m_host_loop.requestLeafBuffer();
 }
 
+template <typename T, unsigned int dim, typename NodeT>
+ot::TreeNode<T,dim> ELIterator<T,dim,NodeT>::getElemTreeNode()
+{
+  return m_host_loop.m_curSubtree;
+}
 
 
 // -------------- TreeAddr Definitions -----------------
 
 template <typename T, unsigned int dim>
-bool TreeAddr<T,dim>::operator==(const TreeAddr &other)
+bool TreeAddr<T,dim>::operator==(const TreeAddr &other) const
 {
   return (m_lev == other.m_lev) && (m_coords == other.m_coords);
 }
