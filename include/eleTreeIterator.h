@@ -90,6 +90,7 @@ struct TreeAddr
   bool operator==(const TreeAddr &other) const;
   void step(unsigned int l);
   void step() { step(m_lev); }
+  void clearBelowLev();
   unsigned int getIndex(unsigned int level) const;
   unsigned int getIndex() { return getIndex(m_lev); }
 
@@ -291,14 +292,15 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
   // Find orientation of common ancestor to first and last element.
   ot::RotI ancestorRot = 0;
   ot::ChildI ancestorChildNum = 0;
-  m_beginTreeAddr.m_coords = {0};
+  for (int d = 0; d < dim; d++)
+    m_beginTreeAddr.m_coords[d] = 0;
   for (unsigned int l = 1; l <= L0; l++)
   {
     ancestorChildNum = rotations[ancestorRot * 2*NumChildren +
                                  1*NumChildren +
                                  firstElement.getMortonIndex(l)];
     for (int d = 0; d < dim; d++)
-      m_beginTreeAddr.m_coords[d] |= (bool) (ancestorChildNum  & (1u << d));
+      m_beginTreeAddr.m_coords[d] |= ((bool) (ancestorChildNum  & (1u << d))) << (m_uiMaxDepth - l);
 
     ancestorRot = HILBERT_TABLE[ancestorRot*NumChildren + firstElement.getMortonIndex(l)];
   }
@@ -415,8 +417,8 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   const ot::RankI curBegin = m_childTable[curLev - m_L0][curChildNum];
   const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum+1];
 
-  const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev].begin());
-  const NodeT               * sibNodeVals =   &(*m_siblingNodeVals[curLev].begin());
+  const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
+  const NodeT               * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
 
   // Check if this is a leaf element. If so, return true immediately.
   bool isLeaf = true;
@@ -598,6 +600,7 @@ void ElementLoop<T, dim, NodeT>::goToTreeAddr()
 
   // The stacks have reached the leaf. We now know the correct level of target.
   m_curTreeAddr.m_lev = m_curSubtree.getLevel();
+  m_curTreeAddr.clearBelowLev();
 }
 
 
@@ -746,6 +749,14 @@ void TreeAddr<T,dim>::step(unsigned int l)
     }
     mask <<= 1;
   }
+}
+
+template <typename T, unsigned int dim>
+void TreeAddr<T,dim>::clearBelowLev()
+{
+  const T mask = (1u << (m_uiMaxDepth + 1)) - (1u << (m_uiMaxDepth - m_lev));
+  for (int d = 0; d < dim; d++)
+    m_coords[d] &= mask;
 }
 
 template <typename T, unsigned int dim>
