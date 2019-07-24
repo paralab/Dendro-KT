@@ -4,83 +4,160 @@
 
 #include <stdio.h>
 
+
+bool testRandomPoints();
+
+
 int main(int argc, char *argv[])
 {
-  constexpr unsigned int dim = 2;
+  bool success = testRandomPoints();
+  std::cout << "Result: " << (success ? "success" : "failure") << "\n";
+  return !success;
+}
+
+
+/**
+ * testRandomPoints()
+ *
+ * Create points, generate neighboring cells, check that traversal includes
+ * all the neighboring cells.
+ *
+ */
+bool testRandomPoints()
+{
+  const int numPoints = 100;
+  const unsigned int depthMin = 3;
+  const unsigned int depthMax = 6;
+
+  m_uiMaxDepth = depthMax;
+
+  constexpr unsigned int dim = 4;
   using C = unsigned int;
   using T = float;
 
-  m_uiMaxDepth = 3;
-
   _InitializeHcurve(dim);
 
-  fprintf(stdout, "Hello world!\n");
+  // Test:
+  // while ./tstEleTreeIterator > /dev/null ; do echo ; done
 
-  const C s2 = (1u << m_uiMaxDepth) / (1u << 2);
-  const unsigned int nodeLev = 1;
+  // Pseudo-random number generators for point coordinates.
+  std::random_device rd;
+  unsigned int seed = rd();
+  /// unsigned int seed = 2716830963;  // Seeds that used to cause seg fault.
+  /// unsigned int seed = 3163620652;
+  std::mt19937 gen(seed);
+  std::uniform_int_distribution<C> coordDis(0, 1u << m_uiMaxDepth);
+  std::uniform_int_distribution<unsigned int> levDis(depthMin, depthMax);
 
-  std::vector<ot::TreeNode<C,dim>> elevenCoords;
+  std::cerr << "Seed: " << seed << "\n";
+
+  constexpr unsigned int numNeighbours = (1u << dim);
+
+  // Fill sample nodes and their neighbors.
+  std::vector<ot::TreeNode<C,dim>> nodeCoords;
+  std::vector<ot::TreeNode<C,dim>> nodeNeighbours;
+  for (int ii = 0; ii < numPoints; ii++)
   {
-    using Coord = std::array<C,dim>;
-    elevenCoords.emplace_back(1, Coord{0,    0}, nodeLev);
-    elevenCoords.emplace_back(1, Coord{2*s2, 0}, nodeLev);
-    elevenCoords.emplace_back(1, Coord{4*s2, 0}, nodeLev);
+    const unsigned int lev = levDis(gen);
+    const C mask = (1u << (m_uiMaxDepth + 1)) - (1u << (m_uiMaxDepth - lev));
+    std::array<C,dim> coords;
+    for (int d = 0; d < dim; d++)
+      coords[d] = coordDis(gen) & mask;
 
-    elevenCoords.emplace_back(1, Coord{3*s2, s2}, nodeLev+1);
+    nodeCoords.emplace_back(1, coords, lev);
 
-    elevenCoords.emplace_back(1, Coord{0,    2*s2}, nodeLev);
-    elevenCoords.emplace_back(1, Coord{2*s2, 2*s2}, nodeLev);
-    elevenCoords.emplace_back(1, Coord{4*s2, 2*s2}, nodeLev);
+    std::array<C,dim> ncoords;
+    for (int n = 0; n < numNeighbours; n++)
+    {
+      bool insideDomain = true;
+      for (int d = 0; d < dim; d++)
+      {
+        ncoords[d] = ( (n & (1u<<d)) ? coords[d] : coords[d] - (1u<<(m_uiMaxDepth-lev)) );
+        insideDomain &= (ncoords[d] < (1u << m_uiMaxDepth));
+      }
 
-    elevenCoords.emplace_back(1, Coord{s2, 3*s2}, nodeLev+1);
-
-    elevenCoords.emplace_back(1, Coord{0,    4*s2}, nodeLev);
-    elevenCoords.emplace_back(1, Coord{2*s2, 4*s2}, nodeLev);
-    elevenCoords.emplace_back(1, Coord{4*s2, 4*s2}, nodeLev);
+      if (insideDomain)
+        nodeNeighbours.emplace_back(1, ncoords, lev);
+    }
   }
 
-  std::vector<T> elevenVals;
-  elevenVals.emplace_back(0);
-  elevenVals.emplace_back(1);
-  elevenVals.emplace_back(2);
+  /// std::cout << "nodeCoords.size()==" << nodeCoords.size() << "\n";
+  /// std::cout << "nodeCoords: ";
+  /// for (const auto &x : nodeCoords)
+  /// {
+  ///   std::cout << "{(" << x.getLevel() << ")";
+  ///   for (int d = 0; d < dim; d++)
+  ///     std::cout << " " << x.getX(d);
+  ///   std::cout << "} ";
+  /// }
+  /// std::cout << "\n";
 
-  elevenVals.emplace_back(3);
-
-  elevenVals.emplace_back(4);
-  elevenVals.emplace_back(5);
-  elevenVals.emplace_back(6);
-
-  elevenVals.emplace_back(7);
-
-  elevenVals.emplace_back(8);
-  elevenVals.emplace_back(9);
-  elevenVals.emplace_back(10);
-
+  /// std::cout << "(before sort) nodeNeighbours.size()==" << nodeNeighbours.size() << "\n";
+  /// std::cout << "(before sort) nodeNeighbours: ";
+  /// for (const auto &x : nodeNeighbours)
+  /// {
+  ///   std::cout << "{(" << x.getLevel() << ")";
+  ///   for (int d = 0; d < dim; d++)
+  ///     std::cout << " " << x.getX(d);
+  ///   std::cout << "} ";
+  /// }
+  /// std::cout << "\n";
 
 
-  int lastChild = 3;
-  ElementLoop<C, dim, T> loop(
-      11,
-      &(*elevenCoords.begin()),
+  // Convert list of neighbor cells into list of unique cells.
+  ot::SFC_Tree<C,dim>::locTreeSort(
+      &(*nodeNeighbours.begin()),
+      0,
+      (ot::RankI) nodeNeighbours.size(),
       1,
-      ot::TreeNode<C,dim>().getChildMorton(0),
-      ot::TreeNode<C,dim>().getChildMorton(lastChild));
-  loop.initialize(&(*elevenVals.begin()));
+      m_uiMaxDepth,
+      0);
 
-  int eleCounter = 0;
+  ot::SFC_Tree<C,dim>::locRemoveDuplicates(nodeNeighbours);
 
-  while (!loop.isExhausted())
+  /// std::cout << "nodeNeighbours.size()==" << nodeNeighbours.size() << "\n";
+  /// std::cout << "nodeNeighbours: ";
+  /// for (const auto &x : nodeNeighbours)
+  /// {
+  ///   std::cout << "{(" << x.getLevel() << ")";
+  ///   for (int d = 0; d < dim; d++)
+  ///     std::cout << " " << x.getX(d);
+  ///   std::cout << "} ";
+  /// }
+  /// std::cout << "\n";
+
+  // Verify that each cell is visited (in order) as a leaf in matvec-style traversal.
+  ElementLoop<C, dim, T> loop(
+      numPoints,
+      &(*nodeCoords.begin()),
+      1,
+      nodeNeighbours.front(),
+      nodeNeighbours.back());
+  std::vector<T> tmpVals(numPoints, 0.0);
+  loop.initialize(&(*tmpVals.begin()));
+
+  auto neighbourIt = nodeNeighbours.begin();
+
+  int loopCount = 0;
+  /// std::cout << "Loop:\n";
+  for (ELIterator<C, dim, T> it = loop.begin(); it != loop.end(); ++it)
   {
-    std::cerr << "Not exhausted, eleCounter == "
-              << eleCounter++ << " "
-              << loop.m_curTreeAddr << ".\n";
-    loop.next();
-  }
-  std::cerr << "Finally exhausted.\n";
+    /// auto tn = it.getElemTreeNode();
+    /// std::cout << "{(" << tn.getLevel() << ")";
+    /// for (int d = 0; d < dim; d++)
+    ///   std::cout << " " << tn.getX(d);
+    /// std::cout << "}\n";
 
-  loop.finalize(&(*elevenVals.begin()));
+    if (*neighbourIt == it.getElemTreeNode())
+      ++neighbourIt;
+
+    loopCount++;
+  }
+  std::cout << "\n";
+
+  std::cout << "loopCount==" << loopCount << "\n";
+
+  return neighbourIt == nodeNeighbours.end();
 
   _DestroyHcurve();
-
-  return 0;
 }
