@@ -40,7 +40,9 @@ template <typename T, unsigned int dim> struct TreeAddr;
  *     eleNodeBuf.submitElement();
  *
  *     // If you do not call eleNodeBuf.submitElement(), any changes made to
- *     // the element node values will be discarded. Also don't forget ++it;
+ *     // the element node values will be discarded, and treated as 0 for
+ *     // purpose of summing the results.
+ *     // The (++it;) in the for-loop is also important to ensure propagation.
  *   }
  *   // Note: ++it;   <--->  elementLoop.next();
  *   //       *it;    <--->  elementLoop.requestLeafBuffer();
@@ -229,6 +231,20 @@ class ElementNodeBuffer
     ElementLoop<T,dim,NodeT> &m_host_loop;
 
   public:
+    ElementNodeBuffer() = delete;
+    ElementNodeBuffer( NodeT *i_nodeValPtr,
+                       const ot::TreeNode<T,dim> *i_nodeCoordsPtr,
+                       const unsigned int &i_eleOrder,
+                       const unsigned int &i_nodesPerElement,
+                       ElementLoop<T,dim,NodeT> &i_m_host_loop )
+      :
+        nodeValPtr(i_nodeValPtr),
+        nodeCoordsPtr(i_nodeCoordsPtr),
+        eleOrder(i_eleOrder),
+        nodesPerElement(i_nodesPerElement),
+        m_host_loop(i_m_host_loop)
+    {}
+
     NodeT * getNodeBuffer() { return nodeValPtr; }
     const ot::TreeNode<T,dim> * getNodeCoords() const { return nodeCoordsPtr; }
     const unsigned int getEleOrder() const { return eleOrder; }
@@ -390,11 +406,12 @@ void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals)
 template <typename T, unsigned int dim, typename NodeT>
 void ElementLoop<T, dim, NodeT>::finalize(NodeT * outputNodeVals)
 {
-  while (m_curSubtree.getLevel() > m_L0)
-  {
-    m_curSubtree = m_curSubtree.getParent();
-    bottomUpNodes();
-  }
+  if (!(m_curTreeAddr == m_endTreeAddr))
+    while (m_curSubtree.getLevel() > m_L0)
+    {
+      m_curSubtree = m_curSubtree.getParent();
+      bottomUpNodes();
+    }
 
   std::vector<NodeT> &topVals = m_siblingNodeVals[m_L0 - m_L0];
   std::copy_n(topVals.begin(), m_numNodes, outputNodeVals);
@@ -413,7 +430,7 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   if (curLev >= m_uiMaxDepth)
     return true;
 
-  const ot::ChildI curChildNum = m_curTreeAddr.getIndex(curLev);
+  const ot::ChildI curChildNum = m_curTreeAddr.getIndex(curLev); //TODO this may need to use curSubtree and then rotate by sfc.
   const ot::RankI curBegin = m_childTable[curLev - m_L0][curChildNum];
   const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum+1];
 
@@ -479,9 +496,9 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   m_siblingsDirty[curLev+1 - m_L0] = false;
 
   // Iterate through the nodes again, but instead of counting, copy the nodes.
-  if (m_siblingNodeCoords[curLev+1 - m_L0].size() < accum)
+  /// if (m_siblingNodeCoords[curLev+1 - m_L0].size() < accum)
     m_siblingNodeCoords[curLev+1 - m_L0].resize(accum);
-  if (m_siblingNodeVals[curLev+1 - m_L0].size() < accum)
+  /// if (m_siblingNodeVals[curLev+1 - m_L0].size() < accum)
     m_siblingNodeVals[curLev+1 - m_L0].resize(accum);
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
@@ -514,7 +531,65 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
 template <typename T, unsigned int dim, typename NodeT>
 void ElementLoop<T, dim, NodeT>::bottomUpNodes()
 {
-  //TODO
+  const unsigned int curLev = m_curSubtree.getLevel();
+
+  // child_sfc = rot_inv[child_m]
+  const ot::ChildI * const rot_inv = &rotations[m_rot[curLev - m_L0]*2*NumChildren + 1*NumChildren];
+  const ot::ChildI * const prot_inv =
+      (curLev > m_L0 ?
+        &rotations[m_rot[curLev - m_L0]*2*NumChildren + 1*NumChildren]
+      : &rotations[0*2*NumChildren + 1*NumChildren]);
+
+  const ot::ChildI curChildNum_m = m_curSubtree.getMortonIndex(curLev);
+  const ot::ChildI curChildNum_sfc = prot_inv[curChildNum_m];
+  const ot::RankI curBegin = m_childTable[curLev - m_L0][curChildNum_sfc];
+  const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum_sfc+1];
+
+  const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
+  NodeT                     * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
+
+  // Reset current level node values to 0.
+  for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+    sibNodeVals[nIdx] = 0;
+
+  if (curLev < m_uiMaxDepth && m_siblingsDirty[curLev+1 - m_L0])
+  {
+    m_siblingsDirty[curLev - m_L0] = true;
+
+    // Summation from nodes shared across multiple children.
+    //
+
+    const ot::Element<T,dim> curSubtree(m_curSubtree);
+
+    using FType = typename ot::CellType<dim>::FlagType;
+    FType firstIncidentChild_m, incidentSubspace, incidentSubspaceDim;
+
+    // Set of mutable pointers to child node offsets.
+    std::array<unsigned int, NumChildren+1> nodeOffsets = m_childTable[curLev+1 - m_L0];
+
+    // Count the number of nodes contained by or incident on each child.
+    for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+    {
+      curSubtree.incidentChildren( sibNodeCoords[nIdx],
+                                   firstIncidentChild_m,
+                                   incidentSubspace,
+                                   incidentSubspaceDim);
+
+      binOp::TallBitMatrix<dim, FType> bitExpander =
+          binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
+
+      const ot::ChildI numIncidentChildren = 1u << incidentSubspaceDim;
+      for (ot::ChildI c = 0; c < numIncidentChildren; c++)
+      {
+        ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
+        ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
+
+        sibNodeVals[nIdx] += m_siblingNodeVals[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ];
+
+        nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
+      }
+    }
+  }
 }
 
 
@@ -615,6 +690,18 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
   // (Or we hit m_uiMaxDepth).
   //TODO copy nodes in lexicographic order to leaf buffer,
   // optionally copy parent nodes, and interpolate if there are hanging nodes.
+
+  const ElementLoop * const_this = const_cast<const ElementLoop*>(this);
+
+  return
+    ElementNodeBuffer<T,dim,NodeT>
+    {
+      &(*this->m_leafNodeVals.begin()),
+      &(*const_this->m_leafNodeCoords.begin()),
+      const_this->m_eleOrder,
+      const_this->m_nodesPerElement,
+      *this,
+    };
 }
 
 template <typename T, unsigned int dim, typename NodeT>
@@ -649,7 +736,13 @@ void ElementLoop<T, dim, NodeT>::next()
   {
     m_curTreeAddr = m_oldTreeAddr;
     m_curTreeAddr.m_lev = m_L0;
-    goToTreeAddr();  // Propagate bottom-up updates.
+
+    // Propagate bottom-up updates.
+    while (m_curSubtree.getLevel() > m_L0)
+    {
+      m_curSubtree = m_curSubtree.getParent();
+      bottomUpNodes();
+    }
 
     m_curTreeAddr = m_endTreeAddr;  // Failsafe.
   }

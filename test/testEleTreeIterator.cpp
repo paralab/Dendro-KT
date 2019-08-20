@@ -45,6 +45,7 @@ bool testRandomPoints()
   unsigned int seed = rd();
   /// unsigned int seed = 2716830963;  // Seeds that used to cause seg fault.
   /// unsigned int seed = 3163620652;
+  /// unsigned int seed = 3230132189;
   std::mt19937 gen(seed);
   std::uniform_int_distribution<C> coordDis(0, 1u << m_uiMaxDepth);
   std::uniform_int_distribution<unsigned int> levDis(depthMin, depthMax);
@@ -52,6 +53,9 @@ bool testRandomPoints()
   std::cerr << "Seed: " << seed << "\n";
 
   constexpr unsigned int numNeighbours = (1u << dim);
+
+  std::vector<T> startVals(numPoints, 1.0);
+  std::vector<T> expectedVals(numPoints, 0.0);
 
   // Fill sample nodes and their neighbors.
   std::vector<ot::TreeNode<C,dim>> nodeCoords;
@@ -77,7 +81,10 @@ bool testRandomPoints()
       }
 
       if (insideDomain)
+      {
         nodeNeighbours.emplace_back(1, ncoords, lev);
+        expectedVals[ii] += 1.0;
+      }
     }
   }
 
@@ -133,8 +140,7 @@ bool testRandomPoints()
       1,
       nodeNeighbours.front(),
       nodeNeighbours.back());
-  std::vector<T> tmpVals(numPoints, 0.0);
-  loop.initialize(&(*tmpVals.begin()));
+  loop.initialize(&(*startVals.begin()));
 
   auto neighbourIt = nodeNeighbours.begin();
 
@@ -148,16 +154,30 @@ bool testRandomPoints()
     ///   std::cout << " " << tn.getX(d);
     /// std::cout << "}\n";
 
+    // Use the original 1's (duplicated for each neighbour) in the summation.
+    (*it).submitElement();
+
     if (*neighbourIt == it.getElemTreeNode())
       ++neighbourIt;
 
     loopCount++;
   }
+  loop.finalize(&(*startVals.begin()));
   std::cout << "\n";
 
   std::cout << "loopCount==" << loopCount << "\n";
 
-  return neighbourIt == nodeNeighbours.end();
+  int nonmatchingNodes = 0;
+  for (int nIdx = 0; nIdx < numPoints; nIdx++)
+  {
+    /// std::cout << "startVals[" << nIdx << "]==" << startVals[nIdx] << " \t"
+    ///           << "expectedVals[" << nIdx << "]==" << expectedVals[nIdx] << " \n";
+    if (!(startVals[nIdx] == expectedVals[nIdx]))
+      nonmatchingNodes++;
+  }
+  std::cout << "nonmatchingNodes==" << nonmatchingNodes << "/" << numPoints << "\n";
+
+  return (neighbourIt == nodeNeighbours.end() && nonmatchingNodes == 0);
 
   _DestroyHcurve();
 }
