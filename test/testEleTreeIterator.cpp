@@ -46,6 +46,7 @@ bool testRandomPoints()
   /// unsigned int seed = 2716830963;  // Seeds that used to cause seg fault.
   /// unsigned int seed = 3163620652;
   /// unsigned int seed = 3230132189;
+  /// unsigned int seed = 1115998293;
   std::mt19937 gen(seed);
   std::uniform_int_distribution<C> coordDis(0, 1u << m_uiMaxDepth);
   std::uniform_int_distribution<unsigned int> levDis(depthMin, depthMax);
@@ -129,7 +130,7 @@ bool testRandomPoints()
   ///   std::cout << "{(" << x.getLevel() << ")";
   ///   for (int d = 0; d < dim; d++)
   ///     std::cout << " " << x.getX(d);
-  ///   std::cout << "} ";
+  ///   std::cout << "}\n";
   /// }
   /// std::cout << "\n";
 

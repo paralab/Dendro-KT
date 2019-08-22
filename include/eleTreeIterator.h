@@ -537,7 +537,7 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
   const ot::ChildI * const rot_inv = &rotations[m_rot[curLev - m_L0]*2*NumChildren + 1*NumChildren];
   const ot::ChildI * const prot_inv =
       (curLev > m_L0 ?
-        &rotations[m_rot[curLev - m_L0]*2*NumChildren + 1*NumChildren]
+        &rotations[m_rot[curLev-1 - m_L0]*2*NumChildren + 1*NumChildren]
       : &rotations[0*2*NumChildren + 1*NumChildren]);
 
   const ot::ChildI curChildNum_m = m_curSubtree.getMortonIndex(curLev);
