@@ -712,11 +712,9 @@ void ElementLoop<T, dim, NodeT>::goToTreeAddr()
 template <typename T, unsigned int dim, typename NodeT>
 ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
 {
-
-  // topDownNodes() finally returned false, which means the current level is a leaf.
-  // (Or we hit m_uiMaxDepth).
-  //TODO copy nodes in lexicographic order to leaf buffer,
-  // optionally copy parent nodes, and interpolate if there are hanging nodes.
+  // Assume m_curSubtree and m_curTreeAddr are pointing to a leaf.
+  // Copy the nodes in lexicographic order to a leaf buffer.
+  // If needed, interpolate missing values from the parent nodes.
 
   const unsigned int curLev = m_curSubtree.getLevel();
 
@@ -817,7 +815,6 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
 
   const ElementLoop * const_this = const_cast<const ElementLoop*>(this);
 
-  //TODO need to add leafNodeCoordsFlat instead of leafNodeCoords.
   return
     ElementNodeBuffer<T,dim,NodeT>
     {
