@@ -752,7 +752,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     const unsigned int nodeRank = ot::TNPoint<T, dim>::get_lexNodeRank( m_curSubtree,
                                                                         sibNodeCoords[nIdx],
                                                                         m_eleOrder);
-    assert(nodeRank < npe);
+    assert(nodeRank < npe);  // If fails, check m_uiMaxDepth is deep enough for eleOrder.
     leafEleFill[nodeRank] = true;
     fillCheck += (nodeRank + 1);
     m_leafNodeVals[nodeRank] = sibNodeVals[nIdx];

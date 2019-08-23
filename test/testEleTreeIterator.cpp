@@ -34,13 +34,13 @@ int main(int argc, char *argv[])
  */
 bool testInterpolation()
 {
-  constexpr unsigned int dim = 2;
+  constexpr unsigned int dim = 4;
   using C = unsigned int;
   using T = float;
 
   const unsigned int eleOrder = 3;
 
-  m_uiMaxDepth = 4;
+  m_uiMaxDepth = 20;
 
   _InitializeHcurve(dim);
 
@@ -84,16 +84,16 @@ bool testInterpolation()
     for (unsigned int child_l1 = numSubdNeighbours + 1; child_l1 < NumChildren; child_l1++)
       tree.push_back(treeRoot.getChildMorton(child_l1));
 
-    //DEBUG
-    fprintf(stdout, "Tree (%u):\n", tree.size());
-    for (ot::RankI tIdx = 0; tIdx < tree.size(); tIdx++)
-    {
-      fprintf(stdout, "tree[%03u] == %s(%lu)\n",
-          tIdx,
-          tree[tIdx].getBase32Hex(2).data(),
-          tree[tIdx].getLevel());
-    }
-    fprintf(stdout, "\n");
+    /// //DEBUG
+    /// fprintf(stdout, "Tree (%u):\n", tree.size());
+    /// for (ot::RankI tIdx = 0; tIdx < tree.size(); tIdx++)
+    /// {
+    ///   fprintf(stdout, "tree[%03u] == %s(%lu)\n",
+    ///       tIdx,
+    ///       tree[tIdx].getBase32Hex(2).data(),
+    ///       tree[tIdx].getLevel());
+    /// }
+    /// fprintf(stdout, "\n");
 
     // Generate all nodes.
     std::vector<ot::TreeNode<C, dim>> nodeCoords;
@@ -111,16 +111,16 @@ bool testInterpolation()
     }
     ot::RankI numUniqueNodes = nodeCoords.size();
 
-    //DEBUG
-    fprintf(stdout, "Node list (%lu):\n", numUniqueNodes);
-    for (ot::RankI nIdx = 0; nIdx < numUniqueNodes; nIdx++)
-    {
-      fprintf(stdout, "nodeCoords[%03u] == %s(%lu)\n",
-          nIdx,
-          nodeCoords[nIdx].getBase32Hex(5).data(),
-          nodeCoords[nIdx].getLevel());
-    }
-    fprintf(stdout, "\n");
+    /// //DEBUG
+    /// fprintf(stdout, "Node list (%lu):\n", numUniqueNodes);
+    /// for (ot::RankI nIdx = 0; nIdx < numUniqueNodes; nIdx++)
+    /// {
+    ///   fprintf(stdout, "nodeCoords[%03u] == %s(%lu)\n",
+    ///       nIdx,
+    ///       nodeCoords[nIdx].getBase32Hex(5).data(),
+    ///       nodeCoords[nIdx].getLevel());
+    /// }
+    /// fprintf(stdout, "\n");
 
     // The test: Evaluate a function that is linear in all node coordinates.
     // For each hanging node, the value will be polynomially interpolated
@@ -171,7 +171,7 @@ bool testInterpolation()
     }
     loop.finalize(&(*nodeVals.begin()));
 
-    bool caseSuccess = maxDiff < 1e-6;
+    bool caseSuccess = maxDiff < 1e-3;
 
     std::cout << "Result of case " << numSubdNeighbours << ": \t"
               << (caseSuccess ? "Succeeded" : "Failed")
@@ -183,7 +183,7 @@ bool testInterpolation()
 
   _DestroyHcurve();
 
-  std::cout << "Interpolation cases failed: " << numCasesFailed << "/" << NumChildren-1 << "\n";
+  std::cout << "Interpolation cases failed: " << numCasesFailed << "/" << NumChildren << "\n";
 
   return (numCasesFailed == 0);
 }
