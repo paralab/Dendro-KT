@@ -182,10 +182,12 @@ class ElementLoop
 
     // Leaf buffers.
     std::vector<ot::TreeNode<T,dim>> m_leafNodeCoords;
-    std::vector<ot::TreeNode<T,dim>> m_parentNodeCoords;
+    /// std::vector<ot::TreeNode<T,dim>> m_parentNodeCoords;
     std::vector<NodeT> m_leafNodeVals;
     std::vector<NodeT> m_parentNodeVals;
     std::vector<double> m_leafNodeCoordsFlat;
+    std::vector<NodeT> m_write2ParentVals;
+    bool m_write2ParentDirty;
 
     // Helper functions.
     bool topDownNodes();    // Partition nodes for children of current node but don't change level.
@@ -283,10 +285,12 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     m_eleOrder(eleOrder),
     m_nodesPerElement(  intPow(eleOrder+1, dim) ),
     m_leafNodeCoords(   intPow(eleOrder+1, dim) ),
-    m_parentNodeCoords( intPow(eleOrder+1, dim) ),
+    /// m_parentNodeCoords( intPow(eleOrder+1, dim) ),
     m_leafNodeVals(     intPow(eleOrder+1, dim) ),
     m_parentNodeVals(   intPow(eleOrder+1, dim) ),
     m_leafNodeCoordsFlat( dim * intPow(eleOrder+1, dim) ),
+    m_write2ParentVals( intPow(eleOrder+1, dim), 0.0 ),
+    m_write2ParentDirty( false ),
     m_curSubtree()
 {
   // Fill interpolation matrices.
@@ -550,6 +554,8 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
     }
   }
 
+  assert((!m_write2ParentDirty));
+
   // Return 'was not already a leaf'.
   return false;
 }
@@ -616,6 +622,26 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
         nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
       }
     }
+
+
+    // Summation from hanging nodes
+    //
+
+    if (m_write2ParentDirty)
+    {
+      for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+      {
+        if (sibNodeCoords[nIdx].getLevel() != curLev)
+          continue;
+        const unsigned int nodeRank = ot::TNPoint<T, dim>::get_lexNodeRank( m_curSubtree,
+                                                                             sibNodeCoords[nIdx],
+                                                                             m_eleOrder );
+        sibNodeVals[nIdx] += m_write2ParentVals[nodeRank];
+      }
+
+      std::fill(m_write2ParentVals.begin(), m_write2ParentVals.end(), 0.0);
+      m_write2ParentDirty = false;
+    }
   }
 }
 
@@ -638,7 +664,7 @@ void ElementLoop<T, dim, NodeT>::goToTreeAddr()
   //
   // - Leaf buffers, once reach a leaf.
   //   - m_leafNodeCoords
-  //   - m_parentNodeCoords
+  /// //   - m_parentNodeCoords
   //   - m_leafNodeVals
   //   - m_parentNodeVals
 
@@ -728,14 +754,28 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
   const unsigned int npe = intPow(m_eleOrder+1, dim);
 
   // Generate leaf node coordinates as TreeNodes.
-  m_leafNodeCoords.clear();
-  ot::Element<T, dim>(m_curSubtree).template appendNodes<ot::TreeNode<T,dim>>(m_eleOrder, m_leafNodeCoords);
-
   // Copy and scale the node coordinates to a buffer of doubles.
-  const double domainScale = 1.0 / (1u << m_uiMaxDepth);
+  m_leafNodeCoords.clear();
+
+  const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
+  const double elemSz = double(1u << m_uiMaxDepth - curLev) / double(1u << m_uiMaxDepth);
+  std::array<unsigned int, dim> nodeIndices;
+  nodeIndices.fill(0);
+
+  double translation[dim];
+  for (int d = 0; d < dim; d++)
+    translation[d] = domainScale * m_curSubtree.getX(d);
+
   for (unsigned int n = 0; n < npe; n++)
+  {
     for (int d = 0; d < dim; d++)
-      m_leafNodeCoordsFlat[ n*dim + d ] = domainScale * m_leafNodeCoords[n].getX(d);
+      m_leafNodeCoordsFlat[ n*dim + d ] = translation[d] + elemSz * nodeIndices[d] / m_eleOrder;
+
+    incrementBaseB<unsigned int, dim>(nodeIndices, m_eleOrder+1);
+  }
+
+  // Limited to rounding precision of m_uiMaxDepth.
+  /// ot::Element<T, dim>(m_curSubtree).template appendNodes<ot::TreeNode<T,dim>>(m_eleOrder, m_leafNodeCoords);
 
   // Diagnostics to tell if the nodes for the element are all present.
   std::vector<bool> leafEleFill(npe, false);
@@ -830,10 +870,105 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
 template <typename T, unsigned int dim, typename NodeT>
 void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
 {
-  unsigned int curLev = m_curSubtree.getLevel();
+  // Assume m_curSubtree and m_curTreeAddr are pointing to a leaf.
+  //
+  // If there are missing nodes, do the transpose of interpolation,
+  //   writing to the intermediate buffer m_write2Parent.
+  //
+  // Also copy the non-missing nodes in lexicographic order from leaf buffer.
 
-  // optionally interpolate
-  // TODO copy the nodes in lexicographic order from leaf buffer.
+  // *Technically could write directly to parent's nodes
+  // because dups have already been saved in sibling node vals,
+  // however it is unclear when the parent's nodes should be zeroed.
+  // So we will leave the responsibility of finally adding m_write2ParentVals
+  // to bottomUpNodes().
+
+  const unsigned int curLev = m_curSubtree.getLevel();
+
+  const ot::ChildI curChildNum = m_curTreeAddr.getIndex(curLev);
+  const ot::RankI curBegin = m_childTable[curLev - m_L0][curChildNum];
+  const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum+1];
+
+  const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
+  NodeT                     * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
+
+  const unsigned int npe = intPow(m_eleOrder+1, dim);
+
+  // Diagnostics to tell if the nodes for the element are all present.
+  std::vector<bool> leafEleFill(npe, false);
+  unsigned int fillCheck = 0;
+  assert(curEnd - curBegin <= npe);
+
+  // Copy leaf points in lexicographic order.
+  NodeT zero;  zero = 0.0;
+  for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+  {
+    const unsigned int nodeRank = ot::TNPoint<T, dim>::get_lexNodeRank( m_curSubtree,
+                                                                        sibNodeCoords[nIdx],
+                                                                        m_eleOrder);
+    assert(nodeRank < npe);  // If fails, check m_uiMaxDepth is deep enough for eleOrder.
+    leafEleFill[nodeRank] = true;
+    fillCheck += (nodeRank + 1);
+    sibNodeVals[nIdx] = m_leafNodeVals[nodeRank];  // Reverse of requestLeafBuffer.
+  }
+
+  const bool leafHasAllNodes = (fillCheck == npe*(npe+1));
+
+  // Interpolate missing nodes (hanging nodes) from parent.
+  if (!leafHasAllNodes)
+  {
+    const ot::ChildI parChildNum = m_curTreeAddr.getIndex(curLev-1);
+    const ot::RankI parBegin = m_childTable[curLev-1 - m_L0][parChildNum];
+    const ot::RankI parEnd = m_childTable[curLev-1 - m_L0][parChildNum+1];
+    const NodeT * parNodeVals = &(*m_siblingNodeVals[curLev-1 - m_L0].begin());
+    const ot::TreeNode<T,dim> * parNodeCoords = &(*m_siblingNodeCoords[curLev-1 - m_L0].begin());
+    const ot::TreeNode<T, dim> parSubtree = m_curSubtree.getParent();
+
+    // Prepare to un-interpolate.
+
+    for (unsigned int n = 0; n < npe; n++)
+      if (leafEleFill[n])
+        m_leafNodeVals[n] = 0.0;  // Only the hanging node values remain.
+
+    // Line up 1D operators for each axis, based on childNum.
+    const NodeT *ipTAxis[dim];
+    const unsigned int childNum_m = m_curSubtree.getMortonIndex();
+    for (int d = 0; d < dim; d++)
+      ipTAxis[d] = m_ipT_1D[bool(childNum_m & (1u << d))].data();
+
+    // Double buffering of nodes during interpolation.
+    const NodeT * imFrom[dim];
+    NodeT * imTo[dim];
+    std::vector<NodeT> imBufs[2];
+    imBufs[0].resize(npe);
+    imBufs[1].resize(npe);
+    for (int d = 0; d < dim; d++)
+    {
+      imTo[d] = &(*imBufs[d % 2].begin());
+      imFrom[d] = &(*imBufs[!(d % 2)].begin());
+    }
+    imFrom[0] = &(*m_leafNodeVals.begin());   // Overwrite pointer to first source.
+
+    // Un-Interpolate all element nodes.
+    // (The non-hanging nodes have been zeroed out.)
+    KroneckerProduct<dim, NodeT, true>(m_eleOrder+1, ipTAxis, imFrom, imTo);
+    // The results of the interpolation are stored in imTo[dim-1].
+
+    // Add contributions from hanging nodes to intermediate parent buffer.
+    for (ot::RankI nIdx = parBegin; nIdx < parEnd; nIdx++)
+    {
+      if (parNodeCoords[nIdx].getLevel() != curLev-1)  // Only select parent-level nodes.
+        continue;
+
+      const unsigned int nodeRank = ot::TNPoint<T, dim>::get_lexNodeRank( parSubtree,
+                                                                          parNodeCoords[nIdx],
+                                                                          m_eleOrder );
+      assert(nodeRank < npe);
+      m_write2ParentVals[nodeRank] += imTo[dim-1][nodeRank];
+    }
+
+    m_write2ParentDirty = true;
+  }
 
   m_siblingsDirty[curLev - m_L0] = true;
 }
