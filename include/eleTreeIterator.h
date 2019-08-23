@@ -186,8 +186,6 @@ class ElementLoop
     std::vector<NodeT> m_leafNodeVals;
     std::vector<NodeT> m_parentNodeVals;
     std::vector<double> m_leafNodeCoordsFlat;
-    std::vector<NodeT> m_write2ParentVals;
-    bool m_write2ParentDirty;
 
     // Helper functions.
     bool topDownNodes();    // Partition nodes for children of current node but don't change level.
@@ -289,8 +287,6 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     m_leafNodeVals(     intPow(eleOrder+1, dim) ),
     m_parentNodeVals(   intPow(eleOrder+1, dim) ),
     m_leafNodeCoordsFlat( dim * intPow(eleOrder+1, dim) ),
-    m_write2ParentVals( intPow(eleOrder+1, dim), 0.0 ),
-    m_write2ParentDirty( false ),
     m_curSubtree()
 {
   // Fill interpolation matrices.
@@ -467,6 +463,7 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
 
   const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
   const NodeT               * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
+        NodeT               * sibNodeValsWrite =   &(*m_siblingNodeVals[curLev - m_L0].begin());
 
   // Check if this is a leaf element. If so, return true immediately.
   bool isLeaf = true;
@@ -554,7 +551,9 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
     }
   }
 
-  assert((!m_write2ParentDirty));
+  // Reset current level node values to 0, to prepare for hanging node accumulation.
+  for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+    sibNodeValsWrite[nIdx] = 0.0;
 
   // Return 'was not already a leaf'.
   return false;
@@ -581,9 +580,9 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
   const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
   NodeT                     * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
 
-  // Reset current level node values to 0.
-  for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
-    sibNodeVals[nIdx] = 0;
+  // Current level node values are zeroed at the end of topDownNodes,
+  // so that the buffer is ready for any hanging node accumulations.
+  // Here, just add to that buffer. Not responsible to clear it here.
 
   if (curLev < m_uiMaxDepth && m_siblingsDirty[curLev+1 - m_L0])
   {
@@ -621,26 +620,6 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
 
         nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
       }
-    }
-
-
-    // Summation from hanging nodes
-    //
-
-    if (m_write2ParentDirty)
-    {
-      for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
-      {
-        if (sibNodeCoords[nIdx].getLevel() != curLev)
-          continue;
-        const unsigned int nodeRank = ot::TNPoint<T, dim>::get_lexNodeRank( m_curSubtree,
-                                                                             sibNodeCoords[nIdx],
-                                                                             m_eleOrder );
-        sibNodeVals[nIdx] += m_write2ParentVals[nodeRank];
-      }
-
-      std::fill(m_write2ParentVals.begin(), m_write2ParentVals.end(), 0.0);
-      m_write2ParentDirty = false;
     }
   }
 }
@@ -873,15 +852,9 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
   // Assume m_curSubtree and m_curTreeAddr are pointing to a leaf.
   //
   // If there are missing nodes, do the transpose of interpolation,
-  //   writing to the intermediate buffer m_write2Parent.
+  //   writing to the parent buffer.
   //
   // Also copy the non-missing nodes in lexicographic order from leaf buffer.
-
-  // *Technically could write directly to parent's nodes
-  // because dups have already been saved in sibling node vals,
-  // however it is unclear when the parent's nodes should be zeroed.
-  // So we will leave the responsibility of finally adding m_write2ParentVals
-  // to bottomUpNodes().
 
   const unsigned int curLev = m_curSubtree.getLevel();
 
@@ -914,13 +887,13 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
 
   const bool leafHasAllNodes = (fillCheck == npe*(npe+1));
 
-  // Interpolate missing nodes (hanging nodes) from parent.
+  // Uninterpolate hanging nodes back to parent.
   if (!leafHasAllNodes)
   {
     const ot::ChildI parChildNum = m_curTreeAddr.getIndex(curLev-1);
     const ot::RankI parBegin = m_childTable[curLev-1 - m_L0][parChildNum];
     const ot::RankI parEnd = m_childTable[curLev-1 - m_L0][parChildNum+1];
-    const NodeT * parNodeVals = &(*m_siblingNodeVals[curLev-1 - m_L0].begin());
+    NodeT *         parNodeVals = &(*m_siblingNodeVals[curLev-1 - m_L0].begin());
     const ot::TreeNode<T,dim> * parNodeCoords = &(*m_siblingNodeCoords[curLev-1 - m_L0].begin());
     const ot::TreeNode<T, dim> parSubtree = m_curSubtree.getParent();
 
@@ -954,7 +927,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
     KroneckerProduct<dim, NodeT, true>(m_eleOrder+1, ipTAxis, imFrom, imTo);
     // The results of the interpolation are stored in imTo[dim-1].
 
-    // Add contributions from hanging nodes to intermediate parent buffer.
+    // Add contributions from hanging nodes to parent buffer.
     for (ot::RankI nIdx = parBegin; nIdx < parEnd; nIdx++)
     {
       if (parNodeCoords[nIdx].getLevel() != curLev-1)  // Only select parent-level nodes.
@@ -964,10 +937,8 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
                                                                           parNodeCoords[nIdx],
                                                                           m_eleOrder );
       assert(nodeRank < npe);
-      m_write2ParentVals[nodeRank] += imTo[dim-1][nodeRank];
+      parNodeVals[nIdx] += imTo[dim-1][nodeRank];
     }
-
-    m_write2ParentDirty = true;
   }
 
   m_siblingsDirty[curLev - m_L0] = true;
