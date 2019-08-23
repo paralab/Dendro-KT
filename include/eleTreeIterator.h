@@ -175,6 +175,7 @@ class ElementLoop
     std::vector<std::vector<ot::TreeNode<T,dim>>> m_siblingNodeCoords;
     std::vector<std::vector<NodeT>> m_siblingNodeVals;
     std::vector<std::array<unsigned int, NumChildren+1>> m_childTable;  // sfc-order splitters.
+    std::vector<std::vector<NodeT>> m_hangingContrib;
     //
     std::vector<ot::RotI> m_rot;
     std::vector<bool> m_isLastChild;
@@ -321,6 +322,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
   m_childTable.resize(m_uiMaxDepth - L0 + 1);
   m_siblingNodeCoords.resize(m_uiMaxDepth - L0 + 1);
   m_siblingNodeVals.resize(m_uiMaxDepth - L0 + 1);
+  m_hangingContrib.resize(m_uiMaxDepth - L0 + 1);
   m_rot.resize(m_uiMaxDepth - L0 + 1);
   m_isLastChild.resize(m_uiMaxDepth - L0 + 1);
   m_siblingsDirty.resize(m_uiMaxDepth - L0 + 1, false);
@@ -422,6 +424,8 @@ void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals)
 
   m_siblingNodeVals[m_L0 - m_L0] =
       std::vector<NodeT>(inputNodeVals, inputNodeVals + m_numNodes);
+  m_hangingContrib[m_L0 - m_L0] =
+      std::vector<NodeT>(m_numNodes, 0.0);
 
   goToTreeAddr();
 }
@@ -528,6 +532,7 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
     m_siblingNodeCoords[curLev+1 - m_L0].resize(accum);
   /// if (m_siblingNodeVals[curLev+1 - m_L0].size() < accum)
     m_siblingNodeVals[curLev+1 - m_L0].resize(accum);
+    m_hangingContrib[curLev+1 - m_L0].resize(accum, 0.0);
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
     curSubtree.incidentChildren( sibNodeCoords[nIdx],
@@ -553,7 +558,7 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
 
   // Reset current level node values to 0, to prepare for hanging node accumulation.
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
-    sibNodeValsWrite[nIdx] = 0.0;
+    m_hangingContrib[curLev - m_L0][nIdx] = 0.0;
 
   // Return 'was not already a leaf'.
   return false;
@@ -580,9 +585,14 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
   const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
   NodeT                     * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
 
-  // Current level node values are zeroed at the end of topDownNodes,
-  // so that the buffer is ready for any hanging node accumulations.
-  // Here, just add to that buffer. Not responsible to clear it here.
+  // Current level hanging node contributions were zeroed at the end of topDownNodes,
+  // so that the buffer was ready for any hanging node accumulations.
+  // Now need to add those as well as the regular node values.
+  // We couldn't add hanging contributions directly, because still needed
+  // to preserved the original node values for parent2child ops before bottomUp.
+
+  for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+    sibNodeVals[nIdx] = m_hangingContrib[curLev - m_L0][nIdx];
 
   if (curLev < m_uiMaxDepth && m_siblingsDirty[curLev+1 - m_L0])
   {
@@ -893,7 +903,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
     const ot::ChildI parChildNum = m_curTreeAddr.getIndex(curLev-1);
     const ot::RankI parBegin = m_childTable[curLev-1 - m_L0][parChildNum];
     const ot::RankI parEnd = m_childTable[curLev-1 - m_L0][parChildNum+1];
-    NodeT *         parNodeVals = &(*m_siblingNodeVals[curLev-1 - m_L0].begin());
+    NodeT *         parNodeValsHanging = &(*m_hangingContrib[curLev-1 - m_L0].begin());
     const ot::TreeNode<T,dim> * parNodeCoords = &(*m_siblingNodeCoords[curLev-1 - m_L0].begin());
     const ot::TreeNode<T, dim> parSubtree = m_curSubtree.getParent();
 
@@ -937,7 +947,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
                                                                           parNodeCoords[nIdx],
                                                                           m_eleOrder );
       assert(nodeRank < npe);
-      parNodeVals[nIdx] += imTo[dim-1][nodeRank];
+      parNodeValsHanging[nIdx] += imTo[dim-1][nodeRank];
     }
   }
 

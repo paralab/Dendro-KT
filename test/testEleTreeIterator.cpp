@@ -17,7 +17,7 @@ int main(int argc, char *argv[])
 {
   MPI_Init(&argc, &argv);
 
-  /// bool success = testRandomPoints();
+  /// bool success = testRandomPoints();  // No longer works because original test did not account for interpolation.
   bool success = testInterpolation();
   std::cout << "Result: " << (success ? "success" : "failure") << "\n";
 
@@ -157,6 +157,7 @@ bool testInterpolation()
         tree.back());
     loop.initialize(&(*nodeVals.begin()));
 
+    int loopCount = 0;
     T maxDiff = 0.0;
     for (ELIterator<C, dim, T> it = loop.begin(); it != loop.end(); ++it)
     {
@@ -165,9 +166,16 @@ bool testInterpolation()
 
       for (unsigned int n = 0; n < npe; n++)  // All nodes of an element.
       {
-        T diff = leafBuf.getNodeBuffer()[n] - myF(leafBuf.getNodeCoords() + dim*n);
+        const T observedValue = leafBuf.getNodeBuffer()[n];
+        const T desiredValue = myF(leafBuf.getNodeCoords() + dim*n);
+        /// fprintf(stdout, "observedValue (%02u.%02u):\t %f\n", loopCount, n, observedValue);
+        T diff = observedValue - desiredValue;
         maxDiff = fmax(maxDiff, fabs(diff));
       }
+
+      leafBuf.submitElement();
+
+      loopCount++;
     }
     loop.finalize(&(*nodeVals.begin()));
 
@@ -190,7 +198,7 @@ bool testInterpolation()
 
 
 /**
- * testRandomPoints()
+ * testRandomPoints() - No longer works because original test did not account for interpolation.
  *
  * Create points, generate neighboring cells, check that traversal includes
  * all the neighboring cells.
