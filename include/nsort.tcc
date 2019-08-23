@@ -300,7 +300,36 @@ namespace ot {
     }
 
     return rank;
+
+    //TODO just call the static version on self. That was copied from here.
   }
+
+
+  // static Overload that accepts node (tnPoint) coordinates as a TreeNode.
+  template <typename T, unsigned int dim>
+  unsigned int TNPoint<T,dim>::get_lexNodeRank(const TreeNode<T,dim> &hostCell,
+                                               const TreeNode<T, dim> &tnPoint,
+                                               unsigned int polyOrder)
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - hostCell.getLevel());
+
+    unsigned int rank = 0;
+    unsigned int stride = 1;
+    #pragma unroll(dim)
+    for (int d = 0; d < dim; d++)
+    {
+      // Round up here, since we round down when we generate the nodes.
+      // The inequalities of integer division work out, as long as polyOrder < len.
+      //TODO is there a noticeable performance cost for preserving precision?
+      unsigned int index1D = polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - tnPoint.getX(d)) / len;
+      rank += index1D * stride;
+      stride *= (polyOrder + 1);
+    }
+
+    return rank;
+  }
+
 
 
   // ============================ End: TNPoint ============================ //
