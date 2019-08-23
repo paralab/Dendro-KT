@@ -393,15 +393,28 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
   // Prepare climbing gear before descending to the first leaf.
   // At the level of the common ancestor, all nodes are associated
   // to a single element (the common ancestor) and none of the siblings.
-  m_siblingNodeCoords[L0 - L0] =
-      std::vector<ot::TreeNode<T,dim>>(allNodeCoords, allNodeCoords + numNodes);
+  // However, the input may include nodes that are not incident on the
+  // common ancestor, so we must filter those ones out.
+
+  unsigned long numIncidentNodes = 0;
+  const ot::Element<T, dim> subdomain(m_curSubtree.getAncestor(m_L0));
+  m_siblingNodeCoords[L0 - L0].clear();
+  for (unsigned long nIdx = 0; nIdx < numNodes; nIdx++)
+  {
+    if (subdomain.isIncident(allNodeCoords[nIdx]))
+    {
+      m_siblingNodeCoords[L0 - L0].push_back(allNodeCoords[nIdx]);
+      numIncidentNodes++;
+    }
+  }
+
   m_isLastChild[L0 - L0] = true;
   m_rot[L0 - L0] = ancestorRot;
   m_siblingsDirty[L0 - L0] = false;
-  for (ot::ChildI c = 0; c <= ancestorChildNum; c++)   // 0 |||.......|||||| numNodes
+  for (ot::ChildI c = 0; c <= ancestorChildNum; c++)   // 0 |||.......|||||| numIncidentNodes
     m_childTable[L0 - L0][c] = 0;
   for (ot::ChildI c = ancestorChildNum+1; c < NumChildren+1; c++)
-    m_childTable[L0 - L0][c] = numNodes;
+    m_childTable[L0 - L0][c] = numIncidentNodes;
 
   // Set m_curTreeAddr (next target) coordinates to the address of the first leaf.
   m_curTreeAddr = m_beginTreeAddr;
@@ -422,10 +435,19 @@ void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals)
   m_oldTreeAddr.m_lev = m_L0;
   m_curSubtree = m_curSubtree.getAncestor(m_L0);
 
-  m_siblingNodeVals[m_L0 - m_L0] =
-      std::vector<NodeT>(inputNodeVals, inputNodeVals + m_numNodes);
+  unsigned long numIncidentNodes = 0;
+  const ot::Element<T, dim> subdomain(m_curSubtree.getAncestor(m_L0));
+  m_siblingNodeVals[m_L0 - m_L0].clear();
+  for (unsigned long nIdx = 0; nIdx < m_numNodes; nIdx++)
+  {
+    if (subdomain.isIncident(m_allNodeCoords[nIdx]))
+    {
+      m_siblingNodeVals[m_L0 - m_L0].push_back(inputNodeVals[nIdx]);
+      numIncidentNodes++;
+    }
+  }
   m_hangingContrib[m_L0 - m_L0] =
-      std::vector<NodeT>(m_numNodes, 0.0);
+      std::vector<NodeT>(numIncidentNodes, 0.0);
 
   goToTreeAddr();
 }
@@ -445,7 +467,18 @@ void ElementLoop<T, dim, NodeT>::finalize(NodeT * outputNodeVals)
     }
 
   std::vector<NodeT> &topVals = m_siblingNodeVals[m_L0 - m_L0];
-  std::copy_n(topVals.begin(), m_numNodes, outputNodeVals);
+
+  // Only copy back the subdomain-incident nodes.
+  unsigned long numIncidentNodes = 0;
+  const ot::Element<T, dim> subdomain(m_curSubtree.getAncestor(m_L0));
+  for (unsigned long nIdx = 0; nIdx < m_numNodes; nIdx++)
+  {
+    if (subdomain.isIncident(m_allNodeCoords[nIdx]))
+    {
+      outputNodeVals[nIdx] = topVals[numIncidentNodes];
+      numIncidentNodes++;
+    }
+  }
 }
 
 

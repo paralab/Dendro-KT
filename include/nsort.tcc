@@ -500,6 +500,17 @@ namespace ot {
     incidenceOffset = ~incidenceSubspace & incidenceOffset;  // The least Morton-child among all duplicates.
   }
 
+  template <typename T, unsigned int dim>
+  bool Element<T,dim>::isIncident(const ot::TreeNode<T,dim> &pointCoords) const
+  {
+    const unsigned int elemSize = (1u << m_uiMaxDepth - this->getLevel());
+    for (int d = 0; d < dim; d++)
+      if (!(this->getX(d) <= pointCoords.getX(d)
+                          && pointCoords.getX(d) <= this->getX(d) + elemSize))
+        return false;
+    return true;
+  }
+
 
   // ============================ End: Element ============================ //
 

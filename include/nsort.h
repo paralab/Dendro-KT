@@ -233,6 +233,12 @@ namespace ot {
       void appendKFaces(CellType<dim> kface, std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const;
 
       /**
+       * @returns true if the coordinates lie in the element or on the element boundary.
+       * @note similar implementation to TreeNode::isOnDomainBoundary().
+       */
+      bool isIncident(const ot::TreeNode<T,dim> &pointCoords) const;
+
+      /**
        * @brief Using bit-wise ops, identifies which children are touching a point.
        * @param [in] pointCoords Coordinates of the point incident on 0 or more children.
        * @param [out] incidenceOffset The Morton child # of the first incident child.
@@ -241,6 +247,7 @@ namespace ot {
        * @param [out] incidenceSubspaceDim The number of set ones in incidenceSubspace.
        *                The number of incident children is pow(2, incidenceSubspaceDim).
        * @note Use with TallBitMatrix to easily iterate over the child numbers of incident children.
+       * @note It is ASSUMED that isIncident(pointCoords) is true.
        */
       void incidentChildren(
           const ot::TreeNode<T,dim> &pointCoords,
