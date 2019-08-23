@@ -232,7 +232,7 @@ class ElementNodeBuffer
   protected:
     // TODO multiple pointers, by using template '...'
     NodeT *nodeValPtr;
-    const double *nodeCoordsPtr;
+    double *nodeCoordsPtr;
     const unsigned int &eleOrder;
     const unsigned int &nodesPerElement;
     const ot::TreeNode<T,dim> &elementTreeNode;
@@ -241,7 +241,7 @@ class ElementNodeBuffer
   public:
     ElementNodeBuffer() = delete;
     ElementNodeBuffer( NodeT *i_nodeValPtr,
-                       const double *i_nodeCoordsPtr,
+                       double *i_nodeCoordsPtr,
                        const unsigned int &i_eleOrder,
                        const unsigned int &i_nodesPerElement,
                        const ot::TreeNode<T,dim> &i_elementTreeNode,
@@ -256,7 +256,7 @@ class ElementNodeBuffer
     {}
 
     NodeT * getNodeBuffer() { return nodeValPtr; }
-    const double * getNodeCoords() const { return nodeCoordsPtr; }
+    double * getNodeCoords() { return nodeCoordsPtr; }
     const unsigned int getEleOrder() const { return eleOrder; }
     const unsigned int getNodesPerElement() const { return nodesPerElement; }
     const ot::TreeNode<T,dim> & getElementTreeNode() const { return elementTreeNode; }
@@ -848,7 +848,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     ElementNodeBuffer<T,dim,NodeT>
     {
       &(*this->m_leafNodeVals.begin()),
-      &(*const_this->m_leafNodeCoordsFlat.begin()),
+      &(*this->m_leafNodeCoordsFlat.begin()),
       const_this->m_eleOrder,
       const_this->m_nodesPerElement,
       const_this->m_curSubtree,

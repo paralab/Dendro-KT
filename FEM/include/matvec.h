@@ -12,6 +12,7 @@
 
 #include "tsort.h"    // RankI, ChildI, LevI, RotI
 #include "nsort.h"    // TNPoint
+#include "eleTreeIterator.h"
 
 #include<iostream>
 #include<functional>
@@ -244,9 +245,38 @@ namespace fem
       ///     fprintf(stderr, "\n");
       /// }
 
+#if 1
+      // NEW iterative way:
+      using C = typename TN::coordType;
+      constexpr unsigned int dim = TN::coordDim;
+      const unsigned int eleOrder = refElement->getOrder();
+      const unsigned int npe = intPow(eleOrder+1, dim);
+
+      ElementLoop<C, dim, T> loop( sz, coords, eleOrder, partFront, partBack);
+      loop.initialize(vecIn);
+
+      std::vector<T> leafResult(npe, 0.0);
+
+      for (ELIterator<C, dim, T> it = loop.begin(); it != loop.end(); ++it)
+      {
+        ElementNodeBuffer<C, dim, T> leafBuf = *it;
+
+        // Perform elemental matvec op.
+        T * leafVal = leafBuf.getNodeBuffer();
+        T * leafValTemp = &(*leafResult.begin());
+        eleOp(leafVal, leafValTemp, leafBuf.getNodeCoords(), scale);
+
+        // Copy results back to leaf buffer.
+        std::copy_n(leafValTemp, npe, leafVal);
+        leafBuf.submitElement();
+      }
+      loop.finalize(vecOut);
+#else
+      // OLD recursive way:
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
       matvec_rec<T,TN,RE>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, scale, refElement, nullptr, nullptr, nullptr, 0, true);
+#endif
     }
 
     // Recursive implementation.
