@@ -842,7 +842,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     m_leafNodeVals[nodeRank] = sibNodeValsIn[nIdx];
   }
 
-  const bool leafHasAllNodes = (fillCheck == npe*(npe+1));
+  const bool leafHasAllNodes = (fillCheck == npe*(npe+1)/2);
 
   // Interpolate missing nodes (hanging nodes) from parent.
   if (!leafHasAllNodes)
@@ -952,7 +952,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
     sibNodeValsOut[nIdx] = m_leafNodeVals[nodeRank];  // Reverse of requestLeafBuffer.
   }
 
-  const bool leafHasAllNodes = (fillCheck == npe*(npe+1));
+  const bool leafHasAllNodes = (fillCheck == npe*(npe+1)/2);
 
   // Uninterpolate hanging nodes back to parent.
   if (!leafHasAllNodes)
