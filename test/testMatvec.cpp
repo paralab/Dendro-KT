@@ -488,6 +488,9 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   }
   ot::SFC_Tree<TNT, dim>::distTreeBalancing(sources, tree, 1, loadFlexibility, comm);
 
+  /// fprintf(stdout, "[%d/%d] tree.size()==%lu\n",
+  ///     rProc, nProc, tree.size());
+
   unsigned long locTreeSz, globTreeSz;
   locTreeSz = tree.size();
   par::Mpi_Reduce(&locTreeSz, &globTreeSz, 1, MPI_SUM, 0, comm);
@@ -535,6 +538,18 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   //
 
   ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), (unsigned int) tree.size(), comm, order, (unsigned int) tree.size(), loadFlexibility);
+
+  /// const unsigned int block = (1u << m_uiMaxDepth - 3);
+
+  /// //DEBUG  tree
+  /// fprintf(stdout, "[%d]----------------------------In testMatvec:\n", rProc);
+  /// for (int tIdx = 0; tIdx < tree.size(); tIdx++)
+  /// {
+  ///   fprintf(stdout, "%s[%d] treeNode[%d]==(%u,%u).%u\n",
+  ///       (rProc ? "\t\t\t\t" : ""), rProc, tIdx,
+  ///       tree[tIdx].getX(0)/block, tree[tIdx].getX(1)/block, tree[tIdx].getLevel());
+  /// }
+
   tree.clear();
 
   std::vector<double> vecIn, vecOut;
@@ -543,14 +558,29 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 
   const TN *tnCoords = octDA->getTNCoords();
   int myNodeSz = octDA->getLocalNodalSz();
+  int ghostedNodeSz = octDA->getTotalNodalSz();
   unsigned long myNodeRank = octDA->getGlobalRankBegin();
   unsigned long globNumNodes = octDA->getGlobalNodeSz();
+
+  /// fprintf(stdout, "[%d/%d] myNodeSz==%lu / %lu, ghostedNodeSz==%lu\n",
+  ///     rProc, nProc, myNodeSz, globNumNodes, ghostedNodeSz);
+
+  /// //DEBUG  nodes
+  /// for (int nIdx = 0; nIdx < myNodeSz; nIdx++)
+  /// {
+  ///   fprintf(stdout, "%s[%d] nodeCoord[%d]==(%u,%u).%u\n",
+  ///       (rProc ? "\t\t\t\t" : ""), rProc, nIdx,
+  ///       tnCoords[nIdx].getX(0)/block, tnCoords[nIdx].getX(1)/block, tnCoords[nIdx].getLevel());
+  /// }
 
   // Initialize the in vector using twister.
   const double uiScale = pow(1.0 / (1u<<(4*sizeof(unsigned int))), 2);
   twister.discard(myNodeRank);
-  std::generate(vecIn.begin(), vecIn.end(), [&twister, uiScale]{return twister() * uiScale;});
+  std::generate(vecIn.begin(), vecIn.end(), [&twister, uiScale]{return twister() * uiScale;});  // Pseudorandom
+  /// std::generate(vecIn.begin(), vecIn.end(), [&twister, uiScale]{twister(); return 1;});   // More predictable
   twister.discard(globNumNodes - myNodeRank);
+
+  /// fprintf(stdout, "[%d]----------------------------Matvec:\n", rProc);
 
   // Distributed matvec.
   /// if (!rProc) fprintf(stderr, "[dbg] Starting distributed matvec.\n");
@@ -609,6 +639,18 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
       /// if (!(vecOutSeq[ii] == vecOutSeqCopy[ii]))
       if (!(fabs(vecOutSeq[ii] - vecOutSeqCopy[ii]) < floatTol))
         testResult++;
+
+    /// //DEBUG
+    /// fprintf(stdout, "------------------------------\n");
+    /// fprintf(stdout, "Coords:\n");
+    /// fprintf(stdout, "Original sequential run (top):\n");
+    /// fprintf(stdout, "Compare distributed (bottom):\n");
+    /// fprintf(stdout, "------------------------------\n");
+    /// ot::printNodes<TNT,dim,double>(&(*tnCoordsSeqCopy.begin()), &(*tnCoordsSeqCopy.end()), &(*vecOutSeq.begin()), std::cout);
+    /// std::cout << "\n";
+    /// fprintf(stdout, "------------------------------\n");
+    /// ot::printNodes<TNT,dim,double>(&(*tnCoordsSeqCopy.begin()), &(*tnCoordsSeqCopy.end()), &(*vecOutSeqCopy.begin()), std::cout);
+    /// std::cout << "\n";
   }
 
 

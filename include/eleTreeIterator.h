@@ -64,11 +64,13 @@ template <typename T, unsigned int dim> struct TreeAddr;
  *
  * When changes to an element are submitted by the user and the iterator is advanced,
  * the new node values are propagated with partial bottom-up summation.
- * The summation for a subtree is not written until all elements in the subtree
- * have been visited. Therefore the temporary duplicates of a node
- * on a neighboring element are not affected from modifying the current element.
+ * The summation for a subtree is written to a buffer that is separate from
+ * the input node values. The temporary duplicates of input data are not
+ * overwritten by output data sums. Furthermore, nonzero items can only be
+ * present in the outbound buffer if they resulted in some way from a call to
+ * submitElement().
  *
- * After all elements have been visited, the top level internal copy
+ * After all elements have been visited, the top level outbound buffer
  * stores the summed results of all element computations. The results
  * can be transferred back to the user through elementLoop.finalize();
  *
@@ -173,9 +175,9 @@ class ElementLoop
 
     // Climbing gear - Stacks for depth-first SFC traversal.
     std::vector<std::vector<ot::TreeNode<T,dim>>> m_siblingNodeCoords;
-    std::vector<std::vector<NodeT>> m_siblingNodeVals;
+    std::vector<std::vector<NodeT>> m_siblingNodeValsIn;
+    std::vector<std::vector<NodeT>> m_siblingNodeValsOut;
     std::vector<std::array<unsigned int, NumChildren+1>> m_childTable;  // sfc-order splitters.
-    std::vector<std::vector<NodeT>> m_hangingContrib;
     //
     std::vector<ot::RotI> m_rot;
     std::vector<bool> m_isLastChild;
@@ -321,8 +323,8 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
   // Size stacks.
   m_childTable.resize(m_uiMaxDepth - L0 + 1);
   m_siblingNodeCoords.resize(m_uiMaxDepth - L0 + 1);
-  m_siblingNodeVals.resize(m_uiMaxDepth - L0 + 1);
-  m_hangingContrib.resize(m_uiMaxDepth - L0 + 1);
+  m_siblingNodeValsIn.resize(m_uiMaxDepth - L0 + 1);
+  m_siblingNodeValsOut.resize(m_uiMaxDepth - L0 + 1);
   m_rot.resize(m_uiMaxDepth - L0 + 1);
   m_isLastChild.resize(m_uiMaxDepth - L0 + 1);
   m_siblingsDirty.resize(m_uiMaxDepth - L0 + 1, false);
@@ -437,16 +439,16 @@ void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals)
 
   unsigned long numIncidentNodes = 0;
   const ot::Element<T, dim> subdomain(m_curSubtree.getAncestor(m_L0));
-  m_siblingNodeVals[m_L0 - m_L0].clear();
+  m_siblingNodeValsIn[m_L0 - m_L0].clear();
   for (unsigned long nIdx = 0; nIdx < m_numNodes; nIdx++)
   {
     if (subdomain.isIncident(m_allNodeCoords[nIdx]))
     {
-      m_siblingNodeVals[m_L0 - m_L0].push_back(inputNodeVals[nIdx]);
+      m_siblingNodeValsIn[m_L0 - m_L0].push_back(inputNodeVals[nIdx]);
       numIncidentNodes++;
     }
   }
-  m_hangingContrib[m_L0 - m_L0] =
+  m_siblingNodeValsOut[m_L0 - m_L0] =
       std::vector<NodeT>(numIncidentNodes, 0.0);
 
   goToTreeAddr();
@@ -466,7 +468,7 @@ void ElementLoop<T, dim, NodeT>::finalize(NodeT * outputNodeVals)
       bottomUpNodes();
     }
 
-  std::vector<NodeT> &topVals = m_siblingNodeVals[m_L0 - m_L0];
+  std::vector<NodeT> &topVals = m_siblingNodeValsOut[m_L0 - m_L0];
 
   // Only copy back the subdomain-incident nodes.
   unsigned long numIncidentNodes = 0;
@@ -478,6 +480,8 @@ void ElementLoop<T, dim, NodeT>::finalize(NodeT * outputNodeVals)
       outputNodeVals[nIdx] = topVals[numIncidentNodes];
       numIncidentNodes++;
     }
+    else
+      outputNodeVals[nIdx] = 0.0;
   }
 }
 
@@ -499,8 +503,8 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum+1];
 
   const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
-  const NodeT               * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
-        NodeT               * sibNodeValsWrite =   &(*m_siblingNodeVals[curLev - m_L0].begin());
+  const NodeT               * sibNodeValsIn = &(*m_siblingNodeValsIn[curLev - m_L0].begin());
+        NodeT               * sibNodeValsOut = &(*m_siblingNodeValsOut[curLev - m_L0].begin());
 
   // Check if this is a leaf element. If so, return true immediately.
   bool isLeaf = true;
@@ -561,11 +565,10 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   m_siblingsDirty[curLev+1 - m_L0] = false;
 
   // Iterate through the nodes again, but instead of counting, copy the nodes.
-  /// if (m_siblingNodeCoords[curLev+1 - m_L0].size() < accum)
-    m_siblingNodeCoords[curLev+1 - m_L0].resize(accum);
-  /// if (m_siblingNodeVals[curLev+1 - m_L0].size() < accum)
-    m_siblingNodeVals[curLev+1 - m_L0].resize(accum);
-    m_hangingContrib[curLev+1 - m_L0].resize(accum, 0.0);
+  m_siblingNodeCoords[curLev+1 - m_L0].resize(accum);
+  m_siblingNodeValsIn[curLev+1 - m_L0].resize(accum);
+  m_siblingNodeValsOut[curLev+1 - m_L0].clear();
+  m_siblingNodeValsOut[curLev+1 - m_L0].resize(accum, 0.0);
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
     curSubtree.incidentChildren( sibNodeCoords[nIdx],
@@ -583,15 +586,16 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
       ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
       m_siblingNodeCoords[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ] = sibNodeCoords[nIdx];
-      m_siblingNodeVals[curLev+1 - m_L0][   nodeOffsets[incidentChild_sfc] ] = sibNodeVals[nIdx];
+      m_siblingNodeValsIn[curLev+1 - m_L0][   nodeOffsets[incidentChild_sfc] ] = sibNodeValsIn[nIdx];
 
       nodeOffsets[incidentChild_sfc]++;
     }
   }
 
-  // Reset current level node values to 0, to prepare for hanging node accumulation.
+  // Reset current level node out-values to 0, to prepare for
+  // hanging node accumulation from our children.
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
-    m_hangingContrib[curLev - m_L0][nIdx] = 0.0;
+    sibNodeValsOut[nIdx] = 0.0;
 
   // Return 'was not already a leaf'.
   return false;
@@ -616,16 +620,13 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
   const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum_sfc+1];
 
   const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
-  NodeT                     * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
+  const NodeT               * sibNodeValsIn = &(*m_siblingNodeValsIn[curLev - m_L0].begin());
+  NodeT                     * sibNodeValsOut = &(*m_siblingNodeValsOut[curLev - m_L0].begin());
 
   // Current level hanging node contributions were zeroed at the end of topDownNodes,
   // so that the buffer was ready for any hanging node accumulations.
-  // Now need to add those as well as the regular node values.
-  // We couldn't add hanging contributions directly, because still needed
-  // to preserved the original node values for parent2child ops before bottomUp.
-
-  for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
-    sibNodeVals[nIdx] = m_hangingContrib[curLev - m_L0][nIdx];
+  // Hanging node accumulations may have happened since then. Retain those
+  // and also add accumulations from non-hanging nodes on children.
 
   if (curLev < m_uiMaxDepth && m_siblingsDirty[curLev+1 - m_L0])
   {
@@ -659,7 +660,7 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
         ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
         ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
-        sibNodeVals[nIdx] += m_siblingNodeVals[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ];
+        sibNodeValsOut[nIdx] += m_siblingNodeValsOut[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ];
 
         nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
       }
@@ -672,12 +673,12 @@ template <typename T, unsigned int dim, typename NodeT>
 void ElementLoop<T, dim, NodeT>::goToTreeAddr()
 {
   // On the way up, responsible to set
-  // - m_siblingNodeVals[... l-1],
+  // - m_siblingNodeValsOut[... l-1],
   //       m_siblingsDirty[... l-1]  by bottomUpNodes()
 
   // On the way down, responsible to set
   // - m_siblingNodeCoords[l+1 ...],
-  //       m_siblingNodeVals[l+1 ...],
+  //       m_siblingNodeValsIn[l+1 ...],
   //       m_childTable[l+1 ...]  by topDownNodes()
   //
   // - m_rot[l+1 ...] and m_isLastChild[l+1 ...] if descend.
@@ -771,7 +772,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
   const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum+1];
 
   const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
-  const NodeT               * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
+  const NodeT               * sibNodeValsIn = &(*m_siblingNodeValsIn[curLev - m_L0].begin());
 
   const unsigned int npe = intPow(m_eleOrder+1, dim);
 
@@ -815,7 +816,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     assert(nodeRank < npe);  // If fails, check m_uiMaxDepth is deep enough for eleOrder.
     leafEleFill[nodeRank] = true;
     fillCheck += (nodeRank + 1);
-    m_leafNodeVals[nodeRank] = sibNodeVals[nIdx];
+    m_leafNodeVals[nodeRank] = sibNodeValsIn[nIdx];
   }
 
   const bool leafHasAllNodes = (fillCheck == npe*(npe+1));
@@ -826,7 +827,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     const ot::ChildI parChildNum = m_curTreeAddr.getIndex(curLev-1);
     const ot::RankI parBegin = m_childTable[curLev-1 - m_L0][parChildNum];
     const ot::RankI parEnd = m_childTable[curLev-1 - m_L0][parChildNum+1];
-    const NodeT * parNodeVals = &(*m_siblingNodeVals[curLev-1 - m_L0].begin());
+    const NodeT * parNodeValsIn = &(*m_siblingNodeValsIn[curLev-1 - m_L0].begin());
     const ot::TreeNode<T,dim> * parNodeCoords = &(*m_siblingNodeCoords[curLev-1 - m_L0].begin());
     const ot::TreeNode<T, dim> parSubtree = m_curSubtree.getParent();
 
@@ -841,7 +842,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
                                                                           parNodeCoords[nIdx],
                                                                           m_eleOrder );
       assert(nodeRank < npe);
-      m_parentNodeVals[nodeRank] = parNodeVals[nIdx];
+      m_parentNodeVals[nodeRank] = parNodeValsIn[nIdx];
     }
 
     // Prepare to interpolate.
@@ -906,7 +907,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
   const ot::RankI curEnd = m_childTable[curLev - m_L0][curChildNum+1];
 
   const ot::TreeNode<T,dim> * sibNodeCoords = &(*m_siblingNodeCoords[curLev - m_L0].begin());
-  NodeT                     * sibNodeVals =   &(*m_siblingNodeVals[curLev - m_L0].begin());
+  NodeT                     * sibNodeValsOut = &(*m_siblingNodeValsOut[curLev - m_L0].begin());
 
   const unsigned int npe = intPow(m_eleOrder+1, dim);
 
@@ -925,7 +926,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
     assert(nodeRank < npe);  // If fails, check m_uiMaxDepth is deep enough for eleOrder.
     leafEleFill[nodeRank] = true;
     fillCheck += (nodeRank + 1);
-    sibNodeVals[nIdx] = m_leafNodeVals[nodeRank];  // Reverse of requestLeafBuffer.
+    sibNodeValsOut[nIdx] = m_leafNodeVals[nodeRank];  // Reverse of requestLeafBuffer.
   }
 
   const bool leafHasAllNodes = (fillCheck == npe*(npe+1));
@@ -936,7 +937,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
     const ot::ChildI parChildNum = m_curTreeAddr.getIndex(curLev-1);
     const ot::RankI parBegin = m_childTable[curLev-1 - m_L0][parChildNum];
     const ot::RankI parEnd = m_childTable[curLev-1 - m_L0][parChildNum+1];
-    NodeT *         parNodeValsHanging = &(*m_hangingContrib[curLev-1 - m_L0].begin());
+    NodeT *         parNodeValsOut = &(*m_siblingNodeValsOut[curLev-1 - m_L0].begin());
     const ot::TreeNode<T,dim> * parNodeCoords = &(*m_siblingNodeCoords[curLev-1 - m_L0].begin());
     const ot::TreeNode<T, dim> parSubtree = m_curSubtree.getParent();
 
@@ -980,7 +981,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
                                                                           parNodeCoords[nIdx],
                                                                           m_eleOrder );
       assert(nodeRank < npe);
-      parNodeValsHanging[nIdx] += imTo[dim-1][nodeRank];
+      parNodeValsOut[nIdx] += imTo[dim-1][nodeRank];
     }
   }
 
