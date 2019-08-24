@@ -292,6 +292,29 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     m_leafNodeCoordsFlat( dim * intPow(eleOrder+1, dim) ),
     m_curSubtree()
 {
+  if (numNodes == 0 || &lastElement + 1 == &firstElement)  // Null
+  {
+    m_beginTreeAddr = m_curTreeAddr = m_oldTreeAddr = m_endTreeAddr = TreeAddr<T,dim>();
+    m_curSubtree = ot::TreeNode<T,dim>();
+    m_L0 = 0;
+    m_numNodes = 0;
+
+    m_childTable.resize(1);
+    m_siblingNodeCoords.resize(1);
+    m_siblingNodeValsIn.resize(1);
+    m_siblingNodeValsOut.resize(1);
+    m_rot.resize(1);
+    m_isLastChild.resize(1);
+    m_siblingsDirty.resize(1, false);
+
+    m_isLastChild[0] = true;
+    m_rot[0] = 0;
+    m_siblingsDirty[0] = false;
+    std::fill_n(m_childTable[0].begin(), NumChildren, 0);
+
+    return;
+  }
+
   // Fill interpolation matrices.
   {
     const unsigned int ipMatSz = (eleOrder+1)*(eleOrder+1);

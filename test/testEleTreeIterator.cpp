@@ -9,6 +9,8 @@ bool testRandomPoints();
 
 bool testInterpolation();
 
+bool testNull();
+
 
 /**
  * main()
@@ -18,13 +20,87 @@ int main(int argc, char *argv[])
   MPI_Init(&argc, &argv);
 
   /// bool success = testRandomPoints();  // No longer works because original test did not account for interpolation.
-  bool success = testInterpolation();
+  /// bool success = testInterpolation();
+  bool success = testNull();
   std::cout << "Result: " << (success ? "success" : "failure") << "\n";
 
   MPI_Finalize();
 
   return !success;
 }
+
+
+/**
+ * testNull()
+ *
+ * What happens when either the tree or the node list is empty?
+ */
+bool testNull()
+{
+  constexpr unsigned int dim = 2;
+  using C = unsigned int;
+  using T = float;
+
+  const unsigned int eleOrder = 1;
+
+  _InitializeHcurve(dim);
+
+  const ot::TreeNode<C, dim> treeRoot;
+  std::vector<ot::TreeNode<C, dim>> nonemptyTree;
+  nonemptyTree.push_back(treeRoot.getChildMorton(0));
+  nonemptyTree.push_back(treeRoot.getChildMorton(1));
+  nonemptyTree.push_back(treeRoot.getChildMorton(2));
+  nonemptyTree.push_back(treeRoot.getChildMorton(3));
+
+  const unsigned int lev = 1;
+  const C u = (1u << m_uiMaxDepth - lev);
+
+  std::vector<ot::TreeNode<C, dim>> nonemptyNodeList;
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{0*u, 0*u}, lev);
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{1*u, 0*u}, lev);
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{2*u, 0*u}, lev);
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{0*u, 1*u}, lev);
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{1*u, 1*u}, lev);
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{2*u, 1*u}, lev);
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{0*u, 2*u}, lev);
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{1*u, 2*u}, lev);
+  nonemptyNodeList.emplace_back(0, std::array<C,dim>{2*u, 2*u}, lev);
+
+  std::vector<ot::TreeNode<C, dim>> emptyTree;
+  std::vector<ot::TreeNode<C, dim>> emptyNodeList;
+
+  std::vector<T> nonemptyBuffer(nonemptyNodeList.size(), 0.0);
+  std::vector<T> emptyBuffer;
+
+  /// for (int caseIdx = 0; caseIdx < 4; caseIdx++)
+  for (int caseIdx = 3; caseIdx >= 0; caseIdx--)
+  {
+    fprintf(stderr, "Testing %s tree, %s nodeList.\n",
+        (caseIdx % 2 ? "nonempty" : "empty"),
+        (caseIdx / 2 ? "nonempty" : "empty"));
+
+    std::vector<ot::TreeNode<C, dim>> & tree = (caseIdx % 2 ? nonemptyTree : emptyTree);
+    std::vector<ot::TreeNode<C, dim>> & nodeList = (caseIdx / 2 ? nonemptyNodeList : emptyNodeList);
+    std::vector<T> & buffer = (caseIdx / 2 ? nonemptyBuffer : emptyBuffer);
+
+    ElementLoop<C, dim, T> loop( nodeList.size(), &(*nodeList.begin()), eleOrder, tree.front(), tree.back());
+    loop.initialize(&(*nonemptyBuffer.begin()));
+
+    for (ELIterator<C, dim, T> it = loop.begin(); it != loop.end(); ++it)
+    {
+      ElementNodeBuffer<C, dim, T> leafBuf = *it;
+      leafBuf.submitElement();
+    }
+    loop.finalize(&(*nonemptyBuffer.begin()));
+  }
+
+
+
+  _DestroyHcurve();
+
+  return true;
+}
+
 
 /**
  * testInterpolation()
