@@ -37,6 +37,38 @@
 
 namespace ot
 {
+
+// Based on Dendro-5.0
+namespace DA_FLAGS
+{
+  /**
+   * @brief loop flags,
+   * ALL : Loop over all the elements (note here we loop only on the local).
+   * WRITABLE: Loop over INDEPENDENT U W_DEPENDENT
+   * INDEPENDENT : Loop over all the local elements which DOES NOT point to any ghost node region.
+   * W_DEPENDENT : Loop over all local elements which has AT LEAST ONE node which point to ghost node region
+   * W_BOUNDARY : Loop over all the local elements which is on the domain boundary.
+   /// * 
+   /// * LOCAL_ELEMENTS : Loop over local elements of the mesh
+   /// * PREGHOST_ELEMENTS : Loop over pre ghost elements. 
+   /// * POSTGHOST_ELEMENTS : Loop over post ghost elements
+   * 
+   *
+   * */
+  /// enum LoopType {ALL,WRITABLE,INDEPENDENT,W_DEPENDENT,W_BOUNDARY,LOCAL_ELEMENTS,PREGHOST_ELEMENTS,POSTGHOST_ELEMENTS};
+  enum LoopType {ALL,WRITABLE,INDEPENDENT,W_DEPENDENT,W_BOUNDARY};///,LOCAL_ELEMENTS,PREGHOST_ELEMENTS,POSTGHOST_ELEMENTS};
+
+  /**
+   * @brief contains the refine flags.
+   * DA_NO_CHANGE : no change needed for the octant
+   * DA_REFINE : refine the octant
+   * DA_COARSEN: coarsen the octant.
+   * **/
+  enum Refine {DA_NO_CHANGE,DA_REFINE,DA_COARSEN};
+}
+
+
+
 template <unsigned int dim>
 class DA
 {
@@ -411,6 +443,54 @@ class DA
              * */
         template <typename T>
         void copyVector(T *dest, const T *source, bool isElemental = false, bool isGhosted = false) const;
+
+
+
+        /**
+         * @brief: Performs remesh based on the DA_FLAGS::Refine, which specifies no change, refine or coarsen.
+         * @param[in] oldTree: pointer to the local partition of the tree that was used to construct the DA.
+         *                     (The tree was not stored with the DA in its entirety
+         *                      upon construction, so you must supply it again.)
+         * @param[in] flags: refinement flags.
+         * @param[in] sz: size of the array flags (needs to be size of the local elements)
+         * @param[in] grainSz: rougly the number of octants per core you need when you create the new da.
+         * @param[in] ld_tol: load imbalance tolerance.
+         * @param[in] sfK: splitter fix factor. better to be power of two. increase the value to 128 when running on > 64,000 cores
+         * @return: Specifies the new grid, with new DA. If not NULL, you are responsible to later delete it.
+         */
+        ot::DA<dim>* remesh(const ot::TreeNode<C,dim> * oldTree, const DA_FLAGS::Refine * flags, unsigned int sz,unsigned int grainSz=100,double ld_bal=0.3, unsigned int sfK=2) const;
+
+        /**
+         * @brief performs grid transfer operations after the remesh.
+         * @param[in] varIn: variable defined by oldDA
+         * @param[out] varOut: variable defined by newDA. interpolate varOut from varIn. (Note: varOut allocated inside the function, no need to allocate outside)
+         * @param[in] isElemental: true if it is an elemental vector
+         * @param[in] isGhosted: true if allocated ghost vector
+         * @param[in] dof: degrees of freedoms.
+         * */
+        template<typename T>
+        void intergridTransfer(const T* varIn, T* & varOut, const ot::DA<dim>* newDA, bool isElemental=false, bool isGhosted=false, unsigned int dof=1);
+
+
+
+        /// /**
+        ///  * @brief computes the face neighbor points for additional computations for a specified direction.
+        ///  * @param [in] eleID: element ID
+        ///  * @param [in] in: inpute vector
+        ///  * @param [out] out: output vector values are in the order of the x,y,z size : 4*NodesPerElement
+        ///  * @param [out] coords: get the corresponding coordinates size: 4*NodesPerElement*m_uiDim;
+        ///  * @param [out] neighID: face neighbor octant IDs,
+        ///  * @param [in] face: face direction in {OCT_DIR_LEFT,OCT_IDR_RIGHT,OCT_DIR_DOWN, OCT_DIR_UP,OCT_DIR_BACK,OCT_DIR_FRONT}
+        ///  * @param [out] level: the level of the neighbour octant with respect to the current octant.
+        ///  * returns  the number of face neighbours 1/4 for 3D.
+        ///  * */
+        /// template<typename T>
+        /// int getFaceNeighborValues(unsigned int eleID, const T* in, T* out, T* coords, unsigned int * neighID, unsigned int face, NeighbourLevel & level,unsigned int dof) const;
+
+
+
+
+
 
         // all the petsc functionalities goes below with the pre-processor gards.
         #ifdef BUILD_WITH_PETSC

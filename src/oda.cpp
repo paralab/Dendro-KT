@@ -10,6 +10,10 @@
 
 #include <algorithm>
 
+#define OCT_NO_CHANGE 0u
+#define OCT_SPLIT 1u
+#define OCT_COARSE 2u
+
 namespace ot
 {
     template <unsigned int dim>
@@ -174,6 +178,126 @@ namespace ot
     DA<dim>::~DA()
     {
     }
+
+
+
+    template <unsigned int dim>
+    ot::DA<dim>* DA<dim>::remesh(const ot::TreeNode<C,dim> * oldTree,
+                                 const DA_FLAGS::Refine * flags,
+                                 unsigned int sz,
+                                 unsigned int grainSz,
+                                 double ld_bal,
+                                 unsigned int sfK) const
+    {
+        const unsigned int localElementBegin = 0;
+        const unsigned int localElementEnd= sz;
+        bool isRemesh=false;
+        bool isRemesh_g;
+        MPI_Comm commGlobal = m_uiGlobalComm;
+
+        const unsigned int NUM_CHILDREN = 1u << dim;
+
+        std::vector<unsigned int> octflags;
+        octflags.resize(sz,OCT_NO_CHANGE);
+
+        const unsigned int levelDiff = log2(m_uiElementOrder);
+
+        if(sz > 0)
+        {
+          const ot::TreeNode<C,dim>* allElements = oldTree;
+          //1. check to see if we need a remesh.
+          for(unsigned int i=0;i<sz;i++)
+          {
+            // We will enforce that all leaf siblings are on the same rank.
+            //
+            // 1. TODO need to enforce, while generating flags[], that
+            //    1a. the root element is not marked for coarsening;
+            //    1b. no elements shalower than m_uiMaxDepth-levelDiff are marked for splitting.
+            //
+            // 2. TODO How can we suppress coarsening of an element whose
+            //    siblings are not actually present, but were previously refined?
+            //
+            unsigned int ele=i+localElementBegin;
+            if(flags[i]==DA_FLAGS::Refine::DA_REFINE) {
+              if((allElements[ele].getLevel()+levelDiff+1)>=m_uiMaxDepth)
+              {
+                octflags[i]=OCT_NO_CHANGE;
+              }
+              else
+              {
+                octflags[i]=OCT_SPLIT;
+                isRemesh=true;
+              }
+            }
+            else if(flags[i]==DA_FLAGS::Refine::DA_COARSEN)
+            {
+              if(((i+NUM_CHILDREN-1)<sz)  && (allElements[ele].getParent() == allElements[ele+NUM_CHILDREN-1].getParent()) && (allElements[ele].getLevel()>0))
+              {
+                for(unsigned int child=0;child<NUM_CHILDREN;child++)
+                  octflags[i+child]=OCT_COARSE;
+
+                isRemesh= true;
+                i+=(NUM_CHILDREN-1);
+              }
+            }
+            else
+            {
+              octflags[i]=OCT_NO_CHANGE;
+            }
+          }
+        }
+
+
+        MPI_Allreduce(&isRemesh,&isRemesh_g,1,MPI_CXX_BOOL,MPI_LOR,commGlobal);
+        // return null da since no need to remesh
+        if(!isRemesh_g)
+            return NULL;
+
+        // Build (unbalanced) tree from oldTree, obeying OCT_SPLIT or OCT_COARSE.
+        std::vector<ot::TreeNode<C,dim>> newOctants;
+
+        for (unsigned int octIdx = 0; octIdx < sz; octIdx++)
+        {
+          switch (octflags[octIdx])
+          {
+            case OCT_SPLIT:
+              for (unsigned int c = 0; c < NUM_CHILDREN; c++)
+                newOctants.push_back(oldTree[octIdx].getChildMorton(c));
+              break;
+            case OCT_COARSE:
+              newOctants.push_back(oldTree[octIdx].getParent());
+              octIdx += NUM_CHILDREN - 1;
+              break;
+            case OCT_NO_CHANGE:
+              newOctants.push_back(oldTree[octIdx]);
+              break;
+          }
+        }
+
+
+
+
+
+
+        //TODO  Fill in implementation of ReMesh here.
+        /// m_uiMesh->setOctreeRefineFlags(&(*(octflags.begin())),octflags.size());
+        /// ot::Mesh* newMesh=m_uiMesh->ReMesh(grainSz,ld_bal,sfK);
+
+        /// ot::DA<dim>* newDA= new DA(newMesh);
+
+        // TODO consider how we will need to overlap elements for the
+        // intergrid transfer.
+
+        ot::DA<dim>* newDA = new DA();  //TODO
+
+        return newDA;
+
+    }
+
+
+
+
+
 
 
     // all the petsc functionalities goes below.
