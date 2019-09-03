@@ -482,6 +482,233 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
 
 
 
+/**
+ * @author Masado Ishii
+ * @brief If there is a complete set of sibling leafs in a distributed sorted list,
+ *        make sure they end up on the same rank.
+ *  Makes it simpler to do mesh coarsening.
+ *  Compare with Dendro-5.0 enforceSiblingsAreNotPartitioned().
+ *  In the below version, it is assumed that separated siblings might
+ *  be partitioned across a consecutive sequence of two or more ranks.
+ *  The old version assumed at most two ranks.
+ *
+ * @param [in] tree Distributed sorted complete tree of TreeNodes.
+ * @param [in] comm MPI communicator.
+ */
+template <typename T, unsigned int dim>
+void keepSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  // If some ranks, have no TreeNodes, exclude them from the new communicator.
+  MPI_Comm nonemptys;
+  MPI_Comm_split(comm, (tree.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
+
+  if (tree.size() > 0)
+  {
+    int nNE, rNE;
+    MPI_Comm_rank(nonemptys, &rNE);
+    MPI_Comm_size(nonemptys, &nNE);
+
+    // Algorithm idea:
+    //
+    // - Goal: Move separated sibling leafs onto the lowest rank that contains
+    //   one of the siblings.
+    // - Each rank needs to know if it is sending and/or receiving, and if so,
+    //   what is the destination and/or source(s).
+    // - To figure this out, each rank sends a query to its left (resp. right),
+    //   asking for the least (resp. greatest) rank containing a sibling of the
+    //   front (resp. back) of the local tree partition, as well as count
+    //   of the number of siblings. (Count, b/c we don't transfer if not all
+    //   the siblings are accounted for, e.g. because children of a sibling
+    //   are present instead.)
+    // - The leftward and rightward ranks are responsible to answer the
+    //   corresponding query.
+    // - Usually the answer to the query can be determined and sent immediately.
+    // - However, if all TreeNodes on a rank have the same parent, the answer
+    //   to the given query depends on receiving an answer from the next rank.
+    //   Small sequential chains of dependencies will be created in this case.
+    //   The upper bound to the size of such a chain is NUM_CHILDREN.
+
+    // Answer[0]: endpoint rank.  Answer[1]: inclusive sibling count.
+    //
+    struct Answer { RankI a[2]; };
+    Answer myLeftAnswer, myRightAnswer;
+    Answer externRightAnswer, externLeftAnswer;
+
+    TreeNode<T, dim> externRightQuery, externLeftQuery;
+    TreeNode<T, dim> myLeftQuery, myRightQuery;
+
+    myLeftQuery = tree.front().getParent();
+    myRightQuery = tree.back().getParent();
+
+    MPI_Request requestMLQ, requestMRQ, requestERA, requestELA;
+    MPI_Status status;
+
+    // Ask queries.
+    if (rNE > 0)
+      par::Mpi_Isend<TreeNode<T, dim>>(&myLeftQuery, 1, rNE-1, 0, nonemptys, &requestMLQ);
+    if (rNE < nNE - 1)
+      par::Mpi_Isend<TreeNode<T, dim>>(&myRightQuery, 1, rNE+1, 0, nonemptys, &requestMRQ);
+
+    // Counts are used in/with the answers.
+    unsigned int countFront = 0, countBack = 0;
+    while (countFront < tree.size() && tree[countFront].getParent() == myLeftQuery)
+      countFront++;
+    while (countBack < tree.size() && tree[tree.size()-1 - countBack].getParent() == myRightQuery)
+      countBack++;
+
+    // If the rank is an endpoint of the comm, already have an answer on that end.
+    if (rNE == 0)
+      myLeftAnswer = {{rNE, countFront}};
+    if (rNE == nNE - 1)
+      myRightAnswer = {{rNE, countBack}};
+
+    // Listen for query from left neighbour, and answer it.
+    if (rNE > 0)
+    {
+      par::Mpi_Recv<TreeNode<T, dim>>(&externLeftQuery, 1, rNE-1, 0, nonemptys, &status);
+
+      // Cases we can answer immediately. Postpone receiving our own answer.
+      if (!(externLeftQuery == tree.back().getParent()))
+      {
+        unsigned int count = 0;
+        while (count < tree.size() && tree[count].getParent() == externLeftQuery)
+          count++;
+        externLeftAnswer = (count > 0 ? Answer{{rNE, count}} : Answer{{rNE-1, 0}});
+        par::Mpi_Isend<RankI>(&externLeftAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
+      }
+      else if (rNE == nNE - 1)
+        par::Mpi_Isend<RankI>(&myRightAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
+
+      // In this case must receive our own answer before giving an answer.
+      else
+      {
+        // Create dependency.
+        par::Mpi_Recv<RankI>(&myRightAnswer.a, 2, rNE+1, 66, nonemptys, &status);
+        myRightAnswer.a[1] += countBack;
+        par::Mpi_Isend<RankI>(&myRightAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
+      }
+    }
+
+    // Listen for query from right neighbour, and answer it.
+    if (rNE < nNE - 1)
+    {
+      par::Mpi_Recv<TreeNode<T, dim>>(&externRightQuery, 1, rNE+1, 0, nonemptys, &status);
+
+      // Cases we can answer immediately. Postpone receiving our own answer.
+      if (!(externRightQuery == tree.front().getParent()))
+      {
+        unsigned int count = 0;
+        while (count < tree.size() && tree[tree.size()-1 - count].getParent() == externRightQuery)
+          count++;
+        externRightAnswer = (count > 0 ? Answer{{rNE, count}} : Answer{{rNE+1, 0}});
+        par::Mpi_Isend<RankI>(&externRightAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
+      }
+      else if (rNE == 0)
+        par::Mpi_Isend<RankI>(&myLeftAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
+
+      // In this case must receive our own answer before giving an answer.
+      else
+      {
+        // Create dependency.
+        par::Mpi_Recv<RankI>(&myLeftAnswer.a, 2, rNE-1, 66, nonemptys, &status);
+        myLeftAnswer.a[1] += countFront;
+        par::Mpi_Isend<RankI>(&myLeftAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
+      }
+    }
+
+    // Revisit cases for which we haven't yet received our answer.
+    if (rNE == 0 || externLeftQuery == tree.back().getParent())
+    {
+      par::Mpi_Recv<RankI>(&myRightAnswer.a, 2, rNE+1, 66, nonemptys, &status);
+      myRightAnswer.a[1] += countBack;
+    }
+    if (rNE == nNE - 1 || externRightQuery == tree.front().getParent())
+    {
+      par::Mpi_Recv<RankI>(&myLeftAnswer.a, 2, rNE-1, 66, nonemptys, &status);
+      myLeftAnswer.a[1] += countFront;
+    }
+
+    // Wait for sends to finish.
+    if (rNE > 0)
+    {
+      MPI_Wait(&requestMLQ, &status);
+      MPI_Wait(&requestELA, &status);
+    }
+    if (rNE < nNE - 1)
+    {
+      MPI_Wait(&requestMRQ, &status);
+      MPI_Wait(&requestERA, &status);
+    }
+
+    // Our queries are now answered, so we can send/receive TreeNodes.
+
+    const unsigned int NUM_CHILDREN = (1u << dim);
+
+    bool isReceiver = (myRightAnswer.a[1] == NUM_CHILDREN);
+    bool isSender = (tree.front().getParent() == tree.back().getParent()
+                    ? (myLeftAnswer.a[1] + myRightAnswer.a[1] - tree.size() == NUM_CHILDREN)
+                    : (myLeftAnswer.a[1] == NUM_CHILDREN));
+
+    RankI srcRankFirst = rNE + 1;
+    RankI srcRankLast = myRightAnswer.a[0];
+    RankI destRank = myLeftAnswer.a[0];
+
+    // Make sure communication involves not just ourselves.
+    isReceiver = isReceiver && (srcRankLast >= srcRankFirst);
+    isSender = isSender && (destRank < rNE);
+
+    // Perform communication, and modify tree vector.
+    //
+    MPI_Request requestSCount, requestSPayload;
+
+    if (isSender)
+    {
+      par::Mpi_Isend<unsigned int>(&countFront, 1, destRank, 0, nonemptys, &requestSCount);
+      par::Mpi_Isend<TreeNode<T, dim>>(&(*tree.begin()), countFront, destRank, 0, nonemptys, &requestSPayload);
+      tree.erase(tree.begin(), tree.begin() + countFront);
+    }
+
+    if (isReceiver)
+    {
+      const int numSources = srcRankLast - srcRankFirst + 1;
+      unsigned int recvTotal = 0;
+
+      std::vector<unsigned int> recvCounts(numSources, 0);
+      for (int srcIdx = 0; srcIdx < numSources; srcIdx++)
+      {
+        par::Mpi_Recv<unsigned int>(&recvCounts[srcIdx], 1, srcRankFirst + srcIdx, 0, nonemptys, &status);
+        recvTotal += recvCounts[srcIdx];
+      }
+
+      std::vector<TreeNode<T, dim>> recvBuf(recvTotal);
+      TreeNode<T,dim> * recvPtr = &(*recvBuf.begin());
+      for (int srcIdx = 0; srcIdx < numSources; srcIdx++)
+      {
+        par::Mpi_Recv<TreeNode<T, dim>>(recvPtr, recvCounts[srcIdx], srcRankFirst + srcIdx, 0, nonemptys, &status);
+        recvPtr += recvCounts[srcIdx];
+      }
+
+      tree.insert(tree.begin(), recvBuf.begin(), recvBuf.end());
+    }
+
+    if (isSender)
+    {
+      MPI_Wait(&requestSCount, &status);
+      MPI_Wait(&requestSPayload, &status);
+    }
+  }
+
+  MPI_Comm_free(&nonemptys);
+}
+
+
+
+
+
 
 }// end of namespace ot
 
