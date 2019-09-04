@@ -621,12 +621,12 @@ void keepSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm 
     }
 
     // Revisit cases for which we haven't yet received our answer.
-    if (rNE == 0 || externLeftQuery == tree.back().getParent())
+    if (rNE < nNE - 1 && (rNE == 0 || externLeftQuery == tree.back().getParent()))
     {
       par::Mpi_Recv<RankI>(myRightAnswer.a, 2, rNE+1, 66, nonemptys, &status);
       myRightAnswer.a[1] += countBack;
     }
-    if (rNE == nNE - 1 || externRightQuery == tree.front().getParent())
+    if (rNE > 0 && (rNE == nNE - 1 || externRightQuery == tree.front().getParent()))
     {
       par::Mpi_Recv<RankI>(myLeftAnswer.a, 2, rNE-1, 66, nonemptys, &status);
       myLeftAnswer.a[1] += countFront;

@@ -25,7 +25,7 @@
 
 
 template <unsigned int dim>
-bool testRandTree(MPI_Comm comm, unsigned int depth, unsigned int order);
+bool testRandTree(MPI_Comm comm);
 
 // Returns either 0 or 1 (local means just one rank).
 template <unsigned int dim>
@@ -44,10 +44,10 @@ int main(int argc, char * argv[])
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  const char * usageString = "Usage: %s dim depth order\n";
-  unsigned int inDim, inDepth, inOrder;
+  const char * usageString = "Usage: %s dim\n";
+  unsigned int inDim;
 
-  if (argc < 4)
+  if (argc < 2)
   {
     if (!rProc)
       printf(usageString, argv[0]);
@@ -56,8 +56,6 @@ int main(int argc, char * argv[])
   else
   {
     inDim   = strtol(argv[1], NULL, 0);
-    inDepth = strtol(argv[2], NULL, 0);
-    inOrder = strtol(argv[3], NULL, 0);
   }
 
   _InitializeHcurve(inDim);
@@ -74,13 +72,13 @@ int main(int argc, char * argv[])
   int result_testRandTree, globResult_testRandTree;
   switch (inDim)
   {
-    case 2: result_testRandTree = testRandTree<2>(comm, inDepth, inOrder); break;
-    case 3: result_testRandTree = testRandTree<3>(comm, inDepth, inOrder); break;
-    case 4: result_testRandTree = testRandTree<4>(comm, inDepth, inOrder); break;
+    case 2: result_testRandTree = testRandTree<2>(comm); break;
+    case 3: result_testRandTree = testRandTree<3>(comm); break;
+    case 4: result_testRandTree = testRandTree<4>(comm); break;
     default: if (!rProc) printf("Dimension not supported.\n"); exit(1); break;
   }
   par::Mpi_Reduce(&result_testRandTree, &globResult_testRandTree, 1, MPI_SUM, 0, comm);
-  totalSuccess = totalSuccess && globResult_testRandTree;
+  totalSuccess = totalSuccess && !globResult_testRandTree;
   resultColor = globResult_testRandTree ? RED : GRN;
   resultName = globResult_testRandTree ? "FAILURE" : "success";
   if (!rProc)
@@ -101,7 +99,7 @@ int main(int argc, char * argv[])
 
 
 template <unsigned int dim>
-bool testRandTree(MPI_Comm comm, unsigned int depth, unsigned int order)
+bool testRandTree(MPI_Comm comm)
 {
   // Test:
   // while ./tstKeepSiblingLeafsTogether > /dev/null ; do echo ; done
@@ -125,6 +123,7 @@ bool testRandTree(MPI_Comm comm, unsigned int depth, unsigned int order)
     // Pseudo-random number generators for point coordinates.
     std::random_device rd;
     seed = rd();
+    /// seed = 2142908055;
     // Can also set seed manually if needed.
 
     std::cerr << "Seed: " << seed << "\n";
@@ -165,6 +164,13 @@ bool testRandTree(MPI_Comm comm, unsigned int depth, unsigned int order)
 
   ot::SFC_Tree<C,dim>::distTreeConstruction(pointCoords, tree, 1, 0.0, comm);
 
+  /// //DEBUG
+  /// for (int ii = 0; ii < tree.size(); ii++)
+  /// {
+  ///   fprintf(stdout, "[%03d] == (%-16s).%u\n",
+  ///       ii, tree[ii].getBase32Hex().data(), tree[ii].getLevel());
+  /// }
+
   // Count num separations right after construction and partition.
   ot::RankI countInitial = countLocalSeparations(tree);
   ot::RankI countInitial_glob;
@@ -187,7 +193,7 @@ bool testRandTree(MPI_Comm comm, unsigned int depth, unsigned int order)
     std::cout << "countFinal_glob==" << countFinal_glob << " \n";
   }
 
-  return (countFinal == 0);
+  return countFinal;
 }
 
 
@@ -212,7 +218,7 @@ ot::RankI countLocalSeparations(const std::vector<ot::TreeNode<unsigned int, dim
   while (treePtr < treeEnd && treePtr->getParent() == treeBegin->getParent())
     treePtr++;
   if (treePtr - treeBegin == NUM_CHILDREN ||
-      (treePtr < treeEnd && treePtr->getParent().getParent() == treeBegin->getParent()))
+      (treePtr < treeEnd && treeBegin->getParent().isAncestor(*treePtr)))
     isFrontBroken = false;
   else
     isFrontBroken = true;
@@ -228,7 +234,7 @@ ot::RankI countLocalSeparations(const std::vector<ot::TreeNode<unsigned int, dim
   while (treePtr >= treeBegin && treePtr->getParent() == treeEnd[-1].getParent())
     treePtr--;
   if (treeEnd - (treePtr+1) == NUM_CHILDREN ||
-      (treePtr >= treeBegin && treePtr->getParent().getParent() == treeEnd[-1].getParent()))
+      (treePtr >= treeBegin && treeEnd[-1].getParent().isAncestor(*treePtr)))
     isBackBroken = false;
   else
     isBackBroken = true;
