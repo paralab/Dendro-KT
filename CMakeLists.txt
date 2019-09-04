@@ -298,6 +298,11 @@ add_executable(tstEleTreeIterator ${SRC_FILES})
 target_include_directories(tstEleTreeIterator PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstEleTreeIterator dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testKeepSiblingLeafsTogether.cpp)
+add_executable(tstKeepSiblingLeafsTogether ${SRC_FILES})
+target_include_directories(tstKeepSiblingLeafsTogether PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstKeepSiblingLeafsTogether dendroKT ${MPI_LIBRARIES} m)
+
 
 ## tsort_bench (./tsortBench)
 ## -----------

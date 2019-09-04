@@ -578,18 +578,18 @@ void keepSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm 
         while (count < tree.size() && tree[count].getParent() == externLeftQuery)
           count++;
         externLeftAnswer = (count > 0 ? Answer{{rNE, count}} : Answer{{rNE-1, 0}});
-        par::Mpi_Isend<RankI>(&externLeftAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
+        par::Mpi_Isend<RankI>(externLeftAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
       }
       else if (rNE == nNE - 1)
-        par::Mpi_Isend<RankI>(&myRightAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
+        par::Mpi_Isend<RankI>(myRightAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
 
       // In this case must receive our own answer before giving an answer.
       else
       {
         // Create dependency.
-        par::Mpi_Recv<RankI>(&myRightAnswer.a, 2, rNE+1, 66, nonemptys, &status);
+        par::Mpi_Recv<RankI>(myRightAnswer.a, 2, rNE+1, 66, nonemptys, &status);
         myRightAnswer.a[1] += countBack;
-        par::Mpi_Isend<RankI>(&myRightAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
+        par::Mpi_Isend<RankI>(myRightAnswer.a, 2, rNE-1, 66, nonemptys, &requestELA);
       }
     }
 
@@ -605,30 +605,30 @@ void keepSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm 
         while (count < tree.size() && tree[tree.size()-1 - count].getParent() == externRightQuery)
           count++;
         externRightAnswer = (count > 0 ? Answer{{rNE, count}} : Answer{{rNE+1, 0}});
-        par::Mpi_Isend<RankI>(&externRightAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
+        par::Mpi_Isend<RankI>(externRightAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
       }
       else if (rNE == 0)
-        par::Mpi_Isend<RankI>(&myLeftAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
+        par::Mpi_Isend<RankI>(myLeftAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
 
       // In this case must receive our own answer before giving an answer.
       else
       {
         // Create dependency.
-        par::Mpi_Recv<RankI>(&myLeftAnswer.a, 2, rNE-1, 66, nonemptys, &status);
+        par::Mpi_Recv<RankI>(myLeftAnswer.a, 2, rNE-1, 66, nonemptys, &status);
         myLeftAnswer.a[1] += countFront;
-        par::Mpi_Isend<RankI>(&myLeftAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
+        par::Mpi_Isend<RankI>(myLeftAnswer.a, 2, rNE+1, 66, nonemptys, &requestERA);
       }
     }
 
     // Revisit cases for which we haven't yet received our answer.
     if (rNE == 0 || externLeftQuery == tree.back().getParent())
     {
-      par::Mpi_Recv<RankI>(&myRightAnswer.a, 2, rNE+1, 66, nonemptys, &status);
+      par::Mpi_Recv<RankI>(myRightAnswer.a, 2, rNE+1, 66, nonemptys, &status);
       myRightAnswer.a[1] += countBack;
     }
     if (rNE == nNE - 1 || externRightQuery == tree.front().getParent())
     {
-      par::Mpi_Recv<RankI>(&myLeftAnswer.a, 2, rNE-1, 66, nonemptys, &status);
+      par::Mpi_Recv<RankI>(myLeftAnswer.a, 2, rNE-1, 66, nonemptys, &status);
       myLeftAnswer.a[1] += countFront;
     }
 
