@@ -124,6 +124,8 @@ bool testRandTree(MPI_Comm comm)
     std::random_device rd;
     seed = rd();
     /// seed = 2142908055;
+    seed = 2450139245;
+    /// seed = 3106312564;
     // Can also set seed manually if needed.
 
     std::cerr << "Seed: " << seed << "\n";
@@ -164,13 +166,6 @@ bool testRandTree(MPI_Comm comm)
 
   ot::SFC_Tree<C,dim>::distTreeConstruction(pointCoords, tree, 1, 0.0, comm);
 
-  /// //DEBUG
-  /// for (int ii = 0; ii < tree.size(); ii++)
-  /// {
-  ///   fprintf(stdout, "[%03d] == (%-16s).%u\n",
-  ///       ii, tree[ii].getBase32Hex().data(), tree[ii].getLevel());
-  /// }
-
   // Count num separations right after construction and partition.
   ot::RankI countInitial = countLocalSeparations(tree);
   ot::RankI countInitial_glob;
@@ -182,6 +177,14 @@ bool testRandTree(MPI_Comm comm)
   }
 
   ot::keepSiblingLeafsTogether<C,dim>(tree, comm);
+
+  //DEBUG
+  for (int ii = 0; ii < tree.size(); ii++)
+  {
+    fprintf(stdout, "%*c[%03d] == (%-17s).%u\n",
+        rProc * 40, ' ',
+        ii, tree[ii].getBase32Hex().data(), tree[ii].getLevel());
+  }
 
   // Count num separations after filtering.
   ot::RankI countFinal = countLocalSeparations(tree);
@@ -212,6 +215,8 @@ ot::RankI countLocalSeparations(const std::vector<ot::TreeNode<unsigned int, dim
   const ot::TreeNode<unsigned int, dim> * const treeEnd = &(*treePart.end());
 
   bool isFrontBroken = false, isBackBroken = false;
+
+  //TODO this test actually returns false negatives (cases that should pass but don't).
 
   // Test front.
   treePtr = treeBegin + 1;
