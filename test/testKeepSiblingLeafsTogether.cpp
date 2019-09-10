@@ -127,7 +127,7 @@ bool testRandTree(MPI_Comm comm)
     /// seed = 2450139245;
     /// seed = 3106312564;
     /// seed = 2884066049;
-    seed = 1622234473;
+    /// seed = 1622234473;
     // Can also set seed manually if needed.
 
     std::cerr << "Seed: " << seed << "\n";
@@ -280,7 +280,9 @@ ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &t
     while (treePtr < treeEnd && treePtr->getParent() == treeBegin->getParent())
       treePtr++;
     if (treePtr - treeBegin == NUM_CHILDREN ||
-        (treePtr < treeEnd && treeBegin->getParent().isAncestor(*treePtr)))
+        (treePtr < treeEnd &&
+         treePtr->getLevel() > treeBegin->getLevel() &&
+         treeBegin->getParent().isAncestor(*treePtr)))
       sendFrontClass = INDEPENDENT;
     else
       sendFrontClass = DEPENDENT;
@@ -292,10 +294,12 @@ ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &t
     while (treePtr >= treeBegin && treePtr->getParent() == treeEnd[-1].getParent())
       treePtr--;
     if (treeEnd - (treePtr+1) == NUM_CHILDREN ||
-        (treePtr >= treeBegin && treeEnd[-1].getParent().isAncestor(*treePtr)))
-      sendFrontClass = INDEPENDENT;
+        (treePtr >= treeBegin &&
+         treePtr->getLevel() > treeEnd[-1].getLevel() &&
+         treeEnd[-1].getParent().isAncestor(*treePtr)))
+      sendBackClass = INDEPENDENT;
     else
-      sendFrontClass = DEPENDENT;
+      sendBackClass = DEPENDENT;
 
 
     /// fprintf(stderr, "%*s[%d] Before any sendrecv.\n", 40*rNE, "\0", rNE);
@@ -314,6 +318,8 @@ ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &t
           prevBackClass == DEPENDENT &&
           sendFrontParent == prevBackParent)
         isFrontBroken = true;
+
+      /// fprintf(stderr, "%*s[g%d] sfClass==%d, prevBackClass==%d.\n", 40*rProc, "\0", rProc, sendFrontClass, prevBackClass);
     }
     if (rNE < nNE - 1)
     {
@@ -328,6 +334,8 @@ ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &t
           nextFrontClass == DEPENDENT &&
           sendBackParent == nextFrontParent)
         isFrontBroken = true;
+
+      /// fprintf(stderr, "%*s[g%d] sbClass==%d, nextFrontClass==%d.\n", 40*rProc, "\0", rProc, sendBackClass, nextFrontClass);
     }
 
     /// fprintf(stderr, "%*s[%d] After all sendrecv.\n", 40*rNE, "\0", rNE);
