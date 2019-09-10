@@ -102,7 +102,7 @@ template <unsigned int dim>
 bool testRandTree(MPI_Comm comm)
 {
   // Test:
-  // while ./tstKeepSiblingLeafsTogether > /dev/null ; do echo ; done
+  // while mpirun -np <NP> ./tstKeepSiblingLeafsTogether <dim> > /dev/null ; do echo ; done
 
   using C = unsigned int;
 
@@ -126,7 +126,8 @@ bool testRandTree(MPI_Comm comm)
     /// seed = 2142908055;
     /// seed = 2450139245;
     /// seed = 3106312564;
-    seed = 2884066049;
+    /// seed = 2884066049;
+    seed = 1622234473;
     // Can also set seed manually if needed.
 
     std::cerr << "Seed: " << seed << "\n";
@@ -171,7 +172,7 @@ bool testRandTree(MPI_Comm comm)
   ot::RankI countInitial = countSeparations(tree, comm);
   ot::RankI countInitial_glob;
 
-  fprintf(stderr, "%*s[g%d] Finished first countSeparations()\n", 40*rProc, "\0", rProc);
+  /// fprintf(stderr, "%*s[g%d] Finished first countSeparations()\n", 40*rProc, "\0", rProc);
 
   par::Mpi_Reduce(&countInitial, &countInitial_glob, 1, MPI_SUM, 0, comm);
   if (!rProc)
@@ -179,23 +180,23 @@ bool testRandTree(MPI_Comm comm)
     std::cout << "countInitial_glob==" << countInitial_glob << " \n";
   }
 
-  //DEBUG
-  for (int ii = 0; ii < tree.size(); ii++)
-  {
-    fprintf(stdout, "%*c[%03d] == (%-17s).%u\n",
-        rProc * 40, ' ',
-        ii, tree[ii].getBase32Hex().data(), tree[ii].getLevel());
-  }
+  /// //DEBUG
+  /// for (int ii = 0; ii < tree.size(); ii++)
+  /// {
+  ///   fprintf(stdout, "%*c[%03d] == (%-17s).%u\n",
+  ///       rProc * 40, ' ',
+  ///       ii, tree[ii].getBase32Hex().data(), tree[ii].getLevel());
+  /// }
 
   ot::keepSiblingLeafsTogether<C,dim>(tree, comm);
 
-  fprintf(stderr, "%*s[g%d] Finished keepSiblingLeafsTogether()\n", 40*rProc, "\0", rProc);
+  /// fprintf(stderr, "%*s[g%d] Finished keepSiblingLeafsTogether()\n", 40*rProc, "\0", rProc);
 
   // Count num separations after filtering.
   ot::RankI countFinal = countSeparations(tree, comm);
   ot::RankI countFinal_glob;
 
-  fprintf(stderr, "%*s[g%d] Finished second countSeparations()\n", 40*rProc, "\0", rProc);
+  /// fprintf(stderr, "%*s[g%d] Finished second countSeparations()\n", 40*rProc, "\0", rProc);
 
   par::Mpi_Reduce(&countFinal, &countFinal_glob, 1, MPI_SUM, 0, comm);
   if (!rProc)
@@ -241,13 +242,13 @@ ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &t
 
   bool isFrontBroken = false, isBackBroken = false;
 
-  fprintf(stderr, "%*s[g%d] Before Comm_split.\n", 40*rProc, "\0", rProc);
+  /// fprintf(stderr, "%*s[g%d] Before Comm_split.\n", 40*rProc, "\0", rProc);
 
   // If some ranks, have no TreeNodes, exclude them from the new communicator.
   MPI_Comm nonemptys;
   MPI_Comm_split(comm, (treePart.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
 
-  fprintf(stderr, "%*s[g%d] After Comm_split.\n", 40*rProc, "\0", rProc);
+  /// fprintf(stderr, "%*s[g%d] After Comm_split.\n", 40*rProc, "\0", rProc);
 
   if (treePart.size())
   {
@@ -272,7 +273,7 @@ ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &t
     constexpr int INDEPENDENT = 1;
     int sendFrontClass, sendBackClass, prevBackClass, nextFrontClass;
 
-    fprintf(stderr, "%*s[%d] Before Classify Front.\n", 40*rNE, "\0", rNE);
+    /// fprintf(stderr, "%*s[%d] Before Classify Front.\n", 40*rNE, "\0", rNE);
 
     // Classify front.
     treePtr = treeBegin + 1;
@@ -284,7 +285,7 @@ ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &t
     else
       sendFrontClass = DEPENDENT;
 
-    fprintf(stderr, "%*s[%d] Before Classify Back.\n", 40*rNE, "\0", rNE);
+    /// fprintf(stderr, "%*s[%d] Before Classify Back.\n", 40*rNE, "\0", rNE);
 
     // Classify back.
     treePtr = treeEnd - 2;
