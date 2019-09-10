@@ -110,75 +110,92 @@ bool testRandTree(MPI_Comm comm)
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  const unsigned int totalNumPoints = 50;
+  const unsigned int totalNumPoints = 10;
   const unsigned int numMyPoints = (totalNumPoints / nProc)
                                    + (rProc < totalNumPoints % nProc);
   const unsigned int numPrevPoints = (totalNumPoints / nProc) * rProc
                                      + (rProc < totalNumPoints % nProc ? rProc : totalNumPoints % nProc);
 
   unsigned int seed;
-
-  if (!rProc)
-  {
-    // Pseudo-random number generators for point coordinates.
-    std::random_device rd;
-    seed = rd();
-    /// seed = 2142908055;
-    /// seed = 2450139245;
-    /// seed = 3106312564;
-    /// seed = 2884066049;
-    /// seed = 1622234473;
-    // Can also set seed manually if needed.
-
-    std::cerr << "Seed: " << seed << "\n";
-  }
-  MPI_Bcast(&seed, 1, MPI_UNSIGNED, 0, comm);
-  std::mt19937 gen(seed);
-  gen.discard((dim + 1) * numPrevPoints);
-
-  std::uniform_int_distribution<C> coordDis(0, (1u << m_uiMaxDepth) - 1);
-  std::uniform_int_distribution<unsigned int> levDis((m_uiMaxDepth + 1)/4, (m_uiMaxDepth + 1)/2);
-
-  std::vector<ot::TreeNode<C,dim>> pointCoords;
-
-  for (int ii = 0; ii < numMyPoints; ii++)
-  {
-    const unsigned int lev = levDis(gen);
-    const C mask = (1u << (m_uiMaxDepth + 1)) - (1u << (m_uiMaxDepth - lev));
-
-    std::array<C,dim> coords;
-    for (int d = 0; d < dim; d++)
-      coords[d] = coordDis(gen) & mask;
-
-    pointCoords.emplace_back(1, coords, lev);
-  }
-
-  // Make points at least locally unique.
-  ot::SFC_Tree<C,dim>::locTreeSort(
-      &(*pointCoords.begin()),
-      0,
-      (ot::RankI) pointCoords.size(),
-      1,
-      m_uiMaxDepth,
-      0);
-  ot::SFC_Tree<C,dim>::locRemoveDuplicates(pointCoords);
-
-  // Distributed tree construction.
+  ot::RankI countInitial_glob;
   std::vector<ot::TreeNode<C,dim>> tree;
 
-  ot::SFC_Tree<C,dim>::distTreeConstruction(pointCoords, tree, 1, 0.0, comm);
 
-  // Count num separations right after construction and partition.
-  ot::RankI countInitial = countSeparations(tree, comm);
-  ot::RankI countInitial_glob;
+  // Repeat until we get a test case where siblings are actually split.
+  int trialSeeds = 0;
+  const bool justOnce = true;
+  do
+  {
+    trialSeeds++;
+    tree.clear();
 
-  /// fprintf(stderr, "%*s[g%d] Finished first countSeparations()\n", 40*rProc, "\0", rProc);
+    if (!rProc)
+    {
+      // Pseudo-random number generators for point coordinates.
+      std::random_device rd;
+      seed = rd();
+      /// seed = 2142908055;
+      /// seed = 2450139245;
+      /// seed = 3106312564;
+      /// seed = 2884066049;
+      /// seed = 1622234473;
+      seed = 4023431161;
+      // Can also set seed manually if needed.
 
-  par::Mpi_Reduce(&countInitial, &countInitial_glob, 1, MPI_SUM, 0, comm);
+      /// std::cerr << "Seed: " << seed << "\n";  // Wait till we know it's a good test.
+    }
+    MPI_Bcast(&seed, 1, MPI_UNSIGNED, 0, comm);
+    std::mt19937 gen(seed);
+    gen.discard((dim + 1) * numPrevPoints);
+
+    std::uniform_int_distribution<C> coordDis(0, (1u << m_uiMaxDepth) - 1);
+    std::uniform_int_distribution<unsigned int> levDis((m_uiMaxDepth + 1)/4, (m_uiMaxDepth + 1)/2);
+
+    std::vector<ot::TreeNode<C,dim>> pointCoords;
+
+    for (int ii = 0; ii < numMyPoints; ii++)
+    {
+      const unsigned int lev = levDis(gen);
+      const C mask = (1u << (m_uiMaxDepth + 1)) - (1u << (m_uiMaxDepth - lev));
+
+      std::array<C,dim> coords;
+      for (int d = 0; d < dim; d++)
+        coords[d] = coordDis(gen) & mask;
+
+      pointCoords.emplace_back(1, coords, lev);
+    }
+
+    // Make points at least locally unique.
+    ot::SFC_Tree<C,dim>::locTreeSort(
+        &(*pointCoords.begin()),
+        0,
+        (ot::RankI) pointCoords.size(),
+        1,
+        m_uiMaxDepth,
+        0);
+    ot::SFC_Tree<C,dim>::locRemoveDuplicates(pointCoords);
+
+    // Distributed tree construction.
+    ot::SFC_Tree<C,dim>::distTreeConstruction(pointCoords, tree, 1, 0.0, comm);
+
+    // Count num separations right after construction and partition.
+    ot::RankI countInitial = countSeparations(tree, comm);
+
+    /// fprintf(stderr, "%*s[g%d] Finished first countSeparations()\n", 40*rProc, "\0", rProc);
+
+    par::Mpi_Reduce(&countInitial, &countInitial_glob, 1, MPI_SUM, 0, comm);
+  }
+  while (!justOnce && trialSeeds < 1000 && !countInitial_glob);
+
+  if (!rProc)
+    std::cerr << "Seed: " << seed << " (trial " << trialSeeds << ")\n";  // Now we'll use the test.
+
   if (!rProc)
   {
     std::cout << "countInitial_glob==" << countInitial_glob << " \n";
   }
+
+  ot::keepSiblingLeafsTogether<C,dim>(tree, comm);
 
   /// //DEBUG
   /// for (int ii = 0; ii < tree.size(); ii++)
@@ -187,8 +204,6 @@ bool testRandTree(MPI_Comm comm)
   ///       rProc * 40, ' ',
   ///       ii, tree[ii].getBase32Hex().data(), tree[ii].getLevel());
   /// }
-
-  ot::keepSiblingLeafsTogether<C,dim>(tree, comm);
 
   /// fprintf(stderr, "%*s[g%d] Finished keepSiblingLeafsTogether()\n", 40*rProc, "\0", rProc);
 
@@ -213,6 +228,14 @@ bool testRandTree(MPI_Comm comm)
 template <unsigned int dim>
 ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart, MPI_Comm comm)
 {
+  // DISREGARD, The below story still allows false negatives
+  // (case that doesn't pass but should)..  e.g.,
+  //      P0      |   P1    |  P2
+  //              |         |
+  //              |  [] []  |  []
+  // [] [] [] []  |         |
+  //
+  //
   // Classify end segments, communicate, and combine
   // classifications of adjacent end segments.
   //
