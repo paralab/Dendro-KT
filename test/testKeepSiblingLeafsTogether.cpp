@@ -29,7 +29,7 @@ bool testRandTree(MPI_Comm comm);
 
 // Returns either 0 or 1 (local means just one rank).
 template <unsigned int dim>
-ot::RankI countLocalSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart);
+ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart, MPI_Comm comm);
 
 // ==============================
 // main()
@@ -124,8 +124,9 @@ bool testRandTree(MPI_Comm comm)
     std::random_device rd;
     seed = rd();
     /// seed = 2142908055;
-    seed = 2450139245;
+    /// seed = 2450139245;
     /// seed = 3106312564;
+    seed = 2884066049;
     // Can also set seed manually if needed.
 
     std::cerr << "Seed: " << seed << "\n";
@@ -167,16 +168,16 @@ bool testRandTree(MPI_Comm comm)
   ot::SFC_Tree<C,dim>::distTreeConstruction(pointCoords, tree, 1, 0.0, comm);
 
   // Count num separations right after construction and partition.
-  ot::RankI countInitial = countLocalSeparations(tree);
+  ot::RankI countInitial = countSeparations(tree, comm);
   ot::RankI countInitial_glob;
+
+  fprintf(stderr, "%*s[g%d] Finished first countSeparations()\n", 40*rProc, "\0", rProc);
 
   par::Mpi_Reduce(&countInitial, &countInitial_glob, 1, MPI_SUM, 0, comm);
   if (!rProc)
   {
     std::cout << "countInitial_glob==" << countInitial_glob << " \n";
   }
-
-  ot::keepSiblingLeafsTogether<C,dim>(tree, comm);
 
   //DEBUG
   for (int ii = 0; ii < tree.size(); ii++)
@@ -186,9 +187,15 @@ bool testRandTree(MPI_Comm comm)
         ii, tree[ii].getBase32Hex().data(), tree[ii].getLevel());
   }
 
+  ot::keepSiblingLeafsTogether<C,dim>(tree, comm);
+
+  fprintf(stderr, "%*s[g%d] Finished keepSiblingLeafsTogether()\n", 40*rProc, "\0", rProc);
+
   // Count num separations after filtering.
-  ot::RankI countFinal = countLocalSeparations(tree);
+  ot::RankI countFinal = countSeparations(tree, comm);
   ot::RankI countFinal_glob;
+
+  fprintf(stderr, "%*s[g%d] Finished second countSeparations()\n", 40*rProc, "\0", rProc);
 
   par::Mpi_Reduce(&countFinal, &countFinal_glob, 1, MPI_SUM, 0, comm);
   if (!rProc)
@@ -203,46 +210,129 @@ bool testRandTree(MPI_Comm comm)
 
 
 template <unsigned int dim>
-ot::RankI countLocalSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart)
+ot::RankI countSeparations(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart, MPI_Comm comm)
 {
-  if (!treePart.size())
-    return 0;
+  // Classify end segments, communicate, and combine
+  // classifications of adjacent end segments.
+  //
+  // An end segment on the front end (resp. back end)
+  // is the longest consecutive run of TreeNodes that share the same parent
+  // as the front (resp. back) TreeNode. (These are possibly the same run).
+  //
+  // What I mean by classification:
+  // There are two classes, independent (I) and dependent (D).
+  // - An end segment is independent if it contains all NUM_CHILDREN TreeNodes,
+  //   or it is terminated by non-sibling TreeNodes, for whom the parent of the
+  //   front/back is an ancestor.
+  // - Otherwise the end segment is dependent.
+  //
+  // We exchange the classification and shared parent of each end segment
+  // with the adjacent rank. Adjacent end segments are combined into
+  // 'joint segments.'
+  //
+  // Two independent end segments, or an independent and a dependent end segment,
+  // combine to form an *unbroken* segment.
+  // Two dependent end segments, if they share a parent, combine to form a *broken* segment
+  // (otherwise it is again an *unbroken* segment).
 
-  const unsigned int NUM_CHILDREN = 1u << dim;
-
-  const ot::TreeNode<unsigned int, dim> *treePtr;
-  const ot::TreeNode<unsigned int, dim> * const treeBegin = &(*treePart.begin());
-  const ot::TreeNode<unsigned int, dim> * const treeEnd = &(*treePart.end());
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
 
   bool isFrontBroken = false, isBackBroken = false;
 
-  //TODO this test actually returns false negatives (cases that should pass but don't).
+  fprintf(stderr, "%*s[g%d] Before Comm_split.\n", 40*rProc, "\0", rProc);
 
-  // Test front.
-  treePtr = treeBegin + 1;
-  while (treePtr < treeEnd && treePtr->getParent() == treeBegin->getParent())
-    treePtr++;
-  if (treePtr - treeBegin == NUM_CHILDREN ||
-      (treePtr < treeEnd && treeBegin->getParent().isAncestor(*treePtr)))
-    isFrontBroken = false;
-  else
-    isFrontBroken = true;
+  // If some ranks, have no TreeNodes, exclude them from the new communicator.
+  MPI_Comm nonemptys;
+  MPI_Comm_split(comm, (treePart.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
 
-  if (isFrontBroken)
-    return 1;
+  fprintf(stderr, "%*s[g%d] After Comm_split.\n", 40*rProc, "\0", rProc);
 
-  if (treePtr == treeEnd)
-    return isFrontBroken;
+  if (treePart.size())
+  {
+    int nNE, rNE;
+    MPI_Comm_rank(nonemptys, &rNE);
+    MPI_Comm_size(nonemptys, &nNE);
 
-  // If front doesn't extend to the back, test the back too.
-  treePtr = treeEnd - 2;
-  while (treePtr >= treeBegin && treePtr->getParent() == treeEnd[-1].getParent())
-    treePtr--;
-  if (treeEnd - (treePtr+1) == NUM_CHILDREN ||
-      (treePtr >= treeBegin && treeEnd[-1].getParent().isAncestor(*treePtr)))
-    isBackBroken = false;
-  else
-    isBackBroken = true;
+    const unsigned int NUM_CHILDREN = 1u << dim;
+
+    const ot::TreeNode<unsigned int, dim> *treePtr;
+    const ot::TreeNode<unsigned int, dim> * const treeBegin = &(*treePart.begin());
+    const ot::TreeNode<unsigned int, dim> * const treeEnd = &(*treePart.end());
+
+    MPI_Request requestBegin, requestEnd;
+    MPI_Status status;
+
+    ot::TreeNode<unsigned int, dim> sendFrontParent = treePart.front().getParent();
+    ot::TreeNode<unsigned int, dim> sendBackParent = treePart.back().getParent();
+    ot::TreeNode<unsigned int, dim> prevBackParent, nextFrontParent;
+
+    constexpr int DEPENDENT = 0;
+    constexpr int INDEPENDENT = 1;
+    int sendFrontClass, sendBackClass, prevBackClass, nextFrontClass;
+
+    fprintf(stderr, "%*s[%d] Before Classify Front.\n", 40*rNE, "\0", rNE);
+
+    // Classify front.
+    treePtr = treeBegin + 1;
+    while (treePtr < treeEnd && treePtr->getParent() == treeBegin->getParent())
+      treePtr++;
+    if (treePtr - treeBegin == NUM_CHILDREN ||
+        (treePtr < treeEnd && treeBegin->getParent().isAncestor(*treePtr)))
+      sendFrontClass = INDEPENDENT;
+    else
+      sendFrontClass = DEPENDENT;
+
+    fprintf(stderr, "%*s[%d] Before Classify Back.\n", 40*rNE, "\0", rNE);
+
+    // Classify back.
+    treePtr = treeEnd - 2;
+    while (treePtr >= treeBegin && treePtr->getParent() == treeEnd[-1].getParent())
+      treePtr--;
+    if (treeEnd - (treePtr+1) == NUM_CHILDREN ||
+        (treePtr >= treeBegin && treeEnd[-1].getParent().isAncestor(*treePtr)))
+      sendFrontClass = INDEPENDENT;
+    else
+      sendFrontClass = DEPENDENT;
+
+
+    /// fprintf(stderr, "%*s[%d] Before any sendrecv.\n", 40*rNE, "\0", rNE);
+
+    // Exchange parents and classes of end segments.
+    if (rNE > 0)
+    {
+      par::Mpi_Sendrecv<ot::TreeNode<unsigned int, dim>,
+                        ot::TreeNode<unsigned int, dim>>(&sendFrontParent, 1, rNE-1, 0,
+                                                         &prevBackParent, 1, rNE-1, 0,
+                                                         nonemptys, &status);
+      par::Mpi_Sendrecv<int, int>(&sendFrontClass, 1, rNE-1, 0,
+                                  &prevBackClass, 1, rNE-1, 0,
+                                  nonemptys, &status);
+      if (sendFrontClass == DEPENDENT &&
+          prevBackClass == DEPENDENT &&
+          sendFrontParent == prevBackParent)
+        isFrontBroken = true;
+    }
+    if (rNE < nNE - 1)
+    {
+      par::Mpi_Sendrecv<ot::TreeNode<unsigned int, dim>,
+                        ot::TreeNode<unsigned int, dim>>(&sendBackParent, 1, rNE+1, 0,
+                                                         &nextFrontParent, 1, rNE+1, 0,
+                                                         nonemptys, &status);
+      par::Mpi_Sendrecv<int, int>(&sendBackClass, 1, rNE+1, 0,
+                                  &nextFrontClass, 1, rNE+1, 0,
+                                  nonemptys, &status);
+      if (sendBackClass == DEPENDENT &&
+          nextFrontClass == DEPENDENT &&
+          sendBackParent == nextFrontParent)
+        isFrontBroken = true;
+    }
+
+    /// fprintf(stderr, "%*s[%d] After all sendrecv.\n", 40*rNE, "\0", rNE);
+  }
+
+  MPI_Comm_free(&nonemptys);
 
   return (isFrontBroken || isBackBroken);
 }
