@@ -650,13 +650,11 @@ void checkSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree,
   // Revisit cases for which we haven't yet received our answer.
   if (rNE < nNE - 1 && (rNE == 0 || !(externLeftQuery == tree.back().getParent())))
   {
-    /// fprintf(stderr, "%*s[%d] receiving myRightAnswer\n", 40*rNE, "\0", rNE);
     par::Mpi_Recv<RankI>(myRightAnswer.a, 2, rNE+1, 66, nonemptys, &status);
     myRightAnswer.a[1] += countBack;
   }
   if (rNE > 0 && (rNE == nNE - 1 || !(externRightQuery == tree.front().getParent())))
   {
-    /// fprintf(stderr, "%*s[%d] receiving myLeftAnswer\n", 40*rNE, "\0", rNE);
     par::Mpi_Recv<RankI>(myLeftAnswer.a, 2, rNE-1, 66, nonemptys, &status);
     myLeftAnswer.a[1] += countFront;
   }
@@ -672,12 +670,6 @@ void checkSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree,
     MPI_Wait(&requestMRQ, &status);
     MPI_Wait(&requestERA, &status);
   }
-
-  /// // DEBUG
-  /// fprintf(stderr, "%*s[%d] la:(%llu,%llu) cf:%u cb:%u ra:(%llu,%llu)\n", 40*rNE, "\0", rNE,
-  ///     myLeftAnswer.a[0], myLeftAnswer.a[1],
-  ///     countFront, countBack,
-  ///     myRightAnswer.a[0], myRightAnswer.a[1]);
 
 
   // Our queries are now answered, and we have enough info
@@ -715,78 +707,68 @@ void keepSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm 
   MPI_Comm nonemptys;
   MPI_Comm_split(comm, (tree.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
 
+  if (!tree.size())
+    return;
+
   bool isSender, isReceiver;
   RankI srcRankFirst, srcRankLast, destRank;
   unsigned int countFront, countBack;
 
   MPI_Status status;
 
-  if (tree.size() > 0)
+  int nNE, rNE;
+  MPI_Comm_rank(nonemptys, &rNE);
+  MPI_Comm_size(nonemptys, &nNE);
+
+  checkSiblingLeafsTogether(tree,
+                            nonemptys,
+                            isReceiver,
+                            isSender,
+                            srcRankFirst,
+                            srcRankLast,
+                            destRank,
+                            countFront,
+                            countBack );
+
+  // Perform communication, and modify tree vector.
+  //
+  MPI_Request requestSCount, requestSPayload;
+
+  if (isSender)
   {
-    int nNE, rNE;
-    MPI_Comm_rank(nonemptys, &rNE);
-    MPI_Comm_size(nonemptys, &nNE);
-
-    checkSiblingLeafsTogether(tree,
-                              nonemptys,
-                              isReceiver,
-                              isSender,
-                              srcRankFirst,
-                              srcRankLast,
-                              destRank,
-                              countFront,
-                              countBack );
-
-    // Perform communication, and modify tree vector.
-    //
-    MPI_Request requestSCount, requestSPayload;
-
-    if (isSender)
-    {
-      /// fprintf(stderr, "%*s[g%d] Start isend, dest = %d...", 40*rProc, "\0", rProc, destRank);
-
-      par::Mpi_Isend<unsigned int>(&countFront, 1, destRank, 0, nonemptys, &requestSCount);
-      par::Mpi_Isend<TreeNode<T, dim>>(&(*tree.begin()), countFront, destRank, 0, nonemptys, &requestSPayload);
-      tree.erase(tree.begin(), tree.begin() + countFront);
-
-      /// fprintf(stderr, "[g%d] after isend.\n", rProc);
-    }
-
-    if (isReceiver)
-    {
-      const int numSources = srcRankLast - srcRankFirst + 1;
-      unsigned int recvTotal = 0;
-
-      std::vector<unsigned int> recvCounts(numSources, 0);
-      for (int srcIdx = 0; srcIdx < numSources; srcIdx++)
-      {
-        /// fprintf(stderr, "%*s[g%d] Start recv, src = %d of %d...", 40*rProc, "\0", rProc, srcIdx, numSources);
-
-        par::Mpi_Recv<unsigned int>(&recvCounts[srcIdx], 1, srcRankFirst + srcIdx, 0, nonemptys, &status);
-        recvTotal += recvCounts[srcIdx];
-
-        /// fprintf(stderr, "[g%d] end recv.\n", rProc);
-      }
-
-      std::vector<TreeNode<T, dim>> recvBuf(recvTotal);
-      TreeNode<T,dim> * recvPtr = &(*recvBuf.begin());
-      for (int srcIdx = 0; srcIdx < numSources; srcIdx++)
-      {
-        par::Mpi_Recv<TreeNode<T, dim>>(recvPtr, recvCounts[srcIdx], srcRankFirst + srcIdx, 0, nonemptys, &status);
-        recvPtr += recvCounts[srcIdx];
-      }
-
-      tree.insert(tree.end(), recvBuf.begin(), recvBuf.end());
-    }
-
-    if (isSender)
-    {
-      MPI_Wait(&requestSCount, &status);
-      MPI_Wait(&requestSPayload, &status);
-    }
+    par::Mpi_Isend<unsigned int>(&countFront, 1, destRank, 0, nonemptys, &requestSCount);
+    par::Mpi_Isend<TreeNode<T, dim>>(&(*tree.begin()), countFront, destRank, 0, nonemptys, &requestSPayload);
+    tree.erase(tree.begin(), tree.begin() + countFront);
   }
 
-  MPI_Comm_free(&nonemptys);
+  if (isReceiver)
+  {
+    const int numSources = srcRankLast - srcRankFirst + 1;
+    unsigned int recvTotal = 0;
+
+    std::vector<unsigned int> recvCounts(numSources, 0);
+    for (int srcIdx = 0; srcIdx < numSources; srcIdx++)
+    {
+      par::Mpi_Recv<unsigned int>(&recvCounts[srcIdx], 1, srcRankFirst + srcIdx, 0, nonemptys, &status);
+      recvTotal += recvCounts[srcIdx];
+    }
+
+    std::vector<TreeNode<T, dim>> recvBuf(recvTotal);
+    TreeNode<T,dim> * recvPtr = &(*recvBuf.begin());
+    for (int srcIdx = 0; srcIdx < numSources; srcIdx++)
+    {
+      par::Mpi_Recv<TreeNode<T, dim>>(recvPtr, recvCounts[srcIdx], srcRankFirst + srcIdx, 0, nonemptys, &status);
+      recvPtr += recvCounts[srcIdx];
+    }
+
+    tree.insert(tree.end(), recvBuf.begin(), recvBuf.end());
+  }
+
+  if (isSender)
+  {
+    MPI_Wait(&requestSCount, &status);
+    MPI_Wait(&requestSPayload, &status);
+  }
 }
 
 

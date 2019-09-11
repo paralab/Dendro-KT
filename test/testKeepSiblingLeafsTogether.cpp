@@ -107,7 +107,7 @@ bool testRandTree(MPI_Comm comm)
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  const unsigned int totalNumPoints = 10;
+  const unsigned int totalNumPoints = 50;
   const unsigned int numMyPoints = (totalNumPoints / nProc)
                                    + (rProc < totalNumPoints % nProc);
   const unsigned int numPrevPoints = (totalNumPoints / nProc) * rProc
@@ -121,7 +121,7 @@ bool testRandTree(MPI_Comm comm)
 
   // Repeat until we get a test case where siblings are actually split.
   int trialSeeds = 0;
-  const bool justOnce = true;
+  const bool justOnce = false;
   do
   {
     trialSeeds++;
@@ -132,13 +132,6 @@ bool testRandTree(MPI_Comm comm)
       // Pseudo-random number generators for point coordinates.
       std::random_device rd;
       seed = rd();
-      /// seed = 2142908055;
-      /// seed = 2450139245;
-      /// seed = 3106312564;
-      /// seed = 2884066049;
-      /// seed = 1622234473;
-      /// seed = 4023431161;
-      seed = 2407555605;
       // Can also set seed manually if needed.
 
       /// std::cerr << "Seed: " << seed << "\n";  // Wait till we know it's a good test.
@@ -184,8 +177,8 @@ bool testRandTree(MPI_Comm comm)
       if (tree.size())
       {
         countInitial_glob = ot::checkSiblingLeafsTogether(tree, nonemptys);
+        MPI_Comm_free(&nonemptys);
       }
-      MPI_Comm_free(&nonemptys);
     }
   }
   while (!justOnce && trialSeeds < 1000 && !countInitial_glob);
@@ -198,6 +191,8 @@ bool testRandTree(MPI_Comm comm)
 
   ot::keepSiblingLeafsTogether<C,dim>(tree, comm);
 
+  /// fprintf(stderr, "%*s[g%d] Finished keepSiblingLeafsTogether()\n", 40*rProc, "\0", rProc);
+
   /// //DEBUG
   /// for (int ii = 0; ii < tree.size(); ii++)
   /// {
@@ -206,7 +201,8 @@ bool testRandTree(MPI_Comm comm)
   ///       ii, tree[ii].getBase32Hex().data(), tree[ii].getLevel());
   /// }
 
-  /// fprintf(stderr, "%*s[g%d] Finished keepSiblingLeafsTogether()\n", 40*rProc, "\0", rProc);
+  /// if (!tree.size())
+  ///   fprintf(stdout, "%*s[g%d] I am empty!\n", 40*rProc, "\0", rProc);
 
   // Count number of procs with divided siblings, after filtering.
   {
@@ -215,8 +211,8 @@ bool testRandTree(MPI_Comm comm)
     if (tree.size())
     {
       countFinal_glob = ot::checkSiblingLeafsTogether(tree, nonemptys);
+      MPI_Comm_free(&nonemptys);
     }
-    MPI_Comm_free(&nonemptys);
   }
 
   if (!rProc)
