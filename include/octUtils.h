@@ -10,6 +10,7 @@
 #include <vector>
 #include <functional>
 #include <random>
+#include <utility>
 #include <iostream>
 #include <stdio.h>
 
@@ -153,6 +154,103 @@ namespace ot
          out.push_back(tempNode);
        }
      }
+
+
+
+/**
+ * @brief Create a distributed octree for a regular grid of specified depth.
+ */
+template <typename T, unsigned int dim>
+int createRegularOctree(std::vector<TreeNode<T, dim>>& out,
+                        unsigned int lev,
+                        MPI_Comm comm)
+{
+  assert(lev <= m_uiMaxDepth);
+
+  int rProc, nProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  out.clear();
+
+  // Count total number of octants to create globally,
+  // as well as size of our partition.
+  const RankI totalCount = 1u << (dim * lev);
+  const RankI myCount = (totalCount / nProc) + (rProc < totalCount % nProc);
+  const RankI prevCount = (totalCount / nProc) * rProc
+                              + (rProc < totalCount % nProc ? rProc : totalCount % nProc);
+
+  //
+  // Generate points in the Morton order before sorting in SFC order.
+  //
+  if (myCount)
+  {
+    const RankI frontTNRank = prevCount;
+    const RankI backTNRank = prevCount + myCount - 1;
+
+    // Left bound.
+    TreeNode<T, dim> frontTreeNode;
+    RankI subtreeSz = totalCount;
+    RankI tnRank = 0;
+    while (frontTreeNode.getLevel() < lev)
+    {
+      subtreeSz >>= dim;
+      unsigned int child_m = (frontTNRank - tnRank) / subtreeSz;
+      frontTreeNode = frontTreeNode.getChildMorton(child_m);
+    }
+
+    // Right bound.
+    TreeNode<T, dim> backTreeNode;
+    subtreeSz = totalCount;
+    tnRank = 0;
+    while (backTreeNode.getLevel() < lev)
+    {
+      subtreeSz >>= dim;
+      unsigned int child_m = (backTNRank - tnRank) / subtreeSz;
+      backTreeNode = backTreeNode.getChildMorton(child_m);
+    }
+
+    TreeNode<T, dim> subtreeRoot = frontTreeNode;
+    while (!(subtreeRoot.isAncestorInclusive(backTreeNode)))
+      subtreeRoot = subtreeRoot.getParent();
+
+    constexpr unsigned int NUM_CHILDREN = 1u << dim;
+
+    // Add TreeNodes using breadth-first traversal.
+    std::vector<TreeNode<T, dim>> buffer;
+    out.push_back(subtreeRoot);
+    while (out.front().getLevel() < lev)
+    {
+      const unsigned int parentLev = out.front().getLevel();
+
+      for (const TreeNode<T, dim> & parent : out)
+      {
+        unsigned int childFront = 0;
+        unsigned int childBack = NUM_CHILDREN - 1;
+
+        if (parent.isAncestor(frontTreeNode))
+          childFront = frontTreeNode.getMortonIndex(parentLev+1);
+        if (parent.isAncestor(backTreeNode))
+          childBack = backTreeNode.getMortonIndex(parentLev+1);
+
+        for (unsigned int child_m = childFront; child_m <= childBack; child_m++)
+          buffer.push_back(parent.getChildMorton(child_m));
+      }
+
+      out.clear();
+      std::swap(buffer, out);
+    }
+  }//if(myCount)
+
+
+  //
+  // Re-partition the points according to the SFC order.
+  //
+  SFC_Tree<T, dim>::distTreeSort(out, 0.0, comm);
+
+  return 1;
+}
+
 
 
 
