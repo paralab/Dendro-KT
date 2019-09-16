@@ -200,6 +200,8 @@ namespace ot {
         */
       bool isAncestor(const TreeNode & other) const;
 
+      bool isAncestorInclusive(const TreeNode & other) const;
+
       /**@brief return the smallest (in morton id) of this octant */
       TreeNode getFirstChildMorton() const;
 

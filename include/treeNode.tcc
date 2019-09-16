@@ -649,7 +649,7 @@ inline bool TreeNode<T,dim>::isAncestor(TreeNode<T,dim> const &other) const {
     ///  bool state1 = ( (this->getLevel() < other.getLevel())  \
                   && detail::StaticUtils<dim>::reduce_and([&min1, &min2] (unsigned int d) { return min2[d] >= min1[d]; }) \
                   && detail::StaticUtils<dim>::reduce_and([&max1, &max2] (unsigned int d) { return max2[d] <= max1[d]; }) );
-    bool state1=( (this->getLevel() < other.getLevel()) );
+    bool state1=( (this->getLevel() < other.getLevel()) );  // <
     #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
       state1 = state1 && (min2[d] >= min1[d]) && (max2[d] <= max1[d]);
@@ -658,6 +658,29 @@ inline bool TreeNode<T,dim>::isAncestor(TreeNode<T,dim> const &other) const {
     // In a previous version there was `state2` involving Hilbert ordering.
 
 } // end function
+
+
+template <typename T, unsigned int dim>
+inline bool TreeNode<T,dim>::isAncestorInclusive(TreeNode<T,dim> const &other) const {
+    std::array<T,dim> min1, min2, max1, max2;
+
+    min1 = this->minX();
+    min2 = other.minX();
+
+    max1 = this->maxX();
+    max2 = other.maxX();
+
+    bool state1=( (this->getLevel() <= other.getLevel()) );  // <=
+    #pragma unroll(dim)
+    for (int d = 0; d < dim; d++)
+      state1 = state1 && (min2[d] >= min1[d]) && (max2[d] <= max1[d]);
+
+    return state1;
+    // In a previous version there was `state2` involving Hilbert ordering.
+
+} // end function
+
+
 
 // ================ End is-tests ========================== //
 
