@@ -308,6 +308,10 @@ add_executable(tstCreateRegularOctree ${SRC_FILES})
 target_include_directories(tstCreateRegularOctree PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstCreateRegularOctree dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testLocGlobSz.cpp)
+add_executable(tstLocGlobSz ${SRC_FILES})
+target_include_directories(tstLocGlobSz PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstLocGlobSz dendroKT ${MPI_LIBRARIES} m)
 
 
 ## tsort_bench (./tsortBench)
