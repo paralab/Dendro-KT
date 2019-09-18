@@ -330,6 +330,16 @@ namespace ot {
     return rank;
   }
 
+  template <typename T, unsigned int dim>
+  unsigned int TNPoint<T,dim>::get_nodeRank1D(const TreeNode<T, dim> &hostCell,
+                                              const TreeNode<T, dim> &tnPoint,
+                                              unsigned int d,
+                                              unsigned int polyOrder)
+  {
+    const unsigned int len = 1u << (m_uiMaxDepth - hostCell.getLevel());
+    return polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - tnPoint.getX(d)) / len;
+  }
+
 
 
   // ============================ End: TNPoint ============================ //

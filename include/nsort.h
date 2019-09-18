@@ -169,6 +169,8 @@ namespace ot {
       /** @brief Assuming nodes on a cell are ordered lexicographically, get the rank of given node on the given cell. */
       static unsigned int get_lexNodeRank(const TreeNode<T,dim> &hostCell, const TreeNode<T, dim> &tnPoint, unsigned int polyOrder);
 
+      static unsigned int get_nodeRank1D(const TreeNode<T, dim> &hostCell, const TreeNode<T, dim> &tnPoint, unsigned int d, unsigned int polyOrder);
+
     protected:
       // Data members.
       IsSelected m_isSelected;
