@@ -131,7 +131,7 @@ namespace ot
           // Otherwise we should build-in the offset to the scattermap here.
 
           // Find offset into the global array.
-          unsigned long locSz = m_uiLocalNodalSz;
+          DendroIntL locSz = m_uiLocalNodalSz;
           par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiActiveComm);
           m_uiGlobalRankBegin -= locSz;
 
@@ -145,6 +145,15 @@ namespace ot
           std::vector<ot::TreeNode<C,dim>> tmpSendBuf(m_sm.m_map.size());
           ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::TreeNode<C,dim>>(
               &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, m_uiActiveComm);
+          //TODO transfer ghostExchange into this class, then use new method.
+
+          // Compute global ids of all nodes, including local and ghosted.
+          m_uiLocalToGlobalNodalMap.resize(m_uiTotalNodalSz, 0);
+          for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
+            m_uiLocalToGlobalNodalMap[m_uiLocalNodeBegin + ii] = m_uiGlobalRankBegin + ii;
+          std::vector<ot::RankI> tmpSendGlobId(m_sm.m_map.size());
+          ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::RankI>(
+              &(*m_uiLocalToGlobalNodalMap.begin()), &(*tmpSendGlobId.begin()), m_sm, m_gm, m_uiActiveComm);
           //TODO transfer ghostExchange into this class, then use new method.
 
           // Identify the (local ids of) domain boundary nodes in local vector.

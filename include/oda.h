@@ -113,7 +113,10 @@ class DA
     unsigned int m_uiPostNodeEnd;
 
     /**@brief: position of local segment in the distributed array. */
-    unsigned long m_uiGlobalRankBegin;
+    DendroIntL m_uiGlobalRankBegin;
+
+    /**@brief: map, size of ghosted node array, gives global node indices.*/
+    std::vector<ot::RankI> m_uiLocalToGlobalNodalMap;
     
     /**@brief: internal scatter map. */
     ot::ScatterMap m_sm;
@@ -224,10 +227,12 @@ class DA
         inline unsigned int getTotalNodalSz() const { return m_uiTotalNodalSz; }
 
         /**@brief returns the global number of nodes across all processors. */
-        inline unsigned int getGlobalNodeSz() const { return m_uiGlobalNodeSz; }
+        inline ot::RankI getGlobalNodeSz() const { return m_uiGlobalNodeSz; }
 
         /**@brief returns the rank of the begining of local segment among all processors. */
-        inline unsigned int getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
+        inline ot::RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
+
+        inline const std::vector<ot::RankI> getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
 
         /**@brief see if the current DA is active*/
         inline bool isActive() { return m_uiIsActive; }
