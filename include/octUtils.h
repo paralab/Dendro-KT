@@ -269,6 +269,8 @@ int createRegularOctree(std::vector<TreeNode<T, dim>>& out,
    * @param[in] elementOrder order of the element when defining the wavelet representation of the function.
    * @param[in] comm      The MPI communicator to be use for parallel computation.
    *
+   *TODO  Make this function conform to xyzxyz ordering of dofs.
+   *
    * Generates an octree based on a function provided by the user. The function is expected to return the
    * signed distance to the surface that needs to be meshed. The coordinates are expected to be in [0,1]^3.
    *
@@ -367,7 +369,7 @@ int function2Octree(std::function<void(const double *, double*)> fx,const unsign
 
           for(unsigned int var=0;var<numInterpVars;var++)
           {
-            refEl.IKD_Parent2Child<dim>(dist_parent+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, cnum);
+            refEl.IKD_Parent2Child<dim>(dist_parent+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, 1, cnum);
             l2_norm=normLInfty(dist_child+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, nodesPerElement);
             if(l2_norm>interp_tol)
             {
@@ -457,7 +459,7 @@ int function2Octree(std::function<void(const double *, double*)> fx,const unsign
 
         for(unsigned int var=0;var<numInterpVars;var++)
         {
-          refEl.IKD_Parent2Child<dim>(dist_parent+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, cnum);
+          refEl.IKD_Parent2Child<dim>(dist_parent+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, 1, cnum);
           l2_norm=normLInfty(dist_child+varIndex[var]*nodesPerElement, dist_child_ip+varIndex[var]*nodesPerElement, nodesPerElement);
           //std::cout<<"rank: "<<rank<<" node: "<<elem<<" l2 norm : "<<l2_norm<<" var: "<<varIndex[var]<<std::endl;
           if(l2_norm>interp_tol)

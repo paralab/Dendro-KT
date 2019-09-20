@@ -29,7 +29,7 @@ namespace HeatEq
         ~HeatVec();
 
         /**@biref elemental compute vec for rhs*/
-        virtual void elementalComputeVec(const VECType* in,VECType* out, double*coords=NULL,double scale=1.0) override;
+        virtual void elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, double*coords=NULL,double scale=1.0) override;
 
 
         bool preComputeVec(const VECType* in,VECType* out, double scale=1.0);

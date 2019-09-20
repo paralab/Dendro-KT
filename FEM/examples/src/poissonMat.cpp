@@ -37,8 +37,9 @@ PoissonMat<dim>::~PoissonMat()
 }
 
 template <unsigned int dim>
-void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, double*coords,double scale)
+void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, double*coords,double scale)
 {
+  //TODO use ndofs
     // 1D operators.
 
     const RefElement* refEl=m_uiOctDA->getReferenceElement();

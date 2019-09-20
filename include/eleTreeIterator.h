@@ -29,7 +29,7 @@ template <typename T, unsigned int dim> struct TreeAddr;
  * Usage:
  * {
  *   ElementLoop elementLoop(numNodes, nodeCoords, order, firstElem, lastElem);
- *   elementLoop.initialize(inputNodeValues);
+ *   elementLoop.initialize(inputNodeValues, ndofs);
  *
  *   for (ELIterator it = elementLoop.begin(); it != elementLoop.end(); ++it)
  *   {
@@ -132,7 +132,7 @@ class ElementLoop
                      const ot::TreeNode<T,dim> &firstElement,
                      const ot::TreeNode<T,dim> &lastElement );
 
-    void initialize(const NodeT *inputNodeVals);
+    void initialize(const NodeT *inputNodeVals, unsigned int ndofs);
     void finalize(NodeT * outputNodeVals);
 
     ElementNodeBuffer<T,dim,NodeT> requestLeafBuffer();
@@ -160,6 +160,7 @@ class ElementLoop
     unsigned long m_numNodes;
     const ot::TreeNode<T,dim> * m_allNodeCoords;
     const NodeT * m_allNodeVals;
+    unsigned int m_ndofs;
     unsigned int m_eleOrder;
     unsigned int m_nodesPerElement;
     TreeAddr<T,dim> m_beginTreeAddr;
@@ -235,6 +236,7 @@ class ElementNodeBuffer
     // TODO multiple pointers, by using template '...'
     NodeT *nodeValPtr;
     double *nodeCoordsPtr;
+    const unsigned int &ndofs;
     const unsigned int &eleOrder;
     const unsigned int &nodesPerElement;
     const ot::TreeNode<T,dim> &elementTreeNode;
@@ -244,6 +246,7 @@ class ElementNodeBuffer
     ElementNodeBuffer() = delete;
     ElementNodeBuffer( NodeT *i_nodeValPtr,
                        double *i_nodeCoordsPtr,
+                       const unsigned int &i_ndofs,
                        const unsigned int &i_eleOrder,
                        const unsigned int &i_nodesPerElement,
                        const ot::TreeNode<T,dim> &i_elementTreeNode,
@@ -251,6 +254,7 @@ class ElementNodeBuffer
       :
         nodeValPtr(i_nodeValPtr),
         nodeCoordsPtr(i_nodeCoordsPtr),
+        ndofs(i_ndofs),
         eleOrder(i_eleOrder),
         nodesPerElement(i_nodesPerElement),
         elementTreeNode(i_elementTreeNode),
@@ -259,6 +263,7 @@ class ElementNodeBuffer
 
     NodeT * getNodeBuffer() { return nodeValPtr; }
     double * getNodeCoords() { return nodeCoordsPtr; }
+    const unsigned int getNdofs() const { return ndofs; }
     const unsigned int getEleOrder() const { return eleOrder; }
     const unsigned int getNodesPerElement() const { return nodesPerElement; }
     const ot::TreeNode<T,dim> & getElementTreeNode() const { return elementTreeNode; }
@@ -283,6 +288,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
   : m_numNodes(numNodes),
     m_allNodeCoords(allNodeCoords),
     m_allNodeVals(nullptr),
+    m_ndofs(1),
     m_eleOrder(eleOrder),
     m_nodesPerElement(  intPow(eleOrder+1, dim) ),
     m_leafNodeCoords(   intPow(eleOrder+1, dim) ),
@@ -453,8 +459,10 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
 // initialize()
 //
 template <typename T, unsigned int dim, typename NodeT>
-void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals)
+void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals, unsigned int ndofs)
 {
+  m_ndofs = ndofs;
+
   m_curTreeAddr = m_beginTreeAddr;
   m_oldTreeAddr.m_coords = m_beginTreeAddr.m_coords;
   m_oldTreeAddr.m_lev = m_L0;
@@ -467,12 +475,13 @@ void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals)
   {
     if (subdomain.isIncident(m_allNodeCoords[nIdx]))
     {
-      m_siblingNodeValsIn[m_L0 - m_L0].push_back(inputNodeVals[nIdx]);
+      for (int dof = 0; dof < m_ndofs; dof++)
+        m_siblingNodeValsIn[m_L0 - m_L0].push_back(inputNodeVals[m_ndofs*nIdx + dof]);
       numIncidentNodes++;
     }
   }
   m_siblingNodeValsOut[m_L0 - m_L0] =
-      std::vector<NodeT>(numIncidentNodes, 0.0);
+      std::vector<NodeT>(m_ndofs*numIncidentNodes, 0.0);
 
   goToTreeAddr();
 }
@@ -500,11 +509,13 @@ void ElementLoop<T, dim, NodeT>::finalize(NodeT * outputNodeVals)
   {
     if (subdomain.isIncident(m_allNodeCoords[nIdx]))
     {
-      outputNodeVals[nIdx] = topVals[numIncidentNodes];
+      for (int dof = 0; dof < m_ndofs; dof++)
+        outputNodeVals[m_ndofs*nIdx + dof] = topVals[m_ndofs*numIncidentNodes + dof];
       numIncidentNodes++;
     }
     else
-      outputNodeVals[nIdx] = 0.0;
+      for (int dof = 0; dof < m_ndofs; dof++)
+        outputNodeVals[m_ndofs*nIdx + dof] = 0.0;
   }
 }
 
@@ -589,9 +600,9 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
 
   // Iterate through the nodes again, but instead of counting, copy the nodes.
   m_siblingNodeCoords[curLev+1 - m_L0].resize(accum);
-  m_siblingNodeValsIn[curLev+1 - m_L0].resize(accum);
+  m_siblingNodeValsIn[curLev+1 - m_L0].resize(m_ndofs*accum);
   m_siblingNodeValsOut[curLev+1 - m_L0].clear();
-  m_siblingNodeValsOut[curLev+1 - m_L0].resize(accum, 0.0);
+  m_siblingNodeValsOut[curLev+1 - m_L0].resize(m_ndofs*accum, 0.0);
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
     curSubtree.incidentChildren( sibNodeCoords[nIdx],
@@ -609,7 +620,8 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
       ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
       m_siblingNodeCoords[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ] = sibNodeCoords[nIdx];
-      m_siblingNodeValsIn[curLev+1 - m_L0][   nodeOffsets[incidentChild_sfc] ] = sibNodeValsIn[nIdx];
+      for (int dof = 0; dof < m_ndofs; dof++)
+        m_siblingNodeValsIn[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof ] = sibNodeValsIn[m_ndofs*nIdx + dof];
 
       nodeOffsets[incidentChild_sfc]++;
     }
@@ -618,7 +630,8 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   // Reset current level node out-values to 0, to prepare for
   // hanging node accumulation from our children.
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
-    sibNodeValsOut[nIdx] = 0.0;
+    for (int dof = 0; dof < m_ndofs; dof++)
+      sibNodeValsOut[m_ndofs*nIdx + dof] = 0.0;
 
   // Return 'was not already a leaf'.
   return false;
@@ -683,7 +696,8 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
         ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
         ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
-        sibNodeValsOut[nIdx] += m_siblingNodeValsOut[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ];
+        for (int dof = 0; dof < m_ndofs; dof++)
+          sibNodeValsOut[m_ndofs*nIdx + dof] += m_siblingNodeValsOut[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof];
 
         nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
       }
@@ -839,7 +853,8 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     assert(nodeRank < npe);  // If fails, check m_uiMaxDepth is deep enough for eleOrder.
     leafEleFill[nodeRank] = true;
     fillCheck += (nodeRank + 1);
-    m_leafNodeVals[nodeRank] = sibNodeValsIn[nIdx];
+    for (int dof = 0; dof < m_ndofs; dof++)
+      m_leafNodeVals[m_ndofs*nodeRank + dof] = sibNodeValsIn[m_ndofs*nIdx + dof];
   }
 
   const bool leafHasAllNodes = (fillCheck == npe*(npe+1)/2);
@@ -865,7 +880,8 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
                                                                           parNodeCoords[nIdx],
                                                                           m_eleOrder );
       assert(nodeRank < npe);
-      m_parentNodeVals[nodeRank] = parNodeValsIn[nIdx];
+      for (int dof = 0; dof < m_ndofs; dof++)
+        m_parentNodeVals[m_ndofs*nodeRank + dof] = parNodeValsIn[m_ndofs*nIdx + dof];
     }
 
     // Prepare to interpolate.
@@ -880,8 +896,8 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     const NodeT * imFrom[dim];
     NodeT * imTo[dim];
     std::vector<NodeT> imBufs[2];
-    imBufs[0].resize(npe);
-    imBufs[1].resize(npe);
+    imBufs[0].resize(m_ndofs*npe);
+    imBufs[1].resize(m_ndofs*npe);
     for (int d = 0; d < dim; d++)
     {
       imTo[d] = &(*imBufs[d % 2].begin());
@@ -891,12 +907,13 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
 
     // Interpolate all element nodes.
     // (The ones we actually use should have valid values.)
-    KroneckerProduct<dim, NodeT, true>(m_eleOrder+1, ipAxis, imFrom, imTo);
+    KroneckerProduct<dim, NodeT, true>(m_eleOrder+1, ipAxis, imFrom, imTo, m_ndofs);
     // The results of the interpolation are stored in imTo[dim-1].
 
     for (unsigned int n = 0; n < npe; n++)
       if (!leafEleFill[n])
-        m_leafNodeVals[n] = imTo[dim-1][n];
+        for (int dof = 0; dof < m_ndofs; dof++)
+          m_leafNodeVals[m_ndofs*n + dof] = imTo[dim-1][m_ndofs*n + dof];
   }
 
   const ElementLoop * const_this = const_cast<const ElementLoop*>(this);
@@ -906,6 +923,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     {
       &(*this->m_leafNodeVals.begin()),
       &(*this->m_leafNodeCoordsFlat.begin()),
+      const_this->m_ndofs,
       const_this->m_eleOrder,
       const_this->m_nodesPerElement,
       const_this->m_curSubtree,
@@ -949,7 +967,8 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
     assert(nodeRank < npe);  // If fails, check m_uiMaxDepth is deep enough for eleOrder.
     leafEleFill[nodeRank] = true;
     fillCheck += (nodeRank + 1);
-    sibNodeValsOut[nIdx] = m_leafNodeVals[nodeRank];  // Reverse of requestLeafBuffer.
+    for (int dof = 0; dof < m_ndofs; dof++)
+      sibNodeValsOut[m_ndofs*nIdx + dof] = m_leafNodeVals[m_ndofs*nodeRank + dof];  // Reverse of requestLeafBuffer.
   }
 
   const bool leafHasAllNodes = (fillCheck == npe*(npe+1)/2);
@@ -968,7 +987,8 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
 
     for (unsigned int n = 0; n < npe; n++)
       if (leafEleFill[n])
-        m_leafNodeVals[n] = 0.0;  // Only the hanging node values remain.
+        for (int dof = 0; dof < m_ndofs; dof++)
+          m_leafNodeVals[m_ndofs*n + dof] = 0.0;  // Only the hanging node values remain.
 
     // Line up 1D operators for each axis, based on childNum.
     const NodeT *ipTAxis[dim];
@@ -980,8 +1000,8 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
     const NodeT * imFrom[dim];
     NodeT * imTo[dim];
     std::vector<NodeT> imBufs[2];
-    imBufs[0].resize(npe);
-    imBufs[1].resize(npe);
+    imBufs[0].resize(m_ndofs*npe);
+    imBufs[1].resize(m_ndofs*npe);
     for (int d = 0; d < dim; d++)
     {
       imTo[d] = &(*imBufs[d % 2].begin());
@@ -991,7 +1011,7 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
 
     // Un-Interpolate all element nodes.
     // (The non-hanging nodes have been zeroed out.)
-    KroneckerProduct<dim, NodeT, true>(m_eleOrder+1, ipTAxis, imFrom, imTo);
+    KroneckerProduct<dim, NodeT, true>(m_eleOrder+1, ipTAxis, imFrom, imTo, m_ndofs);
     // The results of the interpolation are stored in imTo[dim-1].
 
     // Add contributions from hanging nodes to parent buffer.
@@ -1004,7 +1024,8 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
                                                                           parNodeCoords[nIdx],
                                                                           m_eleOrder );
       assert(nodeRank < npe);
-      parNodeValsOut[nIdx] += imTo[dim-1][nodeRank];
+      for (int dof = 0; dof < m_ndofs; dof++)
+        parNodeValsOut[m_ndofs*nIdx + dof] += imTo[dim-1][m_ndofs*nodeRank + dof];
     }
   }
 

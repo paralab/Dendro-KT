@@ -35,7 +35,7 @@ namespace HeatEq
         ~HeatMat();
 
         /**@biref elemental matvec*/
-        virtual void elementalMatVec(const VECType* in,VECType* out, double*coords=NULL,double scale=1.0);
+        virtual void elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, double*coords=NULL,double scale=1.0);
 
         /**@brief things need to be performed before matvec (i.e. coords transform)*/
         bool preMatVec(const VECType* in,VECType* out,double scale=1.0);

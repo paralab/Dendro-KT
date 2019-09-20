@@ -32,14 +32,14 @@ namespace fem
    * @param coords: Flattened array of coordinate tuples, [xyz][xyz][...]
    */
   template <typename da>
-  using EleOpT = std::function<void(const da *in, da *out, double *coords, double scale)>;
+  using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, double *coords, double scale)>;
 
     // Declaring the matvec at the top.
     template<typename T,typename TN, typename RE>
-    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement);
+    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement);
 
     template<typename T,typename TN, typename RE>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild);
+    void matvec_rec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild);
 
     /**
      * @brief: top_down bucket function
@@ -222,6 +222,7 @@ namespace fem
      * @brief : mesh-free matvec
      * @param [in] vecIn: input vector (local vector)
      * @param [out] vecOut: output vector (local vector) 
+     * @param [in] ndofs: number of components at each node, 3 for XYZ XYZ
      * @param [in] coords: coordinate points for the partition
      * @param [in] sz: number of points
      * @param [in] partFront: front TreeNode in local segment of tree partition.
@@ -230,10 +231,10 @@ namespace fem
      * @param [in] refElement: reference element.
      */
     template<typename T,typename TN, typename RE>
-    void matvec(const T* vecIn, T* vecOut, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
+    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
       // Initialize output vector to 0.
-      std::fill(vecOut, vecOut + sz, 0);
+      std::fill(vecOut, vecOut + ndofs*sz, 0);
 
       /// //DEBUG
       /// fprintf(stderr, "\nBegin Matvec.\n");
@@ -253,9 +254,9 @@ namespace fem
       const unsigned int npe = intPow(eleOrder+1, dim);
 
       ElementLoop<C, dim, T> loop( sz, coords, eleOrder, partFront, partBack);
-      loop.initialize(vecIn);
+      loop.initialize(vecIn, ndofs);
 
-      std::vector<T> leafResult(npe, 0.0);
+      std::vector<T> leafResult(ndofs*npe, 0.0);
 
       for (ELIterator<C, dim, T> it = loop.begin(); it != loop.end(); ++it)
       {
@@ -264,10 +265,10 @@ namespace fem
         // Perform elemental matvec op.
         T * leafVal = leafBuf.getNodeBuffer();
         T * leafValTemp = &(*leafResult.begin());
-        eleOp(leafVal, leafValTemp, leafBuf.getNodeCoords(), scale);
+        eleOp(leafVal, leafValTemp, ndofs, leafBuf.getNodeCoords(), scale);
 
         // Copy results back to leaf buffer.
-        std::copy_n(leafValTemp, npe, leafVal);
+        std::copy_n(leafValTemp, ndofs*npe, leafVal);
         leafBuf.submitElement();
       }
       loop.finalize(vecOut);
@@ -275,13 +276,13 @@ namespace fem
       // OLD recursive way:
       // Top level of recursion.
       TN treeRoot;  // Default constructor constructs root cell.
-      matvec_rec<T,TN,RE>(vecIn, vecOut, coords, treeRoot, 0, sz, partFront, partBack, eleOp, scale, refElement, nullptr, nullptr, nullptr, 0, true);
+      matvec_rec<T,TN,RE>(vecIn, vecOut, ndofs, coords, treeRoot, 0, sz, partFront, partBack, eleOp, scale, refElement, nullptr, nullptr, nullptr, 0, true);
 #endif
     }
 
     // Recursive implementation.
     template<typename T,typename TN, typename RE>
-    void matvec_rec(const T* vecIn, T* vecOut, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild)
+    void matvec_rec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild)
     {
         constexpr unsigned int dim = TN::coordDim;
 
@@ -389,6 +390,7 @@ namespace fem
                 if (!chBeforePart && !chAfterPart)
                     matvec_rec<T,TN,RE>(&(*ibufs[pLev].vec_in_dup.cbegin())      + offset[child_sfc],
                                             &(*ibufs[pLev].vec_out_contrib.begin()) + offset[child_sfc],
+                                            ndofs,
                                             &(*ibufs[pLev].coords_dup.cbegin())       + offset[child_sfc],
                                             tnChild, cRot,
                                             counts[child_sfc], partFront, partBack,
@@ -487,7 +489,7 @@ namespace fem
                 }
 
                 // Interpolation performed in the parent buffer, to preserve child buffer. (in==out is safe).
-                refElement->template IKD_Parent2Child<dim>(parentEleBuffer.data(), parentEleBuffer.data(), subtreeRoot.getMortonIndex());
+                refElement->template IKD_Parent2Child<dim>(parentEleBuffer.data(), parentEleBuffer.data(), ndofs, subtreeRoot.getMortonIndex());
                 //TODO
 
                 // Transfer the needed interpolated values. (Invalid values are skipped).
@@ -539,7 +541,7 @@ namespace fem
                     leafEleBufferOut[nr] = 0.0;  // Nullify prior to back-interpolation.
 
                 // Transpose of interpolation.   (in==out is safe -- but not necessary).
-                refElement->template IKD_Child2Parent<dim>(leafEleBufferOut.data(), leafEleBufferOut.data(), subtreeRoot.getMortonIndex());
+                refElement->template IKD_Child2Parent<dim>(leafEleBufferOut.data(), leafEleBufferOut.data(), ndofs, subtreeRoot.getMortonIndex());
 
                 // Accumulate into parent nodes.
                 TN subtreeParent = subtreeRoot.getParent();

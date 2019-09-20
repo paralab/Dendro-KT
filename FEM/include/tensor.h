@@ -19,6 +19,8 @@
 
 // TODO make a new namespace
 
+
+
 /**
  * @tparam dim Dimension of element, i.e. order of tensor.
  * @tparam da  Datatype of vectors.
@@ -27,14 +29,46 @@
  * @param [in] A Array of pointers to interpolation matrices, ordered by axis.
  * @param [in] in Array of pointers to input buffers, ordered with source in position 0.
  * @param [in] out Array of pointers to output buffers, ordered with destination in position (dim-1).
+ * @param ndofs Number of degrees of freedom in the vector, e.g. 3 for xyzxyz.
  */
 template <unsigned int dim, typename da, bool forward>
-void KroneckerProduct(unsigned M, const da **A, const da **in, da **out);
+void KroneckerProduct(unsigned M, const da **A, const da **in, da **out, unsigned int ndofs);
+
+
+/**
+ * @tparam dim Dimension of element, i.e. order of tensor.
+ * @tparam da  Datatype of vectors.
+ * @tparam forward If true, axes are evaluated in increasing order.
+ * @tparam ndofs Number of degrees of freedom in the vector, e.g. 3 for xyzxyz.
+ * @param [in] M Size of tensor in 1D.
+ * @param [in] A Array of pointers to interpolation matrices, ordered by axis.
+ * @param [in] in Array of pointers to input buffers, ordered with source in position 0.
+ * @param [in] out Array of pointers to output buffers, ordered with destination in position (dim-1).
+ */
+template <unsigned int dim, typename da, bool forward, unsigned int ndofs>
+void KroneckerProductFixedDof(unsigned M, const da **A, const da **in, da **out);
+
 
 /**
  * @brief Forall (i,j,k), Q_ijk *= A * P_ijk, where P_ijk == W_i * W_j * W_k;
  * @tparam dim Order of the tensor.
  * @tparam T Component type.
+ *
+ * Generalizes the following nested for-loop to any nesting level:
+ *   int idx = 0;
+ *   for (int k = 0; k < l; k++)
+ *   {
+ *     const double a2 = A*W[k];
+ *     for (int j = 0; j < l; j++)
+ *     {
+ *       const double a1 = a2*W[j];
+ *       for (int i = 0; i < l; i++)
+ *       {
+ *         const double a0 = a1*W[i];
+ *         Q[idx++] *= a0;
+ *       }
+ *     }
+ *   }
  */
 template <typename T, unsigned int dim>
 struct SymmetricOuterProduct
@@ -63,42 +97,54 @@ struct SymmetricOuterProduct<T, 1>
 
 
 
-template <typename da>
+template <typename da, unsigned int ndofs>
 struct MatKernelAssign
 {
   const da *X;
   da *Y;
-  void operator()(da d, unsigned int x_ii, unsigned int y_ii) const { Y[y_ii] = d * X[x_ii]; }
+  void operator()(da d, unsigned int x_ii, unsigned int y_ii) const
+  {
+    for (int dof = 0; dof < ndofs; dof++)
+      Y[ndofs*y_ii + dof] = d * X[ndofs*x_ii + dof];
+  }
 };
 
-template <typename da>
+template <typename da, unsigned int ndofs>
 struct MatKernelAccum
 {
   const da *X;
   da *Y;
-  void operator()(da d, unsigned int x_ii, unsigned int y_ii) const { Y[y_ii] += d * X[x_ii]; }
+  void operator()(da d, unsigned int x_ii, unsigned int y_ii) const
+  {
+    for (int dof = 0; dof < ndofs; dof++)
+      Y[ndofs*y_ii + dof] += d * X[ndofs*x_ii + dof];
+  }
 };
+
+//TODO there is a way to incorporate ndofs as a new axis of the tensor
+//  instead of modifying MatKernelAssign and MatKernelAccum.
+//  I have chosen the latter for now for simplicity.
 
 
 // Local matrix multiplication over 1D of a general slice of tensor.
-template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
+template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent, unsigned int ndofs>
 struct IterateBindMatrix;
 
 // Specialization of IterateBindMatrix to the full tensor.
-template <unsigned int dim, unsigned int tangent>
-using IterateTensorBindMatrix = IterateBindMatrix<dim, (1u<<dim)-1, tangent>;
+template <unsigned int dim, unsigned int tangent, unsigned int ndofs>
+using IterateTensorBindMatrix = IterateBindMatrix<dim, (1u<<dim)-1, tangent, ndofs>;
 
 // Specialization of IterateBindMatrix to a (K-1)-face of the tensor.
-template <unsigned int dim, unsigned int face, unsigned int tangent>
-using IterateFacetBindMatrix = IterateBindMatrix<dim, ((1u<<dim)-1) - (1u<<face), tangent>;
+template <unsigned int dim, unsigned int face, unsigned int tangent, unsigned int ndofs>
+using IterateFacetBindMatrix = IterateBindMatrix<dim, ((1u<<dim)-1) - (1u<<face), tangent, ndofs>;
 
 
 //
 // IterateBindMatrix
 //
-// Usage: IterateBindMatrix<dim, sliceFlag, tangent>::template iterate_bind_matrix<da>(M, A, X, Y);
+// Usage: IterateBindMatrix<dim, sliceFlag, tangent, ndofs>::template iterate_bind_matrix<da>(M, A, X, Y);
 //
-template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
+template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent, unsigned int ndofs>
 struct IterateBindMatrix
 {
   static constexpr unsigned int upperOrientFlag = sliceFlag & (- (1u<<(tangent+1)));
@@ -110,12 +156,12 @@ struct IterateBindMatrix
   template <typename da>
   struct InnerKernel
   {
-    MatKernelAssign<da> &m_kernel1;
-    MatKernelAccum<da> &m_kernel2;
+    MatKernelAssign<da, ndofs> &m_kernel1;
+    MatKernelAccum<da, ndofs> &m_kernel2;
     struct SAssign { InnerKernel &p; void operator()(unsigned int innerIdx) { p.actuate(p.m_kernel1, innerIdx); } } Assign;
     struct SAccum { InnerKernel &p; void operator()(unsigned int innerIdx) { p.actuate(p.m_kernel2, innerIdx); } } Accum;
     unsigned int m_M;
-    InnerKernel(MatKernelAssign<da> &kernel1, MatKernelAccum<da> &kernel2, unsigned int M)
+    InnerKernel(MatKernelAssign<da, ndofs> &kernel1, MatKernelAccum<da, ndofs> &kernel2, unsigned int M)
         : m_kernel1(kernel1), m_kernel2(kernel2), Assign{*this}, Accum{*this}, m_M(M) {}
     InnerKernel() = delete;
 
@@ -148,17 +194,17 @@ struct IterateBindMatrix
   //
   // iterate_bind_matrix()
   //
-  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
+  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent, unsigned int ndofs>
   template <typename da>
-  inline void IterateBindMatrix<dim,sliceFlag,tangent>::iterate_bind_matrix(const unsigned int M, const da *A, const da *X, da *Y)
+  inline void IterateBindMatrix<dim,sliceFlag,tangent,ndofs>::iterate_bind_matrix(const unsigned int M, const da *A, const da *X, da *Y)
   {
     // For each row of the matrix, iterate through the hyperplane
     // of the index space that is normal to the axis `face'.
     // `dim' specifies the dimension of the index space.
     // `tangent' specifies which axis should be bound to the matrix row.
 
-    MatKernelAssign<da> matKernelAssign{X, Y};
-    MatKernelAccum<da> matKernelAccum{X, Y};
+    MatKernelAssign<da, ndofs> matKernelAssign{X, Y};
+    MatKernelAccum<da, ndofs> matKernelAccum{X, Y};
 
     InnerKernel<da> inner{matKernelAssign, matKernelAccum, M};
     OuterKernel<da> outer{inner, M, A};
@@ -170,9 +216,9 @@ struct IterateBindMatrix
   //
   // OuterKernel::operator()()
   //
-  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
+  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent, unsigned int ndofs>
   template <typename da>
-  inline void IterateBindMatrix<dim,sliceFlag,tangent>::
+  inline void IterateBindMatrix<dim,sliceFlag,tangent,ndofs>::
        OuterKernel<da>::
        operator()(unsigned int outerIdx)
   {
@@ -192,10 +238,10 @@ struct IterateBindMatrix
   //
   // InnerKernel::actuate()
   //
-  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent>
+  template <unsigned int dim, unsigned int sliceFlag, unsigned int tangent, unsigned int ndofs>
   template <typename da>
   template <typename Kernel>
-  inline void IterateBindMatrix<dim,sliceFlag,tangent>::
+  inline void IterateBindMatrix<dim,sliceFlag,tangent,ndofs>::
        InnerKernel<da>::
        actuate(Kernel &kernel, unsigned int innerIdx)
   {
@@ -208,28 +254,51 @@ struct IterateBindMatrix
 
 
 
-template <unsigned int dim, unsigned int d, bool forward>
+template <unsigned int dim, unsigned int d, bool forward, unsigned int ndofs>
 struct KroneckerProduct_loop { template <typename da> static void body(unsigned M, const da **A, const da **in, da **out) {
   constexpr unsigned int ii = (forward ? dim-1 - d : d);
 
   if (forward)
-    IterateTensorBindMatrix<dim, d>::template iterate_bind_matrix<da>(M, A[d], in[ii], out[ii]);
+    IterateTensorBindMatrix<dim, d, ndofs>::template iterate_bind_matrix<da>(M, A[d], in[ii], out[ii]);
 
-  KroneckerProduct_loop<dim, d-1, forward>::template body<da>(M,A,in,out);
+  KroneckerProduct_loop<dim, d-1, forward, ndofs>::template body<da>(M,A,in,out);
 
   if (!forward)
-    IterateTensorBindMatrix<dim, d>::template iterate_bind_matrix<da>(M, A[d], in[ii], out[ii]);
+    IterateTensorBindMatrix<dim, d, ndofs>::template iterate_bind_matrix<da>(M, A[d], in[ii], out[ii]);
 }};
-template <unsigned int dim, bool forward>
-struct KroneckerProduct_loop<dim, 0, forward> { template <typename da> static void body(unsigned M, const da **A, const da **in, da **out) {
+template <unsigned int dim, bool forward, unsigned int ndofs>
+struct KroneckerProduct_loop<dim, 0, forward, ndofs> { template <typename da> static void body(unsigned M, const da **A, const da **in, da **out) {
   constexpr unsigned int ii = (forward ? dim-1 : 0);
-  IterateTensorBindMatrix<dim, 0>::template iterate_bind_matrix<da>(M, A[0], in[ii], out[ii]);
+  IterateTensorBindMatrix<dim, 0, ndofs>::template iterate_bind_matrix<da>(M, A[0], in[ii], out[ii]);
 }};
 
-template <unsigned int dim, typename da, bool forward>
-void KroneckerProduct(unsigned M, const da **A, const da **in, da **out)
+template <unsigned int dim, typename da, bool forward, unsigned int ndofs>
+void KroneckerProductFixedDof(unsigned M, const da **A, const da **in, da **out)
 {
-  KroneckerProduct_loop<dim, dim-1, forward>::template body<da>(M,A,in,out);
+  KroneckerProduct_loop<dim, dim-1, forward, ndofs>::template body<da>(M,A,in,out);
+}
+
+template <unsigned int dim, typename da, bool forward>
+void KroneckerProduct(unsigned M, const da **A, const da **in, da **out, unsigned int ndofs)
+{
+  // Convert runtime argument to template argument.
+  switch (ndofs)
+  {
+    // TODO add CMake options and #if macros for greater number of dofs.
+    case 1:
+      KroneckerProductFixedDof<dim, da, forward, 1>(M, A, in, out);
+      break;
+    case 2:
+      KroneckerProductFixedDof<dim, da, forward, 2>(M, A, in, out);
+      break;
+    case 3:
+      KroneckerProductFixedDof<dim, da, forward, 3>(M, A, in, out);
+      break;
+    default:
+      const bool isNumberOfDegreesOfFreedomSupported = false;
+      assert(isNumberOfDegreesOfFreedomSupported);  // Need to add more cases.
+      break;
+  }
 }
 
 

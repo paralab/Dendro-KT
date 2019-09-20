@@ -43,8 +43,9 @@ HeatMat<dim>::~HeatMat()
 }
 
 template <unsigned int dim>
-void HeatMat<dim>::elementalMatVec(const VECType* in,VECType* out, double*coords,double scale)
+void HeatMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, double*coords,double scale)
 {
+  //TODO use ndofs
 
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
 

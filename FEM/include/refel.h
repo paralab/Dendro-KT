@@ -212,7 +212,7 @@ class RefElement
      * @note Computations are done in internal buffers. It is safe to re-use out == in.
      */
     template <unsigned int dim>
-    inline void IKD_Parent2Child(const double *in, double *out, unsigned int childNum) const
+    inline void IKD_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
       assert((childNum < (1u<<dim)));
 
@@ -233,10 +233,10 @@ class RefElement
       /// IterateTensorBindMatrix<dim, 2>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[2], imFrom[2], imTo[2]);
       /// IterateTensorBindMatrix<dim, 3>::template iterate_bind_matrix<double>(m_uiNrp, ipAxis[3], imFrom[3], imTo[3]);
 
-      KroneckerProduct<dim, double, true>(m_uiNrp, ipAxis, imFrom, imTo);
+      KroneckerProduct<dim, double, true>(m_uiNrp, ipAxis, imFrom, imTo, ndofs);
 
       if (dim == 1 && in == out)   // Protected 'in'.
-        memcpy(out, imTo[dim-1], sizeof(double)*intPow(m_uiNrp, dim));
+        memcpy(out, imTo[dim-1], sizeof(double)*ndofs*intPow(m_uiNrp, dim));
     }
 
     /**
@@ -249,7 +249,7 @@ class RefElement
      *
      */
     template <unsigned int dim>
-    inline void IKD_Child2Parent(const double *in, double *out, unsigned int childNum) const
+    inline void IKD_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
       assert((childNum < (1u<<dim)));
 
@@ -264,10 +264,10 @@ class RefElement
       const double * ipTAxis[dim];
       getIpTPtrs<dim>(ipTAxis, childNum);
 
-      KroneckerProduct<dim, double, true>(m_uiNrp, ipTAxis, imFrom, imTo);
+      KroneckerProduct<dim, double, true>(m_uiNrp, ipTAxis, imFrom, imTo, ndofs);
 
       if (dim == 1 && in == out)   // Protected 'in'.
-        memcpy(out, imTo[dim-1], sizeof(double)*intPow(m_uiNrp, dim));
+        memcpy(out, imTo[dim-1], sizeof(double)*ndofs*intPow(m_uiNrp, dim));
     }
 
 
@@ -275,9 +275,9 @@ class RefElement
 
 
 
-    inline void I4D_Parent2Child(const double *in, double *out, unsigned int childNum) const
+    inline void I4D_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
-      IKD_Parent2Child<4>(in, out, childNum);
+      IKD_Parent2Child<4>(in, out, ndofs, childNum);
     }
 
     /**
@@ -289,9 +289,9 @@ class RefElement
      * Which means first we need to fill all the z values in plane(x=0,y=0) then all the z values in plane (x=0,y=0+h) and so forth.
      *
      */
-    inline void I3D_Parent2Child(const double *in, double *out, unsigned int childNum) const
+    inline void I3D_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
-        IKD_Parent2Child<3>(in, out, childNum);
+        IKD_Parent2Child<3>(in, out, ndofs, childNum);
 
         /// double *im1 = (double *)&(*(im_vec1.begin()));
         /// double *im2 = (double *)&(*(im_vec2.begin()));
@@ -347,9 +347,9 @@ class RefElement
 
 
 
-    inline void I4D_Child2Parent(const double *in, double *out, unsigned int childNum) const
+    inline void I4D_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
-      IKD_Child2Parent<4>(in, out, childNum);
+      IKD_Child2Parent<4>(in, out, ndofs, childNum);
     }
 
 
@@ -364,9 +364,9 @@ class RefElement
     *
     */
 
-    inline void I3D_Child2Parent(const double *in, double *out, unsigned int childNum) const
+    inline void I3D_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
-        IKD_Child2Parent<3>(in, out, childNum);
+        IKD_Child2Parent<3>(in, out, ndofs, childNum);
 
         /// double *im1 = (double *)&(*(im_vec1.begin()));
         /// double *im2 = (double *)&(*(im_vec2.begin()));
@@ -431,9 +431,9 @@ class RefElement
      * @param[out] out: interpolated values.
      * */
 
-    inline void I2D_Parent2Child(const double *in, double *out, unsigned int childNum) const
+    inline void I2D_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
-        IKD_Parent2Child<2>(in, out, childNum);
+        IKD_Parent2Child<2>(in, out, ndofs, childNum);
 
         /// double *im1 = (double *)&(*(im_vec1.begin()));
         /// double *im2 = (double *)&(*(im_vec2.begin()));
@@ -471,9 +471,9 @@ class RefElement
      * @param[out] out: child to parent contribution values. (used in FEM integral ivaluation)
      * */
 
-    inline void I2D_Child2Parent(const double *in, double *out, unsigned int childNum) const
+    inline void I2D_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
-        IKD_Child2Parent<2>(in, out, childNum);
+        IKD_Child2Parent<2>(in, out, ndofs, childNum);
 
         /// double *im1 = (double *)&(*(im_vec1.begin()));
         /// double *im2 = (double *)&(*(im_vec2.begin()));
@@ -516,9 +516,9 @@ class RefElement
      * @param [out] interpolated values from parent to child.
      * */
 
-    inline void I1D_Parent2Child(const double *in, double *out, unsigned int childNum) const
+    inline void I1D_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
-        IKD_Parent2Child<1>(in, out, childNum);
+        IKD_Parent2Child<1>(in, out, ndofs, childNum);
 
         /// switch (childNum)
         /// {
@@ -555,9 +555,9 @@ class RefElement
      * @param [out] child to parent contribution values. (used in FEM integral ivaluation)
      * */
 
-    inline void I1D_Child2Parent(const double *in, double *out, unsigned int childNum) const
+    inline void I1D_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
-        IKD_Child2Parent<1>(in, out, childNum);
+        IKD_Child2Parent<1>(in, out, ndofs, childNum);
 
         /// switch (childNum)
         /// {
