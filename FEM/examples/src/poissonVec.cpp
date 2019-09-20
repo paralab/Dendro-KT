@@ -11,7 +11,7 @@ PoissonVec<dim>::PoissonVec(ot::DA<dim>* da,unsigned int dof) : feVector<Poisson
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)
-      imV[d] = new double[nPe];
+      imV[d] = new double[dof*nPe];
 }
 
 template <unsigned int dim>
@@ -27,7 +27,6 @@ PoissonVec<dim>::~PoissonVec()
 template <unsigned int dim>
 void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, double*coords,double scale)
 {
-  //TODO use ndofs
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
     const double * Q1d=refEl->getQ1d();
     const double * QT1d=refEl->getQT1d();
@@ -53,7 +52,7 @@ void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsign
     getImPtrs(imFromPtrs, imToPtrs, in, out);
     for (unsigned int d = 0; d < dim; d++)
       mat1dPtrs[d] = Q1d;
-    KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs);
+    KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs, ndofs);
 
     // Backup
     /// DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,Q1d,in,imV1);
@@ -76,7 +75,7 @@ void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsign
     getImPtrs(imFromPtrs, imToPtrs, out, out);
     for (unsigned int d = 0; d < dim; d++)
       mat1dPtrs[d] = QT1d;
-    KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs);
+    KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs, ndofs);
 
     // Backup
     /// DENDRO_TENSOR_IIAX_APPLY_ELEM(nrp,QT1d,out,imV1);

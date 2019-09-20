@@ -84,7 +84,7 @@ bool testNull()
     std::vector<T> & buffer = (caseIdx / 2 ? nonemptyBuffer : emptyBuffer);
 
     ElementLoop<C, dim, T> loop( nodeList.size(), &(*nodeList.begin()), eleOrder, tree.front(), tree.back());
-    loop.initialize(&(*nonemptyBuffer.begin()));
+    loop.initialize(&(*nonemptyBuffer.begin()), 1);
 
     for (ELIterator<C, dim, T> it = loop.begin(); it != loop.end(); ++it)
     {
@@ -231,7 +231,7 @@ bool testInterpolation()
         eleOrder,
         tree.front(),
         tree.back());
-    loop.initialize(&(*nodeVals.begin()));
+    loop.initialize(&(*nodeVals.begin()), 1);
 
     int loopCount = 0;
     T maxDiff = 0.0;
@@ -398,7 +398,7 @@ bool testRandomPoints()
       1,
       nodeNeighbours.front(),
       nodeNeighbours.back());
-  loop.initialize(&(*startVals.begin()));
+  loop.initialize(&(*startVals.begin()), 1);
 
   auto neighbourIt = nodeNeighbours.begin();
 

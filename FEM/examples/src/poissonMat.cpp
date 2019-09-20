@@ -13,10 +13,10 @@ PoissonMat<dim>::PoissonMat(ot::DA<dim>* da,unsigned int dof) : feMatrix<Poisson
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)
-      imV[d] = new double[nPe];
+      imV[d] = new double[dof*nPe];
 
     for (unsigned int d = 0; d < dim; d++)
-      Qx[d] = new double[nPe];
+      Qx[d] = new double[dof*nPe];
 
 }
 
@@ -39,7 +39,6 @@ PoissonMat<dim>::~PoissonMat()
 template <unsigned int dim>
 void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, double*coords,double scale)
 {
-  //TODO use ndofs
     // 1D operators.
 
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
@@ -72,7 +71,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 
       mat1dPtrs[d] = Dg;
       getImPtrs(imFromPtrs, imToPtrs, in, Qx[d]);
-      KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs);
+      KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs, ndofs);
       mat1dPtrs[d] = Q1d;
     }
 
@@ -111,7 +110,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
     //std::cout<<"Stifness:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
 
     for (unsigned int d = 0; d < dim; d++)
-      SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, Qx[d], W1d, J_quotient[d]);
+      SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, Qx[d], W1d, J_quotient[d]);  //TODO SymmetricOuterProduct does not support ndofs.
 
     // Backup.
     /// for(unsigned int k=0;k<(eleOrder+1);k++)
@@ -133,7 +132,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 
       mat1dPtrs[d] = DgT;
       getImPtrs(imFromPtrs, imToPtrs, Qx[d], Qx[d]);
-      KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs);
+      KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs, ndofs);
       mat1dPtrs[d] = QT1d;
     }
 
@@ -150,7 +149,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
     /// DENDRO_TENSOR_IAIX_APPLY_ELEM(nrp,QT1d,imV1,imV2);
     /// DENDRO_TENSOR_AIIX_APPLY_ELEM(nrp,DgT,imV2,Qz);
 
-    for(unsigned int i=0;i<nPe;i++)
+    for(unsigned int i=0;i<nPe;i++)  //TODO ndofs
     {
       out[i] = Qx[0][i];
       for (unsigned int d = 1; d < dim; d++)
