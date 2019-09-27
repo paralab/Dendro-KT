@@ -293,8 +293,6 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     m_nodesPerElement(  intPow(eleOrder+1, dim) ),
     m_leafNodeCoords(   intPow(eleOrder+1, dim) ),
     /// m_parentNodeCoords( intPow(eleOrder+1, dim) ),
-    m_leafNodeVals(     intPow(eleOrder+1, dim) ),
-    m_parentNodeVals(   intPow(eleOrder+1, dim) ),
     m_leafNodeCoordsFlat( dim * intPow(eleOrder+1, dim) ),
     m_curSubtree()
 {
@@ -450,6 +448,9 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
   // Set m_curTreeAddr (next target) coordinates to the address of the first leaf.
   m_curTreeAddr = m_beginTreeAddr;
 
+
+  // Can't resize m_leafNodeVals and m_parentNodeVals until know m_ndofs.
+
   // Can't descend deeper than L0 yet because don't have the node values.
   /// goToTreeAddr();
 }
@@ -462,6 +463,9 @@ template <typename T, unsigned int dim, typename NodeT>
 void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals, unsigned int ndofs)
 {
   m_ndofs = ndofs;
+
+  m_leafNodeVals.resize(m_ndofs * m_nodesPerElement);
+  m_parentNodeVals.resize(m_ndofs * m_nodesPerElement);
 
   m_curTreeAddr = m_beginTreeAddr;
   m_oldTreeAddr.m_coords = m_beginTreeAddr.m_coords;
