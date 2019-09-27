@@ -14,6 +14,7 @@
 #include "matvec.h"
 #include "refel.h"
 #include<functional>
+#include "octUtils.h"
 /// #include "matvecPreallocation.h"
 
 #include "hcurvedata.h"
@@ -654,20 +655,22 @@ void testDummyMatvec()
   fem::matvec<da, TN, RE>(&(*vecIn.cbegin()), &(*vecOut.begin()), 1, &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, scale, &refElement);
 
   std::cout << "Input\n";
-  for (unsigned int ii = 0; ii < sz; )
-  {
-    for (unsigned int j = 0; ii < sz && j < 15; ii++, j++)
-      std::cout << "\t" << vecIn[ii];
-    std::cout << "\n";
-  }
+  ot::printNodes<unsigned int, dim, da>(&(*coords.cbegin()), &(*coords.cend()), &(*vecIn.cbegin()), order);
+  /// for (unsigned int ii = 0; ii < sz; )
+  /// {
+  ///   for (unsigned int j = 0; ii < sz && j < 15; ii++, j++)
+  ///     std::cout << "\t" << vecIn[ii];
+  ///   std::cout << "\n";
+  /// }
 
   std::cout << "\n\n" << "Output\n";
-  for (unsigned int ii = 0; ii < sz; )
-  {
-    for (unsigned int j = 0; ii < sz && j < 15; ii++, j++)
-      std::cout << "\t" << vecOut[ii];
-    std::cout << "\n";
-  }
+  ot::printNodes<unsigned int, dim, da>(&(*coords.cbegin()), &(*coords.cend()), &(*vecOut.cbegin()), order);
+  /// for (unsigned int ii = 0; ii < sz; )
+  /// {
+  ///   for (unsigned int j = 0; ii < sz && j < 15; ii++, j++)
+  ///     std::cout << "\t" << vecOut[ii];
+  ///   std::cout << "\n";
+  /// }
 
   _DestroyHcurve();
 
