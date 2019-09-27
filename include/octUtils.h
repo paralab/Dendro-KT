@@ -534,10 +534,12 @@ void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOr
 }
 
 
+  // TODO add parameter for ndofs
 template <typename T, unsigned int dim, typename NodeT>
 std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
                           const ot::TreeNode<T, dim> *coordEnd,
                           const NodeT *valBegin,
+                          unsigned int order = 1,
                           std::ostream & out = std::cout)
 {
   ot::TreeNode<T, dim> subdomain;
@@ -561,13 +563,24 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
   subdomain = ot::TreeNode<T, dim>();
   const T origin[2] = {subdomain.getX(0), top - subdomain.getX(1)};
 
+  // Increase resolution for order.
+  order--;
+  while (order)
+  {
+    deepestLev++;
+    order >>= 1;
+  }
+
   std::sort(zipped.begin(), zipped.end());
 
   const unsigned int numTiles1D = (1u << int(deepestLev) - int(subdomain.getLevel())) + 1;
-  const unsigned int charBound = (numTiles1D * 10 + 4)*numTiles1D + 2;
-  std::vector<char> charBuffer(charBound + 10, '\0');
+  /// const unsigned int charBound = (numTiles1D * 10 + 4)*numTiles1D + 2;
+  const unsigned int charBound = (numTiles1D * 20 + 4)*numTiles1D + 2;
+  /// std::vector<char> charBuffer(charBound + 10, '\0');
+  std::vector<char> charBuffer(charBound + 20, '\0');
   char * s = charBuffer.data();
-  const char * bufEnd = &(*charBuffer.end()) - 10;
+  /// const char * bufEnd = &(*charBuffer.end()) - 10;
+  const char * bufEnd = &(*charBuffer.end()) - 20;
 
   T cursorY = 0, cursorX = 0;
   cursorY = origin[1];
