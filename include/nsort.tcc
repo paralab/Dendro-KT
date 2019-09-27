@@ -1011,19 +1011,14 @@ namespace ot {
       ////   numUniqBdryPoints++;
       //// }
       // Yes, must also classify the boundary--must remove hanging nodes in dim > 2.
-      numUniqBdryPoints = (order <= 2 ?
-          resolveInterface_lowOrder(end - numDomBdryPoints, end, order) :
-          resolveInterface_highOrder(end - numDomBdryPoints, end, order));
+      numUniqBdryPoints = resolveInterface(end - numDomBdryPoints, end, order);
 
       totalUniquePoints += numUniqBdryPoints;
 
 
       // Bottom-up counting interior points
       //
-      if (order <= 2)
-        totalUniquePoints += countCGNodes_impl(resolveInterface_lowOrder, start, end - numDomBdryPoints, 1, 0, order);
-      else
-        totalUniquePoints += countCGNodes_impl(resolveInterface_highOrder, start, end - numDomBdryPoints, 1, 0, order);
+      totalUniquePoints += countCGNodes_impl(resolveInterface, start, end - numDomBdryPoints, 1, 0, order);
     }
     // Sorting/instancing task.
     else
@@ -1243,7 +1238,7 @@ namespace ot {
   // SFC_NodeSort::countCGNodes_impl()
   //
   template <typename T, unsigned int dim>
-  template<typename ResolverT>
+  template <typename ResolverT>
   RankI SFC_NodeSort<T,dim>::countCGNodes_impl(
       ResolverT &resolveInterface,
       TNPoint<T,dim> *start, TNPoint<T,dim> *end,
@@ -1299,7 +1294,7 @@ namespace ot {
       ChildI child = rot_perm[child_sfc];
       RotI cRot = orientLookup[child];
 
-      numUniqPoints += countCGNodes_impl<ResolverT>(
+      numUniqPoints += countCGNodes_impl(
           resolveInterface,
           start + tempSplitters[child_sfc+0], start + tempSplitters[child_sfc+1],
           sLev+1, cRot,
@@ -1359,13 +1354,13 @@ namespace ot {
 
 
   //
-  // SFC_NodeSort::resolveInterface_lowOrder()
+  // SFC_NodeSort::resolveInterface()
   //
   template <typename T, unsigned int dim>
-  RankI SFC_NodeSort<T,dim>::resolveInterface_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  RankI SFC_NodeSort<T,dim>::resolveInterface(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
     //
-    // The low-order counting method is based on counting number of points per spatial location.
+    // This method is based on counting number of points per spatial location.
     // If there are points from two levels, then points from the higher level are non-hanging;
     // pick one of them as the representative (isSelected=Yes). The points from the lower
     // level are hanging and can be discarded (isSelected=No). If there are points all
@@ -1415,13 +1410,23 @@ namespace ot {
 
 
   //
+  // Deprecated
+  //
   // SFC_NodeSort::resolveInterface_highOrder()
   //
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
+    // @author Masado Ishii
+    // @note (2019-09-27) This method is overly complicated, as the other
+    //       counting method (originally resolveInterface_lowOrder) works
+    //       just fine for any order. Additionally the below method makes
+    //       it complicated to test for boundary nodes for non-trivial
+    //       domain shapes, while the original method is easily extensible.
+
     //
     // @author Masado Ishii
+    // @date 2019-02-25
     //
     // The high-order counting method (order>=3) cannot assume that a winning node
     // will co-occur with finer level nodes in the same exact coordinate location.

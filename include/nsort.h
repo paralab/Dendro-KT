@@ -426,9 +426,10 @@ namespace ot {
        * @note Assumes the points are already sorted -- as points, such that all points with same coordinates appear together, regardless of level.
        * @note Assumes that the field m_numInstances has been properly initialized for all points.
        */
-      static RankI resolveInterface_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+      static RankI resolveInterface(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
 
       /**
+       * @deprecated
        * @brief For order > 2, alignment might not hold. However, we can use the fact that order > 2
        *        to take advantage of locality of k'-face interior nodes of differing levels to
        *        resolve duplicates/hanging nodes using a small buffer.
