@@ -42,71 +42,98 @@ namespace ot {
 
     // =============== Constructors ================= //
 
+    //
+    // TreeNode default constructor.
     template <typename T, unsigned int dim>
-    TreeNode<T,dim>::TreeNode() {
-        m_uiLevel = 0;
-        m_uiCoords.fill(0);
-        m_uiLevel = 0;
-
-        //==========
-#ifdef __DEBUG_TN__
-        //@masado Allow arbitrary dimensions but warn about unexpected cases.
-  if (dim < 1 || dim > 4) {
-    std::cout << "Warning: Value for dim: " << dim << std::endl;
-  }
-#endif
-    } //end function
-
-    template<typename T, unsigned int dim>
-    TreeNode<T,dim>::TreeNode (const std::array<T,dim> coords, unsigned int level) {
-        m_uiLevel = level;
-
-        T mask = -(1u << (m_uiMaxDepth - level));
-
-#pragma unroll(dim)
-        for (int d = 0; d < dim; d++) { m_uiCoords[d] = (coords[d] & mask); }
-
-#ifdef __DEBUG_TN__
-        //@masado Allow arbitrary dimensions but warn about unexpected cases.
-  if (dim < 1 || dim > 4) {
-    std::cout << "Warning: Value for dim: " << dim << std::endl;
-  }
-  for ( T x : m_uiCoords )
-  {
-    assert( x < ((unsigned int)(1u << m_uiMaxDepth)));
-    assert((x % ((unsigned int)(1u << (m_uiMaxDepth - level)))) == 0);
-  }
-#endif
-    } //end function
-
-    template<typename T, unsigned int dim>
-    TreeNode<T,dim>::TreeNode (const TreeNode & other) {
-        m_uiLevel = other.m_uiLevel;
-
-#pragma unroll(dim)
-        for (int d = 0; d < dim; d++) { m_uiCoords[d] = other.m_uiCoords[d]; }
-
-    } //end function
-
-    template<typename T, unsigned int dim>
-    TreeNode<T,dim>::TreeNode (const int dummy, const std::array<T,dim> coords, unsigned int level)
+    TreeNode<T,dim>::TreeNode()
     {
-        m_uiLevel = level;
+      m_uiLevel = 0;
+      m_uiCoords.fill(0);
 
-#pragma unroll(dim)
-        for (int d = 0; d < dim; d++) { m_uiCoords[d] = coords[d]; }
+      m_extantCellFlag = 0u;
+      m_isOnTreeBdry = false;
 
+      //==========
+#ifdef __DEBUG_TN__
+      //@masado Allow arbitrary dimensions but warn about unexpected cases.
+      if (dim < 1 || dim > 4)
+        std::cout << "Warning: Value for dim: " << dim << std::endl;
+#endif
+    } //end function
+
+
+    //
+    // TreeNode constructor.
+    template<typename T, unsigned int dim>
+    TreeNode<T,dim>::TreeNode(const std::array<T,dim> coords, unsigned int level)
+    {
+      m_uiLevel = level;
+
+      m_extantCellFlag = 0u;
+      m_isOnTreeBdry = false;
+
+      T mask = -(1u << (m_uiMaxDepth - level));
+
+      #pragma unroll(dim)
+      for (int d = 0; d < dim; d++)
+        m_uiCoords[d] = (coords[d] & mask);
+
+#ifdef __DEBUG_TN__
+        //@masado Allow arbitrary dimensions but warn about unexpected cases.
+      if (dim < 1 || dim > 4) {
+        std::cout << "Warning: Value for dim: " << dim << std::endl;
+      }
+      for ( T x : m_uiCoords )
+      {
+        assert( x < ((unsigned int)(1u << m_uiMaxDepth)));
+        assert((x % ((unsigned int)(1u << (m_uiMaxDepth - level)))) == 0);
+      }
+#endif
+    } //end function
+
+
+    //
+    // TreeNode copy constructor.
+    template<typename T, unsigned int dim>
+    TreeNode<T,dim>::TreeNode(const TreeNode & other)
+    {
+      m_uiCoords = other.m_uiCoords;
+      m_uiLevel = other.m_uiLevel;
+
+      m_extantCellFlag = other.m_extantCellFlag;
+      m_isOnTreeBdry = other.m_isOnTreeBdry;
+    } //end function
+
+
+    //
+    // TreeNode trusting constructor.
+    template<typename T, unsigned int dim>
+    TreeNode<T,dim>::TreeNode(const int dummy, const std::array<T,dim> coords, unsigned int level)
+    {
+      m_uiCoords = coords;
+      m_uiLevel = level;
+
+      m_extantCellFlag = 0u;
+      m_isOnTreeBdry = false;
     }
 
 
+    //
+    // TreeNode assignment operator
     template<typename T, unsigned int dim>
-    TreeNode<T,dim>& TreeNode<T,dim>  :: operator = (TreeNode<T,dim>   const& other) {
-        if (this == (&other)) {return *this;}
-        m_uiCoords = other.m_uiCoords;
-        m_uiLevel = other.m_uiLevel;
-
+    TreeNode<T,dim>& TreeNode<T,dim>::operator=(TreeNode<T,dim> const &other)
+    {
+      if (this == &other)
         return *this;
-    } //end fn.
+
+      m_uiCoords = other.m_uiCoords;
+      m_uiLevel = other.m_uiLevel;
+
+      m_extantCellFlag = other.m_extantCellFlag;
+      m_isOnTreeBdry = other.m_isOnTreeBdry;
+
+      return *this;
+    }
 
 
 
@@ -240,6 +267,34 @@ inline void TreeNode<T,dim>::setX(int d, T coord) {
   m_uiCoords[d] = coord;
 }
 
+template <typename T, unsigned int dim>
+inline ExtantCellFlagT TreeNode<T, dim>::getExtantCellFlag() const
+{
+  return m_extantCellFlag;
+}
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T, dim>::setExtantCellFlag(ExtantCellFlagT extantCellFlag)
+{
+  ExtantCellFlagT mask = (1u << (1u << dim)) - 1;
+  m_extantCellFlag = extantCellFlag & mask;
+}
+
+template <typename T, unsigned int dim>
+inline bool TreeNode<T, dim>::getIsOnTreeBdry() const
+{
+  return m_isOnTreeBdry;
+}
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T, dim>::setIsOnTreeBdry(bool isOnTreeBdry)
+{
+  m_isOnTreeBdry = isOnTreeBdry;
+}
+
+
+
+
 
 template <typename T, unsigned int dim>
 inline unsigned char TreeNode<T,dim>::getMortonIndex(T level) const
@@ -249,7 +304,7 @@ inline unsigned char TreeNode<T,dim>::getMortonIndex(T level) const
     unsigned int len = (1u << (getMaxDepth() - level));
     unsigned int len_par = (1u << (getMaxDepth() - level + 1u));
 
-#pragma unroll(dim)
+    #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
     {
         childNum += ((m_uiCoords[d] % len_par) / len) << d;
@@ -268,7 +323,8 @@ inline void TreeNode<T,dim>::setMortonIndex(unsigned char child)
 {
     const T level = m_uiLevel;  // For now, only set at this level.
     const T selector = 1u << (m_uiMaxDepth - level);
-#pragma unroll(dim)
+
+    #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
     {
       const T D = 1u << d;
@@ -605,6 +661,8 @@ inline unsigned int TreeNode<T,dim>::getNumAlignedFaces(unsigned int level) cons
 template <typename T, unsigned int dim>
 inline bool TreeNode<T,dim>::isTouchingDomainBoundary() const
 {
+  fprintf(stderr, "Warning: TreeNode<T,dim>::isTouchingDomainBoundary() is deprecated.\n");
+
   const unsigned int domainMask = (1u << m_uiMaxDepth) - 1;
   const unsigned int len = 1u << (m_uiMaxDepth - m_uiLevel);
   for (int d = 0; d < dim; d++)
@@ -616,6 +674,8 @@ inline bool TreeNode<T,dim>::isTouchingDomainBoundary() const
 template <typename T, unsigned int dim>
 inline bool TreeNode<T,dim>::isOnDomainBoundary() const
 {
+  fprintf(stderr, "Warning: TreeNode<T,dim>::isOnDomainBoundary() is deprecated.\n");
+
   const unsigned int domainMask = (1u << m_uiMaxDepth) - 1;
   for (int d = 0; d < dim; d++)
     if (!(m_uiCoords[d] & domainMask))

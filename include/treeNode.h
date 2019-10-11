@@ -29,6 +29,11 @@ namespace ot {
     template <typename T, unsigned int dim> class TreeNode;
     template <typename T, unsigned int dim> std::ostream& operator<<(std::ostream& os, TreeNode<T,dim> const& other);
 
+    // Use 4D: unsigned short
+    //     5D: unsigned int
+    //     6D: unsigned long long.
+    using ExtantCellFlagT = unsigned short;
+
     /**
       @brief A class to manage octants.
       @tparam dim the dimension of the tree
@@ -43,6 +48,17 @@ namespace ot {
         /**level of the tree node*/
         unsigned int m_uiLevel;
 
+        /**Existence of open cells surrounding a point, one bit per cell.*/
+        /* @note Empty unless previously set (or copied after setting) setExtantCellFlag(). */
+        ExtantCellFlagT m_extantCellFlag;
+
+        /**As a point, is this point exposed as part of the tree/domain boundary?
+         * As an element, does the element have any exposed exterior points?
+         * @note false unless previously set (or copied after setting) setExtantCellFlag(). */
+        bool m_isOnTreeBdry;  //TODO add to ctors, getters/setters.
+
+        // m_extantCellFlag and m_isOnTreeBdry are just tags.
+        // Not computed automatically by TreeNode.
 
     public:
 
@@ -122,6 +138,22 @@ namespace ot {
        * @param[out]: coppied coordinates*/
       int getAnchor(std::array<T,dim> &xyz) const;
 
+      /**@brief Get the bitfield of extant neighbor regions surrounding the point.
+       * @note Empty unless previously set (or copied after setting) setExtantCellFlag(). */
+      inline ExtantCellFlagT getExtantCellFlag() const;
+
+      /**@brief Set the bitfield of extant neighbor regions surrounding the point.
+       * @note Empty unless set (or copied after setting) setExtantCellFlag(). */
+      inline void setExtantCellFlag(ExtantCellFlagT extantCellFlag);
+
+      /**As a point, is this point exposed as part of the tree/domain boundary?
+       * As an element, does the element have any exposed exterior points?
+       * Before the tree is filtered, this is set assuming the unit hypercube. */
+      inline bool getIsOnTreeBdry() const;
+
+      /**@note If you set this yourself you may invalidate the tree. */
+      inline void setIsOnTreeBdry(bool isOnTreeBdry);
+
       /**@brief return the (Morton indexed) child number at specified level.*/
       unsigned char getMortonIndex(T level) const;
 
@@ -184,10 +216,12 @@ namespace ot {
        */
       unsigned int getNumAlignedFaces(unsigned int level) const;
 
-      /** @returns true iff the intersection between orthant exterior and domain boundary is nonempty. */
+      //TODO Need to update Boundary properties to include isBoundaryNode.
+
+      /** @deprecated @returns true iff the intersection between orthant exterior and domain boundary is nonempty. */
       bool isTouchingDomainBoundary() const;
 
-      /** @returns true iff the orthant anchor is on the domain boundary. */
+      /** @deprecated @returns true iff the orthant anchor is on the domain boundary. */
       bool isOnDomainBoundary() const;
 
       /**@brief returns true if *(this) octant is root. false otherwise*/

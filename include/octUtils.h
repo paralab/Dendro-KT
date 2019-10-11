@@ -534,6 +534,40 @@ void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOr
 }
 
 
+/** @brief Get physical coordinates and physical size of an element. */
+template <typename T, unsigned int dim>
+void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, double * physCoords, double & physSize)
+{
+  const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
+  const double elemSz = double(1u << m_uiMaxDepth - octCoords.getLevel())
+                        / double(1u << m_uiMaxDepth);
+
+  // Compute physical coords.
+  for (int d = 0; d < dim; d++)
+    physCoords[d] = domainScale * octCoords.getX(d);
+
+  physSize = elemSz;
+}
+
+
+template <typename T, unsigned int dim>
+TreeNode<T, dim> physical2TreeNode(const double * physCoords, double physSize)
+{
+  const unsigned int elemLev = -log2(physSize) + 0.5;  // Rounding if needed.
+  const T elemSz = 1u << (m_uiMaxDepth - elemLev);
+  const T extent = 1u << elemLev;
+
+  std::array<T, dim> tnCoords;
+
+  #pragma unroll(dim)
+  for (int d = 0; d < dim; d++)
+    tnCoords[d] = T(extent * physCoords[d] + 0.5) * elemSz;  // Round @ resolution.
+
+  return TreeNode<T, dim>(tnCoords, elemLev);
+}
+
+
+
   // TODO add parameter for ndofs
 template <typename T, unsigned int dim, typename NodeT>
 std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,

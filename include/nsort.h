@@ -341,6 +341,9 @@ namespace ot {
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
+    using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
+    using DomainDeciderT_TN = std::function<bool(const TreeNode<T, dim> &elemTreeNode)>;
+
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array. Also compact node list and compute ``scatter map.''
      */

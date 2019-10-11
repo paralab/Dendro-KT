@@ -74,6 +74,12 @@ class DA
 {
     using C = unsigned int;    // Integer coordinate type.
 
+    // Takes element coordinates and size and returns whether the element should be kept in the domain.
+    // For the unit hypercube domain, this function would be to check that the
+    // element is within the range 0..1 on each dimension.
+    using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
+    using DomainDeciderT_TN = std::function<bool(const TreeNode<C, dim> &elemTreeNode)>;
+
   private:
 
     /**@brief: dim of the problem*/  
