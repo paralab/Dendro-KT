@@ -42,16 +42,34 @@ namespace ot
 
     /**@brief: Constructor for the DA data structures
       * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] nEle : size of input octree.
       * @param [in] comm: MPI global communicator for mesh generation.
       * @param [in] order: order of the element.
      * */
     template <unsigned int dim>
-    DA<dim>::DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
-        construct(inTree, nEle, comm, order, grainSz, sfc_tol);
+        ot::DistTree<C, dim> distTree(inTree);   // Uses default domain decider.
+        construct(distTree, comm, order, grainSz, sfc_tol);
     }
+
+
+    /**@brief: Constructor for the DA data structures
+      * @param [in] inDistTree : input octree that is already filtered,
+      *                          need to be 2:1 balanced unique sorted octree.
+      *                          Will be emptied during construction of DA.
+      * @param [in] comm: MPI global communicator for mesh generation.
+      * @param [in] order: order of the element.
+      * @note If you have a custom domain decider function, use this overload.
+     * */
+    template <unsigned int dim>
+    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+        : m_refel{dim, order}
+    {
+        construct(inDistTree, comm, order, grainSz, sfc_tol);
+        inDistTree.destroyTree();
+    }
+
 
     /**
      * @param distTree contains a vector of TreeNode (will be drained),

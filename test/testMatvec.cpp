@@ -537,7 +537,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   // Matvec.
   //
 
-  ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), (unsigned int) tree.size(), comm, order, (unsigned int) tree.size(), loadFlexibility);
+  ot::DA<dim> *octDA = new ot::DA<dim>(tree, comm, order, (unsigned int) tree.size(), loadFlexibility);
 
   /// const unsigned int block = (1u << m_uiMaxDepth - 3);
 

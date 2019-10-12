@@ -191,7 +191,9 @@ class DA
          */
         DA();
 
-        DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+
+        DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
 
 
         /** @brief Construct oda for regular grid. */
