@@ -53,8 +53,13 @@ namespace ot
         construct(inTree, nEle, comm, order, grainSz, sfc_tol);
     }
 
+    /**
+     * @param distTree contains a vector of TreeNode (will be drained),
+     *        and a domain decider function.
+     */
     template <unsigned int dim>
-    void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    void DA<dim>::construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
     {
         //TODO
         // ???  leftover uninitialized member variables.
@@ -77,8 +82,10 @@ namespace ot
         m_uiGlobalNpes = nProc;
         m_uiRankGlobal = rProc;
 
+        const unsigned int nActiveEle = distTree.getFilteredTreePartSz();
+
         // A processor is 'active' if it has elements, otherwise 'inactive'.
-        m_uiIsActive = (nEle > 0);
+        m_uiIsActive = (nActiveEle > 0);
         MPI_Comm_split(comm, (m_uiIsActive ? 1 : MPI_UNDEFINED), rProc, &m_uiActiveComm);
 
         if (m_uiIsActive)
@@ -91,24 +98,68 @@ namespace ot
           m_uiCommTag = 0;
 
           // Splitters for distributed exchanges.
-          m_treePartFront = inTree[0];
-          m_treePartBack = inTree[nEle-1];
+          m_treePartFront = distTree.getTreePartFront();
+          m_treePartBack = distTree.getTreePartBack();
+
+          const std::vector<TreeNode<C, dim>> &inTreeFiltered = distTree.getTreePartFiltered();
 
           // Generate nodes from the tree. First, element-exterior nodes.
           std::vector<ot::TNPoint<C,dim>> nodeList;
-          for (unsigned int ii = 0; ii < nEle; ii++)
-              ot::Element<C,dim>(inTree[ii]).appendExteriorNodes(order, nodeList);
+          for (const TreeNode<C, dim> &elem : inTreeFiltered)
+              ot::Element<C,dim>(elem).appendExteriorNodes(order, nodeList);
+
+          // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),
+          // set the neighborhood flags.
+          const auto & domainDecider = distTree.getDomainDeciderTN();
+          for (TNPoint<C, dim> & node : nodeList)
+          {
+            const C elemSz = 1u << (m_uiMaxDepth - node.getLevel());
+
+            node.resetExtantCellFlagNoNeighbours();
+
+            // Test whether each neighbor of the node belongs in the domain.
+            using FType = typename ot::CellType<dim>::FlagType;
+            const CellType<dim> nodeCT = node.get_cellType();
+            const FType neighbourhoodDim = dim - nodeCT.get_dim_flag();
+            const FType neighbourhoodSpace = (1u << dim) - nodeCT.get_orient_flag();
+
+            const unsigned int numNeighbours = 1u << neighbourhoodDim;
+
+            binOp::TallBitMatrix<dim, FType> bitExpander =
+                binOp::TallBitMatrix<dim, FType>::generateColumns(neighbourhoodSpace);
+
+            // Check each neighbour.
+            for (unsigned int ii = 0; ii < numNeighbours; ii++)
+            {
+              const unsigned int nbrId = bitExpander.expandBitstring(ii);
+
+              TreeNode<C, dim> nbrTN = node.getCell();
+              for (int d = 0; d < dim; d++)
+                // 1 bit in nbrId means go negative, 0 bit means go positive.
+                if (nbrId & (1u << d))
+                  nbrTN.setX(d, nbrTN.getX(d) - elemSz);
+
+              if (domainDecider(nbrTN))
+                node.addNeighbourExtantCellFlag(nbrId);
+            }
+
+            // Now we have set the neighour flag of the node.
+          }
 
           // Count unique element-exterior nodes.
-          unsigned int glbExtNodes = ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList, order, &m_treePartFront, &m_treePartBack, m_uiActiveComm);
+          unsigned long long glbExtNodes =
+              ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList,
+                                                         order,
+                                                         &m_treePartFront,
+                                                         &m_treePartBack,
+                                                         m_uiActiveComm);
 
           // Finish generating nodes from the tree - element-interior nodes.
-          // TODO measure if keeping interior nodes at end of list good/bad for performance.
-          for (unsigned int ii = 0; ii < nEle; ii++)
-              ot::Element<C,dim>(inTree[ii]).appendInteriorNodes(order, nodeList);
+          for (const TreeNode<C, dim> &elem : inTreeFiltered)
+              ot::Element<C,dim>(elem).appendInteriorNodes(order, nodeList);
 
-          unsigned int locIntNodes = intNodesPerEle * nEle;
-          unsigned int glbIntNodes = 0;
+          unsigned long long locIntNodes = intNodesPerEle * nActiveEle;
+          unsigned long long glbIntNodes = 0;
           par::Mpi_Allreduce(&locIntNodes, &glbIntNodes, 1, MPI_SUM, m_uiActiveComm);
 
           m_uiLocalNodalSz = nodeList.size();

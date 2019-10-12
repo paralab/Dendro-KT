@@ -13,6 +13,7 @@
 #include "treeNode.h"
 #include "mathUtils.h"
 #include "binUtils.h"
+#include "distTree.h"
 
 #include "refel.h"
 #include "tensor.h"
@@ -22,6 +23,9 @@ template <typename T, unsigned int dim, typename NodeT> class ELIterator;
 template <typename T, unsigned int dim, typename NodeT> class ElementNodeBuffer;
 
 template <typename T, unsigned int dim> struct TreeAddr;
+
+//TODO specialization to skip non-boundary elements
+//(elements that have no boundary nodes)
 
 /**
  * Mesh free element traversal to read or compute on the nodes of each element.

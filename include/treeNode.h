@@ -146,6 +146,14 @@ namespace ot {
        * @note Empty unless set (or copied after setting) setExtantCellFlag(). */
       inline void setExtantCellFlag(ExtantCellFlagT extantCellFlag);
 
+      inline void resetExtantCellFlagNoNeighbours();
+
+      inline void resetExtantCellFlagAllNeighbours();
+
+      inline void addNeighbourExtantCellFlag(unsigned int nbrId);
+
+      inline void removeNeighbourExtantCellFlag(unsigned int nbrId);
+
       /**As a point, is this point exposed as part of the tree/domain boundary?
        * As an element, does the element have any exposed exterior points?
        * Before the tree is filtered, this is set assuming the unit hypercube. */

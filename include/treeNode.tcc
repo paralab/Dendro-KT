@@ -280,6 +280,33 @@ inline void TreeNode<T, dim>::setExtantCellFlag(ExtantCellFlagT extantCellFlag)
   m_extantCellFlag = extantCellFlag & mask;
 }
 
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T, dim>::resetExtantCellFlagNoNeighbours()
+{
+  m_extantCellFlag = 0u;
+}
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T, dim>::resetExtantCellFlagAllNeighbours()
+{
+  m_extantCellFlag = (1u << (1u << dim)) - 1;
+}
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T, dim>::addNeighbourExtantCellFlag(unsigned int nbrId)
+{
+  m_extantCellFlag |= (1u << nbrId);
+}
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T, dim>::removeNeighbourExtantCellFlag(unsigned int nbrId)
+{
+  m_extantCellFlag &= ~(1u << nbrId);
+}
+
+
+
 template <typename T, unsigned int dim>
 inline bool TreeNode<T, dim>::getIsOnTreeBdry() const
 {

@@ -17,6 +17,7 @@
 #include "refel.h"
 #include "binUtils.h"
 #include "octUtils.h"
+#include "distTree.h"
 
 #include <iostream>
 #include <vector>
@@ -215,7 +216,8 @@ class DA
         /**
          * @brief does the work for the constructors.
          */
-        void construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
+        /// void construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
+        void construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
 
         /**@brief returns the local nodal size*/
         inline unsigned int getLocalNodalSz() const { return m_uiLocalNodalSz; }

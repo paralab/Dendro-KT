@@ -9,7 +9,8 @@
 #define DENDRO_KT_DIST_TREE_H
 
 
-#include <treeNode.h>
+#include "treeNode.h"
+#include "octUtils.h"
 
 
 namespace ot
@@ -130,7 +131,7 @@ namespace ot
       // If given a decider on treeNodes, can still test physCoords.
       bool conversionDomainDeciderPh(const double * physCoords, double physSize)
       {
-        return m_domainDeciderTN(physical2TreeNode(physCoords, physSize));
+        return m_domainDeciderTN(physical2TreeNode<T,dim>(physCoords, physSize));
       }
   };
 
@@ -254,6 +255,7 @@ namespace ot
   //
   // getDomainDeciderTN()
   //
+  template <typename T, unsigned int dim>
   const std::function<bool(const TreeNode<T, dim> &treeNodeElem)> &
       DistTree<T, dim>::getDomainDeciderTN() const
   {
@@ -279,7 +281,7 @@ namespace ot
   const std::vector<TreeNode<T, dim>> &
       DistTree<T, dim>::getTreePartFiltered() const
   {
-    return m_treePartitionFiltered;
+    return m_treePartFiltered;
   }
 
 
