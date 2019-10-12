@@ -128,41 +128,7 @@ namespace ot
 
           // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),
           // set the neighborhood flags.
-          const auto & domainDecider = distTree.getDomainDeciderTN();
-          for (TNPoint<C, dim> & node : nodeList)
-          {
-            const C elemSz = 1u << (m_uiMaxDepth - node.getLevel());
-
-            node.resetExtantCellFlagNoNeighbours();
-
-            // Test whether each neighbor of the node belongs in the domain.
-            using FType = typename ot::CellType<dim>::FlagType;
-            const CellType<dim> nodeCT = node.get_cellType();
-            const FType neighbourhoodDim = dim - nodeCT.get_dim_flag();
-            const FType neighbourhoodSpace = (1u << dim) - nodeCT.get_orient_flag();
-
-            const unsigned int numNeighbours = 1u << neighbourhoodDim;
-
-            binOp::TallBitMatrix<dim, FType> bitExpander =
-                binOp::TallBitMatrix<dim, FType>::generateColumns(neighbourhoodSpace);
-
-            // Check each neighbour.
-            for (unsigned int ii = 0; ii < numNeighbours; ii++)
-            {
-              const unsigned int nbrId = bitExpander.expandBitstring(ii);
-
-              TreeNode<C, dim> nbrTN = node.getCell();
-              for (int d = 0; d < dim; d++)
-                // 1 bit in nbrId means go negative, 0 bit means go positive.
-                if (nbrId & (1u << d))
-                  nbrTN.setX(d, nbrTN.getX(d) - elemSz);
-
-              if (domainDecider(nbrTN))
-                node.addNeighbourExtantCellFlag(nbrId);
-            }
-
-            // Now we have set the neighour flag of the node.
-          }
+          ot::SFC_NodeSort<C, dim>::markExtantCellFlags(nodeList, distTree.getDomainDeciderTN());
 
           // Count unique element-exterior nodes.
           unsigned long long glbExtNodes =

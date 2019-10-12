@@ -891,6 +891,54 @@ namespace ot {
   }
 
 
+
+  //
+  // markExtantCellFlags()
+  //
+  template <typename T, unsigned int dim>
+  void SFC_NodeSort<T,dim>::markExtantCellFlags(std::vector<TNPoint<T,dim>> &nodeList,
+                                                const DomainDeciderT_TN &domainDecider)
+  {
+    using C = T;
+
+    for (TNPoint<C, dim> & node : nodeList)
+    {
+      const C elemSz = 1u << (m_uiMaxDepth - node.getLevel());
+
+      node.resetExtantCellFlagNoNeighbours();
+
+      // Test whether each neighbor of the node belongs in the domain.
+      using FType = typename ot::CellType<dim>::FlagType;
+      const CellType<dim> nodeCT = node.get_cellType();
+      const FType neighbourhoodDim = dim - nodeCT.get_dim_flag();
+      const FType neighbourhoodSpace = (1u << dim) - 1 - nodeCT.get_orient_flag();
+
+      const unsigned int numNeighbours = 1u << neighbourhoodDim;
+
+      binOp::TallBitMatrix<dim, FType> bitExpander =
+          binOp::TallBitMatrix<dim, FType>::generateColumns(neighbourhoodSpace);
+
+      // Check each neighbour.
+      for (unsigned int ii = 0; ii < numNeighbours; ii++)
+      {
+        const unsigned int nbrId = bitExpander.expandBitstring(ii);
+
+        TreeNode<C, dim> nbrTN = node.getCell();
+        for (int d = 0; d < dim; d++)
+          // 1 bit in nbrId means go negative, 0 bit means go positive.
+          if (nbrId & (1u << d))
+            nbrTN.setX(d, nbrTN.getX(d) - elemSz);
+
+        if (domainDecider(nbrTN))
+          node.addNeighbourExtantCellFlag(nbrId);
+      }
+
+      // Now we have set the neighour flag of the node.
+    }
+  }
+
+
+
   //
   // SFC_NodeSort::computeScattermap()    (Sufficient version)
   //
@@ -1392,11 +1440,16 @@ namespace ot {
       }
       else            // All same level and cell type. Test whether hanging or not.
       {
-        unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
-        unsigned char bdim = firstCoarsest->get_cellType(0).get_dim_flag(); // Domain boundary test.
-        // If a dimension aligns with dom bdry, it necessarily aligns with grid at lev.
-        unsigned char numIntersecting = bdim - cdim; //(dim - cdim) - (dim - bdim);
-        unsigned int expectedDups = 1u << numIntersecting;
+        // OLD version that assumed boundaries of the unit hypercube.
+        /// unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
+        /// unsigned char bdim = firstCoarsest->get_cellType(0).get_dim_flag(); // Domain boundary test.
+        /// // If a dimension aligns with dom bdry, it necessarily aligns with grid at lev.
+        /// unsigned char numIntersecting = bdim - cdim; //(dim - cdim) - (dim - bdim);
+        /// unsigned int expectedDups = 1u << numIntersecting;
+
+        // NEW version where expected neighbourhood is precomputed by DA.
+        unsigned int expectedDups = firstCoarsest->expectedNeighboursExtantCellFlag();
+
         if (numDups == expectedDups)
         {
           firstCoarsest->set_isSelected(TNP::Yes);

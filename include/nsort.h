@@ -352,6 +352,7 @@ namespace ot {
         const TreeNode<T,dim> *treePartFront, const TreeNode<T,dim> *treePartBack,
         MPI_Comm comm);
 
+    static void markExtantCellFlags(std::vector<TNPoint<T,dim>> &points, const DomainDeciderT_TN &domainDecider);
 
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain.

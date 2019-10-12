@@ -79,7 +79,7 @@ namespace ot
         const T elemSz = 1u << (m_uiMaxDepth - tn.getLevel());
         #pragma unroll(dim)
         for (int d = 0; d < dim; d++)
-          if (/*tn.getX(d) < 0 || */ tn.getX(d) + elemSz > domSz)
+          if (/*tn.getX(d) < 0 || */ tn.getX(d) > domSz - elemSz)  //Beware wraparound.
             isInside = false;
 
         return isInside;

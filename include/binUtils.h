@@ -79,6 +79,19 @@ namespace binOp{
   }
 
 
+  template <typename U>
+  inline unsigned int countOnes(U y)
+  {
+    unsigned int numOnes = 0;
+    while (y)
+    {
+      numOnes += y & 0x1u;
+      y >>= 1;
+    }
+    return numOnes;
+  }
+
+
   /**
    * @brief Expand/collapse bits in a bit string.
    * @description TallBitMatrix expands bits in a bit string.

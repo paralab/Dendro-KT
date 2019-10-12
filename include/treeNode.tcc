@@ -306,6 +306,12 @@ inline void TreeNode<T, dim>::removeNeighbourExtantCellFlag(unsigned int nbrId)
 }
 
 
+template <typename T, unsigned int dim>
+inline unsigned int TreeNode<T, dim>::expectedNeighboursExtantCellFlag()
+{
+  return binOp::countOnes(m_extantCellFlag);
+}
+
 
 template <typename T, unsigned int dim>
 inline bool TreeNode<T, dim>::getIsOnTreeBdry() const
@@ -688,7 +694,9 @@ inline unsigned int TreeNode<T,dim>::getNumAlignedFaces(unsigned int level) cons
 template <typename T, unsigned int dim>
 inline bool TreeNode<T,dim>::isTouchingDomainBoundary() const
 {
+#ifdef __DEBUG__
   fprintf(stderr, "Warning: TreeNode<T,dim>::isTouchingDomainBoundary() is deprecated.\n");
+#endif
 
   const unsigned int domainMask = (1u << m_uiMaxDepth) - 1;
   const unsigned int len = 1u << (m_uiMaxDepth - m_uiLevel);
@@ -701,7 +709,9 @@ inline bool TreeNode<T,dim>::isTouchingDomainBoundary() const
 template <typename T, unsigned int dim>
 inline bool TreeNode<T,dim>::isOnDomainBoundary() const
 {
+#ifdef __DEBUG__
   fprintf(stderr, "Warning: TreeNode<T,dim>::isOnDomainBoundary() is deprecated.\n");
+#endif
 
   const unsigned int domainMask = (1u << m_uiMaxDepth) - 1;
   for (int d = 0; d < dim; d++)
