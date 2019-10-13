@@ -140,6 +140,46 @@ namespace binOp{
       }
   };
 
+
+  /** @brief If each bit is a vertex in a hypercube in lexicographic order,
+   *         select the plane x_d = 1 and move it to the plane x_d = 0. */
+  template <typename B>
+  void selectHyperplanes(B binaryHypercube,
+                         unsigned int d,
+                         B &loPlane,
+                         B &hiPlane,
+                         unsigned int &shift)
+  {
+    shift = 1u << d;
+    B lomask = (1u << shift) - 1;        // d=0: xyxyxyxy...  d=2: xxxxyyyy...
+
+    // Build lomask by repeatedly shifting left and unioning.
+    unsigned int periodTmp = 2*shift;
+    B oldLomask;
+    do
+    {
+      oldLomask = lomask;
+      lomask |= lomask << periodTmp;
+      periodTmp *= 2;
+    }
+    while (lomask != oldLomask);
+
+    const B himask = ~lomask;
+
+    loPlane = binaryHypercube & lomask;
+    hiPlane = binaryHypercube & himask;
+  }
+
+  /** @brief Partial reversal of the bits, by reflecting across a hyperplane. */
+  template <typename B>
+  B reflectHyperplane(B binaryHypercube, unsigned int d)
+  {
+    B loPlane, hiPlane;
+    unsigned int shift;
+    selectHyperplanes(binaryHypercube, d, loPlane, hiPlane, shift);
+    return (loPlane << shift) | (hiPlane >> shift);
+  }
+
 }//end namespace
 
 #endif

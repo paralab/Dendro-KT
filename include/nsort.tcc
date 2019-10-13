@@ -166,7 +166,12 @@ namespace ot {
   template <typename T, unsigned int dim>
   CellType<dim> TNPoint<T,dim>::get_cellType(LevI lev) const
   {
-    using TreeNode = TreeNode<T,dim>;
+    return TNPoint::get_cellType(*this, lev);
+  }
+
+  template <typename T, unsigned int dim>
+  CellType<dim> TNPoint<T,dim>::get_cellType(const TreeNode<T, dim> &tnPoint, LevI lev)
+  {
     const unsigned int len = 1u << (m_uiMaxDepth - lev);
     const unsigned int interiorMask = len - 1;
 
@@ -175,7 +180,7 @@ namespace ot {
     #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
     {
-      bool axisIsInVolume = TreeNode::m_uiCoords[d] & interiorMask;
+      bool axisIsInVolume = tnPoint.getX(d) & interiorMask;
       cellOrient |= (unsigned char) axisIsInVolume << d;
       cellDim += axisIsInVolume;
     }
@@ -474,41 +479,71 @@ namespace ot {
 
 
   /**
-   * @brief Using bit-wise ops, identifies which children are touching a point.
+   * @brief Using bit-wise ops, identifies which virtual children are touching a point.
    * @param [in] pointCoords Coordinates of the point incident on 0 or more children.
    * @param [out] incidenceOffset The Morton child # of the first incident child.
    * @param [out] incidenceSubspace A bit string of axes, with a '1'
    *                for each incident child that is adjacent to the first incident child.
    * @param [out] incidenceSubspaceDim The number of set ones in incidenceSubspace.
    *                The number of incident children is pow(2, incidenceSubspaceDim).
+   * @return Convert m_extantCellFlag from point neighborhood bitstring to incident children bitstring.
    * @note Use with TallBitMatrix to easily iterate over the child numbers of incident children.
    */
   template <typename T, unsigned int dim>
-  void Element<T,dim>::incidentChildren(
-      const ot::TreeNode<T,dim> &pointCoords,
+  ExtantCellFlagT Element<T,dim>::incidentChildren(
+      const ot::TreeNode<T,dim> &pt,
       typename ot::CellType<dim>::FlagType &incidenceOffset,
       typename ot::CellType<dim>::FlagType &incidenceSubspace,
       typename ot::CellType<dim>::FlagType &incidenceSubspaceDim) const
   {
-    // TODO these type casts are ugly and they might even induce more copying than necessary.
-    std::array<T, dim> justCoords;
-    ot::TNPoint<T, dim> pt(
-        1,
-        (pointCoords.getAnchor(justCoords), justCoords),
-        pointCoords.getLevel());
-
     const LevI pLev = this->getLevel();
 
     incidenceOffset = (pt.getMortonIndex(pLev) ^ this->getMortonIndex(pLev))  | pt.getMortonIndex(pLev + 1);  // One of the duplicates.
-    ot::CellType<dim> paCellt = pt.get_cellType(pLev);
-    ot::CellType<dim> chCellt = pt.get_cellType(pLev+1);
+    ot::CellType<dim> paCellt = TNPoint<T,dim>::get_cellType(pt, pLev);
+    ot::CellType<dim> chCellt = TNPoint<T,dim>::get_cellType(pt, pLev+1);
 
     // Note that dupDim is the number of set bits in dupOrient.
     incidenceSubspace =    paCellt.get_orient_flag() & ~chCellt.get_orient_flag();
     incidenceSubspaceDim = paCellt.get_dim_flag()    -  chCellt.get_dim_flag();
 
     incidenceOffset = ~incidenceSubspace & incidenceOffset;  // The least Morton-child among all duplicates.
+
+    // Transform neighbourhood flag to extant incident children, axis by axis.
+    // On child interface, keep order.
+    // On parent boundary, reflect, then mask relevant half space.
+    // On child interior, collapse across a hyperplane. Offset by choosing direction of collapse.
+    ExtantCellFlagT extantIncidentChildren = pt.getExtantCellFlag();
+    for (int d = 0; d < dim; d++)
+    {
+      const bool childInterface = incidenceSubspace & (1u << d);
+      const bool parentBdry = !(paCellt.get_orient_flag() & (1u << d));
+      const bool childLeftRight = incidenceOffset & (1u << d);
+
+      if (childInterface)  // Don't reverse or collapse on interface.
+        continue;          // lo nbrs <-> lo children,  hi nbrs <-> hi children.
+
+      ExtantCellFlagT loStr, hiStr;
+      unsigned int axisShift;
+      binOp::selectHyperplanes(extantIncidentChildren, d, loStr, hiStr, axisShift);
+
+      if (parentBdry)  // Parent bdry -> reflect and mask.
+      {
+        if (childLeftRight == 0)
+          extantIncidentChildren = hiStr >> axisShift;  // hi nbrs are lo children.
+        else
+          extantIncidentChildren = loStr << axisShift;  // lo nbrs are hi children.
+      }
+      else             // Child interior -> collapsing union.
+      {
+        if (childLeftRight == 0)
+          extantIncidentChildren = (hiStr >> axisShift) | loStr;  // only lo children.
+        else
+          extantIncidentChildren = hiStr | (loStr << axisShift);  // only hi children.
+      }
+    }
+    return extantIncidentChildren;
   }
+
 
   template <typename T, unsigned int dim>
   bool Element<T,dim>::isIncident(const ot::TreeNode<T,dim> &pointCoords) const
@@ -925,8 +960,8 @@ namespace ot {
 
         TreeNode<C, dim> nbrTN = node.getCell();
         for (int d = 0; d < dim; d++)
-          // 1 bit in nbrId means go negative, 0 bit means go positive.
-          if (nbrId & (1u << d))
+          // 0 bit in nbrId means go negative, 1 bit means go positive.
+          if ((nbrId ^ neighbourhoodSpace) & (1u << d))
             nbrTN.setX(d, nbrTN.getX(d) - elemSz);
 
         if (domainDecider(nbrTN))

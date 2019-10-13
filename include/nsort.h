@@ -147,6 +147,8 @@ namespace ot {
       /**@brief Get type of cell to which point is interior, at arbitrary level. */
       CellType<dim> get_cellType(LevI lev) const;
 
+      static CellType<dim> get_cellType(const TreeNode<T, dim> &tnPoint, LevI lev);
+
       /**@brief Return whether own cell type differs from cell type on parent. */
       bool isCrossing() const;
 
@@ -248,10 +250,11 @@ namespace ot {
        *                for each incident child that is adjacent to the first incident child.
        * @param [out] incidenceSubspaceDim The number of set ones in incidenceSubspace.
        *                The number of incident children is pow(2, incidenceSubspaceDim).
+       * @return Convert m_extantCellFlag from point neighborhood bitstring to incident children bitstring.
        * @note Use with TallBitMatrix to easily iterate over the child numbers of incident children.
        * @note It is ASSUMED that isIncident(pointCoords) is true.
        */
-      void incidentChildren(
+      ExtantCellFlagT  incidentChildren(
           const ot::TreeNode<T,dim> &pointCoords,
           typename ot::CellType<dim>::FlagType &incidenceOffset,
           typename ot::CellType<dim>::FlagType &incidenceSubspace,

@@ -572,10 +572,10 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   // Count the number of nodes contained by or incident on each child.
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
-    curSubtree.incidentChildren( sibNodeCoords[nIdx],
-                                 firstIncidentChild_m,
-                                 incidentSubspace,
-                                 incidentSubspaceDim);
+    ot::ExtantCellFlagT incidentChildren = curSubtree.incidentChildren( sibNodeCoords[nIdx],
+                                                                firstIncidentChild_m,
+                                                                incidentSubspace,
+                                                                incidentSubspaceDim);
 
     binOp::TallBitMatrix<dim, FType> bitExpander =
         binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
@@ -583,9 +583,12 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
     const ot::ChildI numIncidentChildren = 1u << incidentSubspaceDim;
     for (ot::ChildI c = 0; c < numIncidentChildren; c++)
     {
-      ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
-      ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
-      nodeCounts[incidentChild_sfc]++;
+      if (incidentChildren & (1u << c))
+      {
+        ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
+        ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
+        nodeCounts[incidentChild_sfc]++;
+      }
     }
   }
 
@@ -613,10 +616,10 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   m_siblingNodeValsOut[curLev+1 - m_L0].resize(m_ndofs*accum, 0.0);
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
-    curSubtree.incidentChildren( sibNodeCoords[nIdx],
-                                 firstIncidentChild_m,
-                                 incidentSubspace,
-                                 incidentSubspaceDim);
+    ot::ExtantCellFlagT incidentChildren = curSubtree.incidentChildren( sibNodeCoords[nIdx],
+                                                                firstIncidentChild_m,
+                                                                incidentSubspace,
+                                                                incidentSubspaceDim);
 
     binOp::TallBitMatrix<dim, FType> bitExpander =
         binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
@@ -624,14 +627,17 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
     const ot::ChildI numIncidentChildren = 1u << incidentSubspaceDim;
     for (ot::ChildI c = 0; c < numIncidentChildren; c++)
     {
-      ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
-      ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
+      if (incidentChildren & (1u << c))
+      {
+        ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
+        ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
-      m_siblingNodeCoords[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ] = sibNodeCoords[nIdx];
-      for (int dof = 0; dof < m_ndofs; dof++)
-        m_siblingNodeValsIn[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof ] = sibNodeValsIn[m_ndofs*nIdx + dof];
+        m_siblingNodeCoords[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ] = sibNodeCoords[nIdx];
+        for (int dof = 0; dof < m_ndofs; dof++)
+          m_siblingNodeValsIn[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof ] = sibNodeValsIn[m_ndofs*nIdx + dof];
 
-      nodeOffsets[incidentChild_sfc]++;
+        nodeOffsets[incidentChild_sfc]++;
+      }
     }
   }
 
@@ -690,10 +696,10 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
     // Count the number of nodes contained by or incident on each child.
     for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
     {
-      curSubtree.incidentChildren( sibNodeCoords[nIdx],
-                                   firstIncidentChild_m,
-                                   incidentSubspace,
-                                   incidentSubspaceDim);
+      ot::ExtantCellFlagT incidentChildren = curSubtree.incidentChildren( sibNodeCoords[nIdx],
+                                                                  firstIncidentChild_m,
+                                                                  incidentSubspace,
+                                                                  incidentSubspaceDim);
 
       binOp::TallBitMatrix<dim, FType> bitExpander =
           binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
@@ -701,13 +707,16 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
       const ot::ChildI numIncidentChildren = 1u << incidentSubspaceDim;
       for (ot::ChildI c = 0; c < numIncidentChildren; c++)
       {
-        ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
-        ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
+        if (incidentChildren & (1u << c))
+        {
+          ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
+          ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
-        for (int dof = 0; dof < m_ndofs; dof++)
-          sibNodeValsOut[m_ndofs*nIdx + dof] += m_siblingNodeValsOut[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof];
+          for (int dof = 0; dof < m_ndofs; dof++)
+            sibNodeValsOut[m_ndofs*nIdx + dof] += m_siblingNodeValsOut[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof];
 
-        nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
+          nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
+        }
       }
     }
   }
