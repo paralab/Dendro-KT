@@ -76,6 +76,9 @@ int main(int argc, char *argv[])
   testSinusoidalFunc<dim, order>(100, comm);
   std::cout << "\n";
 
+  ot::DA<dim> dummy;
+  ot::constructRegularSubdomainDA<dim>(dummy, endL, {1, 1, 1}, order, comm, 0.3);
+
   MPI_Finalize();
 
   return 0;

@@ -65,6 +65,25 @@ namespace ot
 
 
     template <unsigned int dim>
+    void constructRegularSubdomainDA(DA<dim> &newSubDA,
+                                     unsigned int level,
+                                     std::array<unsigned int, dim> extentPowers,
+                                     unsigned int eleOrder,
+                                     MPI_Comm comm,
+                                     double sfc_tol)
+    {
+      //subda is empty.
+
+      //TODO
+      newSubDA.m_uiTotalNodalSz = 0;  // A friend can directly set members.
+
+      fprintf(stderr, "Warning: constructRegularSubdomainDA() has not been implemented yet!\n");
+
+      return;
+    }
+
+
+    template <unsigned int dim>
     template <typename T>
     DA<dim>::DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
         : m_refel{dim, order}

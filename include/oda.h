@@ -68,6 +68,25 @@ namespace DA_FLAGS
   enum Refine {DA_NO_CHANGE,DA_REFINE,DA_COARSEN};
 }
 
+template <unsigned int dim>
+class DA;
+
+/**
+ * @brief Construct a DA representing the nodes of a hypercuboid with grid
+ *         extents pow(2,a) * pow(2,b) * pow(2,c) * pow(2,d) (in 4D).
+ * @param level Level of the uniform refinement.
+ * @param extentPowers Array of powers {a,b,c,...} depending on the dimension.
+ *                     a,b,c,... <= level.
+ * @param eleOrder Elemental order.
+ * @param [out] newSubDA The resulting DA object.
+ */
+template <unsigned int dim>
+void constructRegularSubdomainDA(DA<dim> &newSubDA,
+                                 unsigned int level,
+                                 std::array<unsigned int, dim> extentPowers,
+                                 unsigned int eleOrder,
+                                 MPI_Comm comm,
+                                 double sfc_tol = 0.3);
 
 
 template <unsigned int dim>
@@ -80,6 +99,13 @@ class DA
     // element is within the range 0..1 on each dimension.
     using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
     using DomainDeciderT_TN = std::function<bool(const TreeNode<C, dim> &elemTreeNode)>;
+
+    friend void constructRegularSubdomainDA<dim>(DA<dim> &newSubDA,
+                                                 unsigned int level,
+                                                 std::array<unsigned int, dim> extentPowers,
+                                                 unsigned int eleOrder,
+                                                 MPI_Comm comm,
+                                                 double sfc_tol);
 
   private:
 
