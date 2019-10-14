@@ -247,6 +247,16 @@ class DA
         /// void construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
         void construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
 
+
+        /** @brief The latter part of construct() if already have ownedNodes. */
+        void construct(std::vector<TNPoint<C,dim>> &ownedNodes,
+                       unsigned int eleOrder,
+                       const TreeNode<C,dim> *treePartFront,
+                       const TreeNode<C,dim> *treePartBack,
+                       bool isActive,
+                       MPI_Comm globalComm,
+                       MPI_Comm activeComm);
+
         /**@brief returns the local nodal size*/
         inline unsigned int getLocalNodalSz() const { return m_uiLocalNodalSz; }
 
