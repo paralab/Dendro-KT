@@ -12,6 +12,7 @@
 #include <random>
 #include <utility>
 #include <iostream>
+#include <sstream>
 #include <stdio.h>
 
 #include "refel.h"
@@ -566,6 +567,23 @@ TreeNode<T, dim> physical2TreeNode(const double * physCoords, double physSize)
   return TreeNode<T, dim>(tnCoords, elemLev);
 }
 
+
+template <typename T, unsigned int dim>
+std::string dbgCoordStr(const std::array<T,dim> &tnCoords, unsigned int refLev)
+{
+  const unsigned int shift = m_uiMaxDepth - refLev;
+  const unsigned int gridSz = 1u << refLev;
+
+  std::ostringstream coordStrStrm;
+  coordStrStrm << '(';
+  if (dim > 0)
+    coordStrStrm << (tnCoords[0] >> shift) << '/' << gridSz;
+  for (int d = 1; d < dim; d++)
+    coordStrStrm << ", " << int(tnCoords[d] >> shift) << '/' << gridSz;
+  coordStrStrm << ')';
+
+  return coordStrStrm.str();
+}
 
 
   // TODO add parameter for ndofs

@@ -154,7 +154,9 @@ namespace ot {
 
       inline void removeNeighbourExtantCellFlag(unsigned int nbrId);
 
-      inline unsigned int expectedNeighboursExtantCellFlag();
+      inline unsigned int expectedNeighboursExtantCellFlag() const;
+
+      inline bool isBoundaryNodeExtantCellFlag() const;
 
       /**As a point, is this point exposed as part of the tree/domain boundary?
        * As an element, does the element have any exposed exterior points?

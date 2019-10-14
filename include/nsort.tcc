@@ -549,11 +549,17 @@ namespace ot {
   bool Element<T,dim>::isIncident(const ot::TreeNode<T,dim> &pointCoords) const
   {
     const unsigned int elemSize = (1u << m_uiMaxDepth - this->getLevel());
+    unsigned int nbrId = 0;
     for (int d = 0; d < dim; d++)
-      if (!(this->getX(d) <= pointCoords.getX(d)
-                          && pointCoords.getX(d) <= this->getX(d) + elemSize))
+      if (this->getX(d) == pointCoords.getX(d))
+        nbrId += (1u << d);
+      else if (this->getX(d) < pointCoords.getX(d)
+                            && pointCoords.getX(d) <= this->getX(d) + elemSize)
+        ;
+      else
         return false;
-    return true;
+
+    return (pointCoords.getExtantCellFlag() & (1u << nbrId));
   }
 
 
