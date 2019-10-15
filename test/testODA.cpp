@@ -70,11 +70,11 @@ int main(int argc, char *argv[])
   /// testLinearFunc<dim, order>(100, comm);
   /// std::cout << "\n";
 
-  std::cout << "=====================\n";
-  std::cout << "testSinusoidalFunc():\n";
-  std::cout << "=====================\n";
-  testSinusoidalFunc<dim, order>(100, comm);
-  std::cout << "\n";
+  /// std::cout << "=====================\n";
+  /// std::cout << "testSinusoidalFunc():\n";
+  /// std::cout << "=====================\n";
+  /// testSinusoidalFunc<dim, order>(100, comm);
+  /// std::cout << "\n";
 
   ot::DA<dim> dummy;
   ot::constructRegularSubdomainDA<dim>(dummy, endL, {1, 1, 1}, order, comm, 0.3);

@@ -72,15 +72,211 @@ namespace ot
                                      MPI_Comm comm,
                                      double sfc_tol)
     {
-      //subda is empty.
+      using C = typename DA<dim>::C;
 
-      //TODO
-      newSubDA.m_uiTotalNodalSz = 0;  // A friend can directly set members.
+      newSubDA.m_refel = RefElement(dim, eleOrder);
 
-      fprintf(stderr, "Warning: constructRegularSubdomainDA() has not been implemented yet!\n");
+      // =========================
+      // Outline
+      // =========================
+      // * Generate tree in Morton order.
+      // * Partition tree using sfc_tol
+      // * Store front/back tree elements, discard tree.
+      //
+      // * Generate all the nodes in Morton order and assign correct extant cell flag.
+      // * Partition the nodes to agree with tree splitters.
+      //
+      //
+      // * Compute scatter/gather maps.
+      // =========================
 
-      return;
+      int nProc, rProc;
+      MPI_Comm_size(comm, &nProc);
+      MPI_Comm_rank(comm, &rProc);
+
+      // TODO we can easily accept the subdomain box coordinates as parameters.
+
+      // Establish the subdomain box.
+      const unsigned int elemSz = 1u << (m_uiMaxDepth - level);
+      DendroIntL totalNumElements = 1;
+      std::array<C,dim> subdomainBBMins;  // uiCoords.
+      std::array<C,dim> subdomainBBMaxs;  //
+      #pragma unroll(dim)
+      for (int d = 0; d < dim; d++)
+      {
+        subdomainBBMins[d] = 0u;
+        subdomainBBMaxs[d] = elemSz << extentPowers[d];
+        totalNumElements *= (1u << extentPowers[d]);
+      }
+
+      // Need to find treePartFront and treePartBack.
+      ot::TreeNode<C,dim> treePartFront, treePartBack;
+      DendroIntL locNumActiveElements = totalNumElements;
+
+      if (nProc > 1)
+      {
+        // In the distributed case, need to simulate distTreePartition.
+
+        // Search parameters.
+        const DendroIntL idealSplitterRankPrev = double(totalNumElements) * (rProc) / nProc;
+        const DendroIntL idealSplitterRank     = double(totalNumElements) * (rProc+1) / nProc;
+        const DendroIntL accptSplitterRankMin =  idealSplitterRankPrev * sfc_tol + idealSplitterRank * (1-sfc_tol);
+        const DendroIntL accptSplitterRankMax =  idealSplitterRankPrev * -sfc_tol + idealSplitterRank * (1+sfc_tol);
+
+        constexpr unsigned int NUM_CHILDREN = 1u << dim;
+        constexpr unsigned int rotOffset = 2*NUM_CHILDREN;  // num columns in rotations[].
+
+
+        // Search for our end splitter.
+        ot::TreeNode<C,dim> subtree;
+        ot::TreeNode<C,dim> afterSubtree;  // If there is a split, the original value won't matter.
+        ot::RotI pRot = 0;
+        ot::RotI afterPRot = 0;
+        DendroIntL parentPreRank = 0;
+        DendroIntL parentPostRank = totalNumElements;
+
+        while (!(accptSplitterRankMin <= parentPostRank
+                                      && parentPostRank <= accptSplitterRankMax)
+            && subtree.getLevel() < m_uiMaxDepth)
+        {
+          // Lookup tables to apply rotations.
+          const ot::ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*NUM_CHILDREN];
+          const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NUM_CHILDREN];
+
+          ot::TreeNode<C,dim> childSubtree;
+          ot::ChildI child_sfc, child_m;
+          DendroIntL childPreRank = parentPreRank;
+          DendroIntL childPostRank;
+
+          // Get child subtrees and compute child ranks.
+          for (child_sfc = 0; child_sfc < NUM_CHILDREN; child_sfc++)
+          {
+             child_m = rot_perm[child_sfc];
+             childSubtree = subtree.getChildMorton(child_m);
+
+             DendroIntL overlapNumElements = 1u;
+             for (int d = 0; d < dim; d++)
+             {
+               C x, y;
+
+               /// C overlapMax = min(childSubtree.maxX(d), subdomainBBMaxs[d]);
+               x = childSubtree.maxX(d);
+               y = subdomainBBMaxs[d];
+               C overlapMax = (x <= y ? x : y);
+
+               /// C overlapMin = max(childSubtree.minX(d), subdomainBBMins[d]);
+               x = childSubtree.minX(d);
+               y = subdomainBBMins[d];
+               C overlapMin = (x >= y ? x : y);
+
+               overlapNumElements *= (overlapMax - overlapMin) >> (m_uiMaxDepth - level);
+             }
+
+             childPostRank = childPreRank + overlapNumElements;
+
+             if (childPreRank < idealSplitterRank
+                             && idealSplitterRank <= childPostRank)
+               break;
+             else
+               childPreRank = childPostRank;
+          }
+
+          // Descend to the child that contains the ideal splitter rank.
+
+          // Before erasing the parent, do bookkeeping for element after new subtree.
+          if (child_sfc < NUM_CHILDREN)
+          {
+            afterSubtree = subtree.getChildMorton(rot_perm[child_sfc+1]);
+            afterPRot = orientLookup[ rot_perm[child_sfc+1] ];
+          }
+          else
+          {
+            afterSubtree = afterSubtree.getChildMorton(rotations[afterPRot*rotOffset + 0]);
+            afterPRot = HILBERT_TABLE[afterPRot*NUM_CHILDREN + rotations[afterPRot*rotOffset + 0]];
+          }
+
+          subtree = childSubtree;
+          pRot = orientLookup[child_m];
+          parentPreRank = childPreRank;
+          parentPostRank = childPostRank;
+        }
+
+        // Share splitter ranks to determine who owns what part of the tree.
+        parentPreRank = 0;
+        treePartBack = subtree;
+
+        //TODO drill down (afterSubtree, afterPRot) and (treePartBack, pRot)
+        // to level.
+
+        MPI_Request reqRank, reqFrontTN;
+        MPI_Status status;
+        if (rProc < nProc - 1)
+        {
+          par::Mpi_Isend(&parentPostRank, 1, rProc+1, 24, comm, &reqRank);
+          par::Mpi_Isend(&afterSubtree, 1, rProc+1, 13, comm, &reqFrontTN);
+        }
+        if (rProc > 0)
+        {
+          par::Mpi_Recv(&parentPreRank, 1, rProc-1, 24, comm, &status);
+          par::Mpi_Recv(&treePartFront, 1, rProc-1, 13, comm, &status);
+        }
+        if (rProc < nProc - 1)
+        {
+          MPI_Wait(&reqRank, &status);
+          MPI_Wait(&reqFrontTN, &status);
+        }
+
+        locNumActiveElements = parentPostRank - parentPreRank;
+      }
+      else
+      {
+        //TODO does it work if treePartFront and treePartBack are at level 0?
+        // else, drill down to level.
+
+        /// ot::RotI tpFrontRot = 0;
+        /// while (treePartFront.getLevel() < level)
+        /// {
+        ///   //TODO
+        /// }
+
+        /// ot::RotI tpBackRot = 0;
+        /// while (treePartBack.getLevel() < level)
+        /// {
+        ///   //TODO
+        /// }
+      }
+
+      // Now we know how many elements would go to each proc,
+      // and what is the front and back of the local entire partition.
+
+      // Next, generate points.
+
+      // A processor is 'active' if it has elements, otherwise 'inactive'.
+      bool isActive = (locNumActiveElements > 0);
+      MPI_Comm activeComm;
+      MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
+
+      std::vector<ot::TNPoint<C,dim>> nodeList;
+
+      if (isActive)
+      {
+        // Generate some share of the points.
+
+        //TODO
+        nodeList.push_back(ot::TNPoint<C,dim>());
+
+
+        // Partition the points to match treePartFront and treePartBack.
+
+        //TODO
+
+        //nodeList, eleOrder
+      }
+
+      // Finish constructing.
+      newSubDA.construct(nodeList, eleOrder, &treePartFront, &treePartBack, isActive, comm, activeComm);
     }
+
 
 
     template <unsigned int dim>
