@@ -290,3 +290,18 @@ void incrementBaseB(std::array<T,L> &digits, T B, unsigned int lstart)
   while (digits[l] == 0 && (l++, l < L));
 }
 
+
+template <typename T, unsigned int L>
+void incrementFor(std::array<T,L> &digits,
+                  const std::array<T,L> &limits,
+                  unsigned int d)
+{
+  do
+  {
+    digits[d]++;
+    if (digits[d] == limits[d])
+      digits[d] = 0;
+  }
+  while (digits[d] == 0 && (d++, d < L));
+}
+

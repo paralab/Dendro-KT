@@ -585,6 +585,14 @@ std::string dbgCoordStr(const std::array<T,dim> &tnCoords, unsigned int refLev)
   return coordStrStrm.str();
 }
 
+template <typename T, unsigned int dim>
+std::string dbgCoordStr(const TreeNode<T,dim> &tnCoords, unsigned int refLev)
+{
+  std::array<T,dim> uiCoords;
+  tnCoords.getAnchor(uiCoords);
+  return dbgCoordStr<T,dim>(uiCoords, refLev);
+}
+
 
   // TODO add parameter for ndofs
 template <typename T, unsigned int dim, typename NodeT>

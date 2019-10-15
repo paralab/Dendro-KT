@@ -33,6 +33,9 @@ void testLinearFunc(unsigned int grainSz, MPI_Comm comm);
 template<unsigned int dim, unsigned int order>
 void testSinusoidalFunc(unsigned int grainSz, MPI_Comm comm);
 
+template<unsigned int dim, unsigned int endL, unsigned int order>
+void testSubdomain(MPI_Comm comm);
+
 template <unsigned int dim>
 class myConcreteFeMatrix;
 
@@ -76,8 +79,7 @@ int main(int argc, char *argv[])
   /// testSinusoidalFunc<dim, order>(100, comm);
   /// std::cout << "\n";
 
-  ot::DA<dim> dummy;
-  ot::constructRegularSubdomainDA<dim>(dummy, endL, {1, 1, 1}, order, comm, 0.3);
+  testSubdomain<dim, endL, order>(comm);
 
   MPI_Finalize();
 
@@ -247,6 +249,16 @@ void testSinusoidalFunc(unsigned int grainSz, MPI_Comm comm)
 }
 
 
+template<unsigned int dim, unsigned int endL, unsigned int order>
+void testSubdomain(MPI_Comm comm)
+{
+  _InitializeHcurve(dim);
+
+  ot::DA<dim> dummy;
+  ot::constructRegularSubdomainDA<dim>(dummy, endL, {1, 1, 1}, order, comm, 0.3);
+
+  _DestroyHcurve();
+}
 
 /// //
 /// // distPrune()

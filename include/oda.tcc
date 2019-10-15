@@ -246,6 +246,59 @@ namespace ot
         /// }
       }
 
+
+
+      /// // Simpler way for debugging.
+
+      /// // Generate elements in lexicographic order.
+      /// DendroIntL genPart = totalNumElements / nProc +
+      ///                      (rProc < totalNumElements % nProc);
+      /// DendroIntL genStart = (totalNumElements / nProc) * rProc +
+      ///                       (rProc < totalNumElements % nProc ? rProc : totalNumElements % nProc);
+      /// std::array<C,dim> genLimits;
+      /// std::array<C,dim> genStrides;
+      /// std::array<C,dim> genIdx;
+      /// for (int d = 0; d < dim; d++)
+      ///   genLimits[d] = 1u << extentPowers[d];
+      /// genStrides[0] = 1;
+      /// for (int d = 1; d < dim; d++)
+      ///   genStrides[d] = genStrides[d-1] * genLimits[d-1];
+      /// DendroIntL remainder = genStart;
+      /// for (int d = dim-1; d >= 0; d--)
+      /// {
+      ///   genIdx[d] = remainder / genStrides[d];
+      ///   remainder -= genIdx[d] * genStrides[d];
+      /// }
+
+      /// std::vector<ot::TreeNode<C, dim>> treePart;
+      /// ot::TreeNode<C, dim> elem;
+      /// elem.setLevel(level);
+      /// for (DendroIntL ii = 0; ii < genPart; ii++)
+      /// {
+      ///   for (int d = 0; d < dim; d++)
+      ///     elem.setX(d, genIdx[d] * elemSz);
+
+      ///   treePart.emplace_back(elem);
+
+      ///   incrementFor<C,dim>(genIdx, genLimits);
+      /// }
+
+      /// bool isActive0 = (treePart.size() > 0);
+      /// MPI_Comm activeComm0;
+      /// MPI_Comm_split(comm, (treePart.size() ? 1 : MPI_UNDEFINED), rProc, &activeComm0);
+
+      /// /// for (DendroIntL ii = 0; ii < treePart.size(); ii++)
+      /// ///   fprintf(stderr, "%*slev==%u, coords==%s\n", 30*rProc, "",
+      /// ///       treePart[ii].getLevel(), ot::dbgCoordStr(treePart[ii], 2).c_str());
+
+      /// if (isActive0)
+      ///   SFC_Tree<C, dim>::distTreeSort(treePart, sfc_tol, activeComm0);
+
+      /// locNumActiveElements = treePart.size();
+      /// treePartFront = treePart.front();
+      /// treePartBack = treePart.back();
+
+
       // Now we know how many elements would go to each proc,
       // and what is the front and back of the local entire partition.
 
