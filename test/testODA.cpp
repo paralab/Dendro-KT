@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
   MPI_Comm_size(comm, &nProc);
 
   constexpr unsigned int dim = 3;
-  const unsigned int endL = 2;
+  const unsigned int endL = 4;
   const unsigned int order = 3;
 
   /// std::cout << "=============\n";
@@ -255,7 +255,7 @@ void testSubdomain(MPI_Comm comm)
   _InitializeHcurve(dim);
 
   ot::DA<dim> dummy;
-  ot::constructRegularSubdomainDA<dim>(dummy, endL, {1, 1, 1}, order, comm, 0.3);
+  ot::constructRegularSubdomainDA<dim>(dummy, endL, {1, 3, 2}, order, comm, 0.3);
 
   _DestroyHcurve();
 }

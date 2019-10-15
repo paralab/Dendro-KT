@@ -967,6 +967,7 @@ namespace ot {
         TreeNode<C, dim> nbrTN = node.getCell();
         for (int d = 0; d < dim; d++)
           // 0 bit in nbrId means go negative, 1 bit means go positive.
+          // But if the node is interior on this axis, then adopt the coord of the cell.
           if ((nbrId ^ neighbourhoodSpace) & (1u << d))
             nbrTN.setX(d, nbrTN.getX(d) - elemSz);
 

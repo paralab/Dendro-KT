@@ -154,6 +154,9 @@ namespace ot {
 
       inline void removeNeighbourExtantCellFlag(unsigned int nbrId);
 
+      /**@brief Record hyperplane face boundary. side=0: neg empty. side=1: pos empty.*/
+      inline void excludeSideExtantCellFlag(unsigned int axis, unsigned char side);
+
       inline unsigned int expectedNeighboursExtantCellFlag() const;
 
       inline bool isBoundaryNodeExtantCellFlag() const;

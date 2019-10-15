@@ -305,6 +305,13 @@ inline void TreeNode<T, dim>::removeNeighbourExtantCellFlag(unsigned int nbrId)
   m_extantCellFlag &= ~(1u << nbrId);
 }
 
+template <typename T, unsigned int dim>
+inline void TreeNode<T, dim>::excludeSideExtantCellFlag(unsigned int axis, unsigned char side)
+{
+  m_extantCellFlag &= (side == 0 ?
+      binOp::hyperplaneHiMask<T, dim>(axis)     // If exclude neg (lo), keep pos (hi).
+    : binOp::hyperplaneLoMask<T, dim>(axis));   // If exclude pos (hi), keep neg (lo).
+}
 
 template <typename T, unsigned int dim>
 inline unsigned int TreeNode<T, dim>::expectedNeighboursExtantCellFlag() const

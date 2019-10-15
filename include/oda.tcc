@@ -86,9 +86,11 @@ namespace ot
       // * Generate all the nodes in Morton order and assign correct extant cell flag.
       // * Partition the nodes to agree with tree splitters.
       //
-      //
-      // * Compute scatter/gather maps.
+      // * Compute scatter/gather maps (other overload of construct()).
       // =========================
+
+      constexpr unsigned int NUM_CHILDREN = 1u << dim;
+      constexpr unsigned int rotOffset = 2*NUM_CHILDREN;  // num columns in rotations[].
 
       int nProc, rProc;
       MPI_Comm_size(comm, &nProc);
@@ -122,10 +124,6 @@ namespace ot
         const DendroIntL idealSplitterRank     = double(totalNumElements) * (rProc+1) / nProc;
         const DendroIntL accptSplitterRankMin =  idealSplitterRankPrev * sfc_tol + idealSplitterRank * (1-sfc_tol);
         const DendroIntL accptSplitterRankMax =  idealSplitterRankPrev * -sfc_tol + idealSplitterRank * (1+sfc_tol);
-
-        constexpr unsigned int NUM_CHILDREN = 1u << dim;
-        constexpr unsigned int rotOffset = 2*NUM_CHILDREN;  // num columns in rotations[].
-
 
         // Search for our end splitter.
         ot::TreeNode<C,dim> subtree;
@@ -205,8 +203,9 @@ namespace ot
         parentPreRank = 0;
         treePartBack = subtree;
 
-        //TODO drill down (afterSubtree, afterPRot) and (treePartBack, pRot)
-        // to level.
+        // treePartFront of next proc and treePartBack of us.
+        SFC_Tree<C,dim>::firstDescendant(afterSubtree, afterPRot, level);
+        SFC_Tree<C,dim>::lastDescendant(treePartBack, pRot, level);
 
         MPI_Request reqRank, reqFrontTN;
         MPI_Status status;
@@ -230,22 +229,13 @@ namespace ot
       }
       else
       {
-        //TODO does it work if treePartFront and treePartBack are at level 0?
-        // else, drill down to level.
-
-        /// ot::RotI tpFrontRot = 0;
-        /// while (treePartFront.getLevel() < level)
-        /// {
-        ///   //TODO
-        /// }
-
-        /// ot::RotI tpBackRot = 0;
-        /// while (treePartBack.getLevel() < level)
-        /// {
-        ///   //TODO
-        /// }
+        ot::RotI tpFrontRot = 0;
+        ot::RotI tpBackRot = 0;
+        SFC_Tree<C,dim>::firstDescendant(treePartFront, tpFrontRot, level);
+        SFC_Tree<C,dim>::lastDescendant(treePartBack, tpBackRot, level);
       }
 
+      // ------------------------------------------
 
 
       /// // Simpler way for debugging.
@@ -298,6 +288,8 @@ namespace ot
       /// treePartFront = treePart.front();
       /// treePartBack = treePart.back();
 
+      // ------------------------------------------
+
 
       // Now we know how many elements would go to each proc,
       // and what is the front and back of the local entire partition.
@@ -310,20 +302,145 @@ namespace ot
       MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
 
       std::vector<ot::TNPoint<C,dim>> nodeList;
+      std::vector<ot::TNPoint<C,dim>> nodeListBuffer;
 
       if (isActive)
       {
-        // Generate some share of the points.
+        // Generate local points.
+        // Do this by traversing the element tree and adding points owned by each element.
 
-        //TODO
-        nodeList.push_back(ot::TNPoint<C,dim>());
+        // Invariant: A TreeNode on the stack contains a descendant subtree
+        //            that corresponds to a locally owned element.
+
+        std::vector<ot::TreeNode<C,dim>> treeStack;
+        std::vector<ot::RotI> rotStack;
+        treeStack.emplace_back();      // Root.
+        rotStack.push_back(0);         //
+
+        while (treeStack.size())
+        {
+          // Pop the next subtree from the stack.
+          const ot::TreeNode<C,dim> subtree = treeStack.back();
+          const ot::RotI pRot = rotStack.back();
+          treeStack.pop_back();
+          rotStack.pop_back();
+
+          //
+          // Leaf: A local element. Add its points.
+          //
+          if (subtree.getLevel() == level)
+          {
+            const ot::Element<C,dim> element(subtree);
+            DendroIntL nodeListOldSz = nodeList.size();
+
+            // Neighbour flags of interior points label the host cell as neighbour 0.
+            // Because the neighbourhood has dimension 0, no other cells are tested.
+            element.appendInteriorNodes(eleOrder, nodeList);
+            for (TNPoint<C,dim> *nodePtr = &nodeList[nodeListOldSz];
+                nodePtr < &(*nodeList.end()); nodePtr++)
+            {
+              nodePtr->resetExtantCellFlagNoNeighbours();
+              nodePtr->addNeighbourExtantCellFlag(0);
+            }
+
+            // For neighbour flags of exterior points, test each axis for boundary.
+            // On an axis that is 'internal', none of the 1-side neighbours are marked.
+            nodeListBuffer.clear();
+            element.appendExteriorNodes(eleOrder, nodeListBuffer);
+            for (TNPoint<C,dim> &node : nodeListBuffer)
+            {
+              node.resetExtantCellFlagAllNeighbours();
+
+              bool isUpperEdge = false;
+              bool isBoundaryNode = false;
+              for (int d = 0; d < dim; d++)
+              {
+                // Check for subdomain boundaries.
+                if (node.getX(d) == subdomainBBMins[d])
+                {
+                  node.excludeSideExtantCellFlag(d, 0);
+                  isBoundaryNode = true;
+                }
+                else if (node.getX(d) == subdomainBBMaxs[d])
+                {
+                  node.excludeSideExtantCellFlag(d, 1);
+                  isBoundaryNode = true;
+                }
+
+                // Check for upper edge of the cell (owned by another cell).
+                if (node.getX(d) == element.maxX(d))
+                  isUpperEdge = true;
+
+                // Check for interiorness.
+                else if (element.minX(d) < node.getX(d)
+                                        && node.getX(d) < element.maxX(d))
+                  node.excludeSideExtantCellFlag(d, 1);
+              }
+
+              if (!isUpperEdge || isBoundaryNode)
+                nodeList.emplace_back(node);
+            }
+          }
 
 
-        // Partition the points to match treePartFront and treePartBack.
+          //
+          // Nonleaf: Ancestor of a local element. Push its children onto stack.
+          //
+          else
+          {
+            const bool ancestorOfFront = subtree.isAncestor(treePartFront);
+            const bool ancestorOfBack = subtree.isAncestor(treePartBack);
 
-        //TODO
+            const ot::ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*NUM_CHILDREN];
+            const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NUM_CHILDREN];
 
-        //nodeList, eleOrder
+            // Push children onto stack in reverse sfc order.
+            // There can be 0, 1, or 2 thresholds of entering/leaving local partition.
+            bool keepNextChild = !ancestorOfBack;
+            for (ot::ChildI child_rev = 0; child_rev < NUM_CHILDREN; child_rev++)
+            {
+              const ot::ChildI child_sfc = NUM_CHILDREN-1 - child_rev;
+              const ot::ChildI child_m = rot_perm[child_sfc];
+              const ot::RotI cRot = orientLookup[child_m];
+              ot::TreeNode<C,dim> child = subtree.getChildMorton(child_m);
+
+              bool intersectsSubdomainBB = true;
+              for (int d = 0; d < dim; d++)
+              {
+                if (subdomainBBMaxs[d] <= child.minX(d) ||
+                    child.maxX(d) <= subdomainBBMins[d])
+                {
+                  intersectsSubdomainBB = false;
+                  break;
+                }
+              }
+
+              if (!keepNextChild)
+              {
+                if (child.isAncestorInclusive(treePartBack))
+                {
+                  if (intersectsSubdomainBB)
+                  {
+                    treeStack.emplace_back(child);
+                    rotStack.push_back(cRot);
+                  }
+                  keepNextChild = true;
+                }
+              }
+              else
+              {
+                if (intersectsSubdomainBB)
+                {
+                  treeStack.emplace_back(child);
+                  rotStack.push_back(cRot);
+                }
+                if (child.isAncestorInclusive(treePartFront))
+                  keepNextChild = false;
+              }
+            }
+          }
+        }
+
       }
 
       // Finish constructing.

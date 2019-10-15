@@ -978,4 +978,52 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
 }
 
 
+
+
+/** @brief Successively computes 0th child in SFC order to given level. */
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>::firstDescendant(TreeNode<T,D> &parent,
+                               RotI &pRot,
+                               LevI descendantLev)
+{
+  constexpr unsigned int NUM_CHILDREN = 1u << D;
+  constexpr unsigned int rotOffset = 2*NUM_CHILDREN;  // num columns in rotations[].
+
+  while (parent.getLevel() < descendantLev)
+  {
+    const ot::ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*NUM_CHILDREN];
+    const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NUM_CHILDREN];
+
+    ot::ChildI child0 = rot_perm[0];
+    parent = parent.getChildMorton(child0);
+    pRot = orientLookup[child0];
+  }
+}
+
+
+/** @brief Successively computes (n-1)th child in SFC order to given level. */
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>::lastDescendant(TreeNode<T,D> &parent,
+                              RotI &pRot,
+                              LevI descendantLev)
+{
+  constexpr unsigned int NUM_CHILDREN = 1u << D;
+  constexpr unsigned int rotOffset = 2*NUM_CHILDREN;  // num columns in rotations[].
+
+  while (parent.getLevel() < descendantLev)
+  {
+    const ot::ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*NUM_CHILDREN];
+    const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NUM_CHILDREN];
+
+    ot::ChildI childLast = rot_perm[NUM_CHILDREN-1];
+    parent = parent.getChildMorton(childLast);
+    pRot = orientLookup[childLast];
+  }
+}
+
+
+
+
 } // namspace ot
