@@ -351,25 +351,28 @@ namespace ot
             {
               node.resetExtantCellFlagAllNeighbours();
 
-              bool isUpperEdge = false;
-              bool isBoundaryNode = false;
+              // Exclude a node from nodeList if it is 'upperEdge' on an axis,
+              // unless it is boundary on the same axis.
+              bool excludeNode = false;
               for (int d = 0; d < dim; d++)
               {
+                bool isBoundaryOnAxis = false;
+
                 // Check for subdomain boundaries.
                 if (node.getX(d) == subdomainBBMins[d])
                 {
                   node.excludeSideExtantCellFlag(d, 0);
-                  isBoundaryNode = true;
+                  isBoundaryOnAxis = true;
                 }
                 else if (node.getX(d) == subdomainBBMaxs[d])
                 {
                   node.excludeSideExtantCellFlag(d, 1);
-                  isBoundaryNode = true;
+                  isBoundaryOnAxis = true;
                 }
 
                 // Check for upper edge of the cell (owned by another cell).
-                if (node.getX(d) == element.maxX(d))
-                  isUpperEdge = true;
+                if (node.getX(d) == element.maxX(d) && !isBoundaryOnAxis)
+                  excludeNode = true;
 
                 // Check for interiorness.
                 else if (element.minX(d) < node.getX(d)
@@ -377,7 +380,7 @@ namespace ot
                   node.excludeSideExtantCellFlag(d, 1);
               }
 
-              if (!isUpperEdge || isBoundaryNode)
+              if (!excludeNode)
                 nodeList.emplace_back(node);
             }
           }
