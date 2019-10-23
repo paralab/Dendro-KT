@@ -528,6 +528,7 @@ void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals, unsigned
       gotToNonemptyLeaf = goToTreeAddr();
     }
   }
+
 }
 
 
@@ -625,10 +626,11 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
     const ot::ChildI numIncidentChildren = 1u << incidentSubspaceDim;
     for (ot::ChildI c = 0; c < numIncidentChildren; c++)
     {
-      if (incidentChildren & (1u << c))
+      ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
+      ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
+
+      if (incidentChildren & (1u << incidentChild_m))
       {
-        ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
-        ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
         nodeCounts[incidentChild_sfc]++;
 
         if (isBoundaryNode)
@@ -675,11 +677,11 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
     const ot::ChildI numIncidentChildren = 1u << incidentSubspaceDim;
     for (ot::ChildI c = 0; c < numIncidentChildren; c++)
     {
-      if (incidentChildren & (1u << c))
-      {
-        ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
-        ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
+      ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
+      ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
+      if (incidentChildren & (1u << incidentChild_m))
+      {
         m_siblingNodeCoords[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ] = sibNodeCoords[nIdx];
         for (int dof = 0; dof < m_ndofs; dof++)
           m_siblingNodeValsIn[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof ] = sibNodeValsIn[m_ndofs*nIdx + dof];
@@ -755,11 +757,11 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
       const ot::ChildI numIncidentChildren = 1u << incidentSubspaceDim;
       for (ot::ChildI c = 0; c < numIncidentChildren; c++)
       {
-        if (incidentChildren & (1u << c))
-        {
-          ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
-          ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
+        ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
+        ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
+        if (incidentChildren & (1u << incidentChild_m))
+        {
           for (int dof = 0; dof < m_ndofs; dof++)
             sibNodeValsOut[m_ndofs*nIdx + dof] += m_siblingNodeValsOut[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof];
 
@@ -1247,7 +1249,7 @@ template <typename T, unsigned int dim>
 bool TreeAddr<T,dim>::directRelative(const TreeAddr &other) const
 {
   const unsigned int lev = (m_lev <= other.m_lev ? m_lev : other.m_lev);
-  const T mask = (1u << m_uiMaxDepth) - (1u << lev);
+  const T mask = - (1u << (m_uiMaxDepth - lev));
   for (int d = 0; d < dim; d++)
     if ((m_coords[d] ^ other.m_coords[d]) & mask)
       return false;
