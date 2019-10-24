@@ -153,6 +153,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/treeNode.tcc
                   include/asyncExchangeContex.h
                   include/eleTreeIterator.h
+                  include/sfcTreeLoop.h
                   IO/vtk/include/oct2vtk.h
                   array/include/arraySlice.h
                   FEM/include/matvec.h
@@ -297,6 +298,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testEleTreeIterator.cpp)
 add_executable(tstEleTreeIterator ${SRC_FILES})
 target_include_directories(tstEleTreeIterator PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstEleTreeIterator dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testSFCTreeLoop.cpp)
+add_executable(tstSFCTreeLoop ${SRC_FILES})
+target_include_directories(tstSFCTreeLoop PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstSFCTreeLoop dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testKeepSiblingLeafsTogether.cpp)
 add_executable(tstKeepSiblingLeafsTogether ${SRC_FILES})
