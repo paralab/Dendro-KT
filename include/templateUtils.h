@@ -91,6 +91,30 @@ namespace litb// adapted from (Johannes Schaub - litb) https://stackoverflow.com
       virtual RetType user_defined(const Types& ...args) = 0;
   };
 
+  template <typename ...>
+  struct Typelist { };
+
+  // BiTupleExtractor
+  template <typename RetType, typename ...Types>
+  struct BiTupleExtractor
+  {
+    public:
+      RetType applied_to(std::tuple<Types...> &tup1,
+                         std::tuple<Types...> &tup2) {
+        return extract(tup1, tup2, typename GenSeq<sizeof...(Types)>::type());
+      }
+    private:
+      template <int ...Seq>
+      RetType extract(std::tuple<Types...> &tup1,
+                      std::tuple<Types...> &tup2, IntSeq<Seq...>) {
+        return user_defined(std::get<Seq>(tup1)...,
+                            std::get<Seq>(tup2)...);
+      }
+    protected:
+      virtual RetType user_defined(Types& ...args1, Types& ...args2) = 0;
+  };
+
+
 }// litb ( https://stackoverflow.com/a/7858971)
 
 #endif//DENDRO_KT_TEMPLATE_UTILS_H

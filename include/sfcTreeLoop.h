@@ -72,6 +72,7 @@
 #include "treeNode.h"
 #include "mathUtils.h"
 #include "binUtils.h"
+#include "templateUtils.h"
 
 /// #include "refel.h"
 /// #include "tensor.h"
@@ -116,6 +117,8 @@ namespace ot
   //can add another template parameter pack that defaults to empty....
 
 
+  using ExtantCellFlagT = unsigned short;  // TODO use TreeNode extant cell flag type.
+
   template <unsigned int dim, class InputTypes, class OutputTypes>
   class Frame;
 
@@ -126,11 +129,22 @@ namespace ot
   struct FrameOutputs {};       // Will define template specializations later.
 
 
+  // ----------------------------------------------
+  // Functions to help subclass from SFC_TreeLoop.
+  // ----------------------------------------------
+
+  namespace sfc_tree_utils
+  {
+    template <unsigned int dim, class InputTypes, class OutputTypes>
+    void topDownNodes(Frame<dim, InputTypes, OutputTypes> &parentFrame,
+                      ot::ExtantCellFlagT *extantChildren);
+  }
+
+
+
   // ------------------------------
   // Class definitions
   // ------------------------------
-
-  using ExtantCellFlagT = unsigned short;  // TODO use TreeNode extant cell flag type.
 
   //
   // SFC_TreeLoop
@@ -463,6 +477,130 @@ namespace ot
       SFC_TreeLoop<dim, InputTypes, OutputTypes> *m_treeLoopPtr;
 
   };
+
+
+
+
+
+
+
+
+  namespace sfc_tree_utils
+  {
+    //
+    // Here is an example of a way to make topDownNodes() as generic
+    // as possible... but too complicated, and probably slow.
+    //
+
+    // The pre- c++14 way to do something to every tuple element...
+    template <typename ...Types>
+    struct Resizer : public litb::TupleExtractor<void, std::vector<Types>...>
+    {
+      size_t m_new_size;  // set this before calling applied_to().
+
+      void set(size_t new_size) { m_new_size = new_size; }
+
+      virtual void user_defined(std::vector<Types> & ... newNodes)
+      {
+        auto _ = {(newNodes.resize(m_new_size), 0)...};  // std::initializer_list
+      }
+    };
+
+    template <typename ...Types>
+    struct Copier : public litb::BiTupleExtractor<void, std::vector<Types>...>
+    {
+      size_t m_dest_index;        // set these before calling applied_to().
+      size_t m_src_index;         //
+
+      void set(size_t dest_idx, size_t src_idx) { m_dest_index = dest_idx;
+                                                  m_src_index = src_idx; }
+
+      virtual void user_defined(std::vector<Types> & ... destNodes, std::vector<Types> & ... srcNodes)
+      {
+        std::tie(destNodes[m_dest_index]...) = std::tie(srcNodes[m_src_index]...);
+      }
+    };
+
+    template <typename ...Types>
+    struct Adder : public litb::BiTupleExtractor<void, std::vector<Types>...>
+    {
+      size_t m_dest_index;        // set these before calling applied_to().
+      size_t m_src_index;         //
+
+      void set(size_t dest_idx, size_t src_idx) { m_dest_index = dest_idx;
+                                                  m_src_index = src_idx; }
+
+      virtual void user_defined(std::vector<Types> & ... destNodes, std::vector<Types> & ... srcNodes)
+      {
+        std::tie(destNodes[m_dest_index]...) += std::tie(srcNodes[m_src_index]...);
+      }
+    };
+
+
+    //
+    // topDownNodes generic utility (boilerplate code)
+    //
+    template <unsigned int dim, typename ...ITypes, class OutputTypes>
+    void topDownNodes(Frame<dim, Inputs<TreeNode<unsigned int, dim>, ITypes...>, OutputTypes> &parentFrame,
+                      ot::ExtantCellFlagT *extantChildren)
+    {
+      // Count the number of nodes from the parent subtree that
+      // must be duplicated to children.
+
+      // TODO make an iterator to iterate through nodes and incident children.
+      //   it should be easy to iterate through two lists of nodes simultaneously.
+      const auto & parentNodeCoords = parentFrame.template getMyInputHandle<0>();
+      std::array<size_t, (1u<<dim)> childNodeCounts;  // TODO put in the child summaries in parentFrame
+      childNodeCounts.fill(0);
+      for (const TreeNode<unsigned int, dim> &pNodeTN : parentNodeCoords)
+      {
+        std::cerr << "Parent node " << pNodeTN << "\n";
+        for (ChildI child_sfc = 0; child_sfc < (1u<<dim); child_sfc++)//TODO incident children.
+        {
+          childNodeCounts[child_sfc]++;   //dummy
+        }
+      }
+
+      using Resizer = Resizer<TreeNode<unsigned int, dim>, ITypes...>;
+      using Copier = Copier<TreeNode<unsigned int, dim>, ITypes...>;
+      Resizer resizer;
+      Copier copier;
+
+      size_t totalChildNodeCount = 0;
+      std::array<size_t, (1u<<dim)> childNodeOffsets;
+
+      // Resize children.
+      for (ChildI child_sfc = 0; child_sfc < (1u<<dim); child_sfc++)
+      {
+        childNodeOffsets[child_sfc] = totalChildNodeCount;
+        totalChildNodeCount += childNodeCounts[child_sfc];
+
+        resizer.set(childNodeCounts[child_sfc]);
+        resizer.applied_to(parentFrame.i.childData[child_sfc]);
+      }
+
+      // Copy nodes to children.
+      size_t pNodeIdx = 0;
+      for (const TreeNode<unsigned int, dim> &pNodeCoords : parentNodeCoords)
+      {
+        for (ChildI child_sfc = 0; child_sfc < (1u<<dim); child_sfc++)//TODO incident children.
+        {
+          copier.set(childNodeOffsets[child_sfc], pNodeIdx);
+          copier.applied_to(parentFrame.i.childData[child_sfc], parentFrame.i.myDataHandles);
+        }
+        pNodeIdx++;
+      }
+
+      //TODO set extant children
+
+    }
+  }//sfc_tree_utils
+
+
+
+
+
+
 
 
 }
