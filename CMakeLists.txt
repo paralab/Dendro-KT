@@ -143,6 +143,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/seqUtils.tcc
                   include/parUtils.h
                   include/parUtils.tcc
+                  include/templateUtils.h
                   include/tsort.h
                   include/oda.h
                   include/oda.tcc
