@@ -133,6 +133,47 @@ namespace ot
   // Functions to help subclass from SFC_TreeLoop.
   // ----------------------------------------------
 
+  /**
+   * IterateNodesToChildren
+   *
+   * Implements an iterator/generator in place of the following nested for:
+   *
+   *     for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+   *     {
+   *       curSubtree.incidentChildren( sibNodeCoords[nIdx],
+   *                                    firstIncidentChild_m,
+   *                                    incidentSubspace,
+   *                                    incidentSubspaceDim);
+   *
+   *       binOp::TallBitMatrix<dim, FType> bitExpander =
+   *           binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
+   *
+   *       const ot::ChildI numIncidentChildren = 1u << incidentSubspaceDim;
+   *       for (ot::ChildI c = 0; c < numIncidentChildren; c++)
+   *       {
+   *         ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
+   *         ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
+   *
+   *         // Read or write node information to child. //
+   *       }
+   *     }
+   *
+   *
+   * New interface:
+   *          IterateNodesToChildren::IterateNodesToChildren( {init info} );
+   *     void IterateNodesToChildren::next();
+   *     bool IterateNodesToChildren::isEnd();
+   *
+   *     ChildI getChild_m();
+   *     ChildI getChild_sfc();
+   *     size_t getPNodeIdx();
+   */
+  template <unsigned int dim>
+  class IterateNodesToChildren;
+
+
+
+
   namespace sfc_tree_utils
   {
     template <unsigned int dim, class InputTypes, class OutputTypes>
@@ -478,6 +519,136 @@ namespace ot
 
   };
 
+
+
+  //
+  // IterateNodesToChildren
+  //
+  template <unsigned int dim>
+  class IterateNodesToChildren
+  {
+    using FType = typename ot::CellType<dim>::FlagType;
+
+    public:
+      // IterateNodesToChildren() (constructor)
+      IterateNodesToChildren(const TreeNode<unsigned int, dim> &subtree,
+                             const TreeNode<unsigned int, dim> *nodesBegin,
+                             size_t numParentNodes,
+                             RotI pRot)
+        : m_subtree(subtree),
+          m_nodesBegin(nodesBegin),
+          m_rot_inv(&rotations[pRot*2*(1u<<dim) + 1*(1u<<dim)]),
+          m_numParentNodes(numParentNodes),
+          m_pNodeIdx(0),
+          m_virtChildIdx(0)
+      {
+        fromNodeSet();
+      }
+
+      // isEnd() : Becomes true when reached the end. Until then, false.
+      bool isEnd() const
+      {
+        m_pNodeIdx >= m_numParentNodes;
+      }
+
+      // next() : Advance the iterator by one "child instance" of a node.
+      void next()
+      {
+        m_virtChildIdx++;
+        if (!fromChildSet())
+        {
+          m_pNodeIdx++;
+          fromNodeSet();
+        }
+      }
+
+      // getChild_m()
+      ChildI getChild_m() const { return m_incidentChild_m; }
+
+      // getChild_sfc()
+      ChildI getChild_sfc() const { return m_incidentChild_sfc; }
+
+      // getPNodeIdx()
+      size_t getPNodeIdx() const { return m_pNodeIdx; }
+
+
+      // To interface with range-based for loop:
+      IterateNodesToChildren & begin()
+      {
+        return *this;
+      }
+
+      static IterateNodesToChildren end()
+      {
+        return IterateNodesToChildren(TreeNode<unsigned int, dim>(), nullptr, 0, 0);
+      }
+
+      bool operator!=(const IterateNodesToChildren &other) const
+      {
+        return !(isEnd() && other.isEnd());
+      }
+
+
+    protected:
+      // fromNodeSet()
+      bool fromNodeSet()
+      {
+        while (m_pNodeIdx < m_numParentNodes)
+        {
+          // Prepare to iterate over children which are incident to current node.
+          FType incidentSubspace;
+          FType incidentSubspaceDim;
+          m_extantChildren = (1u << (1u<<dim)) - 1;
+          /*m_extantChildren = */ \
+              m_subtree.incidentChildren(m_nodesBegin[m_pNodeIdx],
+                                         m_firstIncidentChild_m,
+                                         incidentSubspace,
+                                         incidentSubspaceDim);
+          m_bitExpander = binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
+          m_incidentSubspaceVolume = 1u << incidentSubspaceDim;
+
+          if (fromChildSet())    // Try to land on a child before surrender.
+            return true;
+          m_pNodeIdx++;          // Otherwise try next node.
+        }
+        return false;            // If no more nodes, exit node loop.
+      }
+
+      // fromChildSet()
+      bool fromChildSet()
+      {
+        while (m_virtChildIdx < m_incidentSubspaceVolume)
+        {
+          m_incidentChild_m = m_firstIncidentChild_m +
+                              m_bitExpander.expandBitstring(m_virtChildIdx);
+          m_incidentChild_sfc = m_rot_inv[m_incidentChild_m];
+          if (m_extantChildren & (1u << m_incidentChild_m))
+            return true;
+          m_virtChildIdx++;
+        }
+        return false;    // No more children.
+      }
+
+    protected:
+      const Element<unsigned int, dim> m_subtree;
+      const TreeNode<unsigned int, dim> *m_nodesBegin;
+      const ChildI * m_rot_inv;
+
+      size_t m_numParentNodes;
+      size_t m_pNodeIdx;
+      ChildI m_virtChildIdx;
+
+      ChildI m_incidentSubspaceVolume;
+
+      ChildI m_incidentChild_m;
+      ChildI m_incidentChild_sfc;
+
+      FType m_firstIncidentChild_m;
+      binOp::TallBitMatrix<dim, FType> m_bitExpander;
+      /// FType m_incidentSubspace;
+      /// FType m_incidentSubspaceDim;
+      ExtantCellFlagT m_extantChildren;  // TODO use this after merge from subdomain
+  };
 
 
 
