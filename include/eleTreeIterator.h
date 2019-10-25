@@ -83,6 +83,9 @@ template <typename T, unsigned int dim> struct TreeAddr;
  * objects which point to the same ElementLoop, because they will not be independent.
  */
 
+/// extern int DBG_rProc;
+/// extern int DBG_rProc;
+
 
 /**
  * @class TreeAddr
@@ -937,6 +940,18 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
   // Diagnostics to tell if the nodes for the element are all present.
   std::vector<bool> leafEleFill(npe, false);
   unsigned int fillCheck = 0;
+  if(!(curEnd - curBegin <= npe))
+  {
+    /// fprintf(stderr, "[%d] ASSERT FAIL curBegin==%llu, curEnd==%llu\n", DBG_rProc, curBegin, curEnd);
+    for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+    {
+      const unsigned int nodeRank = ot::TNPoint<T, dim>::get_lexNodeRank( m_curSubtree,
+                                                                          sibNodeCoords[nIdx],
+                                                                          m_eleOrder);
+      /// fprintf(stderr, "[%d]  %*s   nodeRank==%2u,  node==%s\n",
+      ///     DBG_rProc, 20*DBG_rProc, "", nodeRank, sibNodeCoords[nIdx].getBase32Hex(5).data());
+    }
+  }
   assert(curEnd - curBegin <= npe);
 
   std::fill(m_leafNodeBdry.begin(), m_leafNodeBdry.end(), false);

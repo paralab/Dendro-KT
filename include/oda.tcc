@@ -115,180 +115,192 @@ namespace ot
       ot::TreeNode<C,dim> treePartFront, treePartBack;
       DendroIntL locNumActiveElements = totalNumElements;
 
-      if (nProc > 1)
-      {
-        // In the distributed case, need to simulate distTreePartition.
+      /// if (nProc > 1)
+      /// {
+      ///   // In the distributed case, need to simulate distTreePartition.
 
-        // Search parameters.
-        const DendroIntL idealSplitterRankPrev = double(totalNumElements) * (rProc) / nProc;
-        const DendroIntL idealSplitterRank     = double(totalNumElements) * (rProc+1) / nProc;
-        const DendroIntL accptSplitterRankMin =  idealSplitterRankPrev * sfc_tol + idealSplitterRank * (1-sfc_tol);
-        const DendroIntL accptSplitterRankMax =  idealSplitterRankPrev * -sfc_tol + idealSplitterRank * (1+sfc_tol);
+      ///   // Search parameters.
+      ///   const DendroIntL idealSplitterRankPrev = double(totalNumElements) * (rProc) / nProc;
+      ///   const DendroIntL idealSplitterRank     = double(totalNumElements) * (rProc+1) / nProc;
+      ///   const DendroIntL accptSplitterRankMin =  idealSplitterRankPrev * sfc_tol + idealSplitterRank * (1-sfc_tol);
+      ///   const DendroIntL accptSplitterRankMax =  idealSplitterRankPrev * -sfc_tol + idealSplitterRank * (1+sfc_tol);
 
-        // Search for our end splitter.
-        ot::TreeNode<C,dim> subtree;
-        ot::TreeNode<C,dim> afterSubtree;  // If there is a split, the original value won't matter.
-        ot::RotI pRot = 0;
-        ot::RotI afterPRot = 0;
-        DendroIntL parentPreRank = 0;
-        DendroIntL parentPostRank = totalNumElements;
+      ///   // Search for our end splitter.
+      ///   ot::TreeNode<C,dim> subtree;
+      ///   ot::TreeNode<C,dim> afterSubtree;  // If there is a split, the original value won't matter.
+      ///   ot::RotI pRot = 0;
+      ///   ot::RotI afterPRot = 0;
+      ///   DendroIntL parentPreRank = 0;
+      ///   DendroIntL parentPostRank = totalNumElements;
 
-        while (!(accptSplitterRankMin <= parentPostRank
-                                      && parentPostRank <= accptSplitterRankMax)
-            && subtree.getLevel() < m_uiMaxDepth)
-        {
-          // Lookup tables to apply rotations.
-          const ot::ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*NUM_CHILDREN];
-          const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NUM_CHILDREN];
+      ///   while (!(accptSplitterRankMin <= parentPostRank
+      ///                                 && parentPostRank <= accptSplitterRankMax)
+      ///       && subtree.getLevel() < m_uiMaxDepth)
+      ///   {
+      ///     // Lookup tables to apply rotations.
+      ///     const ot::ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*NUM_CHILDREN];
+      ///     const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NUM_CHILDREN];
 
-          ot::TreeNode<C,dim> childSubtree;
-          ot::ChildI child_sfc, child_m;
-          DendroIntL childPreRank = parentPreRank;
-          DendroIntL childPostRank;
+      ///     ot::TreeNode<C,dim> childSubtree;
+      ///     ot::ChildI child_sfc, child_m;
+      ///     DendroIntL childPreRank = parentPreRank;
+      ///     DendroIntL childPostRank;
 
-          // Get child subtrees and compute child ranks.
-          for (child_sfc = 0; child_sfc < NUM_CHILDREN; child_sfc++)
-          {
-             child_m = rot_perm[child_sfc];
-             childSubtree = subtree.getChildMorton(child_m);
+      ///     // Get child subtrees and compute child ranks.
+      ///     for (child_sfc = 0; child_sfc < NUM_CHILDREN; child_sfc++)
+      ///     {
+      ///        child_m = rot_perm[child_sfc];
+      ///        childSubtree = subtree.getChildMorton(child_m);
 
-             DendroIntL overlapNumElements = 1u;
-             for (int d = 0; d < dim; d++)
-             {
-               C x, y;
+      ///        DendroIntL overlapNumElements = 1u;
+      ///        for (int d = 0; d < dim; d++)
+      ///        {
+      ///          C x, y;
 
-               /// C overlapMax = min(childSubtree.maxX(d), subdomainBBMaxs[d]);
-               x = childSubtree.maxX(d);
-               y = subdomainBBMaxs[d];
-               C overlapMax = (x <= y ? x : y);
+      ///          /// C overlapMax = min(childSubtree.maxX(d), subdomainBBMaxs[d]);
+      ///          x = childSubtree.maxX(d);
+      ///          y = subdomainBBMaxs[d];
+      ///          C overlapMax = (x <= y ? x : y);
 
-               /// C overlapMin = max(childSubtree.minX(d), subdomainBBMins[d]);
-               x = childSubtree.minX(d);
-               y = subdomainBBMins[d];
-               C overlapMin = (x >= y ? x : y);
+      ///          /// C overlapMin = max(childSubtree.minX(d), subdomainBBMins[d]);
+      ///          x = childSubtree.minX(d);
+      ///          y = subdomainBBMins[d];
+      ///          C overlapMin = (x >= y ? x : y);
 
-               overlapNumElements *= (overlapMax - overlapMin) >> (m_uiMaxDepth - level);
-             }
+      ///          overlapNumElements *= (overlapMax - overlapMin) >> (m_uiMaxDepth - level);
+      ///        }
 
-             childPostRank = childPreRank + overlapNumElements;
+      ///        childPostRank = childPreRank + overlapNumElements;
 
-             if (childPreRank < idealSplitterRank
-                             && idealSplitterRank <= childPostRank)
-               break;
-             else
-               childPreRank = childPostRank;
-          }
+      ///        if (childPreRank < idealSplitterRank
+      ///                        && idealSplitterRank <= childPostRank)
+      ///          break;
+      ///        else
+      ///          childPreRank = childPostRank;
+      ///     }
 
-          // Descend to the child that contains the ideal splitter rank.
+      ///     // Descend to the child that contains the ideal splitter rank.
 
-          // Before erasing the parent, do bookkeeping for element after new subtree.
-          if (child_sfc < NUM_CHILDREN)
-          {
-            afterSubtree = subtree.getChildMorton(rot_perm[child_sfc+1]);
-            afterPRot = orientLookup[ rot_perm[child_sfc+1] ];
-          }
-          else
-          {
-            afterSubtree = afterSubtree.getChildMorton(rotations[afterPRot*rotOffset + 0]);
-            afterPRot = HILBERT_TABLE[afterPRot*NUM_CHILDREN + rotations[afterPRot*rotOffset + 0]];
-          }
+      ///     // Before erasing the parent, do bookkeeping for element after new subtree.
+      ///     if (child_sfc < NUM_CHILDREN)
+      ///     {
+      ///       afterSubtree = subtree.getChildMorton(rot_perm[child_sfc+1]);
+      ///       afterPRot = orientLookup[ rot_perm[child_sfc+1] ];
+      ///     }
+      ///     else
+      ///     {
+      ///       afterSubtree = afterSubtree.getChildMorton(rotations[afterPRot*rotOffset + 0]);
+      ///       afterPRot = HILBERT_TABLE[afterPRot*NUM_CHILDREN + rotations[afterPRot*rotOffset + 0]];
+      ///     }
 
-          subtree = childSubtree;
-          pRot = orientLookup[child_m];
-          parentPreRank = childPreRank;
-          parentPostRank = childPostRank;
-        }
+      ///     subtree = childSubtree;
+      ///     pRot = orientLookup[child_m];
+      ///     parentPreRank = childPreRank;
+      ///     parentPostRank = childPostRank;
+      ///   }
 
-        // Share splitter ranks to determine who owns what part of the tree.
-        parentPreRank = 0;
-        treePartBack = subtree;
+      ///   // Share splitter ranks to determine who owns what part of the tree.
+      ///   parentPreRank = 0;
+      ///   treePartBack = subtree;
 
-        // treePartFront of next proc and treePartBack of us.
-        SFC_Tree<C,dim>::firstDescendant(afterSubtree, afterPRot, level);
-        SFC_Tree<C,dim>::lastDescendant(treePartBack, pRot, level);
+      ///   // treePartFront of next proc and treePartBack of us.
+      ///   SFC_Tree<C,dim>::firstDescendant(afterSubtree, afterPRot, level);
+      ///   SFC_Tree<C,dim>::lastDescendant(treePartBack, pRot, level);
 
-        MPI_Request reqRank, reqFrontTN;
-        MPI_Status status;
-        if (rProc < nProc - 1)
-        {
-          par::Mpi_Isend(&parentPostRank, 1, rProc+1, 24, comm, &reqRank);
-          par::Mpi_Isend(&afterSubtree, 1, rProc+1, 13, comm, &reqFrontTN);
-        }
-        if (rProc > 0)
-        {
-          par::Mpi_Recv(&parentPreRank, 1, rProc-1, 24, comm, &status);
-          par::Mpi_Recv(&treePartFront, 1, rProc-1, 13, comm, &status);
-        }
-        if (rProc < nProc - 1)
-        {
-          MPI_Wait(&reqRank, &status);
-          MPI_Wait(&reqFrontTN, &status);
-        }
+      ///   MPI_Request reqRank, reqFrontTN;
+      ///   MPI_Status status;
+      ///   if (rProc < nProc - 1)
+      ///   {
+      ///     par::Mpi_Isend(&parentPostRank, 1, rProc+1, 24, comm, &reqRank);
+      ///     par::Mpi_Isend(&afterSubtree, 1, rProc+1, 13, comm, &reqFrontTN);
+      ///   }
+      ///   if (rProc > 0)
+      ///   {
+      ///     par::Mpi_Recv(&parentPreRank, 1, rProc-1, 24, comm, &status);
+      ///     par::Mpi_Recv(&treePartFront, 1, rProc-1, 13, comm, &status);
+      ///   }
+      ///   if (rProc < nProc - 1)
+      ///   {
+      ///     MPI_Wait(&reqRank, &status);
+      ///     MPI_Wait(&reqFrontTN, &status);
+      ///   }
 
-        locNumActiveElements = parentPostRank - parentPreRank;
-      }
-      else
-      {
-        ot::RotI tpFrontRot = 0;
-        ot::RotI tpBackRot = 0;
-        SFC_Tree<C,dim>::firstDescendant(treePartFront, tpFrontRot, level);
-        SFC_Tree<C,dim>::lastDescendant(treePartBack, tpBackRot, level);
-      }
+      ///   locNumActiveElements = parentPostRank - parentPreRank;
+      /// }
+      /// else
+      /// {
+      ///   ot::RotI tpFrontRot = 0;
+      ///   ot::RotI tpBackRot = 0;
+      ///   SFC_Tree<C,dim>::firstDescendant(treePartFront, tpFrontRot, level);
+      ///   SFC_Tree<C,dim>::lastDescendant(treePartBack, tpBackRot, level);
+      /// }
 
       // ------------------------------------------
 
 
       /// // Simpler way for debugging.
 
-      /// // Generate elements in lexicographic order.
-      /// DendroIntL genPart = totalNumElements / nProc +
-      ///                      (rProc < totalNumElements % nProc);
-      /// DendroIntL genStart = (totalNumElements / nProc) * rProc +
-      ///                       (rProc < totalNumElements % nProc ? rProc : totalNumElements % nProc);
-      /// std::array<C,dim> genLimits;
-      /// std::array<C,dim> genStrides;
-      /// std::array<C,dim> genIdx;
-      /// for (int d = 0; d < dim; d++)
-      ///   genLimits[d] = 1u << extentPowers[d];
-      /// genStrides[0] = 1;
-      /// for (int d = 1; d < dim; d++)
-      ///   genStrides[d] = genStrides[d-1] * genLimits[d-1];
-      /// DendroIntL remainder = genStart;
-      /// for (int d = dim-1; d >= 0; d--)
-      /// {
-      ///   genIdx[d] = remainder / genStrides[d];
-      ///   remainder -= genIdx[d] * genStrides[d];
-      /// }
+      // Generate elements in lexicographic order.
+      DendroIntL genPart = totalNumElements / nProc +
+                           (rProc < totalNumElements % nProc);
+      DendroIntL genStart = (totalNumElements / nProc) * rProc +
+                            (rProc < totalNumElements % nProc ? rProc : totalNumElements % nProc);
+      std::array<C,dim> genLimits;
+      std::array<C,dim> genStrides;
+      std::array<C,dim> genIdx;
+      for (int d = 0; d < dim; d++)
+        genLimits[d] = 1u << extentPowers[d];
+      genStrides[0] = 1;
+      for (int d = 1; d < dim; d++)
+        genStrides[d] = genStrides[d-1] * genLimits[d-1];
+      DendroIntL remainder = genStart;
+      for (int d = dim-1; d >= 0; d--)
+      {
+        genIdx[d] = remainder / genStrides[d];
+        remainder -= genIdx[d] * genStrides[d];
+      }
 
-      /// std::vector<ot::TreeNode<C, dim>> treePart;
-      /// ot::TreeNode<C, dim> elem;
-      /// elem.setLevel(level);
-      /// for (DendroIntL ii = 0; ii < genPart; ii++)
-      /// {
-      ///   for (int d = 0; d < dim; d++)
-      ///     elem.setX(d, genIdx[d] * elemSz);
+      /// fprintf(stderr, "[%d] Generate starting at (%llu, %llu, %llu)\n",
+      ///     rProc, genIdx[0], genIdx[1], genIdx[2]);
 
-      ///   treePart.emplace_back(elem);
+      std::vector<ot::TreeNode<C, dim>> treePart;
+      ot::TreeNode<C, dim> elem;
+      elem.setLevel(level);
+      for (DendroIntL ii = 0; ii < genPart; ii++)
+      {
+        for (int d = 0; d < dim; d++)
+          elem.setX(d, genIdx[d] * elemSz);
 
-      ///   incrementFor<C,dim>(genIdx, genLimits);
-      /// }
+        treePart.emplace_back(elem);
 
-      /// bool isActive0 = (treePart.size() > 0);
-      /// MPI_Comm activeComm0;
-      /// MPI_Comm_split(comm, (treePart.size() ? 1 : MPI_UNDEFINED), rProc, &activeComm0);
+        incrementFor<C,dim>(genIdx, genLimits);
+      }
 
-      /// /// for (DendroIntL ii = 0; ii < treePart.size(); ii++)
-      /// ///   fprintf(stderr, "%*slev==%u, coords==%s\n", 30*rProc, "",
-      /// ///       treePart[ii].getLevel(), ot::dbgCoordStr(treePart[ii], 2).c_str());
+      /// fprintf(stderr, "[%d] Ended generating at (%llu, %llu, %llu)\n",
+      ///     rProc, genIdx[0], genIdx[1], genIdx[2]);
 
-      /// if (isActive0)
-      ///   SFC_Tree<C, dim>::distTreeSort(treePart, sfc_tol, activeComm0);
+      bool isActive0 = (treePart.size() > 0);
+      MPI_Comm activeComm0;
+      MPI_Comm_split(comm, (treePart.size() ? 1 : MPI_UNDEFINED), rProc, &activeComm0);
 
-      /// locNumActiveElements = treePart.size();
-      /// treePartFront = treePart.front();
-      /// treePartBack = treePart.back();
+      /// for (DendroIntL ii = 0; ii < treePart.size(); ii++)
+      ///   fprintf(stderr, "%*slev==%u, coords==%s\n", 30*rProc, "",
+      ///       treePart[ii].getLevel(), ot::dbgCoordStr(treePart[ii], 2).c_str());
+
+      if (isActive0)
+        SFC_Tree<C, dim>::distTreeSort(treePart, sfc_tol, activeComm0);
+
+      locNumActiveElements = treePart.size();
+      treePartFront = treePart.front();
+      treePartBack = treePart.back();
 
       // ------------------------------------------
+
+
+      /// DendroIntL locNumEle = locNumActiveElements;
+      /// DendroIntL globNumEle = 0;
+      /// par::Mpi_Allreduce(&locNumEle, &globNumEle, 1, MPI_SUM, comm);
+      /// fprintf(stderr, "[%d] during construction: globNumEle==%llu\n", rProc, globNumEle);
 
 
       // Now we know how many elements would go to each proc,
@@ -304,6 +316,9 @@ namespace ot
       std::vector<ot::TNPoint<C,dim>> nodeList;
       std::vector<ot::TNPoint<C,dim>> nodeListBuffer;
 
+      DendroIntL locTraversedEle = 0;
+      DendroIntL globTraversedEle = 0;
+
       if (isActive)
       {
         // Generate local points.
@@ -311,6 +326,11 @@ namespace ot
 
         // Invariant: A TreeNode on the stack contains a descendant subtree
         //            that corresponds to a locally owned element.
+
+        /// fprintf(stderr, "%*s [%d] Front==(%d)%s  Back==(%d)%s\n",
+        ///     15*rProc, "", rProc,
+        ///     treePartFront.getLevel(), treePartFront.getBase32Hex().data(),
+        ///     treePartBack.getLevel(), treePartBack.getBase32Hex().data());
 
         std::vector<ot::TreeNode<C,dim>> treeStack;
         std::vector<ot::RotI> rotStack;
@@ -325,11 +345,16 @@ namespace ot
           treeStack.pop_back();
           rotStack.pop_back();
 
+          /// fprintf(stderr, "%*s [%d] next subtree: (%d)%s\n",
+          ///     15*rProc, "", rProc, subtree.getLevel(), subtree.getBase32Hex().data());
+
           //
           // Leaf: A local element. Add its points.
           //
           if (subtree.getLevel() == level)
           {
+            locTraversedEle++;
+
             const ot::Element<C,dim> element(subtree);
             DendroIntL nodeListOldSz = nodeList.size();
 
@@ -418,33 +443,31 @@ namespace ot
                 }
               }
 
-              if (!keepNextChild)
+
+              if (child.isAncestorInclusive(treePartBack))
+                keepNextChild = true;
+
+              if (keepNextChild && intersectsSubdomainBB)
               {
-                if (child.isAncestorInclusive(treePartBack))
-                {
-                  if (intersectsSubdomainBB)
-                  {
-                    treeStack.emplace_back(child);
-                    rotStack.push_back(cRot);
-                  }
-                  keepNextChild = true;
-                }
+                treeStack.emplace_back(child);
+                rotStack.push_back(cRot);
               }
-              else
-              {
-                if (intersectsSubdomainBB)
-                {
-                  treeStack.emplace_back(child);
-                  rotStack.push_back(cRot);
-                }
-                if (child.isAncestorInclusive(treePartFront))
-                  keepNextChild = false;
-              }
+
+              if (child.isAncestorInclusive(treePartFront))
+                keepNextChild = false;
             }
           }
         }
 
       }
+
+      /// par::Mpi_Allreduce(&locTraversedEle, &globTraversedEle, 1, MPI_SUM, comm);
+      /// fprintf(stderr, "[%d] during construction: globTraversedEle==%llu\n", rProc, globTraversedEle);
+
+      /// DendroIntL locNumNodes = nodeList.size();
+      /// DendroIntL globNumNodes = 0;
+      /// par::Mpi_Allreduce(&locNumNodes, &globNumNodes, 1, MPI_SUM, comm);
+      /// fprintf(stderr, "[%d] during construction: globNumNodes==%llu\n", rProc, globNumNodes);
 
       // Finish constructing.
       newSubDA.construct(nodeList, eleOrder, &treePartFront, &treePartBack, isActive, comm, activeComm);
