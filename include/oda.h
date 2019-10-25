@@ -81,7 +81,7 @@ class DA;
  * @param [out] newSubDA The resulting DA object.
  */
 template <unsigned int dim>
-void constructRegularSubdomainDA(DA<dim> &newSubDA,
+DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
                                  unsigned int level,
                                  std::array<unsigned int, dim> extentPowers,
                                  unsigned int eleOrder,
@@ -100,7 +100,7 @@ class DA
     using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
     using DomainDeciderT_TN = std::function<bool(const TreeNode<C, dim> &elemTreeNode)>;
 
-    friend void constructRegularSubdomainDA<dim>(DA<dim> &newSubDA,
+    friend DendroIntL constructRegularSubdomainDA<dim>(DA<dim> &newSubDA,
                                                  unsigned int level,
                                                  std::array<unsigned int, dim> extentPowers,
                                                  unsigned int eleOrder,

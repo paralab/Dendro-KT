@@ -65,7 +65,7 @@ namespace ot
 
 
     template <unsigned int dim>
-    void constructRegularSubdomainDA(DA<dim> &newSubDA,
+    DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
                                      unsigned int level,
                                      std::array<unsigned int, dim> extentPowers,
                                      unsigned int eleOrder,
@@ -448,6 +448,8 @@ namespace ot
 
       // Finish constructing.
       newSubDA.construct(nodeList, eleOrder, &treePartFront, &treePartBack, isActive, comm, activeComm);
+
+      return locNumActiveElements;
     }
 
 
