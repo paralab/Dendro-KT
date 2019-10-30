@@ -96,6 +96,18 @@ namespace ot
       MPI_Comm_size(comm, &nProc);
       MPI_Comm_rank(comm, &rProc);
 
+      for (int d = 0; d < dim; d++)
+      {
+        if (level < extentPowers[d])
+        {
+          fprintf(stderr, "WARNING [constructRegularSubdomainDA()]: "
+                          "level(%u) must be >= extentPowers(%u). "
+                          "Increasing level to %u to compensate.\n",
+                          level, extentPowers[d], extentPowers[d]);
+          level = extentPowers[d];
+        }
+      }
+
       // TODO we can easily accept the subdomain box coordinates as parameters.
 
       // Establish the subdomain box.

@@ -75,8 +75,7 @@ class DA;
  * @brief Construct a DA representing the nodes of a hypercuboid with grid
  *         extents pow(2,a) * pow(2,b) * pow(2,c) * pow(2,d) (in 4D).
  * @param level Level of the uniform refinement.
- * @param extentPowers Array of powers {a,b,c,...} depending on the dimension.
- *                     a,b,c,... <= level.
+ * @param extentPowers Array of powers {a,b,c,...} depending on the dimension. a,b,c,... <= level.
  * @param eleOrder Elemental order.
  * @param [out] newSubDA The resulting DA object.
  */
