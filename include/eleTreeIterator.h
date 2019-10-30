@@ -83,9 +83,10 @@ template <typename T, unsigned int dim> struct TreeAddr;
  * objects which point to the same ElementLoop, because they will not be independent.
  */
 
-/// extern int DBG_rProc;
-/// extern int DBG_rProc;
-
+namespace par {
+  extern int DBG_rProc;
+  extern int DBG_nProc;
+}
 
 /**
  * @class TreeAddr
@@ -942,14 +943,14 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
   unsigned int fillCheck = 0;
   if(!(curEnd - curBegin <= npe))
   {
-    /// fprintf(stderr, "[%d] ASSERT FAIL curBegin==%llu, curEnd==%llu\n", DBG_rProc, curBegin, curEnd);
+    fprintf(stderr, "[%d] ASSERT FAIL curBegin==%llu, curEnd==%llu\n", par::DBG_rProc, curBegin, curEnd);
     for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
     {
       const unsigned int nodeRank = ot::TNPoint<T, dim>::get_lexNodeRank( m_curSubtree,
                                                                           sibNodeCoords[nIdx],
                                                                           m_eleOrder);
-      /// fprintf(stderr, "[%d]  %*s   nodeRank==%2u,  node==%s\n",
-      ///     DBG_rProc, 20*DBG_rProc, "", nodeRank, sibNodeCoords[nIdx].getBase32Hex(5).data());
+      fprintf(stderr, "[%d]  %*s   nodeRank==%2u,  node==%s\n",
+          par::DBG_rProc, 20*par::DBG_rProc, "", nodeRank, sibNodeCoords[nIdx].getBase32Hex(5).data());
     }
   }
   assert(curEnd - curBegin <= npe);

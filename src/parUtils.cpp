@@ -18,6 +18,8 @@
 
 namespace par {
 
+  int DBG_rProc, DBG_nProc;
+
   unsigned int splitCommBinary( MPI_Comm orig_comm, MPI_Comm *new_comm) {
     int npes, rank;
 
@@ -296,6 +298,22 @@ namespace par {
 
     return 0;
   }//end function
+
+
+
+  void waitForDebugger(MPI_Comm comm, int commRank)
+  {
+    if (getenv("USE_MPI_DEBUGGER") != NULL && commRank == 0)
+    {
+      volatile int goAhead = 0;
+      fprintf(stderr, "pid %ld waiting for debugger\n", (long) getpid());
+      while (goAhead == 0)
+      {
+        /* Wait for change in `goAhead' by the debugger. */
+      }
+    }
+    MPI_Barrier(comm);
+  }
 
 
 }// end namespace
