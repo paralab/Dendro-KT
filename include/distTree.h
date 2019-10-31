@@ -164,14 +164,14 @@ namespace ot
     m_originalTreePartSz = treePart.size();
     m_filteredTreePartSz = treePart.size();
 
-    m_treePartFiltered.clear();
-    std::swap(m_treePartFiltered, treePart);  // Steal the tree vector.
-
     if (treePart.size())
     {
       m_treePartFront = treePart.front();
       m_treePartBack = treePart.back();
     }
+
+    m_treePartFiltered.clear();
+    std::swap(m_treePartFiltered, treePart);  // Steal the tree vector.
   }
 
 
