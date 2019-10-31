@@ -7,7 +7,6 @@
  **/
 
 #include "oda.h"
-#include "parUtils.h"
 
 #include <algorithm>
 
@@ -50,27 +49,6 @@ namespace ot
     DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
-        //DEBUG
-          fprintf(stderr, "%*s[%d] ====Elem coordinates====\n",
-              25*(par::DBG_rProc), "", (par::DBG_rProc));
-        std::vector<int> nodeCodes(inTree.size(), 0);
-        for (int ii = 0; ii < inTree.size(); ii++)
-        {
-          for (int d = 0; d < dim; d++)
-            nodeCodes[ii] = (10)*nodeCodes[ii] + inTree[ii].getX(dim-1-d);
-        }
-        std::sort(nodeCodes.begin(), nodeCodes.end());
-        std::array<int, 4> ncBuffer;
-        for (int ii = 0; ii < nodeCodes.size(); ii += 4)
-        {
-          ncBuffer.fill(-1);
-          for (int jj = 0; jj < 4 && ii + jj < nodeCodes.size(); jj++)
-            ncBuffer[jj] = nodeCodes[ii+jj];
-          fprintf(stderr, "%*s[%d] %03d  %03d  %03d  %03d\n",
-              25*(par::DBG_rProc), "", (par::DBG_rProc),
-              ncBuffer[0], ncBuffer[1], ncBuffer[2], ncBuffer[3]);
-        }
-
         ot::DistTree<C, dim> distTree(inTree);   // Uses default domain decider.
         construct(distTree, comm, order, grainSz, sfc_tol);
     }
@@ -145,27 +123,6 @@ namespace ot
         // Finish generating nodes from the tree - element-interior nodes.
         for (const TreeNode<C, dim> &elem : inTreeFiltered)
             ot::Element<C,dim>(elem).appendInteriorNodes(order, nodeList);
-      }
-
-      //DEBUG
-        fprintf(stderr, "%*s[%d] ====Node coordinates====\n",
-            25*(par::DBG_rProc), "", (par::DBG_rProc));
-      std::vector<int> nodeCodes(nodeList.size(), 0);
-      for (int ii = 0; ii < nodeList.size(); ii++)
-      {
-        for (int d = 0; d < dim; d++)
-          nodeCodes[ii] = (10)*nodeCodes[ii] + nodeList[ii].getX(dim-1-d);
-      }
-      std::sort(nodeCodes.begin(), nodeCodes.end());
-      std::array<int, 5> ncBuffer;
-      for (int ii = 0; ii < nodeCodes.size(); ii += 5)
-      {
-        ncBuffer.fill(-1);
-        for (int jj = 0; jj < 5 && ii + jj < nodeCodes.size(); jj++)
-          ncBuffer[jj] = nodeCodes[ii+jj];
-        fprintf(stderr, "%*s[%d] %03d  %03d  %03d  %03d  %03d\n",
-            25*(par::DBG_rProc), "", (par::DBG_rProc),
-            ncBuffer[0], ncBuffer[1], ncBuffer[2], ncBuffer[3], ncBuffer[4]);
       }
 
       // Finish constructing.
