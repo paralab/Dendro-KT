@@ -186,63 +186,45 @@ int createRegularOctree(std::vector<TreeNode<T, dim>>& out,
   //
   if (myCount)
   {
-    const RankI frontTNRank = prevCount;
-    const RankI backTNRank = prevCount + myCount - 1;
+    // Breadth-first tree traversal, compute ranks to determine acceptance.
+    // Invariant: The TreeNodes in out are exactly the subtrees of the current
+    //            level that have a nonempty overlap with designated rank interval.
+    //
+    std::vector<TreeNode<T, dim>> tnBuffer;
+    std::vector<size_t> rankBuffer, rankOut;
 
-    // Left bound.
-    TreeNode<T, dim> frontTreeNode;
-    RankI subtreeSz = totalCount;
-    RankI tnRank = 0;
-    while (frontTreeNode.getLevel() < lev)
+    out.emplace_back();       // Root of tree. Definitely overlaps.
+    rankOut.emplace_back(0);  //
+
+    while (/*tnBuffer.size() > 0 && */ out[0].getLevel() < lev)
     {
-      subtreeSz >>= dim;
-      unsigned int child_m = (frontTNRank - tnRank) / subtreeSz;
-      frontTreeNode = frontTreeNode.getChildMorton(child_m);
-    }
-
-    // Right bound.
-    TreeNode<T, dim> backTreeNode;
-    subtreeSz = totalCount;
-    tnRank = 0;
-    while (backTreeNode.getLevel() < lev)
-    {
-      subtreeSz >>= dim;
-      unsigned int child_m = (backTNRank - tnRank) / subtreeSz;
-      backTreeNode = backTreeNode.getChildMorton(child_m);
-    }
-
-    TreeNode<T, dim> subtreeRoot = frontTreeNode;
-    while (!(subtreeRoot.isAncestorInclusive(backTreeNode)))
-      subtreeRoot = subtreeRoot.getParent();
-
-    constexpr unsigned int NUM_CHILDREN = 1u << dim;
-
-    // Add TreeNodes using breadth-first traversal.
-    std::vector<TreeNode<T, dim>> buffer;
-    out.push_back(subtreeRoot);
-    while (out.front().getLevel() < lev)
-    {
-      const unsigned int parentLev = out.front().getLevel();
-
-      for (const TreeNode<T, dim> & parent : out)
+      for (size_t ii = 0; ii < out.size(); ii++)
       {
-        unsigned int childFront = 0;
-        unsigned int childBack = NUM_CHILDREN - 1;
+        const TreeNode<T, dim> &parent = out[ii];
+        const size_t &parentRank = rankOut[ii];
+        const size_t childSize = 1u << (dim * (lev - parent.getLevel() - 1));
 
-        if (parent.isAncestor(frontTreeNode))
-          childFront = frontTreeNode.getMortonIndex(parentLev+1);
-        if (parent.isAncestor(backTreeNode))
-          childBack = backTreeNode.getMortonIndex(parentLev+1);
+        // Test each child for intersection with rank interval.
+        for (ChildI child_m = 0; child_m < (1u << dim); child_m++)
+        {
+          const size_t childRank = parentRank + childSize * child_m;
+          if (prevCount < childRank + childSize &&
+                          childRank < prevCount + myCount)
+          {
+            tnBuffer.emplace_back(parent.getChildMorton(child_m));
+            rankBuffer.emplace_back(childRank);
+          }
+        }
 
-        for (unsigned int child_m = childFront; child_m <= childBack; child_m++)
-          buffer.push_back(parent.getChildMorton(child_m));
       }
 
+      // Swap buffers.
       out.clear();
-      std::swap(buffer, out);
+      rankOut.clear();
+      std::swap(tnBuffer, out);
+      std::swap(rankBuffer, rankOut);
     }
-  }//if(myCount)
-
+  }
 
   //
   // Re-partition the points according to the SFC order.
