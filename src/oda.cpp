@@ -121,8 +121,15 @@ namespace ot
                                                        activeComm);
 
         // Finish generating nodes from the tree - element-interior nodes.
+        // The neighborhood space (complement of open cell type) for interior
+        // nodes is 0000 (no shared neighbors on any axis). The only valid
+        // neighbor index is 0, which refers to the host cell. We already
+        // know the host cell exists. Therefore flag is [0]->1, [>0]->0.
+        size_t intNodeIdx = nodeList.size();
         for (const TreeNode<C, dim> &elem : inTreeFiltered)
             ot::Element<C,dim>(elem).appendInteriorNodes(order, nodeList);
+        while (intNodeIdx < nodeList.size())
+          nodeList[intNodeIdx++].setExtantCellFlag(1u);
       }
 
       // Finish constructing.
