@@ -23,7 +23,8 @@ int main(int argc, char *argv[])
 
   /// bool success = testNull();
   /// bool success = testDummySubclass();
-  bool success = testTopDownSubclass();
+  /// bool success = testTopDownSubclass();
+  bool success = testDummySubclass() && testTopDownSubclass();
   std::cout << "Result: " << (success ? "success" : "failure") << "\n";
 
   MPI_Finalize();
@@ -53,11 +54,11 @@ bool testNull()
 
 
 template <unsigned int dim>
-class DummySubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outputs<double>>
+class DummySubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>
 {
-  using FrameT = ot::Frame<dim, ot::Inputs<double>, ot::Outputs<double>>;
+  using FrameT = ot::Frame<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>;
   public:
-    virtual void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
+    void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
     {
       if (this->getCurrentSubtree().getLevel() < 2)
         *extantChildren = (1 << (1u << dim)) - 1;  // All children.
@@ -69,15 +70,16 @@ class DummySubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outpu
                 << "\n";
     }
 
-    virtual void bottomUpNodes(FrameT &parentFrame, ot::ExtantCellFlagT extantChildren)
+    void bottomUpNodes(FrameT &parentFrame, ot::ExtantCellFlagT extantChildren)
     {
       std::cout << "Bottom-up nodes on \t" << this->getCurrentSubtree() << "\n";
     }
 
-    virtual void parent2Child(FrameT &parentFrame, FrameT &childFrame)
+    // If these are commented out we should get a runtime NotImplemented warning.
+    void parent2Child(FrameT &parentFrame, FrameT &childFrame)
     {
     }
-    virtual void child2Parent(FrameT &parentFrame, FrameT &childFrame)
+    void child2Parent(FrameT &parentFrame, FrameT &childFrame)
     {
     }
 };
@@ -125,11 +127,11 @@ bool testDummySubclass()
 
 
 template <unsigned int dim>
-class TopDownSubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>>
+class TopDownSubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>
 {
-  using FrameT = ot::Frame<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>>;
+  using FrameT = ot::Frame<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>;
   public:
-    virtual void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
+    void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
     {
       ot::sfc_tree_utils::topDownNodes(parentFrame, extantChildren);
 
@@ -139,14 +141,14 @@ class TopDownSubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<uns
         *extantChildren = 0u;
     }
 
-    virtual void bottomUpNodes(FrameT &parentFrame, ot::ExtantCellFlagT extantChildren)
+    void bottomUpNodes(FrameT &parentFrame, ot::ExtantCellFlagT extantChildren)
     {
     }
 
-    virtual void parent2Child(FrameT &parentFrame, FrameT &childFrame)
+    void parent2Child(FrameT &parentFrame, FrameT &childFrame)
     {
     }
-    virtual void child2Parent(FrameT &parentFrame, FrameT &childFrame)
+    void child2Parent(FrameT &parentFrame, FrameT &childFrame)
     {
     }
 };

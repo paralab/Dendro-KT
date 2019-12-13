@@ -89,37 +89,46 @@ namespace ot
   // Class declarations
   // ------------------------------
 
+  /*
+   * SFC_TreeLoop is templated on input types, output types, and frame type
+   *     in order that allocating call stack can be done by the base class.
+   * SFC_TreeLoop also has a SubClass template parameter for static
+   *     polymorphism, thus avoiding virtual class methods.
+   */
+
   template <typename ...Types>
   class Inputs { };
 
   template <typename ...Types>
   class Outputs { };
 
-  template <unsigned int dim, class InputTypes, class OutputTypes>
+  template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteType>
   class SFC_TreeLoop;
 
-  template <unsigned int dim, class InputTypes, class OutputTypes>
+  template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteTreeLoop>
   class SubtreeInfo;
+
+  class DefaultSummary;
 
   // Usage:
   //   E.g., for the matvec evaluation, subclass from
-  //   - SFC_TreeLoop<dim, Inputs<TreeNode, double>, Outputs<double>>;
+  //   - SFC_TreeLoop<dim, Inputs<TreeNode, double>, Outputs<double>,
+  //                       DefaultSummary, ThisClass>;
   //
   //   E.g., for matrix assembly counting, subclass from
   //   - SFC_TreeLoop<dim,
   //                  Inputs<TreeNode, DendroIntL>,
-  //                  Outputs<TreeNode, TreeNode, DendroIntL, DendroIntL>>;
+  //                  Outputs<TreeNode, TreeNode, DendroIntL, DendroIntL>,
+  //                  DefaultSummary, ThisClass>;
   //
   //   E.g., for matrix assembly evaluation, subclass from
-  //   - SFC_TreeLoop<dim, Inputs<TreeNode, TreeNode>, Outputs<double>>
-
-  //TODO if we want additional singleton values per frame (i.e. not vector),
-  //can add another template parameter pack that defaults to empty....
+  //   - SFC_TreeLoop<dim, Inputs<TreeNode, TreeNode>, Outputs<double>,
+  //                       DefaultSummary, ThisClass>;
 
 
   using ExtantCellFlagT = unsigned short;  // TODO use TreeNode extant cell flag type.
 
-  template <unsigned int dim, class InputTypes, class OutputTypes>
+  template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteTreeLoop>
   class Frame;
 
   template <unsigned int dim, class InputTypes>
@@ -176,8 +185,9 @@ namespace ot
 
   namespace sfc_tree_utils
   {
-    template <unsigned int dim, class InputTypes, class OutputTypes>
-    void topDownNodes(Frame<dim, InputTypes, OutputTypes> &parentFrame,
+    // This will do the copying but you will have to take care of the summary.
+    template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteTreeLoop>
+    void topDownNodes(Frame<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop> &parentFrame,
                       ot::ExtantCellFlagT *extantChildren);
   }
 
@@ -188,37 +198,48 @@ namespace ot
   // ------------------------------
 
   //
+  // DefaultSummary
+  //
+  class DefaultSummary
+  {
+    LevI m_subtreeFinestLevel;
+  };
+
+
+  //
   // SFC_TreeLoop
   //
-  template <unsigned int dim, class InputTypes, class OutputTypes>
+  template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteType>
   class SFC_TreeLoop
   {
     static constexpr unsigned int NumChildren = 1u << dim;
     using C = unsigned int;
-    using FrameT = Frame<dim, InputTypes, OutputTypes>;
-    using SubtreeInfoT = SubtreeInfo<dim, InputTypes, OutputTypes>;
+    using FrameT = Frame<dim, InputTypes, OutputTypes, SummaryType, ConcreteType>;
+    using SubtreeInfoT = SubtreeInfo<dim, InputTypes, OutputTypes, SummaryType, ConcreteType>;
 
     friend SubtreeInfoT;
 
     protected:
       typename FrameInputs<dim, InputTypes>::DataStoreT   m_rootInputData;
       typename FrameOutputs<dim, OutputTypes>::DataStoreT m_rootOutputData;
+      SummaryType m_rootSummary;
       std::vector<FrameT> m_stack;
 
       // More stack-like things.
 
     public:
-      // SFC_TreeLoop() : constructor
-      SFC_TreeLoop()  //TODO
+      // Note that constructor is protected. Use concrete class constructor.
+
+      ConcreteType & asConcreteType()
       {
-        m_stack.emplace_back(m_rootInputData, m_rootOutputData);
+        return static_cast<ConcreteType &>(*this);
       }
 
       // reset()
       void reset()
       {
         m_stack.clear();
-        m_stack.emplace_back(m_rootInputData, m_rootOutputData);
+        m_stack.emplace_back(m_rootInputData, m_rootOutputData, m_rootSummary);
       }
 
       // getSubtreeInfo()
@@ -309,10 +330,10 @@ namespace ot
 
 
       // Must define
-      /// virtual void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
-      /// virtual void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
-      /// virtual void parent2Child(FrameT &parentFrame, FrameT &childFrame);
-      /// virtual void child2Parent(FrameT &parentFrame, FrameT &childFrame);
+      /// void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
+      /// void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
+      /// void parent2Child(FrameT &parentFrame, FrameT &childFrame);
+      /// void child2Parent(FrameT &parentFrame, FrameT &childFrame);
 
       /**
        *  topDownNodes()
@@ -321,6 +342,8 @@ namespace ot
        *
        *    2. Duplicate elements of the parent input buffers to
        *       incident child input buffers;
+       *
+       *    2.1. Initialize a summary object for each child.
        *
        *    3. Indicate to SFC_TreeLoop which children to traverse,
        *       by accumulating into the extantChildren bit array.
@@ -331,7 +354,15 @@ namespace ot
        *
        *  Utilities are provided to identify and iterate over incident children.
        */
-      virtual void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren) = 0;
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
+      {
+        static bool reentry = false;
+        if (!reentry && (reentry = true))
+          asConcreteType().topDownNodes(parentFrame, extantChildren);
+        else
+          fprintf(stderr, "Warning! NotImplemented topDownNodes() for type %s\n", typeid(asConcreteType()).name());
+        reentry = false;
+      }
 
       /**
        *  bottomUpNodes()
@@ -345,7 +376,15 @@ namespace ot
        *
        *  Utilities are provided to identify and iterate over incident children.
        */
-      virtual void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren) = 0;
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren)
+      {
+        static bool reentry = false;
+        if (!reentry && (reentry = true))
+          asConcreteType().bottomUpNodes(parentFrame, extantChildren);
+        else
+          fprintf(stderr, "Warning! NotImplemented bottomUpNodes() for type %s\n", typeid(asConcreteType()).name());
+        reentry = false;
+      }
 
       /**
        *  parent2Child()
@@ -353,7 +392,15 @@ namespace ot
        *    1. Make available to the inspector any missing node data
        *       due to hanging nodes, e.g., by applying interpolation.
        */
-      virtual void parent2Child(FrameT &parentFrame, FrameT &childFrame) = 0;
+      void parent2Child(FrameT &parentFrame, FrameT &childFrame)
+      {
+        static bool reentry = false;
+        if (!reentry && (reentry = true))
+          asConcreteType().parent2Child(parentFrame, childFrame);
+        else
+          fprintf(stderr, "Warning! NotImplemented parent2Child() for type %s\n", typeid(asConcreteType()).name());
+        reentry = false;
+      }
 
       /**
        *  child2Parent()
@@ -361,9 +408,25 @@ namespace ot
        *    1. Propagate hanging node data (possibly modified by the inspector)
        *       back to parent nodes, e.g., by applying interpolation transpose.
        */
-      virtual void child2Parent(FrameT &parentFrame, FrameT &childFrame) = 0;
+      void child2Parent(FrameT &parentFrame, FrameT &childFrame)
+      {
+        static bool reentry = false;
+        if (!reentry && (reentry = true))
+          asConcreteType().child2Parent(parentFrame, childFrame);
+        else
+          fprintf(stderr, "Warning! NotImplemented child2Parent() for type %s\n", typeid(asConcreteType()).name());
+        reentry = false;
+      }
 
     protected:
+      // SFC_TreeLoop() : constructor
+      SFC_TreeLoop()  //TODO
+      {
+        m_stack.emplace_back(m_rootInputData, m_rootOutputData, m_rootSummary);
+        // Note that the concrete class is responsible to
+        // initialize the root data and summary.
+      }
+
       const TreeNode<C,dim> & getCurrentSubtree()
       {
         assert (m_stack.size() > 0);
@@ -376,21 +439,23 @@ namespace ot
   //
   // Frame
   //
-  template <unsigned int dim, class InputTypes, class OutputTypes>
+  template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteTreeLoop>
   class Frame
   {
     using C = unsigned int;
     static constexpr unsigned int NumChildren = 1u << dim;
 
-    friend SFC_TreeLoop<dim, InputTypes, OutputTypes>;
-    friend SubtreeInfo<dim, InputTypes, OutputTypes>;
+    friend SFC_TreeLoop<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop>;
+    friend SubtreeInfo<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop>;
 
     public:
       // Frame()
       Frame(typename FrameInputs<dim, InputTypes>::DataStoreT   &rootInputData,
-            typename FrameOutputs<dim, OutputTypes>::DataStoreT &rootOutputData)
+            typename FrameOutputs<dim, OutputTypes>::DataStoreT &rootOutputData,
+            SummaryType &rootSummary)
         : i(rootInputData),
           o(rootOutputData),
+          mySummaryHandle(rootSummary),
           m_parentFrame(nullptr),
           m_currentSubtree()
       {
@@ -404,6 +469,7 @@ namespace ot
       Frame(Frame *parentFrame, ChildI child, TreeNode<C,dim> &&subtree, RotI pRot)
         : i(parentFrame->i.childData[child]),
           o(parentFrame->o.childData[child]),
+          mySummaryHandle(parentFrame->childSummaries[child]),
           m_parentFrame(parentFrame),
           m_currentSubtree(subtree),
           m_pRot(pRot)
@@ -442,6 +508,8 @@ namespace ot
     public:
       FrameInputs<dim, InputTypes> i;
       FrameOutputs<dim, OutputTypes> o;
+      SummaryType &mySummaryHandle;
+      SummaryType childSummaries[1u << dim];
 
     private:
       Frame *m_parentFrame;
@@ -495,14 +563,18 @@ namespace ot
   };
 
 
+  //TODO I think I should get rid of SubteeInfo and let the concrete tree loop class
+  // provide the info service, especially since we want to give an interface
+  // to the summary info, such as finest level.
+
   //
   // SubtreeInfo
   //
-  template <unsigned int dim, class InputTypes, class OutputTypes>
+  template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteTreeLoop>
   class SubtreeInfo
   {
     public:
-      SubtreeInfo(SFC_TreeLoop<dim, InputTypes, OutputTypes> *treeLoopPtr)
+      SubtreeInfo(SFC_TreeLoop<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop> *treeLoopPtr)
       {
         m_treeLoopPtr = treeLoopPtr;
         //TODO
@@ -515,7 +587,7 @@ namespace ot
       }
 
     private:
-      SFC_TreeLoop<dim, InputTypes, OutputTypes> *m_treeLoopPtr;
+      SFC_TreeLoop<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop> *m_treeLoopPtr;
 
   };
 
@@ -711,8 +783,8 @@ namespace ot
     //
     // topDownNodes generic utility (boilerplate code)
     //
-    template <unsigned int dim, typename ...ITypes, class OutputTypes>
-    void topDownNodes(Frame<dim, Inputs<TreeNode<unsigned int, dim>, ITypes...>, OutputTypes> &parentFrame,
+    template <unsigned int dim, typename ...ITypes, class OutputTypes, typename S, class CTL>
+    void topDownNodes(Frame<dim, Inputs<TreeNode<unsigned int, dim>, ITypes...>, OutputTypes, S, CTL> &parentFrame,
                       ot::ExtantCellFlagT *extantChildren)
     {
       // Count the number of nodes from the parent subtree that
