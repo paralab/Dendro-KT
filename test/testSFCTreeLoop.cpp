@@ -3,6 +3,8 @@
 #include "hcurvedata.h"
 #include "octUtils.h"
 
+#include "sfcTreeLoop_matvec.h"
+
 #include <stdio.h>
 #include <iostream>
 #include <bitset>

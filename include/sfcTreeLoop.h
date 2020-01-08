@@ -202,7 +202,9 @@ namespace ot
   //
   class DefaultSummary
   {
-    LevI m_subtreeFinestLevel;
+    public:
+      LevI m_subtreeFinestLevel;
+      size_t m_subtreeNodeCount;
   };
 
 
@@ -212,7 +214,6 @@ namespace ot
   template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteType>
   class SFC_TreeLoop
   {
-    static constexpr unsigned int NumChildren = 1u << dim;
     using C = unsigned int;
     using FrameT = Frame<dim, InputTypes, OutputTypes, SummaryType, ConcreteType>;
     using SubtreeInfoT = SubtreeInfo<dim, InputTypes, OutputTypes, SummaryType, ConcreteType>;
@@ -228,6 +229,8 @@ namespace ot
       // More stack-like things.
 
     public:
+      static constexpr unsigned int NumChildren = 1u << dim;
+
       // Note that constructor is protected. Use concrete class constructor.
 
       ConcreteType & asConcreteType()
@@ -338,15 +341,15 @@ namespace ot
       /**
        *  topDownNodes()
        *  is responsible to
-       *    1. Resize the child input buffers in the parent frame;
+       *    1. Resize the child input buffers (SFC order) in the parent frame;
        *
        *    2. Duplicate elements of the parent input buffers to
-       *       incident child input buffers;
+       *       incident child input buffers (SFC order);
        *
-       *    2.1. Initialize a summary object for each child.
+       *    2.1. Initialize a summary object for each child (SFC order).
        *
        *    3. Indicate to SFC_TreeLoop which children to traverse,
-       *       by accumulating into the extantChildren bit array.
+       *       by accumulating into the extantChildren bit array (Morton order).
        *
        *  Restrictions
        *    - MAY NOT resize or write to parent input buffers.
@@ -369,10 +372,10 @@ namespace ot
        *  is responsible to
        *    1. Resize the parent output buffers (handles to buffers are given);
        *
-       *    2. Merge results from incident child output buffers into
+       *    2. Merge results from incident child output buffers (SFC order) into
        *       the parent output buffers.
        *
-       *  The previously indicated extantChildren bit array will be supplied.
+       *  The previously indicated extantChildren bit array (Morton order) will be supplied.
        *
        *  Utilities are provided to identify and iterate over incident children.
        */
@@ -431,6 +434,12 @@ namespace ot
       {
         assert (m_stack.size() > 0);
         return m_stack.back().m_currentSubtree;
+      }
+
+      const RotI getCurrentRotation()
+      {
+        assert (m_stack.size() > 0);
+        return m_stack.back().m_pRot;
       }
 
   };
@@ -504,6 +513,9 @@ namespace ot
       template <unsigned int outputIdx>
       typename std::tuple_element<outputIdx, typename FrameOutputs<dim, OutputTypes>::DataStoreT>::type
           & getChildOutput(ChildI ch) { return std::get<outputIdx>(o.childData[ch]); }
+
+      // getCurrentSubtree()
+      const TreeNode<C,dim> &getCurrentSubtree() { return m_currentSubtree; }
 
     public:
       FrameInputs<dim, InputTypes> i;

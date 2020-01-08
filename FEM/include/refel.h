@@ -596,4 +596,70 @@ class RefElement
     void generateHeaderFile(char *fName);
 };
 
+
+template <unsigned int dim, typename NodeT>
+struct InterpMatrices
+{
+  std::vector<NodeT> m_ip_1D[2];   // Parent to child interpolation.
+  std::vector<NodeT> m_ipT_1D[2];  // Child to parent.
+  std::vector<NodeT> m_imBufs[2];    // Intermediate buffers.
+
+  unsigned int m_eleOrder;
+  unsigned int m_npe;
+
+  InterpMatrices() : InterpMatrices(1) {}
+
+  InterpMatrices(unsigned int eleOrder)
+  {
+    m_eleOrder = eleOrder;
+    m_npe = intPow(eleOrder+1, dim);
+
+    const unsigned int ipMatSz = (eleOrder+1)*(eleOrder+1);
+    RefElement tempRefEl(dim, eleOrder);
+    m_ip_1D[0] = std::vector<NodeT>(tempRefEl.getIMChild0(), tempRefEl.getIMChild0() + ipMatSz);
+    m_ip_1D[1] = std::vector<NodeT>(tempRefEl.getIMChild1(), tempRefEl.getIMChild1() + ipMatSz);
+    m_ipT_1D[0].resize(ipMatSz);
+    m_ipT_1D[1].resize(ipMatSz);
+    for (int ii = 0; ii < eleOrder+1; ii++)     // Transpose
+      for (int jj = 0; jj < eleOrder+1; jj++)
+      {
+        m_ipT_1D[0][ii * (eleOrder+1) + jj] = m_ip_1D[0][jj * (eleOrder+1) + ii];
+        m_ipT_1D[1][ii * (eleOrder+1) + jj] = m_ip_1D[1][jj * (eleOrder+1) + ii];
+      }
+  }
+
+  template <bool useTranspose>
+  inline void IKD_ParentChildInterpolation(const NodeT *in,
+                                           NodeT *out,
+                                           unsigned int ndofs,
+                                           unsigned int childNum_m) const
+  {
+    assert(dim > 1 || in != out);  // Not enough intermediate buffers.
+
+    std::vector<NodeT> (&ip_1D)[2] = (useTranspose ? m_ipT_1D : m_ip_1D);
+
+    // Line up 1D operators for each axis, based on childNum.
+    const NodeT *ipAxis[dim];
+    for (int d = 0; d < dim; d++)
+      ipAxis[d] = ip_1D[bool(childNum_m & (1u << d))].data();
+
+    // Double buffering of parent node coordinates during interpolation.
+    const NodeT * imFrom[dim];
+    NodeT * imTo[dim];
+    m_imBufs[0].resize(ndofs * m_npe);
+    m_imBufs[1].resize(ndofs * m_npe);
+    for (int d = 0; d < dim; d++)
+    {
+      imTo[d] = &(*m_imBufs[d % 2].begin());
+      imFrom[d] = &(*m_imBufs[!(d % 2)].begin());
+    }
+    imFrom[0] = in;     // Overwrite pointer to first source.
+    imTo[dim-1] = out;  // Overwrite pointer to final destination.
+
+    // Interpolate all element nodes.
+    // (The ones we actually use should have valid values.)
+    KroneckerProduct<dim, NodeT, true>(m_eleOrder+1, ipAxis, imFrom, imTo, ndofs);
+  }
+};
+
 #endif //SFCSORTBENCH_REFERENCEELEMENT_H
