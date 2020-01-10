@@ -14,6 +14,7 @@
 bool testNull();
 bool testDummySubclass();
 bool testTopDownSubclass();
+bool testMatvecSubclass();
 
 
 /**
@@ -26,7 +27,8 @@ int main(int argc, char *argv[])
   /// bool success = testNull();
   /// bool success = testDummySubclass();
   /// bool success = testTopDownSubclass();
-  bool success = testDummySubclass() && testTopDownSubclass();
+  /// bool success = testDummySubclass() && testTopDownSubclass();
+  bool success = testMatvecSubclass();
   std::cout << "Result: " << (success ? "success" : "failure") << "\n";
 
   MPI_Finalize();
@@ -195,5 +197,41 @@ bool testTopDownSubclass()
 
 
 
+/**
+ * testMatvecSubclass()
+ */
+bool testMatvecSubclass()
+{
+  constexpr unsigned int dim = 2;
+  using C = unsigned int;
+  using T = float;
+
+  const unsigned int eleOrder = 1;
+
+  m_uiMaxDepth = 3;
+
+  _InitializeHcurve(dim);
+
+  ot::MatvecBase<dim, T> treeloop_mvec;
+
+  while (!treeloop_mvec.isFinished())
+  {
+    if (!treeloop_mvec.isPre())
+    {
+      std::cout << "Returned to subtree \t" << treeloop_mvec.getSubtreeInfo().getCurrentSubtree() << "\n";
+      treeloop_mvec.next();
+    }
+    else
+    {
+      std::cout << "Inspecting subtree \t" << treeloop_mvec.getSubtreeInfo().getCurrentSubtree() << "\n";
+      treeloop_mvec.step();
+    }
+  }
+
+  _DestroyHcurve();
+
+  std::cout << "Ignore the message about this test passing, we always return true.\n";
+  return true;
+}
 
 

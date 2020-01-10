@@ -672,6 +672,17 @@ namespace ot
         return !(isEnd() && other.isEnd());
       }
 
+      IterateNodesToChildren & operator++()
+      {
+        this->next();
+        return *this;
+      }
+
+      IterateNodesToChildren & operator*()
+      {
+        return *this;
+      }
+
 
     protected:
       // fromNodeSet()

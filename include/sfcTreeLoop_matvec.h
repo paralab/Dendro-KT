@@ -157,7 +157,7 @@ namespace ot
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
 
-      extantChildren |= (1u << nodeInstance.getChild_m());
+      *extantChildren |= (1u << nodeInstance.getChild_m());
     }
 
     //
@@ -187,7 +187,7 @@ namespace ot
     //
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
-      size_t allocNodes = std::max(childNodeCounts[child_sfc], npe);  //TODO better max
+      size_t allocNodes = std::max(childNodeCounts[child_sfc], (unsigned long)(npe));  //TODO better max
       parentFrame.template getChildInput<1>(child_sfc).resize(m_ndofs * allocNodes);
       if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1)
         parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
@@ -227,7 +227,7 @@ namespace ot
       for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
       {
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        if (childNodeCounts > 0 && childNodeCounts[child_sfc] < npe)
+        if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         {
           // Has hanging nodes. Interpolate.
           // Non-hanging node values will be overwritten later, not to worry.
@@ -415,7 +415,7 @@ namespace ot
       for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
       {
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        if (childNodeCounts > 0 && childNodeCounts[child_sfc] < npe)
+        if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         {
           // Has hanging nodes. Interpolation-transpose.
           constexpr bool transposeTrue = true;

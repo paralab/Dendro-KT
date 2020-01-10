@@ -602,7 +602,7 @@ struct InterpMatrices
 {
   std::vector<NodeT> m_ip_1D[2];   // Parent to child interpolation.
   std::vector<NodeT> m_ipT_1D[2];  // Child to parent.
-  std::vector<NodeT> m_imBufs[2];    // Intermediate buffers.
+  mutable std::vector<NodeT> m_imBufs[2];    // Intermediate buffers.
 
   unsigned int m_eleOrder;
   unsigned int m_npe;
@@ -636,7 +636,7 @@ struct InterpMatrices
   {
     assert(dim > 1 || in != out);  // Not enough intermediate buffers.
 
-    std::vector<NodeT> (&ip_1D)[2] = (useTranspose ? m_ipT_1D : m_ip_1D);
+    const std::vector<NodeT> (&ip_1D)[2] = (useTranspose ? m_ipT_1D : m_ip_1D);
 
     // Line up 1D operators for each axis, based on childNum.
     const NodeT *ipAxis[dim];
