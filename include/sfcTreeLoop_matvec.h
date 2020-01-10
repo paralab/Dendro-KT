@@ -138,7 +138,7 @@ namespace ot
     childFinestLevel.fill(0);
     *extantChildren = 0u;
 
-    const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getInputHandle<0>();
+    const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
 
     //
@@ -218,7 +218,7 @@ namespace ot
                                                            myNodes[nIdx],
                                                            m_eleOrder );
           assert(nodeRank < npe);
-          std::copy_n( &parentFrame.template getInputHandle<1>()[m_ndofs * nIdx],
+          std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],
                        m_ndofs,
                        &m_parentNodeVals[m_ndofs * nodeRank] );
         }
@@ -233,8 +233,8 @@ namespace ot
           // Non-hanging node values will be overwritten later, not to worry.
           constexpr bool transposeFalse = false;
           m_interp_matrices.template IKD_ParentChildInterpolation<transposeFalse>(
-              &m_parentNodeVals.begin(),
-              &parentFrame.template getChildInput<1>(child_sfc).begin(),
+              &(*m_parentNodeVals.begin()),
+              &(*parentFrame.template getChildInput<1>(child_sfc).begin()),
               m_ndofs,
               child_m);
         }
@@ -262,7 +262,7 @@ namespace ot
         parentFrame.template getChildInput<0>(child_sfc)[childOffset] = myNodes[nIdx];
 
         // Nodal values.
-        std::copy_n( &parentFrame.template getInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
+        std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
                      &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * childOffset]);
 
         childNodeCounts[child_sfc]++;
@@ -278,7 +278,7 @@ namespace ot
         assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
 
         // Nodal values.
-        std::copy_n( &parentFrame.template getInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
+        std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
                      &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * nodeRank]);
       }
     }
@@ -351,10 +351,10 @@ namespace ot
         thereAreHangingNodes = true;
     }
 
-    const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getInputHandle<0>();
+    const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numParentNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
 
-    std::vector<NodeT> &myOutNodeValues = parentFrame.template getOutputHandle<0>();
+    std::vector<NodeT> &myOutNodeValues = parentFrame.template getMyOutputHandle<0>();
     myOutNodeValues.clear();
     myOutNodeValues.resize(m_ndofs * numParentNodes, zero);
 
@@ -431,7 +431,7 @@ namespace ot
       }
 
       // Accumulate from intermediate parent lex buffer to parent output.
-      for (size_t nIdx = 0; nIdx < numInputNodes; nIdx++)
+      for (size_t nIdx = 0; nIdx < numParentNodes; nIdx++)
       {
         if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
         {
