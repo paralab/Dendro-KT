@@ -129,26 +129,6 @@ namespace ot
     //   - Else copy nodes into same order as they appear in parent.
     // ========================================================================
 
-    // =========================
-    // Bottom-up Outline:
-    // =========================
-    // - Read from summary (#nodes, finest node level) per child.
-    //   - Note: A child is a leaf iff finest node level == subtree level.
-    //   - Note: A child is a leaf with hanging nodes if #nodes < npe.
-    //
-    // - Allocate parent output nodes and initialize to 0.
-    //
-    // - Pass through parent nodes. Accumulate nonhanging values from child output.
-    //   - If a child is a leaf and #nonhanging nodes <= npe, find in lex position.
-    //   - Else, find in same order as they appear in parent.
-    //   - After receiving value from child, overwrite the child value with 0.
-    //
-    // - For each child:
-    //   - If child has hanging nodes, interpolate-transpose in place in child buffer.
-    //   - Pass through parent nodes.
-    //         Accumulate into parent level nodes from child buffer lex position.
-    // ========================================================================
-
     const unsigned npe = intPow(m_eleOrder+1, dim);
     const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
 
@@ -310,71 +290,161 @@ namespace ot
   template <unsigned int dim, typename NodeT>
   void MatvecBase<dim, NodeT>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren)
   {
-    /// /**
-    ///  *  Copied from sfcTreeLoop.h:
-    ///  *
-    ///  *  bottomUpNodes()
-    ///  *  is responsible to
-    ///  *    1. Resize the parent output buffers (handles to buffers are given);
-    ///  *
-    ///  *    2. Merge results from incident child output buffers (SFC order) into
-    ///  *       the parent output buffers.
-    ///  *
-    ///  *  The previously indicated extantChildren bit array (Morton order) will be supplied.
-    ///  *
-    ///  *  Utilities are provided to identify and iterate over incident children.
-    ///  */
+    /**
+     *  Copied from sfcTreeLoop.h:
+     *
+     *  bottomUpNodes()
+     *  is responsible to
+     *    1. Resize the parent output buffers (handles to buffers are given);
+     *
+     *    2. Merge results from incident child output buffers (SFC order) into
+     *       the parent output buffers.
+     *
+     *  The previously indicated extantChildren bit array (Morton order) will be supplied.
+     *
+     *  Utilities are provided to identify and iterate over incident children.
+     */
 
-    /// // For matvec the output size equals the input size.
+    // =========================
+    // Bottom-up Outline:
+    // =========================
+    // - Read from summary (#nodes, finest node level) per child.
+    //   - Note: A child is a leaf iff finest node level == subtree level.
+    //   - Note: A child is a leaf with hanging nodes if #nodes < npe.
+    //
+    // - Allocate parent output nodes and initialize to 0.
+    //
+    // - Pass through parent nodes. Accumulate nonhanging values from child output.
+    //   - If a child is a leaf and #nonhanging nodes <= npe, find in lex position.
+    //   - Else, find in same order as they appear in parent.
+    //   - After receiving value from child, overwrite the child value with 0.
+    //
+    // - For each child:
+    //   - If child has hanging nodes, interpolate-transpose in place in child buffer.
+    //   - Pass through parent nodes.
+    //         Accumulate into parent level nodes from child buffer lex position.
+    // ========================================================================
 
-    /// const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getInputHandle<0>();
-    /// const size_t numParentNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
+    const unsigned npe = intPow(m_eleOrder+1, dim);
+    const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
+    const NodeT zero = 0;
 
-    /// // Resize parent output buffers.
-    /// parentFrame.template getOutputHandle<0>().resize(numParentNodes);
-    /// parentFrame.template getOutputHandle<1>().resize(m_ndofs * numParentNodes);
+    std::array<size_t, NumChildren> childNodeCounts;
+    std::array<size_t, NumChildren> childNodeOffsets;
+    std::array<LevI, NumChildren> childFinestLevel;
+    childNodeOffsets.fill(0);
 
-    /// // 
+    //
+    // Retrieve child summaries.
+    //
+    bool thereAreHangingNodes = false;
+    DefaultSummary (&summaries)[NumChildren] = parentFrame.childSummaries;
+    size_t nodeCountAccum = 0;
+    for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+    {
+      childFinestLevel[child_sfc] = summaries[child_sfc].m_subtreeFinestLevel;
+      childNodeCounts[child_sfc] = summaries[child_sfc].m_subtreeNodeCount;
+      childNodeOffsets[child_sfc] = nodeCountAccum;
+      nodeCountAccum += childNodeCounts[child_sfc];
 
-    /// std::array<size_t, NumChildren> childNodeCounts;
-    /// std::array<LevI, NumChildren> childFinestLevel;
-    /// childNodeCounts.fill(0);
-    /// childFinestLevel.fill(0);
-    /// *extantChildren = 0u;
+      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+        thereAreHangingNodes = true;
+    }
 
-    /// const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getInputHandle<0>();
+    const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getInputHandle<0>();
+    const size_t numParentNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
 
-    /// //
-    /// // Initial pass over the input data.
-    /// // Count #points per child, finest level, extant children.
-    /// //
-    /// for (const auto &nodeInstance : IterateNodesToChildren<dim>( this->getCurrentSubtree(),
-    ///                                                              &(*myNodes.begin()),
-    ///                                                              numInputNodes,
-    ///                                                              this->getCurrentRotation() ))
-    /// {
-    ///   const ChildI child_sfc = nodeInstance.getChild_sfc();
+    std::vector<NodeT> &myOutNodeValues = parentFrame.template getOutputHandle<0>();
+    myOutNodeValues.clear();
+    myOutNodeValues.resize(m_ndofs * numParentNodes, zero);
 
-    ///   const LevI nodeLevel = myNodes[nodeInstance.getPNodeIdx()].getLevel();
-    ///   if (childFinestLevel[child_sfc] < nodeLevel)
-    ///     childFinestLevel[child_sfc] = nodeLevel;
-    ///   childNodeCounts[child_sfc]++;
+    std::array<TreeNode<unsigned int, dim>, NumChildren> childSubtreesSFC;
+    for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+    {
+      const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
+      childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
+    }
 
-    ///   extantChildren |= (1u << nodeInstance.getChild_m());
-    /// }
+    //
+    // Accumulate non-hanging node values from child buffers into parent frame.
+    //
+    for (const auto &nodeInstance : IterateNodesToChildren<dim>( parSubtree,
+                                                                 &(*myNodes.begin()),
+                                                                 numParentNodes,
+                                                                 this->getCurrentRotation() ))
+    {
+      const ChildI child_sfc = nodeInstance.getChild_sfc();
+      const size_t nIdx = nodeInstance.getPNodeIdx();
+      const size_t childOffset = childNodeOffsets[child_sfc];
 
-    /// //
-    /// // Resize child input buffers in the parent frame.
-    /// //
-    /// for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
-    /// {
-    ///   parentFrame.template getChildInput<0>(child_sfc).resize(childNodeCounts[child_sfc]);
-    ///   parentFrame.template getChildInput<1>(child_sfc).resize(m_ndofs * childNodeCounts[child_sfc]);
-    /// }
+      if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
+      {
+        // Nodal values.
+        std::copy_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * childOffset],
+                     m_ndofs, &myOutNodeValues[m_ndofs * nIdx]);
 
+        childNodeOffsets[child_sfc]++;
+      }
+      else   // Leaf
+      {
+        const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
+                childSubtreesSFC[child_sfc],
+                myNodes[nIdx],
+                m_eleOrder );
 
+        // Nodal values.
+        std::copy_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
+                     m_ndofs,  &myOutNodeValues[m_ndofs * nIdx]);
 
+        // Zero out the values after they are transferred.
+        // This is necessary so that later linear transforms are not contaminated.
+        std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
+                     m_ndofs, zero );
+      }
+    }
 
+    //
+    // Perform any needed transpose-interpolations.
+    //
+    if (thereAreHangingNodes)
+    {
+      // Initialize intermediate parent lexicographic buffer.
+      std::fill(m_parentNodeVals.begin(), m_parentNodeVals.end(), zero);
+
+      // Use transpose of interpolation operator on each hanging child.
+      for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+      {
+        const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
+        if (childNodeCounts > 0 && childNodeCounts[child_sfc] < npe)
+        {
+          // Has hanging nodes. Interpolation-transpose.
+          constexpr bool transposeTrue = true;
+          m_interp_matrices.template IKD_ParentChildInterpolation<transposeTrue>(
+              &(*parentFrame.template getChildOutput<0>(child_sfc).begin()),
+              &(*parentFrame.template getChildOutput<0>(child_sfc).begin()),
+              m_ndofs,
+              child_m);
+
+          for (int nIdxDof = 0; nIdxDof < m_ndofs * npe; nIdxDof++)
+            m_parentNodeVals[nIdxDof] += parentFrame.template getChildOutput<0>(child_sfc)[nIdxDof];
+        }
+      }
+
+      // Accumulate from intermediate parent lex buffer to parent output.
+      for (size_t nIdx = 0; nIdx < numInputNodes; nIdx++)
+      {
+        if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
+        {
+          const unsigned int nodeRank =
+              TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
+                                                           myNodes[nIdx],
+                                                           m_eleOrder );
+          assert(nodeRank < npe);
+          std::copy_n( &m_parentNodeVals[m_ndofs * nodeRank],
+                       m_ndofs,  &myOutNodeValues[m_ndofs * nIdx]);
+        }
+      }
+    }
 
   }
 
