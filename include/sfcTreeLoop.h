@@ -214,9 +214,10 @@ namespace ot
   template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteType>
   class SFC_TreeLoop
   {
-    using C = unsigned int;
-    using FrameT = Frame<dim, InputTypes, OutputTypes, SummaryType, ConcreteType>;
-    using SubtreeInfoT = SubtreeInfo<dim, InputTypes, OutputTypes, SummaryType, ConcreteType>;
+    public:
+      using C = unsigned int;
+      using FrameT = Frame<dim, InputTypes, OutputTypes, SummaryType, ConcreteType>;
+      using SubtreeInfoT = SubtreeInfo<dim, InputTypes, OutputTypes, SummaryType, ConcreteType>;
 
     friend SubtreeInfoT;
 
@@ -331,6 +332,7 @@ namespace ot
       }
 
 
+    protected:
 
       // Must define
       /// void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
@@ -421,13 +423,21 @@ namespace ot
         reentry = false;
       }
 
-    protected:
       // SFC_TreeLoop() : constructor
       SFC_TreeLoop()  //TODO
       {
+        // This statement initializes references in the first stack frame
+        // to refer to our member variables. If these member variables are
+        // assigned to later, updated contents will be reflected in the frame.
         m_stack.emplace_back(m_rootInputData, m_rootOutputData, m_rootSummary);
+
         // Note that the concrete class is responsible to
-        // initialize the root data and summary.
+        // initialize the root data and summary member variables.
+      }
+
+      FrameT & getRootFrame()
+      {
+        return m_stack[0];
       }
 
       const TreeNode<C,dim> & getCurrentSubtree()
@@ -451,11 +461,12 @@ namespace ot
   template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteTreeLoop>
   class Frame
   {
-    using C = unsigned int;
-    static constexpr unsigned int NumChildren = 1u << dim;
+    public:
+      using C = unsigned int;
+      static constexpr unsigned int NumChildren = 1u << dim;
 
-    friend SFC_TreeLoop<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop>;
-    friend SubtreeInfo<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop>;
+      friend SFC_TreeLoop<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop>;
+      friend SubtreeInfo<dim, InputTypes, OutputTypes, SummaryType, ConcreteTreeLoop>;
 
     public:
       // Frame()
@@ -539,10 +550,10 @@ namespace ot
   template <unsigned int dim, typename ...Types>
   struct FrameInputs<dim, Inputs<Types...>>
   {
-    using DataStoreT = std::tuple<std::vector<Types> ...>;
-
     //TODO replace the separate std::vector by TopDownStackSlice
     public:
+      using DataStoreT = std::tuple<std::vector<Types> ...>;
+
       FrameInputs(std::tuple<std::vector<Types> ...> &myDataStore)
         : myDataHandles(myDataStore) { };
       FrameInputs(FrameInputs &&) = default;
@@ -560,10 +571,10 @@ namespace ot
   template <unsigned int dim, typename ...Types>
   struct FrameOutputs<dim, Outputs<Types...>>
   {
-    using DataStoreT = std::tuple<std::vector<Types> ...>;
-
     //TODO replace the separate std::vector by BottomUpStackSlice
     public:
+      using DataStoreT = std::tuple<std::vector<Types> ...>;
+
       FrameOutputs(std::tuple<std::vector<Types> ...> &myDataStore)
         : myDataHandles(myDataStore) { };
       FrameOutputs(FrameOutputs &&) = default;
@@ -611,20 +622,23 @@ namespace ot
   template <unsigned int dim>
   class IterateNodesToChildren
   {
-    using FType = typename ot::CellType<dim>::FlagType;
-
     public:
+      using FType = typename ot::CellType<dim>::FlagType;
+
       // IterateNodesToChildren() (constructor)
       IterateNodesToChildren(const TreeNode<unsigned int, dim> &subtree,
                              const TreeNode<unsigned int, dim> *nodesBegin,
                              size_t numParentNodes,
-                             RotI pRot)
+                             RotI pRot,
+                             ExtantCellFlagT subtreeChildren = ((1u << (1u<<dim)) - 1)
+                             )
         : m_subtree(subtree),
           m_nodesBegin(nodesBegin),
           m_rot_inv(&rotations[pRot*2*(1u<<dim) + 1*(1u<<dim)]),
           m_numParentNodes(numParentNodes),
           m_pNodeIdx(0),
-          m_virtChildIdx(0)
+          m_virtChildIdx(0),
+          m_subtreeChildren(subtreeChildren)
       {
         fromNodeSet();
       }
@@ -699,6 +713,10 @@ namespace ot
                                          m_firstIncidentChild_m,
                                          incidentSubspace,
                                          incidentSubspaceDim);
+          //TODO make sure the above assigns to m_extantChildren, i.e. it
+          //uses neighborhood existence flags in incidentChildren
+          //(should be contained in the merge with subdomain branch).
+          m_extantChildren &= m_subtreeChildren;
           m_bitExpander = binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
           m_incidentSubspaceVolume = 1u << incidentSubspaceDim;
 
@@ -743,6 +761,7 @@ namespace ot
       /// FType m_incidentSubspace;
       /// FType m_incidentSubspaceDim;
       ExtantCellFlagT m_extantChildren;  // TODO use this after merge from subdomain
+      const ExtantCellFlagT m_subtreeChildren;
   };
 
 

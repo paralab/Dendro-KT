@@ -44,38 +44,186 @@ namespace ot
   // When requesting the element buffer, can always specify to possibly
   // interpolate all the nodes.
 
+  template <unsigned int dim>
+  class MatvecBaseSummary
+  {
+    public:
+      LevI m_subtreeFinestLevel;
+      size_t m_subtreeNodeCount;
+
+      bool m_initializedIn;
+      bool m_initializedOut;
+
+      bool m_segmentByFirstElement;
+      bool m_segmentByLastElement;
+      TreeNode<unsigned int, dim> m_firstElement;
+      TreeNode<unsigned int, dim> m_lastElement;
+  };
+
+
+  //
+  // MatvecBase
+  //
+  // Input<0>: Node coordinate (TreeNode)
+  // Input<1>: Node value (NodeT i.e. float type)
+  //
+  // Output<0>: Node value (NodeT i.e. float type)
+  //
   template <unsigned int dim, typename NodeT>
   class MatvecBase : public SFC_TreeLoop<dim,
                                          Inputs<TreeNode<unsigned int, dim>, NodeT>,
                                          Outputs<NodeT>,
-                                         DefaultSummary,
+                                         MatvecBaseSummary<dim>,
                                          MatvecBase<dim, NodeT>>
   {
-    using FrameT = Frame<dim, Inputs<TreeNode<unsigned int, dim>, NodeT>, Outputs<NodeT>, DefaultSummary, MatvecBase>;
+    using BaseT = SFC_TreeLoop<dim,
+                               Inputs<TreeNode<unsigned int, dim>, NodeT>,
+                               Outputs<NodeT>,
+                               MatvecBaseSummary<dim>,
+                               MatvecBase<dim, NodeT>>;
+    friend BaseT;
 
     public:
+      using FrameT = Frame<dim, Inputs<TreeNode<unsigned int, dim>, NodeT>, Outputs<NodeT>, MatvecBaseSummary<dim>, MatvecBase>;
+
       static constexpr unsigned int NumChildren = 1u << dim;
 
-      /// MatvecBase(input data);  // TODO calls parent constructor and then initializes.
-
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
-      void parent2Child(FrameT &parentFrame, FrameT &childFrame);
-      void child2Parent(FrameT &parentFrame, FrameT &childFrame);
+      MatvecBase() = delete;
+      MatvecBase(size_t numNodes,
+                 unsigned int ndofs,
+                 unsigned int eleOrder,
+                 const TreeNode<unsigned int, dim> * allNodeCoords,
+                 const NodeT * inputNodeVals,
+                 const TreeNode<unsigned int, dim> &firstElement,
+                 const TreeNode<unsigned int, dim> &lastElement );
 
     protected:
-      unsigned int m_ndofs;  //TODO needs to be initialized in constructor.
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
+      void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
+      void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
+
+      static MatvecBaseSummary<dim> generate_node_summary(
+          const TreeNode<unsigned int, dim> *begin,
+          const TreeNode<unsigned int, dim> *end);
+
+      unsigned int m_ndofs;
       unsigned int m_eleOrder;
 
       // Non-stack leaf buffer and parent-of-leaf buffer.
       std::vector<TreeNode<unsigned int,dim>> m_leafNodeCoords;
-      /// std::vector<TreeNode<unsigned int,dim>> m_parentNodeCoords;
-      std::vector<NodeT> m_leafNodeVals;  //TODO resize in constructor.
-      std::vector<NodeT> m_parentNodeVals;  //TODO resize in constructor.
-      std::vector<double> m_leafNodeCoordsFlat;  //TODO resize in constructor.
+      std::vector<NodeT> m_leafNodeVals;
+      std::vector<NodeT> m_parentNodeVals;
+      std::vector<double> m_leafNodeCoordsFlat;
 
       InterpMatrices<dim, NodeT> m_interp_matrices;
   };
+
+
+  //
+  // generate_node_summary()
+  //
+  template <unsigned int dim, typename NodeT>
+  MatvecBaseSummary<dim>
+  MatvecBase<dim, NodeT>::generate_node_summary(
+      const TreeNode<unsigned int, dim> *begin,
+      const TreeNode<unsigned int, dim> *end)
+  {
+    MatvecBaseSummary<dim> summary;
+    summary.m_subtreeFinestLevel = 0;
+    summary.m_subtreeNodeCount = (end >= begin ? end - begin : 0);
+
+    for ( ; begin < end; ++begin)
+      if (summary.m_subtreeFinestLevel < begin->getLevel())
+        summary.m_subtreeFinestLevel = begin->getLevel();
+  }
+
+
+  //
+  // MatvecBase()
+  //
+  template <unsigned int dim, typename NodeT>
+  MatvecBase<dim, NodeT>::MatvecBase( size_t numNodes,
+                                      unsigned int ndofs,
+                                      unsigned int eleOrder,
+                                      const TreeNode<unsigned int, dim> * allNodeCoords,
+                                      const NodeT * inputNodeVals,
+                                      const TreeNode<unsigned int, dim> &firstElement,
+                                      const TreeNode<unsigned int, dim> &lastElement )
+  : m_ndofs(ndofs),
+    m_eleOrder(eleOrder),
+    m_interp_matrices(eleOrder)
+  {
+    typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
+
+    // Note that the concrete class is responsible to
+    // initialize the root data and summary.
+
+    // m_rootSummary
+    rootFrame.mySummaryHandle = generate_node_summary(allNodeCoords, allNodeCoords + numNodes);
+    rootFrame.mySummaryHandle.m_segmentByFirstElement = true;
+    rootFrame.mySummaryHandle.m_segmentByLastElement = true;
+    rootFrame.mySummaryHandle.m_firstElement = firstElement;
+    rootFrame.mySummaryHandle.m_lastElement = lastElement;
+
+    // m_rootInputData
+    std::vector<TreeNode<unsigned int, dim>> &rootInputNodeCoords
+        = rootFrame.template getMyInputHandle<0u>();
+    rootInputNodeCoords.resize(numNodes);
+    std::copy_n(allNodeCoords, numNodes, rootInputNodeCoords.begin());
+
+    std::vector<NodeT> &rootInputNodeVals
+        = rootFrame.template getMyInputHandle<1u>();
+    rootInputNodeVals.resize(ndofs * numNodes);
+    std::copy_n(inputNodeVals, ndofs * numNodes, rootInputNodeVals.begin());
+
+    // m_rootOutputData: Will be resized by output traversal methods.
+    //   After traversal, user can copy out the values with finalize().
+
+    rootFrame.mySummaryHandle.m_initializedIn = true;
+    rootFrame.mySummaryHandle.m_initializedOut = false;
+
+    // Non-stack leaf buffer and parent-of-leaf buffer.
+    const unsigned npe = intPow(m_eleOrder+1, dim);
+    m_leafNodeCoords.resize(npe, TreeNode<unsigned int, dim>());
+    m_leafNodeVals.resize(ndofs * npe, 0);
+    m_parentNodeVals.resize(ndofs * npe, 0);
+  }
+
+
+    /// template <typename T, unsigned int dim, typename NodeT>
+    /// void ElementLoop<T, dim, NodeT>::finalize(NodeT * outputNodeVals)
+
+        /// //
+        /// // finalize()
+        /// //
+        /// {
+        ///   if (!(m_curTreeAddr == m_endTreeAddr))
+        ///     while (m_curSubtree.getLevel() > m_L0)
+        ///     {
+        ///       m_curSubtree = m_curSubtree.getParent();
+        ///       bottomUpNodes();
+        ///     }
+        ///
+        ///   std::vector<NodeT> &topVals = m_siblingNodeValsOut[m_L0 - m_L0];
+        ///
+        ///   // Only copy back the subdomain-incident nodes.
+        ///   unsigned long numIncidentNodes = 0;
+        ///   const ot::Element<T, dim> subdomain(m_curSubtree.getAncestor(m_L0));
+        ///   for (unsigned long nIdx = 0; nIdx < m_numNodes; nIdx++)
+        ///   {
+        ///     if (subdomain.isIncident(m_allNodeCoords[nIdx]))
+        ///     {
+        ///       for (int dof = 0; dof < m_ndofs; dof++)
+        ///         outputNodeVals[m_ndofs*nIdx + dof] = topVals[m_ndofs*numIncidentNodes + dof];
+        ///       numIncidentNodes++;
+        ///     }
+        ///     else
+        ///       for (int dof = 0; dof < m_ndofs; dof++)
+        ///         outputNodeVals[m_ndofs*nIdx + dof] = 0.0;
+        ///   }
+        /// }
+
 
   /*
    *
@@ -141,6 +289,40 @@ namespace ot
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
 
+    // Compute child subtree TreeNodes for temporary use.
+    std::array<TreeNode<unsigned int, dim>, NumChildren> childSubtreesSFC;
+    for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+    {
+      const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
+      childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
+    }
+
+    // Must constrain extantChildren depending on segment limits
+    // (firstElement and lastElement)
+    ExtantCellFlagT segmentChildren = -1;  // Initially all.
+    int segmentChildFirst = -1;            // Beginning of subtree auto in.
+    int segmentChildLast = NumChildren;    // End of subtree auto in.
+    if (parentFrame.mySummaryHandle.m_segmentByFirstElement)
+    {
+      // Scan from front to back eliminating children until firstElement is reached.
+      TreeNode<unsigned int, dim> &firstElement = parentFrame.mySummaryHandle.m_firstElement;
+      int &cf = segmentChildFirst;
+      while (++cf < int(NumChildren) && !childSubtreesSFC[cf].isAncestorInclusive(firstElement))
+        segmentChildren &= ~(1u << childSubtreesSFC[cf].getMortonIndex());
+    }
+    if (parentFrame.mySummaryHandle.m_segmentByLastElement)
+    {
+      // Scan from back to front eliminating children until lastElement is reached.
+      TreeNode<unsigned int, dim> &lastElement = parentFrame.mySummaryHandle.m_lastElement;
+      int &cl = segmentChildLast;
+      while (--cl >= 0 && !childSubtreesSFC[cl].isAncestorInclusive(lastElement))
+        segmentChildren &= ~(1u << childSubtreesSFC[cl].getMortonIndex());
+    }
+
+    // Iteration ranges based on segment discovery.
+    const ChildI segmentChildBegin = (segmentChildFirst >= 0 ? segmentChildFirst : 0);
+    const ChildI segmentChildEnd = (segmentChildLast < NumChildren ? segmentChildLast + 1 : NumChildren);
+
     //
     // Initial pass over the input data.
     // Count #points per child, finest level, extant children.
@@ -148,7 +330,8 @@ namespace ot
     for (const auto &nodeInstance : IterateNodesToChildren<dim>( this->getCurrentSubtree(),
                                                                  &(*myNodes.begin()),
                                                                  numInputNodes,
-                                                                 this->getCurrentRotation() ))
+                                                                 this->getCurrentRotation(),
+                                                                 segmentChildren ))
     {
       const ChildI child_sfc = nodeInstance.getChild_sfc();
 
@@ -160,34 +343,41 @@ namespace ot
       *extantChildren |= (1u << nodeInstance.getChild_m());
     }
 
+    *extantChildren &= segmentChildren; // This should be implied, but just in case.
+
     //
     // Update child summaries.
     //
     bool thereAreHangingNodes = false;
-    DefaultSummary (&summaries)[NumChildren] = parentFrame.childSummaries;
+    MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
       summaries[child_sfc].m_subtreeFinestLevel = childFinestLevel[child_sfc];
       summaries[child_sfc].m_subtreeNodeCount = childNodeCounts[child_sfc];
 
+      summaries[child_sfc].m_initializedIn = true;
+      summaries[child_sfc].m_initializedOut = false;
+
+      // firstElement and lastElement of local segment.
+      summaries[child_sfc].m_segmentByFirstElement = (child_sfc == segmentChildFirst);
+      summaries[child_sfc].m_segmentByLastElement = (child_sfc == segmentChildLast);
+      if (summaries[child_sfc].m_segmentByFirstElement)
+        summaries[child_sfc].m_firstElement = parentFrame.mySummaryHandle.m_firstElement;
+      if (summaries[child_sfc].m_segmentByLastElement)
+        summaries[child_sfc].m_lastElement = parentFrame.mySummaryHandle.m_lastElement;
+
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         thereAreHangingNodes = true;
     }
-    //TODO need to add to DefaultSummary, bool isBoundary
-
-    std::array<TreeNode<unsigned int, dim>, NumChildren> childSubtreesSFC;
-    for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
-    {
-      const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-      childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
-    }
+    //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary
 
     //
     // Resize child input buffers in the parent frame.
     //
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
-      size_t allocNodes = std::max(childNodeCounts[child_sfc], (unsigned long)(npe));  //TODO better max
+      size_t allocNodes = childNodeCounts[child_sfc];
+      allocNodes = (allocNodes == 0 ? 0 : allocNodes < npe ? npe : allocNodes);
       parentFrame.template getChildInput<1>(child_sfc).resize(m_ndofs * allocNodes);
       if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1)
         parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
@@ -250,7 +440,8 @@ namespace ot
     for (const auto &nodeInstance : IterateNodesToChildren<dim>( this->getCurrentSubtree(),
                                                                  &(*myNodes.begin()),
                                                                  numInputNodes,
-                                                                 this->getCurrentRotation() ))
+                                                                 this->getCurrentRotation(),
+                                                                 segmentChildren ))
     {
       const ChildI child_sfc = nodeInstance.getChild_sfc();
       const size_t nIdx = nodeInstance.getPNodeIdx();
@@ -282,8 +473,6 @@ namespace ot
                      &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * nodeRank]);
       }
     }
-
-    // Note: We have already set extantChildren during initial pass.
   }
 
 
@@ -338,7 +527,7 @@ namespace ot
     // Retrieve child summaries.
     //
     bool thereAreHangingNodes = false;
-    DefaultSummary (&summaries)[NumChildren] = parentFrame.childSummaries;
+    MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     size_t nodeCountAccum = 0;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
@@ -371,7 +560,8 @@ namespace ot
     for (const auto &nodeInstance : IterateNodesToChildren<dim>( parSubtree,
                                                                  &(*myNodes.begin()),
                                                                  numParentNodes,
-                                                                 this->getCurrentRotation() ))
+                                                                 this->getCurrentRotation(),
+                                                                 extantChildren ))
     {
       const ChildI child_sfc = nodeInstance.getChild_sfc();
       const size_t nIdx = nodeInstance.getPNodeIdx();
@@ -380,8 +570,9 @@ namespace ot
       if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
       {
         // Nodal values.
-        std::copy_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * childOffset],
-                     m_ndofs, &myOutNodeValues[m_ndofs * nIdx]);
+        for (int dof = 0; dof < m_ndofs; dof++)
+          myOutNodeValues[m_ndofs * nIdx + dof]
+            += parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * childOffset + dof];
 
         childNodeOffsets[child_sfc]++;
       }
@@ -393,8 +584,9 @@ namespace ot
                 m_eleOrder );
 
         // Nodal values.
-        std::copy_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
-                     m_ndofs,  &myOutNodeValues[m_ndofs * nIdx]);
+        for (int dof = 0; dof < m_ndofs; dof++)
+          myOutNodeValues[m_ndofs * nIdx + dof]
+            += parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank];
 
         // Zero out the values after they are transferred.
         // This is necessary so that later linear transforms are not contaminated.
@@ -440,28 +632,14 @@ namespace ot
                                                            myNodes[nIdx],
                                                            m_eleOrder );
           assert(nodeRank < npe);
-          std::copy_n( &m_parentNodeVals[m_ndofs * nodeRank],
-                       m_ndofs,  &myOutNodeValues[m_ndofs * nIdx]);
+          for (int dof = 0; dof < m_ndofs; dof++)
+            myOutNodeValues[m_ndofs * nIdx + dof]
+              += m_parentNodeVals[m_ndofs * nodeRank + dof];
         }
       }
     }
 
   }
-
-
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::parent2Child(FrameT &parentFrame, FrameT &childFrame)
-  {
-
-  }
-
-
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::child2Parent(FrameT &parentFrame, FrameT &childFrame)
-  {
-
-  }
-
 
 }//namespace ot
 

@@ -207,12 +207,21 @@ bool testMatvecSubclass()
   using T = float;
 
   const unsigned int eleOrder = 1;
+  const unsigned int ndofs = 1;
 
   m_uiMaxDepth = 3;
 
   _InitializeHcurve(dim);
 
-  ot::MatvecBase<dim, T> treeloop_mvec;
+  //TODO more expansive examples
+  const unsigned int numNodes = 1;
+  std::vector<ot::TreeNode<C, dim>> nodes(1);
+  std::vector<T> vals(ndofs * intPow(eleOrder+1, dim), 0);
+
+  const ot::TreeNode<C, dim> firstElement;
+  const ot::TreeNode<C, dim> lastElement;
+
+  ot::MatvecBase<dim, T> treeloop_mvec(numNodes, ndofs, eleOrder, &(*nodes.begin()), &(*vals.begin()), firstElement, lastElement);
 
   while (!treeloop_mvec.isFinished())
   {
