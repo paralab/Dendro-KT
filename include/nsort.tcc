@@ -350,7 +350,7 @@ namespace ot {
                                          std::array<unsigned int, dim> &numerators,
                                          unsigned int &denominator)
   {
-    const TreeNode<T,dim> hostCell = tnPoint.getCell();
+    const TreeNode<T,dim> hostCell = tnPoint.getAncestor(tnPoint.getLevel());
     const unsigned int levDiff = hostCell.getLevel() - containingSubtree.getLevel();
     const unsigned int hostShift = m_uiMaxDepth - hostCell.getLevel();
 
@@ -358,7 +358,7 @@ namespace ot {
 
     for (int d = 0; d < dim; d++)
       numerators[d] = ((hostCell.getX(d) - containingSubtree.getX(d)) >> hostShift) * polyOrder
-          + get_nodeRanke1D(hostCell, tnPoint, d, polyOrder);
+          + get_nodeRank1D(hostCell, tnPoint, d, polyOrder);
   }
 
 
