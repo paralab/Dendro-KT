@@ -53,7 +53,7 @@ protected:
           * @param [out] out output vector Ku
           * @param [in] scale vector by scale*Ku
         **/
-        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, double *coords, double scale) = 0;
+        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) = 0;
 
 
 
@@ -222,7 +222,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
 
   // 3. Local matvec().
   const auto * tnCoords = m_oda->getTNCoords();
-  std::function<void(const VECType *, VECType *, unsigned int, double *, double)> eleOp =
+  std::function<void(const VECType *, VECType *, unsigned int, const double *, double)> eleOp =
       std::bind(&feMatrix<LeafT,dim>::elementalMatVec, this, _1, _2, _3, _4, _5);
 
 #ifdef DENDRO_KT_MATVEC_BENCH_H

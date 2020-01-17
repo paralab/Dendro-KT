@@ -37,7 +37,7 @@ PoissonMat<dim>::~PoissonMat()
 }
 
 template <unsigned int dim>
-void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, double*coords,double scale)
+void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale)
 {
     // 1D operators.
 

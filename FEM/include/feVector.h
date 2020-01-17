@@ -63,7 +63,7 @@ public:
 
     /**@brief elemental compute vec which evaluate the elemental RHS of the weak formulation
      * */
-    virtual void elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, double* coords=NULL,double scale=1.0)=0;
+    virtual void elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, const double* coords=NULL,double scale=1.0)=0;
 
     #ifdef BUILD_WITH_PETSC
 
@@ -147,7 +147,7 @@ void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
 
   // 3. Local matvec().
   const auto * tnCoords = m_oda->getTNCoords();
-  std::function<void(const VECType *, VECType *, unsigned int, double *, double)> eleOp =
+  std::function<void(const VECType *, VECType *, unsigned int, const double *, double)> eleOp =
       std::bind(&feVector<T,dim>::elementalComputeVec, this, _1, _2, _3, _4, _5);
 
   fem::matvec(inGhostedPtr, outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),

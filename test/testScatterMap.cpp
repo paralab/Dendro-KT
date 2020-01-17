@@ -638,7 +638,7 @@ void testDummyMatvec()
   unsigned int sz = coords.size();
 
   // New dummy eleOp.
-  std::function<void(const da*, da*, unsigned int, double *coords, double)>  eleOp{[](const da *in, da *out, unsigned int ndofs, double *coords, double scale)
+  std::function<void(const da*, da*, unsigned int, const double *coords, double)>  eleOp{[](const da *in, da *out, unsigned int ndofs, const double *coords, double scale)
   {
     for (unsigned int ii = 0; ii < ndofs*intPow(order+1, dim); ii++) out[ii] = in[ii];
   }};

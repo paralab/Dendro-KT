@@ -28,7 +28,7 @@ HeatVec<dim>::~HeatVec()
 }
 
 template <unsigned int dim>
-void HeatVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, double*coords,double scale)
+void HeatVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale)
 {
   //TODO use ndofs
 

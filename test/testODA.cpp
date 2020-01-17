@@ -94,11 +94,11 @@ class myConcreteFeMatrix : public feMatrix<myConcreteFeMatrix<dim>, dim>
   public:
     static constexpr unsigned int order = 1;   // Only support a static order for now.  //TODO add order paramter to elementalMatVec()
     using feMatrix<T,dim>::feMatrix;
-    virtual void elementalMatVec(const VECType *in, VECType *out, double *coords, double scale) override;
+    virtual void elementalMatVec(const VECType *in, VECType *out, const double *coords, double scale) override;
 };
 
 template <unsigned int dim>
-void myConcreteFeMatrix<dim>::elementalMatVec(const VECType *in, VECType *out, double *coords, double scale)
+void myConcreteFeMatrix<dim>::elementalMatVec(const VECType *in, VECType *out, const double *coords, double scale)
 {
   // Dummy identity.
   const unsigned int nPe = intPow(order + 1, dim);
@@ -117,11 +117,11 @@ class myConcreteFeVector : public feVector<myConcreteFeVector<dim>, dim>
   public:
     static constexpr unsigned int order = 1;   // Only support a static order for now.  //TODO add order paramter to elementalMatVec()
     using feVector<T,dim>::feVector;
-    virtual void elementalComputeVec(const VECType *in, VECType *out, double *coords, double scale) override;
+    virtual void elementalComputeVec(const VECType *in, VECType *out, const double *coords, double scale) override;
 };
 
 template <unsigned int dim>
-void myConcreteFeVector<dim>::elementalComputeVec(const VECType *in, VECType *out, double *coords, double scale)
+void myConcreteFeVector<dim>::elementalComputeVec(const VECType *in, VECType *out, const double *coords, double scale)
 {
   // Dummy identity.
   const unsigned int nPe = intPow(order + 1, dim);

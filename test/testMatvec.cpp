@@ -198,12 +198,12 @@ class myConcreteFeMatrix : public feMatrix<myConcreteFeMatrix<dim>, dim>
   using T = myConcreteFeMatrix;
   public:
     using feMatrix<T,dim>::feMatrix;
-    virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, double *coords, double scale) override;
+    virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) override;
     /// virtual void preMatVec
 };
 
 template <unsigned int dim>
-void myConcreteFeMatrix<dim>::elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, double *coords, double scale)
+void myConcreteFeMatrix<dim>::elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale)
 {
   const RefElement* refEl=feMat<dim>::m_uiOctDA->getReferenceElement();
 
@@ -628,7 +628,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 
     /// fprintf(stderr, "[dbg] Starting sequential matvec.\n");
     using namespace std::placeholders;   // Convenience for std::bind().
-    std::function<void(const double *, double *, unsigned int, double *, double)> eleOp =
+    std::function<void(const double *, double *, unsigned int, const double *, double)> eleOp =
         std::bind(&myConcreteFeMatrix<dim>::elementalMatVec, &mat, _1, _2, _3, _4, _5);
     fem::matvec(&(*vecInSeqCopy.cbegin()), &(*vecOutSeq.begin()), 1, &(*tnCoordsSeqCopy.cbegin()),
         globNumNodes, treeFront, treeBack, eleOp, 1.0, octDA->getReferenceElement());
