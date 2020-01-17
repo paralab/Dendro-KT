@@ -171,6 +171,12 @@ namespace ot {
 
       static unsigned int get_nodeRank1D(const TreeNode<T, dim> &hostCell, const TreeNode<T, dim> &tnPoint, unsigned int d, unsigned int polyOrder);
 
+      static void get_relNodeCoords(const TreeNode<T,dim> &containingSubtree,
+                                    const TreeNode<T,dim> &tnPoint,
+                                    unsigned int polyOrder,
+                                    std::array<unsigned int, dim> &numerators,
+                                    unsigned int &denominator);
+
     protected:
       // Data members.
       IsSelected m_isSelected;

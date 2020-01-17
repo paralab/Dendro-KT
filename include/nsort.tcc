@@ -341,6 +341,27 @@ namespace ot {
   }
 
 
+  // Get's numerator and denominator of tnPoint node coordinates relative,
+  // to containingSubtree, where 0/1 and 1/1 correspond to the subtree edges.
+  template <typename T, unsigned int dim>
+  void TNPoint<T,dim>::get_relNodeCoords(const TreeNode<T,dim> &containingSubtree,
+                                         const TreeNode<T,dim> &tnPoint,
+                                         unsigned int polyOrder,
+                                         std::array<unsigned int, dim> &numerators,
+                                         unsigned int &denominator)
+  {
+    const TreeNode<T,dim> hostCell = tnPoint.getCell();
+    const unsigned int levDiff = hostCell.getLevel() - containingSubtree.getLevel();
+    const unsigned int hostShift = m_uiMaxDepth - hostCell.getLevel();
+
+    denominator = polyOrder * (1u << levDiff);
+
+    for (int d = 0; d < dim; d++)
+      numerators[d] = ((hostCell.getX(d) - containingSubtree.getX(d)) >> hostShift) * polyOrder
+          + get_nodeRanke1D(hostCell, tnPoint, d, polyOrder);
+  }
+
+
 
   // ============================ End: TNPoint ============================ //
 

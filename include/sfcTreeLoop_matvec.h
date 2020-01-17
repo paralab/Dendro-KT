@@ -69,6 +69,29 @@ namespace ot
   //
   // Output<0>: Node value (NodeT i.e. float type)
   //
+  // Usage:
+  //    ot::MatvecBase<dim, T> treeloop_mvec(numNodes, ndofs, eleOrder, &(*nodes.begin()), &(*vals.begin()), partFront, partBack);
+  //    while (!treeloop_mvec.isFinished())
+  //    {
+  //      if (treeloop_mvec.isPre())
+  //      {
+  //        // Decide whether to descend and/or do something at current level.
+  //        // For example you could intervene before topDownNodes() is called.
+  //        unsigned int currentLevel = treeloop_mvec.getCurrentSubtree().getLevel();
+  //        treeloop_mvec.step();  // Descend if possible, else next subtree.
+  //      }
+  //      else
+  //      {
+  //        // Already visited this subtree and children, now on way back up.
+  //        // You can access results of bottomUpNodes() from children of this
+  //        // subtree, and intervene in subtree results before this subtree
+  //        // is used in bottomUpNodes() of parent.
+  //        std::cout << "Returned to subtree \t" << treeloop_mvec.getSubtreeInfo().getCurrentSubtree() << "\n";
+  //        treeloop_mvec.next();
+  //      }
+  //    }
+
+  //
   template <unsigned int dim, typename NodeT>
   class MatvecBase : public SFC_TreeLoop<dim,
                                          Inputs<TreeNode<unsigned int, dim>, NodeT>,
@@ -97,6 +120,82 @@ namespace ot
                  const TreeNode<unsigned int, dim> &firstElement,
                  const TreeNode<unsigned int, dim> &lastElement );
 
+      size_t finalize(NodeT * outputNodeVals) const;
+
+      struct AccessSubtree
+      {
+        MatvecBase &treeloop;
+
+        /** getNodeCoords() */
+        const double * getNodeCoords() {
+          treeloop.fillAccessNodeCoordsFlat();
+          return &(*treeloop.m_accessNodeCoordsFlat.cbegin());
+        }
+
+        /** getCurrentSubtree() */
+        const TreeNode<unsigned int, dim> & getCurrentSubtree() const {
+          return treeloop.getCurrentSubtree();
+        }
+
+        /** isLeaf() */
+        bool isLeaf() const {
+          return treeloop.getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel == getCurrentSubtree().getLevel();
+        }
+
+        /** getNumNodesIn() */
+        size_t getNumNodesIn() const {
+          return treeloop.getCurrentFrame().template getMyInputHandle<0>().size();
+        }
+
+        /** getNumNonhangingNodes() */
+        size_t getNumNonhangingNodes() const {
+          return treeloop.getCurrentFrame().mySummaryHandle.m_subtreeNodeCount;
+        }
+
+        /** readNodeCoordsIn() */
+        const TreeNode<unsigned int, dim> * readNodeCoordsIn() const {
+          return &(*treeloop.getCurrentFrame().template getMyInputHandle<0>().cbegin());
+        }
+
+        /** readNodeValsIn() */
+        const NodeT * readNodeValsIn() const {
+          return &(*treeloop.getCurrentFrame().template getMyInputHandle<1>().cbegin());
+        }
+
+        /** getNumNodesOut() */
+        size_t getNumNodesOut() const {
+          return treeloop.getCurrentFrame().template getMyOutputHandle<0>().size();
+        }
+
+        /** readNodeValsOut() */
+        const NodeT * readNodeValsOut() const {
+          return &(*treeloop.getCurrentFrame().template getMyOutputHandle<0>().cbegin());
+        }
+
+        /** overwriteNodeValsIn() */
+        void overwriteNodeValsIn(const NodeT *newVals) {
+          std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
+                      treeloop.getCurrentFrame().template getMyInputHandle<1>().begin());
+        }
+
+        /** overwriteNodeValsOut() */
+        void overwriteNodeValsOut(const NodeT *newVals) {
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(getNumNodesIn());
+          std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
+                      treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
+        }
+      };
+
+      AccessSubtree subtreeInfo() { return AccessSubtree{*this}; }
+
+      // Other public methods from the base class, SFC_TreeLoop:
+      //   void reset();
+      //   bool step();
+      //   bool next();
+      //   bool isPre();
+      //   bool isFinished();
+      //   const TreeNode<C,dim> & getCurrentSubtree();
+
     protected:
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
       void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
@@ -107,6 +206,8 @@ namespace ot
           const TreeNode<unsigned int, dim> *begin,
           const TreeNode<unsigned int, dim> *end);
 
+      void fillAccessNodeCoordsFlat();
+
       unsigned int m_ndofs;
       unsigned int m_eleOrder;
 
@@ -114,7 +215,8 @@ namespace ot
       std::vector<TreeNode<unsigned int,dim>> m_leafNodeCoords;
       std::vector<NodeT> m_leafNodeVals;
       std::vector<NodeT> m_parentNodeVals;
-      std::vector<double> m_leafNodeCoordsFlat;
+
+      std::vector<double> m_accessNodeCoordsFlat;
 
       InterpMatrices<dim, NodeT> m_interp_matrices;
   };
@@ -193,48 +295,26 @@ namespace ot
   }
 
 
-    /// template <typename T, unsigned int dim, typename NodeT>
-    /// void ElementLoop<T, dim, NodeT>::finalize(NodeT * outputNodeVals)
+  // Returns the number of nodes copied.
+  // This represents in total (m_ndofs * return_value) data items.
+  template <unsigned int dim, typename NodeT>
+  size_t MatvecBase<dim, NodeT>::finalize(NodeT * outputNodeVals) const
+  {
+    typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
 
-        /// //
-        /// // finalize()
-        /// //
-        /// {
-        ///   if (!(m_curTreeAddr == m_endTreeAddr))
-        ///     while (m_curSubtree.getLevel() > m_L0)
-        ///     {
-        ///       m_curSubtree = m_curSubtree.getParent();
-        ///       bottomUpNodes();
-        ///     }
-        ///
-        ///   std::vector<NodeT> &topVals = m_siblingNodeValsOut[m_L0 - m_L0];
-        ///
-        ///   // Only copy back the subdomain-incident nodes.
-        ///   unsigned long numIncidentNodes = 0;
-        ///   const ot::Element<T, dim> subdomain(m_curSubtree.getAncestor(m_L0));
-        ///   for (unsigned long nIdx = 0; nIdx < m_numNodes; nIdx++)
-        ///   {
-        ///     if (subdomain.isIncident(m_allNodeCoords[nIdx]))
-        ///     {
-        ///       for (int dof = 0; dof < m_ndofs; dof++)
-        ///         outputNodeVals[m_ndofs*nIdx + dof] = topVals[m_ndofs*numIncidentNodes + dof];
-        ///       numIncidentNodes++;
-        ///     }
-        ///     else
-        ///       for (int dof = 0; dof < m_ndofs; dof++)
-        ///         outputNodeVals[m_ndofs*nIdx + dof] = 0.0;
-        ///   }
-        /// }
+    size_t numInputNodes = rootFrame.mySummaryHandle.m_subtreeNodeCount;
+    size_t numActualNodes = rootFrame.template getMyOutputHandle<0>().size();
 
+    if (numInputNodes != numActualNodes)
+      std::cerr << "Warning: number of nodes returned by MatvecBase::finalize() ("
+                << numActualNodes << ") differs from number of nodes in input ("
+                << numInputNodes << ").\n";
 
-  /*
-   *
-   *
-   *
-   *
-   *
-   *
-   */
+    std::copy_n(rootFrame.template getMyOutputHandle<0>().begin(), m_ndofs * numActualNodes, outputNodeVals);
+
+    return numActualNodes;
+  }
+
 
   template <unsigned int dim, typename NodeT>
   void MatvecBase<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
@@ -642,6 +722,42 @@ namespace ot
     }
 
   }
+
+
+  // fillAccessNodeCoordsFlat()
+  template <unsigned int dim, typename NodeT>
+  void MatvecBase<dim, NodeT>::fillAccessNodeCoordsFlat()
+  {
+    const FrameT &frame = BaseT::getCurrentFrame();
+    const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
+    const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
+    const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
+    const unsigned int curLev = subtree.getLevel();
+
+    const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
+    const double elemSz = double(1u << m_uiMaxDepth - curLev) / double(1u << m_uiMaxDepth);
+    double translate[dim];
+    for (int d = 0; d < dim; d++)
+      translate[d] = domainScale * subtree.getX(d);
+
+    std::array<unsigned int, dim> numerators;
+    unsigned int denominator;
+
+    m_accessNodeCoordsFlat.resize(dim * numNodes);
+
+    for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
+    {
+      TNPoint<unsigned int, dim>::get_relNodeCoords(
+          subtree, nodeCoords[nIdx], m_eleOrder,
+          numerators, denominator);
+
+      for (int d = 0; d < dim; ++d)
+        m_accessNodeCoordsFlat[nIdx * dim + d] =
+            translate[d] + elemSz * numerators[d] / denominator;
+    }
+  }
+
+
 
 }//namespace ot
 

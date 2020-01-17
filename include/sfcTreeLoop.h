@@ -331,6 +331,12 @@ namespace ot
         return (m_stack.size() == 1 && !m_stack.back().m_isPre);
       }
 
+      const TreeNode<C,dim> & getCurrentSubtree()
+      {
+        assert (m_stack.size() > 0);
+        return m_stack.back().m_currentSubtree;
+      }
+
 
     protected:
 
@@ -440,10 +446,9 @@ namespace ot
         return m_stack[0];
       }
 
-      const TreeNode<C,dim> & getCurrentSubtree()
+      FrameT & getCurrentFrame()
       {
-        assert (m_stack.size() > 0);
-        return m_stack.back().m_currentSubtree;
+        return m_stack.back();
       }
 
       const RotI getCurrentRotation()
