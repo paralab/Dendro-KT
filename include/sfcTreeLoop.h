@@ -646,7 +646,7 @@ namespace ot
       // isEnd() : Becomes true when reached the end. Until then, false.
       bool isEnd() const
       {
-        m_pNodeIdx >= m_numParentNodes;
+        return m_pNodeIdx >= m_numParentNodes;
       }
 
       // next() : Advance the iterator by one "child instance" of a node.

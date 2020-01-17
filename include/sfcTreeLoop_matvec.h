@@ -136,6 +136,8 @@ namespace ot
     for ( ; begin < end; ++begin)
       if (summary.m_subtreeFinestLevel < begin->getLevel())
         summary.m_subtreeFinestLevel = begin->getLevel();
+
+    return summary;
   }
 
 
