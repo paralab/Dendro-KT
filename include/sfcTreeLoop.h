@@ -441,15 +441,13 @@ namespace ot
         // initialize the root data and summary member variables.
       }
 
-      FrameT & getRootFrame()
-      {
-        return m_stack[0];
-      }
+      // getRootFrame()
+      const FrameT & getRootFrame() const { return m_stack[0]; }
+      FrameT & getRootFrame() { return m_stack[0]; }
 
-      FrameT & getCurrentFrame()
-      {
-        return m_stack.back();
-      }
+      // getCurrentFrame()
+      const FrameT & getCurrentFrame() const { return m_stack.back(); }
+      FrameT & getCurrentFrame() { return m_stack.back(); }
 
       const RotI getCurrentRotation()
       {
@@ -510,25 +508,53 @@ namespace ot
       // Frame()
       Frame(const Frame &) = delete;
 
+      //
       // getMyInputHandle<>()
       template <unsigned int inputIdx>
       typename std::tuple_element<inputIdx, typename FrameInputs<dim, InputTypes>::DataStoreT>::type
           & getMyInputHandle() { return std::get<inputIdx>(i.myDataHandles); }
 
+      // getMyInputHandle<>() const
+      template <unsigned int inputIdx>
+      const typename std::tuple_element<inputIdx, typename FrameInputs<dim, InputTypes>::DataStoreT>::type
+          & getMyInputHandle() const { return std::get<inputIdx>(i.myDataHandles); }
+
+
+      //
       // getMyOutputHandle<>()
       template <unsigned int outputIdx>
       typename std::tuple_element<outputIdx, typename FrameOutputs<dim, OutputTypes>::DataStoreT>::type
           & getMyOutputHandle() { return std::get<outputIdx>(o.myDataHandles); }
 
+      // getMyOutputHandle<>() const
+      template <unsigned int outputIdx>
+      const typename std::tuple_element<outputIdx, typename FrameOutputs<dim, OutputTypes>::DataStoreT>::type
+          & getMyOutputHandle() const { return std::get<outputIdx>(o.myDataHandles); }
+
+
+      //
       // getChildInput<>()
       template <unsigned int inputIdx>
       typename std::tuple_element<inputIdx, typename FrameInputs<dim, InputTypes>::DataStoreT>::type
           & getChildInput(ChildI ch) { return std::get<inputIdx>(i.childData[ch]); }
 
+      // getChildInput<>() const
+      template <unsigned int inputIdx>
+      const typename std::tuple_element<inputIdx, typename FrameInputs<dim, InputTypes>::DataStoreT>::type
+          & getChildInput(ChildI ch) const { return std::get<inputIdx>(i.childData[ch]); }
+
+
+      //
       // getChildOutput<>()
       template <unsigned int outputIdx>
       typename std::tuple_element<outputIdx, typename FrameOutputs<dim, OutputTypes>::DataStoreT>::type
           & getChildOutput(ChildI ch) { return std::get<outputIdx>(o.childData[ch]); }
+
+      // getChildOutput<>() const
+      template <unsigned int outputIdx>
+      const typename std::tuple_element<outputIdx, typename FrameOutputs<dim, OutputTypes>::DataStoreT>::type
+          & getChildOutput(ChildI ch) const { return std::get<outputIdx>(o.childData[ch]); }
+
 
       // getCurrentSubtree()
       const TreeNode<C,dim> &getCurrentSubtree() { return m_currentSubtree; }

@@ -300,7 +300,7 @@ namespace ot
   template <unsigned int dim, typename NodeT>
   size_t MatvecBase<dim, NodeT>::finalize(NodeT * outputNodeVals) const
   {
-    typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
+    const typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
 
     size_t numInputNodes = rootFrame.mySummaryHandle.m_subtreeNodeCount;
     size_t numActualNodes = rootFrame.template getMyOutputHandle<0>().size();
