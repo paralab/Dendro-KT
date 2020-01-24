@@ -481,11 +481,14 @@ namespace ot
         parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
       else
       {
-        std::vector<TreeNode<unsigned int, dim>> &childNodeCoords =
-            parentFrame.template getChildInput<0>(child_sfc);
-        childNodeCoords.clear();
-        Element<unsigned int, dim>(childSubtreesSFC[child_sfc]).template
-            appendNodes<TreeNode<unsigned int, dim>>(m_eleOrder, childNodeCoords);
+        /// std::vector<TreeNode<unsigned int, dim>> &childNodeCoords =
+        ///     parentFrame.template getChildInput<0>(child_sfc);
+        /// childNodeCoords.clear();
+        /// Element<unsigned int, dim>(childSubtreesSFC[child_sfc]).template
+        ///     appendNodes<TreeNode<unsigned int, dim>>(m_eleOrder, childNodeCoords);
+
+        // Cannot use Element::appendNodes() because the node may be parent level.
+        parentFrame.template getChildInput<0>(child_sfc).resize(npe);
       }
     }
 
@@ -564,7 +567,10 @@ namespace ot
                 m_eleOrder );
 
         // Node coordinates.
-        assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
+        /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
+        // Cannot use Element::appendNodes() because the node may be parent level.
+        // So, must add the node here.
+        parentFrame.template getChildInput<0>(child_sfc)[nodeRank] = myNodes[nIdx];
 
         // Nodal values.
         std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
