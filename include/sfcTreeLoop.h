@@ -126,7 +126,7 @@ namespace ot
   //                       DefaultSummary, ThisClass>;
 
 
-  using ExtantCellFlagT = unsigned short;  // TODO use TreeNode extant cell flag type.
+  // ExtantCellFlagT;  // is defined in treeNode.h
 
   template <unsigned int dim, class InputTypes, class OutputTypes, typename SummaryType, class ConcreteTreeLoop>
   class Frame;
@@ -754,15 +754,11 @@ namespace ot
           // Prepare to iterate over children which are incident to current node.
           FType incidentSubspace;
           FType incidentSubspaceDim;
-          m_extantChildren = (1u << (1u<<dim)) - 1;
-          /*m_extantChildren = */ \
+          m_extantChildren = \
               m_subtree.incidentChildren(m_nodesBegin[m_pNodeIdx],
                                          m_firstIncidentChild_m,
                                          incidentSubspace,
                                          incidentSubspaceDim);
-          //TODO make sure the above assigns to m_extantChildren, i.e. it
-          //uses neighborhood existence flags in incidentChildren
-          //(should be contained in the merge with subdomain branch).
           m_extantChildren &= m_subtreeChildren;
           m_bitExpander = binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
           m_incidentSubspaceVolume = 1u << incidentSubspaceDim;
@@ -808,7 +804,7 @@ namespace ot
       binOp::TallBitMatrix<dim, FType> m_bitExpander;
       /// FType m_incidentSubspace;
       /// FType m_incidentSubspaceDim;
-      ExtantCellFlagT m_extantChildren;  // TODO use this after merge from subdomain
+      ExtantCellFlagT m_extantChildren;
       const ExtantCellFlagT m_subtreeChildren;
   };
 
