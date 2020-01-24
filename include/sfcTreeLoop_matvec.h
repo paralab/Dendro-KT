@@ -50,6 +50,7 @@ namespace ot
     public:
       LevI m_subtreeFinestLevel;
       size_t m_subtreeNodeCount;
+      size_t m_numBdryNodes;
 
       bool m_initializedIn;
       bool m_initializedOut;
@@ -184,6 +185,29 @@ namespace ot
           std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
                       treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
         }
+
+
+        /** getNdofs() */
+        unsigned int getNdofs() const { return treeloop.m_ndofs; }
+
+        /** getEleOrder() */
+        unsigned int getEleOrder() const { return treeloop.m_eleOrder; }
+
+        /** getNodesPerElement() */
+        unsigned int getNodesPerElement() const {
+          return intPow(treeloop.m_eleOrder + 1, dim);
+        }
+
+        /** isElementBoundary() */
+        bool isElementBoundary() const {
+          return treeloop.getCurrentFrame().mySummaryHandle.m_numBdryNodes > 0;
+        }
+
+        /** getLeafNodeBdry() */
+        const std::vector<bool> & getLeafNodeBdry() const {
+          treeloop.fillLeafNodeBdry();
+          return treeloop.m_leafNodeBdry;
+        }
       };
 
       AccessSubtree subtreeInfo() { return AccessSubtree{*this}; }
@@ -210,6 +234,7 @@ namespace ot
           size_t numNodes);
 
       void fillAccessNodeCoordsFlat();
+      void fillLeafNodeBdry();
 
       unsigned int m_ndofs;
       unsigned int m_eleOrder;
@@ -218,6 +243,7 @@ namespace ot
       std::vector<TreeNode<unsigned int,dim>> m_leafNodeCoords;
       std::vector<NodeT> m_leafNodeVals;
       std::vector<NodeT> m_parentNodeVals;
+      std::vector<bool> m_leafNodeBdry;
 
       std::vector<double> m_accessNodeCoordsFlat;
 
@@ -236,11 +262,17 @@ namespace ot
   {
     MatvecBaseSummary<dim> summary;
     summary.m_subtreeFinestLevel = 0;
+    summary.m_numBdryNodes = 0;
     summary.m_subtreeNodeCount = (end >= begin ? end - begin : 0);
 
     for ( ; begin < end; ++begin)
+    {
+      if (begin->isBoundaryNodeExtantCellFlag())
+        summary.m_numBdryNodes++;
+
       if (summary.m_subtreeFinestLevel < begin->getLevel())
         summary.m_subtreeFinestLevel = begin->getLevel();
+    }
 
     return summary;
   }
@@ -380,8 +412,10 @@ namespace ot
 
     std::array<size_t, NumChildren> childNodeCounts;
     std::array<LevI, NumChildren> childFinestLevel;
+    std::array<size_t, NumChildren> childBdryCounts;
     childNodeCounts.fill(0);
     childFinestLevel.fill(0);
+    childBdryCounts.fill(0);
     *extantChildren = 0u;
 
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
@@ -434,6 +468,8 @@ namespace ot
       const ChildI child_sfc = nodeInstance.getChild_sfc();
 
       const LevI nodeLevel = myNodes[nodeInstance.getPNodeIdx()].getLevel();
+      if (myNodes[nodeInstance.getPNodeIdx()].isBoundaryNodeExtantCellFlag())
+        childBdryCounts[child_sfc]++;
       if (childFinestLevel[child_sfc] < nodeLevel)
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
@@ -459,6 +495,7 @@ namespace ot
 
       summaries[child_sfc].m_subtreeFinestLevel = childFinestLevel[child_sfc];
       summaries[child_sfc].m_subtreeNodeCount = childNodeCounts[child_sfc];
+      summaries[child_sfc].m_numBdryNodes = childBdryCounts[child_sfc];
 
       summaries[child_sfc].m_initializedIn = true;
       summaries[child_sfc].m_initializedOut = false;
@@ -756,7 +793,8 @@ namespace ot
   void MatvecBase<dim, NodeT>::fillAccessNodeCoordsFlat()
   {
     const FrameT &frame = BaseT::getCurrentFrame();
-    const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
+    /// const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
+    const size_t numNodes = frame.template getMyInputHandle<0>().size();
     const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
     const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
     const unsigned int curLev = subtree.getLevel();
@@ -782,6 +820,23 @@ namespace ot
         m_accessNodeCoordsFlat[nIdx * dim + d] =
             translate[d] + elemSz * numerators[d] / denominator;
     }
+  }
+
+
+  // fillLeafNodeBdry()
+  template <unsigned int dim, typename NodeT>
+  void MatvecBase<dim, NodeT>::fillLeafNodeBdry()
+  {
+    const FrameT &frame = BaseT::getCurrentFrame();
+    const size_t numNodes = frame.template getMyInputHandle<0>().size();
+    const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
+    const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
+    const unsigned int curLev = subtree.getLevel();
+
+    m_leafNodeBdry.resize(dim * numNodes);
+
+    for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
+      m_leafNodeBdry[nIdx] = nodeCoords[nIdx].isBoundaryNodeExtantCellFlag();
   }
 
 
