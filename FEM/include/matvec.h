@@ -236,6 +236,7 @@ namespace fem
 
     template <typename T, typename TN, typename RE>
     void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
+    /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
       // Initialize output vector to 0.
       std::fill(vecOut, vecOut + ndofs*sz, 0);
@@ -258,9 +259,11 @@ namespace fem
           eleOp(nodeValsFlat, &(*leafResult.begin()), ndofs, nodeCoordsFlat, scale);
 
           treeloop.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
-        }
 
-        treeloop.step();
+          treeloop.next();
+        }
+        else
+          treeloop.step();
       }
 
       size_t writtenSz = treeloop.finalize(vecOut);
@@ -270,6 +273,7 @@ namespace fem
     }
 
     template<typename T,typename TN, typename RE>
+    /// void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     void matvec_eleTreeIterator(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
       // Initialize output vector to 0.
