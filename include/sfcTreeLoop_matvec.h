@@ -639,13 +639,10 @@ namespace ot
     //
     bool thereAreHangingNodes = false;
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
-    size_t nodeCountAccum = 0;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
       childFinestLevel[child_sfc] = summaries[child_sfc].m_subtreeFinestLevel;
       childNodeCounts[child_sfc] = summaries[child_sfc].m_subtreeNodeCount;
-      childNodeOffsets[child_sfc] = nodeCountAccum;
-      nodeCountAccum += childNodeCounts[child_sfc];
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         thereAreHangingNodes = true;
