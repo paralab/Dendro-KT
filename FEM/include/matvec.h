@@ -265,7 +265,7 @@ namespace fem
 
       size_t writtenSz = treeloop.finalize(vecOut);
 
-      if (writtenSz == 0)
+      if (sz > 0 && writtenSz == 0)
         std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
     }
 

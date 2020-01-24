@@ -433,22 +433,29 @@ namespace ot
       }
 
       // SFC_TreeLoop() : constructor
-      SFC_TreeLoop(unsigned int max_depth)  //TODO?
+      SFC_TreeLoop(bool nonempty, unsigned int max_depth)  //TODO?
       {
-        // The multi-level frame access pattern depends on references to
-        // a given level not being invalidated. So, never reallocate the stack.
-        m_stack.reserve((1+max_depth) * NumChildren);
+        if (nonempty)
+          // The multi-level frame access pattern depends on references to
+          // a given level not being invalidated. So, never reallocate the stack.
+          m_stack.reserve(max_depth * NumChildren + 1);
 
         // This statement initializes references in the first stack frame
         // to refer to our member variables. If these member variables are
         // assigned to later, updated contents will be reflected in the frame.
         m_stack.emplace_back(m_rootInputData, m_rootOutputData, m_rootSummary);
 
+        // Prevent traversal if empty. isFinished()==true.
+        if (!nonempty)
+          m_stack.back().m_isPre = false;
+
         // Note that the concrete class is responsible to
         // initialize the root data and summary member variables.
       }
 
-      SFC_TreeLoop() : SFC_TreeLoop(m_uiMaxDepth) {}
+      SFC_TreeLoop(bool nonempty) : SFC_TreeLoop(nonempty, m_uiMaxDepth) {}
+
+      SFC_TreeLoop() = delete;
 
       // getRootFrame()
       const FrameT & getRootFrame() const { return m_stack[0]; }

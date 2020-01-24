@@ -60,8 +60,12 @@ bool testNull()
 template <unsigned int dim>
 class DummySubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>
 {
-  using FrameT = ot::Frame<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>;
   public:
+    using BaseT = ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>;
+    using FrameT = ot::Frame<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>;
+
+    DummySubclass() : BaseT(true) {}
+
     void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
     {
       if (this->getCurrentSubtree().getLevel() < 2)
@@ -134,7 +138,10 @@ template <unsigned int dim>
 class TopDownSubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>
 {
   using FrameT = ot::Frame<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>;
+  using BaseT = ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>;
   public:
+    TopDownSubclass() : BaseT(true) {}
+
     void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
     {
       ot::sfc_tree_utils::topDownNodes(parentFrame, extantChildren);

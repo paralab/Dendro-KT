@@ -180,7 +180,7 @@ namespace ot
 
         /** overwriteNodeValsOut() */
         void overwriteNodeValsOut(const NodeT *newVals) {
-          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(getNumNodesIn());
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
           std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
                       treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
         }
@@ -269,7 +269,7 @@ namespace ot
                                       const NodeT * inputNodeVals,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
-  : BaseT(get_max_depth(allNodeCoords, numNodes)),
+  : BaseT(numNodes > 0, get_max_depth(allNodeCoords, numNodes)),
     m_ndofs(ndofs),
     m_eleOrder(eleOrder),
     m_interp_matrices(eleOrder)
@@ -649,7 +649,8 @@ namespace ot
     }
 
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
-    const size_t numParentNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
+    /// const size_t numParentNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount; // Assumes parent is never leaf.
+    const size_t numParentNodes = myNodes.size();
 
     std::vector<NodeT> &myOutNodeValues = parentFrame.template getMyOutputHandle<0>();
     myOutNodeValues.clear();
