@@ -450,6 +450,13 @@ namespace ot
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
+      if (childFinestLevel[child_sfc] <= parSubtree.getLevel())
+      {
+        const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
+        *extantChildren &= ~(1u << child_m);
+        childNodeCounts[child_sfc] = 0;
+      }
+
       summaries[child_sfc].m_subtreeFinestLevel = childFinestLevel[child_sfc];
       summaries[child_sfc].m_subtreeNodeCount = childNodeCounts[child_sfc];
 
@@ -488,7 +495,7 @@ namespace ot
         ///     appendNodes<TreeNode<unsigned int, dim>>(m_eleOrder, childNodeCoords);
 
         // Cannot use Element::appendNodes() because the node may be parent level.
-        parentFrame.template getChildInput<0>(child_sfc).resize(npe);
+        parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
       }
     }
 
@@ -542,7 +549,7 @@ namespace ot
                                                                  &(*myNodes.begin()),
                                                                  numInputNodes,
                                                                  this->getCurrentRotation(),
-                                                                 segmentChildren ))
+                                                                 *extantChildren ))
     {
       const ChildI child_sfc = nodeInstance.getChild_sfc();
       const size_t nIdx = nodeInstance.getPNodeIdx();
