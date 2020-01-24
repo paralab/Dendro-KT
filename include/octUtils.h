@@ -12,6 +12,7 @@
 #include <random>
 #include <utility>
 #include <iostream>
+#include <sstream>
 #include <stdio.h>
 
 #include "refel.h"
@@ -185,63 +186,45 @@ int createRegularOctree(std::vector<TreeNode<T, dim>>& out,
   //
   if (myCount)
   {
-    const RankI frontTNRank = prevCount;
-    const RankI backTNRank = prevCount + myCount - 1;
+    // Breadth-first tree traversal, compute ranks to determine acceptance.
+    // Invariant: The TreeNodes in out are exactly the subtrees of the current
+    //            level that have a nonempty overlap with designated rank interval.
+    //
+    std::vector<TreeNode<T, dim>> tnBuffer;
+    std::vector<size_t> rankBuffer, rankOut;
 
-    // Left bound.
-    TreeNode<T, dim> frontTreeNode;
-    RankI subtreeSz = totalCount;
-    RankI tnRank = 0;
-    while (frontTreeNode.getLevel() < lev)
+    out.emplace_back();       // Root of tree. Definitely overlaps.
+    rankOut.emplace_back(0);  //
+
+    while (/*tnBuffer.size() > 0 && */ out[0].getLevel() < lev)
     {
-      subtreeSz >>= dim;
-      unsigned int child_m = (frontTNRank - tnRank) / subtreeSz;
-      frontTreeNode = frontTreeNode.getChildMorton(child_m);
-    }
-
-    // Right bound.
-    TreeNode<T, dim> backTreeNode;
-    subtreeSz = totalCount;
-    tnRank = 0;
-    while (backTreeNode.getLevel() < lev)
-    {
-      subtreeSz >>= dim;
-      unsigned int child_m = (backTNRank - tnRank) / subtreeSz;
-      backTreeNode = backTreeNode.getChildMorton(child_m);
-    }
-
-    TreeNode<T, dim> subtreeRoot = frontTreeNode;
-    while (!(subtreeRoot.isAncestorInclusive(backTreeNode)))
-      subtreeRoot = subtreeRoot.getParent();
-
-    constexpr unsigned int NUM_CHILDREN = 1u << dim;
-
-    // Add TreeNodes using breadth-first traversal.
-    std::vector<TreeNode<T, dim>> buffer;
-    out.push_back(subtreeRoot);
-    while (out.front().getLevel() < lev)
-    {
-      const unsigned int parentLev = out.front().getLevel();
-
-      for (const TreeNode<T, dim> & parent : out)
+      for (size_t ii = 0; ii < out.size(); ii++)
       {
-        unsigned int childFront = 0;
-        unsigned int childBack = NUM_CHILDREN - 1;
+        const TreeNode<T, dim> &parent = out[ii];
+        const size_t &parentRank = rankOut[ii];
+        const size_t childSize = 1u << (dim * (lev - parent.getLevel() - 1));
 
-        if (parent.isAncestor(frontTreeNode))
-          childFront = frontTreeNode.getMortonIndex(parentLev+1);
-        if (parent.isAncestor(backTreeNode))
-          childBack = backTreeNode.getMortonIndex(parentLev+1);
+        // Test each child for intersection with rank interval.
+        for (ChildI child_m = 0; child_m < (1u << dim); child_m++)
+        {
+          const size_t childRank = parentRank + childSize * child_m;
+          if (prevCount < childRank + childSize &&
+                          childRank < prevCount + myCount)
+          {
+            tnBuffer.emplace_back(parent.getChildMorton(child_m));
+            rankBuffer.emplace_back(childRank);
+          }
+        }
 
-        for (unsigned int child_m = childFront; child_m <= childBack; child_m++)
-          buffer.push_back(parent.getChildMorton(child_m));
       }
 
+      // Swap buffers.
       out.clear();
-      std::swap(buffer, out);
+      rankOut.clear();
+      std::swap(tnBuffer, out);
+      std::swap(rankBuffer, rankOut);
     }
-  }//if(myCount)
-
+  }
 
   //
   // Re-partition the points according to the SFC order.
@@ -534,10 +517,71 @@ void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOr
 }
 
 
+/** @brief Get physical coordinates and physical size of an element. */
+template <typename T, unsigned int dim>
+void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, double * physCoords, double & physSize)
+{
+  const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
+  const double elemSz = double(1u << m_uiMaxDepth - octCoords.getLevel())
+                        / double(1u << m_uiMaxDepth);
+
+  // Compute physical coords.
+  for (int d = 0; d < dim; d++)
+    physCoords[d] = domainScale * octCoords.getX(d);
+
+  physSize = elemSz;
+}
+
+
+template <typename T, unsigned int dim>
+TreeNode<T, dim> physical2TreeNode(const double * physCoords, double physSize)
+{
+  const unsigned int elemLev = -log2(physSize) + 0.5;  // Rounding if needed.
+  const T elemSz = 1u << (m_uiMaxDepth - elemLev);
+  const T extent = 1u << elemLev;
+
+  std::array<T, dim> tnCoords;
+
+  #pragma unroll(dim)
+  for (int d = 0; d < dim; d++)
+    tnCoords[d] = T(extent * physCoords[d] + 0.5) * elemSz;  // Round @ resolution.
+
+  return TreeNode<T, dim>(tnCoords, elemLev);
+}
+
+
+template <typename T, unsigned int dim>
+std::string dbgCoordStr(const std::array<T,dim> &tnCoords, unsigned int refLev)
+{
+  const unsigned int shift = m_uiMaxDepth - refLev;
+  const unsigned int gridSz = 1u << refLev;
+
+  std::ostringstream coordStrStrm;
+  coordStrStrm << '(';
+  if (dim > 0)
+    coordStrStrm << (tnCoords[0] >> shift) << '/' << gridSz;
+  for (int d = 1; d < dim; d++)
+    coordStrStrm << ", " << int(tnCoords[d] >> shift) << '/' << gridSz;
+  coordStrStrm << ')';
+
+  return coordStrStrm.str();
+}
+
+template <typename T, unsigned int dim>
+std::string dbgCoordStr(const TreeNode<T,dim> &tnCoords, unsigned int refLev)
+{
+  std::array<T,dim> uiCoords;
+  tnCoords.getAnchor(uiCoords);
+  return dbgCoordStr<T,dim>(uiCoords, refLev);
+}
+
+
+  // TODO add parameter for ndofs
 template <typename T, unsigned int dim, typename NodeT>
 std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
                           const ot::TreeNode<T, dim> *coordEnd,
                           const NodeT *valBegin,
+                          unsigned int order = 1,
                           std::ostream & out = std::cout)
 {
   ot::TreeNode<T, dim> subdomain;
@@ -561,13 +605,24 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
   subdomain = ot::TreeNode<T, dim>();
   const T origin[2] = {subdomain.getX(0), top - subdomain.getX(1)};
 
+  // Increase resolution for order.
+  order--;
+  while (order)
+  {
+    deepestLev++;
+    order >>= 1;
+  }
+
   std::sort(zipped.begin(), zipped.end());
 
   const unsigned int numTiles1D = (1u << int(deepestLev) - int(subdomain.getLevel())) + 1;
-  const unsigned int charBound = (numTiles1D * 10 + 4)*numTiles1D + 2;
-  std::vector<char> charBuffer(charBound + 10, '\0');
+  /// const unsigned int charBound = (numTiles1D * 10 + 4)*numTiles1D + 2;
+  const unsigned int charBound = (numTiles1D * 20 + 4)*numTiles1D + 2;
+  /// std::vector<char> charBuffer(charBound + 10, '\0');
+  std::vector<char> charBuffer(charBound + 20, '\0');
   char * s = charBuffer.data();
-  const char * bufEnd = &(*charBuffer.end()) - 10;
+  /// const char * bufEnd = &(*charBuffer.end()) - 10;
+  const char * bufEnd = &(*charBuffer.end()) - 20;
 
   T cursorY = 0, cursorX = 0;
   cursorY = origin[1];

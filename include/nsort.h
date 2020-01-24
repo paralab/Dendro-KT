@@ -147,6 +147,8 @@ namespace ot {
       /**@brief Get type of cell to which point is interior, at arbitrary level. */
       CellType<dim> get_cellType(LevI lev) const;
 
+      static CellType<dim> get_cellType(const TreeNode<T, dim> &tnPoint, LevI lev);
+
       /**@brief Return whether own cell type differs from cell type on parent. */
       bool isCrossing() const;
 
@@ -254,10 +256,11 @@ namespace ot {
        *                for each incident child that is adjacent to the first incident child.
        * @param [out] incidenceSubspaceDim The number of set ones in incidenceSubspace.
        *                The number of incident children is pow(2, incidenceSubspaceDim).
+       * @return Convert m_extantCellFlag from point neighborhood bitstring to incident children bitstring.
        * @note Use with TallBitMatrix to easily iterate over the child numbers of incident children.
        * @note It is ASSUMED that isIncident(pointCoords) is true.
        */
-      void incidentChildren(
+      ExtantCellFlagT  incidentChildren(
           const ot::TreeNode<T,dim> &pointCoords,
           typename ot::CellType<dim>::FlagType &incidenceOffset,
           typename ot::CellType<dim>::FlagType &incidenceSubspace,
@@ -347,6 +350,9 @@ namespace ot {
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
+    using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
+    using DomainDeciderT_TN = std::function<bool(const TreeNode<T, dim> &elemTreeNode)>;
+
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array. Also compact node list and compute ``scatter map.''
      */
@@ -355,6 +361,7 @@ namespace ot {
         const TreeNode<T,dim> *treePartFront, const TreeNode<T,dim> *treePartBack,
         MPI_Comm comm);
 
+    static void markExtantCellFlags(std::vector<TNPoint<T,dim>> &points, const DomainDeciderT_TN &domainDecider);
 
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain.
@@ -432,9 +439,10 @@ namespace ot {
        * @note Assumes the points are already sorted -- as points, such that all points with same coordinates appear together, regardless of level.
        * @note Assumes that the field m_numInstances has been properly initialized for all points.
        */
-      static RankI resolveInterface_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
+      static RankI resolveInterface(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
 
       /**
+       * @deprecated
        * @brief For order > 2, alignment might not hold. However, we can use the fact that order > 2
        *        to take advantage of locality of k'-face interior nodes of differing levels to
        *        resolve duplicates/hanging nodes using a small buffer.

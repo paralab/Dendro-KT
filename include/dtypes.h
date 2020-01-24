@@ -44,6 +44,7 @@ to this user-defined datatype.
     HS_MPIDATATYPE(unsigned short, MPI_UNSIGNED_SHORT)
     HS_MPIDATATYPE(unsigned int,   MPI_UNSIGNED)
     HS_MPIDATATYPE(unsigned long,  MPI_UNSIGNED_LONG)
+    HS_MPIDATATYPE(unsigned long long,  MPI_UNSIGNED_LONG_LONG)
     HS_MPIDATATYPE(float,          MPI_FLOAT)
     HS_MPIDATATYPE(double,         MPI_DOUBLE)
     HS_MPIDATATYPE(long double,    MPI_LONG_DOUBLE)

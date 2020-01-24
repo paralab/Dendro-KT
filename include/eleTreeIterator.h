@@ -13,6 +13,7 @@
 #include "treeNode.h"
 #include "mathUtils.h"
 #include "binUtils.h"
+#include "distTree.h"
 
 #include "refel.h"
 #include "tensor.h"
@@ -22,6 +23,9 @@ template <typename T, unsigned int dim, typename NodeT> class ELIterator;
 template <typename T, unsigned int dim, typename NodeT> class ElementNodeBuffer;
 
 template <typename T, unsigned int dim> struct TreeAddr;
+
+//TODO specialization to skip non-boundary elements
+//(elements that have no boundary nodes)
 
 /**
  * Mesh free element traversal to read or compute on the nodes of each element.
@@ -79,6 +83,10 @@ template <typename T, unsigned int dim> struct TreeAddr;
  * objects which point to the same ElementLoop, because they will not be independent.
  */
 
+namespace par {
+  extern int DBG_rProc;
+  extern int DBG_nProc;
+}
 
 /**
  * @class TreeAddr
@@ -95,6 +103,7 @@ struct TreeAddr
   std::array<T,dim> m_coords;
 
   bool operator==(const TreeAddr &other) const;
+  bool directRelative(const TreeAddr &other) const;
   void step(unsigned int l);
   void step() { step(m_lev); }
   void clearBelowLev();
@@ -179,6 +188,7 @@ class ElementLoop
     std::vector<std::vector<NodeT>> m_siblingNodeValsIn;
     std::vector<std::vector<NodeT>> m_siblingNodeValsOut;
     std::vector<std::array<unsigned int, NumChildren+1>> m_childTable;  // sfc-order splitters.
+    std::vector<std::array<unsigned int, NumChildren>>   m_childBdryCounts;  // sfc-order boundary counts.
     //
     std::vector<ot::RotI> m_rot;
     std::vector<bool> m_isLastChild;
@@ -190,11 +200,13 @@ class ElementLoop
     std::vector<NodeT> m_leafNodeVals;
     std::vector<NodeT> m_parentNodeVals;
     std::vector<double> m_leafNodeCoordsFlat;
+    std::vector<bool> m_leafNodeBdry;
+    bool m_isLeafBoundary;
 
     // Helper functions.
     bool topDownNodes();    // Partition nodes for children of current node but don't change level.
     void bottomUpNodes();   // Sum up children nodes and store sum, but don't change level.
-    void goToTreeAddr();    // Make curSubtree match curTreeAddr, using bottom up and top down.
+    bool goToTreeAddr();    // Make curSubtree match curTreeAddr, using bottom up and top down.
 };
 
 
@@ -240,6 +252,8 @@ class ElementNodeBuffer
     const unsigned int &eleOrder;
     const unsigned int &nodesPerElement;
     const ot::TreeNode<T,dim> &elementTreeNode;
+    const bool &isLeafBoundary;
+    const std::vector<bool> &leafNodeBdry;
     ElementLoop<T,dim,NodeT> &m_host_loop;
 
   public:
@@ -250,6 +264,8 @@ class ElementNodeBuffer
                        const unsigned int &i_eleOrder,
                        const unsigned int &i_nodesPerElement,
                        const ot::TreeNode<T,dim> &i_elementTreeNode,
+                       const bool &i_isLeafBoundary,
+                       const std::vector<bool> &i_leafNodeBdry,
                        ElementLoop<T,dim,NodeT> &i_m_host_loop )
       :
         nodeValPtr(i_nodeValPtr),
@@ -258,6 +274,8 @@ class ElementNodeBuffer
         eleOrder(i_eleOrder),
         nodesPerElement(i_nodesPerElement),
         elementTreeNode(i_elementTreeNode),
+        isLeafBoundary(i_isLeafBoundary),
+        leafNodeBdry(i_leafNodeBdry),
         m_host_loop(i_m_host_loop)
     {}
 
@@ -267,6 +285,8 @@ class ElementNodeBuffer
     const unsigned int getEleOrder() const { return eleOrder; }
     const unsigned int getNodesPerElement() const { return nodesPerElement; }
     const ot::TreeNode<T,dim> & getElementTreeNode() const { return elementTreeNode; }
+    bool isElementBoundary() const { return isLeafBoundary; }
+    const std::vector<bool> & getLeafNodeBdry() const { return leafNodeBdry; }
 
     void submitElement() { m_host_loop.submitLeafBuffer(); }
 };
@@ -294,6 +314,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     m_leafNodeCoords(   intPow(eleOrder+1, dim) ),
     /// m_parentNodeCoords( intPow(eleOrder+1, dim) ),
     m_leafNodeCoordsFlat( dim * intPow(eleOrder+1, dim) ),
+    m_leafNodeBdry( intPow(eleOrder+1, dim) ),
     m_curSubtree()
 {
   if (numNodes == 0 || &lastElement + 1 == &firstElement)  // Null
@@ -304,6 +325,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     m_numNodes = 0;
 
     m_childTable.resize(1);
+    m_childBdryCounts.resize(1);
     m_siblingNodeCoords.resize(1);
     m_siblingNodeValsIn.resize(1);
     m_siblingNodeValsOut.resize(1);
@@ -315,6 +337,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     m_rot[0] = 0;
     m_siblingsDirty[0] = false;
     std::fill_n(m_childTable[0].begin(), NumChildren, 0);
+    std::fill_n(m_childBdryCounts[0].begin(), NumChildren, 0);
 
     return;
   }
@@ -349,6 +372,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
 
   // Size stacks.
   m_childTable.resize(m_uiMaxDepth - L0 + 1);
+  m_childBdryCounts.resize(m_uiMaxDepth - L0 + 1);
   m_siblingNodeCoords.resize(m_uiMaxDepth - L0 + 1);
   m_siblingNodeValsIn.resize(m_uiMaxDepth - L0 + 1);
   m_siblingNodeValsOut.resize(m_uiMaxDepth - L0 + 1);
@@ -426,6 +450,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
   // common ancestor, so we must filter those ones out.
 
   unsigned long numIncidentNodes = 0;
+  unsigned long numBdryNodes = 0;
   const ot::Element<T, dim> subdomain(m_curSubtree.getAncestor(m_L0));
   m_siblingNodeCoords[L0 - L0].clear();
   for (unsigned long nIdx = 0; nIdx < numNodes; nIdx++)
@@ -434,6 +459,9 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     {
       m_siblingNodeCoords[L0 - L0].push_back(allNodeCoords[nIdx]);
       numIncidentNodes++;
+
+      if (allNodeCoords[nIdx].isBoundaryNodeExtantCellFlag())
+        numBdryNodes++;
     }
   }
 
@@ -444,6 +472,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
     m_childTable[L0 - L0][c] = 0;
   for (ot::ChildI c = ancestorChildNum+1; c < NumChildren+1; c++)
     m_childTable[L0 - L0][c] = numIncidentNodes;
+  m_childBdryCounts[L0 - L0][ancestorChildNum] = numBdryNodes;
 
   // Set m_curTreeAddr (next target) coordinates to the address of the first leaf.
   m_curTreeAddr = m_beginTreeAddr;
@@ -487,7 +516,23 @@ void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals, unsigned
   m_siblingNodeValsOut[m_L0 - m_L0] =
       std::vector<NodeT>(m_ndofs*numIncidentNodes, 0.0);
 
-  goToTreeAddr();
+  bool gotToNonemptyLeaf = goToTreeAddr();
+
+  while (!gotToNonemptyLeaf)  // While loop is necessary for empty-space skipping.
+  {
+    m_curTreeAddr.step();
+
+    if (m_curTreeAddr.directRelative(m_endTreeAddr))
+    {
+      m_curTreeAddr = m_endTreeAddr;
+      return;
+    }
+    else
+    {
+      gotToNonemptyLeaf = goToTreeAddr();
+    }
+  }
+
 }
 
 
@@ -497,12 +542,14 @@ void ElementLoop<T, dim, NodeT>::initialize(const NodeT *inputNodeVals, unsigned
 template <typename T, unsigned int dim, typename NodeT>
 void ElementLoop<T, dim, NodeT>::finalize(NodeT * outputNodeVals)
 {
-  if (!(m_curTreeAddr == m_endTreeAddr))
+  if (!(m_curTreeAddr.directRelative(m_endTreeAddr)))
     while (m_curSubtree.getLevel() > m_L0)
     {
       m_curSubtree = m_curSubtree.getParent();
       bottomUpNodes();
     }
+  else
+    m_curTreeAddr = m_endTreeAddr;
 
   std::vector<NodeT> &topVals = m_siblingNodeValsOut[m_L0 - m_L0];
 
@@ -563,15 +610,19 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   FType firstIncidentChild_m, incidentSubspace, incidentSubspaceDim;
 
   std::array<unsigned int, NumChildren+1> nodeCounts;
+  std::array<unsigned int, NumChildren>   boundaryNodeCounts;
   nodeCounts.fill(0);
+  boundaryNodeCounts.fill(0);
 
   // Count the number of nodes contained by or incident on each child.
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
-    curSubtree.incidentChildren( sibNodeCoords[nIdx],
-                                 firstIncidentChild_m,
-                                 incidentSubspace,
-                                 incidentSubspaceDim);
+    const bool isBoundaryNode = sibNodeCoords[nIdx].isBoundaryNodeExtantCellFlag();
+
+    ot::ExtantCellFlagT incidentChildren = curSubtree.incidentChildren( sibNodeCoords[nIdx],
+                                                                firstIncidentChild_m,
+                                                                incidentSubspace,
+                                                                incidentSubspaceDim);
 
     binOp::TallBitMatrix<dim, FType> bitExpander =
         binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
@@ -581,9 +632,19 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
     {
       ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
       ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
-      nodeCounts[incidentChild_sfc]++;
+
+      if (incidentChildren & (1u << incidentChild_m))
+      {
+        nodeCounts[incidentChild_sfc]++;
+
+        if (isBoundaryNode)
+          boundaryNodeCounts[incidentChild_sfc]++;
+      }
     }
   }
+
+  // Push the boundary counts array onto the m_childBdryCounts stack.
+  m_childBdryCounts[curLev+1 - m_L0] = boundaryNodeCounts;
 
   // Exclusive prefix sum to get child node splitters.
   ot::RankI accum = 0;
@@ -609,10 +670,10 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   m_siblingNodeValsOut[curLev+1 - m_L0].resize(m_ndofs*accum, 0.0);
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
-    curSubtree.incidentChildren( sibNodeCoords[nIdx],
-                                 firstIncidentChild_m,
-                                 incidentSubspace,
-                                 incidentSubspaceDim);
+    ot::ExtantCellFlagT incidentChildren = curSubtree.incidentChildren( sibNodeCoords[nIdx],
+                                                                firstIncidentChild_m,
+                                                                incidentSubspace,
+                                                                incidentSubspaceDim);
 
     binOp::TallBitMatrix<dim, FType> bitExpander =
         binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
@@ -623,11 +684,14 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
       ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
       ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
-      m_siblingNodeCoords[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ] = sibNodeCoords[nIdx];
-      for (int dof = 0; dof < m_ndofs; dof++)
-        m_siblingNodeValsIn[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof ] = sibNodeValsIn[m_ndofs*nIdx + dof];
+      if (incidentChildren & (1u << incidentChild_m))
+      {
+        m_siblingNodeCoords[curLev+1 - m_L0][ nodeOffsets[incidentChild_sfc] ] = sibNodeCoords[nIdx];
+        for (int dof = 0; dof < m_ndofs; dof++)
+          m_siblingNodeValsIn[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof ] = sibNodeValsIn[m_ndofs*nIdx + dof];
 
-      nodeOffsets[incidentChild_sfc]++;
+        nodeOffsets[incidentChild_sfc]++;
+      }
     }
   }
 
@@ -686,10 +750,10 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
     // Count the number of nodes contained by or incident on each child.
     for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
     {
-      curSubtree.incidentChildren( sibNodeCoords[nIdx],
-                                   firstIncidentChild_m,
-                                   incidentSubspace,
-                                   incidentSubspaceDim);
+      ot::ExtantCellFlagT incidentChildren = curSubtree.incidentChildren( sibNodeCoords[nIdx],
+                                                                  firstIncidentChild_m,
+                                                                  incidentSubspace,
+                                                                  incidentSubspaceDim);
 
       binOp::TallBitMatrix<dim, FType> bitExpander =
           binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
@@ -700,10 +764,13 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
         ot::ChildI incidentChild_m = firstIncidentChild_m + bitExpander.expandBitstring(c);
         ot::ChildI incidentChild_sfc = rot_inv[incidentChild_m];
 
-        for (int dof = 0; dof < m_ndofs; dof++)
-          sibNodeValsOut[m_ndofs*nIdx + dof] += m_siblingNodeValsOut[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof];
+        if (incidentChildren & (1u << incidentChild_m))
+        {
+          for (int dof = 0; dof < m_ndofs; dof++)
+            sibNodeValsOut[m_ndofs*nIdx + dof] += m_siblingNodeValsOut[curLev+1 - m_L0][ m_ndofs*nodeOffsets[incidentChild_sfc] + dof];
 
-        nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
+          nodeOffsets[incidentChild_sfc]++;  // Advance child pointer.
+        }
       }
     }
   }
@@ -711,7 +778,7 @@ void ElementLoop<T, dim, NodeT>::bottomUpNodes()
 
 
 template <typename T, unsigned int dim, typename NodeT>
-void ElementLoop<T, dim, NodeT>::goToTreeAddr()
+bool ElementLoop<T, dim, NodeT>::goToTreeAddr()
 {
   // On the way up, responsible to set
   // - m_siblingNodeValsOut[... l-1],
@@ -733,6 +800,10 @@ void ElementLoop<T, dim, NodeT>::goToTreeAddr()
   //   - m_parentNodeVals
 
   // - m_curTreeAddr coords are READONLY in this method, however need to find level of leaf.
+
+  // Return whether we reached a "nonempty" leaf.
+  // The only reason not to descend down a non-leaf is if the subtree contains no nodes.
+  // We may also be at a leaf and return false if it is empty.
 
   // Get m_curSubtree to be an ancestor of the target.
   unsigned int commonLev = TreeAddr<T,dim>::commonAncestorLevel(m_oldTreeAddr, m_curTreeAddr);
@@ -767,6 +838,20 @@ void ElementLoop<T, dim, NodeT>::goToTreeAddr()
   }
   // Otherwise, m_curSubtree is already an ancestor of the target.
 
+  // Early exit if the subtree has no unskipped nodes.
+  // Outer logic will deal with advancing m_curTreeAddr and trying again.
+  {
+    const ot::LevI curLev = m_curSubtree.getLevel();
+    const ot::ChildI child_sfc = m_curTreeAddr.getIndex(m_curSubtree.getLevel());
+    if (m_childTable[curLev - m_L0][child_sfc] - m_childTable[curLev - m_L0][child_sfc+1] == 0)
+    /// if (m_childBdryCounts[curLev - m_L0][child_sfc] == 0)  //TODO for boundary iteration
+    {
+      m_curTreeAddr.m_lev = m_curSubtree.getLevel();
+      m_curTreeAddr.clearBelowLev();
+      return false;
+    }
+  }
+
   // Descend: Try to prepare child nodes for next level,
   // until there is no child because we reach a leaf.
   while (!topDownNodes())
@@ -788,11 +873,21 @@ void ElementLoop<T, dim, NodeT>::goToTreeAddr()
         (m_curTreeAddr.getIndex(pLev+1) == m_endTreeAddr.getIndex(pLev+1) - 1);
 
     m_curSubtree = m_curSubtree.getChildMorton(child_m);
+
+    // Early exit.
+    if (m_childTable[pLev+1 - m_L0][child_sfc] - m_childTable[pLev+1 - m_L0][child_sfc+1] == 0)
+    /// if (m_childBdryCounts[pLev+1 - m_L0][child_sfc] == 0)  //TODO for boundary iteration
+    {
+      m_curTreeAddr.m_lev = m_curSubtree.getLevel();
+      m_curTreeAddr.clearBelowLev();
+      return false;
+    }
   }
 
   // The stacks have reached the leaf. We now know the correct level of target.
   m_curTreeAddr.m_lev = m_curSubtree.getLevel();
   m_curTreeAddr.clearBelowLev();
+  return true;
 }
 
 
@@ -816,6 +911,8 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
   const NodeT               * sibNodeValsIn = &(*m_siblingNodeValsIn[curLev - m_L0].begin());
 
   const unsigned int npe = intPow(m_eleOrder+1, dim);
+
+  m_isLeafBoundary = m_childBdryCounts[curLev - m_L0][curChildNum] > 0;
 
   // Generate leaf node coordinates as TreeNodes.
   // Copy and scale the node coordinates to a buffer of doubles.
@@ -844,7 +941,21 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
   // Diagnostics to tell if the nodes for the element are all present.
   std::vector<bool> leafEleFill(npe, false);
   unsigned int fillCheck = 0;
+  if(!(curEnd - curBegin <= npe))
+  {
+    fprintf(stderr, "[%d] ASSERT FAIL curBegin==%llu, curEnd==%llu\n", par::DBG_rProc, curBegin, curEnd);
+    for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
+    {
+      const unsigned int nodeRank = ot::TNPoint<T, dim>::get_lexNodeRank( m_curSubtree,
+                                                                          sibNodeCoords[nIdx],
+                                                                          m_eleOrder);
+      fprintf(stderr, "[%d]  %*s   nodeRank==%2u,  node==%s\n",
+          par::DBG_rProc, 20*par::DBG_rProc, "", nodeRank, sibNodeCoords[nIdx].getBase32Hex(5).data());
+    }
+  }
   assert(curEnd - curBegin <= npe);
+
+  std::fill(m_leafNodeBdry.begin(), m_leafNodeBdry.end(), false);
 
   // Copy leaf points in lexicographic order.
   NodeT zero;  zero = 0.0;
@@ -859,6 +970,8 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     fillCheck += (nodeRank + 1);
     for (int dof = 0; dof < m_ndofs; dof++)
       m_leafNodeVals[m_ndofs*nodeRank + dof] = sibNodeValsIn[m_ndofs*nIdx + dof];
+
+    m_leafNodeBdry[nodeRank] = sibNodeCoords[nIdx].isBoundaryNodeExtantCellFlag();
   }
 
   const bool leafHasAllNodes = (fillCheck == npe*(npe+1)/2);
@@ -931,6 +1044,8 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
       const_this->m_eleOrder,
       const_this->m_nodesPerElement,
       const_this->m_curSubtree,
+      const_this->m_isLeafBoundary,
+      const_this->m_leafNodeBdry,
       *this,
     };
 }
@@ -1043,29 +1158,38 @@ void ElementLoop<T, dim, NodeT>::submitLeafBuffer()
 template <typename T, unsigned int dim, typename NodeT>
 void ElementLoop<T, dim, NodeT>::next()
 {
-  if (m_curTreeAddr == m_endTreeAddr)
+  if (m_curTreeAddr.directRelative(m_endTreeAddr))
+  {
+    m_curTreeAddr = m_endTreeAddr;
     return;  // Not what user expected, but better than infinite loop.
-
-  m_oldTreeAddr = m_curTreeAddr;
-  m_curTreeAddr.step();
-
-  if (!(m_curTreeAddr == m_endTreeAddr))
-  {
-    goToTreeAddr();
   }
-  else
+
+  bool gotToNonemptyLeaf = false;
+  while (!gotToNonemptyLeaf)  // While loop is necessary for empty-space skipping.
   {
-    m_curTreeAddr = m_oldTreeAddr;
-    m_curTreeAddr.m_lev = m_L0;
+    m_oldTreeAddr = m_curTreeAddr;
+    m_curTreeAddr.step();
 
-    // Propagate bottom-up updates.
-    while (m_curSubtree.getLevel() > m_L0)
+    if (!(m_curTreeAddr.directRelative(m_endTreeAddr)))
     {
-      m_curSubtree = m_curSubtree.getParent();
-      bottomUpNodes();
+      gotToNonemptyLeaf = goToTreeAddr();
     }
+    else
+    {
+      m_curTreeAddr = m_oldTreeAddr;
+      m_curTreeAddr.m_lev = m_L0;
 
-    m_curTreeAddr = m_endTreeAddr;  // Failsafe.
+      // Propagate bottom-up updates.
+      while (m_curSubtree.getLevel() > m_L0)
+      {
+        m_curSubtree = m_curSubtree.getParent();
+        bottomUpNodes();
+      }
+
+      m_curTreeAddr = m_endTreeAddr;  // Failsafe.
+
+      return;
+    }
   }
 }
 
@@ -1079,7 +1203,8 @@ ELIterator<T,dim,NodeT> ElementLoop<T, dim, NodeT>::current()
 template <typename T, unsigned int dim, typename NodeT>
 ELIterator<T,dim,NodeT> ElementLoop<T, dim, NodeT>::begin()
 {
-  return {m_beginTreeAddr, *this};
+  /// return {m_beginTreeAddr, *this};  // with space-skipping, gets outdated.
+  return {m_curTreeAddr, *this};
 }
 
 template <typename T, unsigned int dim, typename NodeT>
@@ -1134,6 +1259,17 @@ template <typename T, unsigned int dim>
 bool TreeAddr<T,dim>::operator==(const TreeAddr &other) const
 {
   return (m_lev == other.m_lev) && (m_coords == other.m_coords);
+}
+
+template <typename T, unsigned int dim>
+bool TreeAddr<T,dim>::directRelative(const TreeAddr &other) const
+{
+  const unsigned int lev = (m_lev <= other.m_lev ? m_lev : other.m_lev);
+  const T mask = - (1u << (m_uiMaxDepth - lev));
+  for (int d = 0; d < dim; d++)
+    if ((m_coords[d] ^ other.m_coords[d]) & mask)
+      return false;
+  return true;
 }
 
 template <typename T, unsigned int dim>

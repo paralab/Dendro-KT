@@ -42,144 +42,215 @@ namespace ot
 
     /**@brief: Constructor for the DA data structures
       * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] nEle : size of input octree.
       * @param [in] comm: MPI global communicator for mesh generation.
       * @param [in] order: order of the element.
      * */
     template <unsigned int dim>
-    DA<dim>::DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
-        construct(inTree, nEle, comm, order, grainSz, sfc_tol);
+        ot::DistTree<C, dim> distTree(inTree);   // Uses default domain decider.
+        construct(distTree, comm, order, grainSz, sfc_tol);
     }
 
+
+    /**@brief: Constructor for the DA data structures
+      * @param [in] inDistTree : input octree that is already filtered,
+      *                          need to be 2:1 balanced unique sorted octree.
+      *                          Will be emptied during construction of DA.
+      * @param [in] comm: MPI global communicator for mesh generation.
+      * @param [in] order: order of the element.
+      * @note If you have a custom domain decider function, use this overload.
+     * */
     template <unsigned int dim>
-    void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+        : m_refel{dim, order}
     {
-        //TODO
-        // ???  leftover uninitialized member variables.
-        //
-        /// unsigned int m_uiLocalElementSz;
-        /// unsigned int m_uiTotalElementSz;
+        construct(inDistTree, comm, order, grainSz, sfc_tol);
+        inDistTree.destroyTree();
+    }
 
-        m_uiElementOrder = order;
-        m_uiNpE = intPow(order + 1, dim);
 
-        unsigned int intNodesPerEle = intPow(order - 1, dim);
+    /**
+     * @param distTree contains a vector of TreeNode (will be drained),
+     *        and a domain decider function.
+     */
+    template <unsigned int dim>
+    /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    void DA<dim>::construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    {
+      // TODO take into account grainSz and sfc_tol to set up activeComm.
 
-        // TODO take into account grainSz and sfc_tol to set up activeComm.
+      int nProc, rProc;
+      MPI_Comm_size(comm, &nProc);
+      MPI_Comm_rank(comm, &rProc);
 
-        int nProc, rProc;
+      const unsigned int nActiveEle = distTree.getFilteredTreePartSz();
 
-        m_uiGlobalComm = comm;
-        MPI_Comm_size(m_uiGlobalComm, &nProc);
-        MPI_Comm_rank(m_uiGlobalComm, &rProc);
-        m_uiGlobalNpes = nProc;
-        m_uiRankGlobal = rProc;
+      // A processor is 'active' if it has elements, otherwise 'inactive'.
+      bool isActive = (nActiveEle > 0);
+      MPI_Comm activeComm;
+      MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
 
-        // A processor is 'active' if it has elements, otherwise 'inactive'.
-        m_uiIsActive = (nEle > 0);
-        MPI_Comm_split(comm, (m_uiIsActive ? 1 : MPI_UNDEFINED), rProc, &m_uiActiveComm);
+      std::vector<ot::TNPoint<C,dim>> nodeList;
+      TreeNode<C, dim> treePartFront;
+      TreeNode<C, dim> treePartBack;
 
-        if (m_uiIsActive)
+      if (isActive)
+      {
+        // Splitters for distributed exchanges.
+        treePartFront = distTree.getTreePartFront();
+        treePartBack = distTree.getTreePartBack();
+
+        const std::vector<TreeNode<C, dim>> &inTreeFiltered = distTree.getTreePartFiltered();
+
+        // Generate nodes from the tree. First, element-exterior nodes.
+        for (const TreeNode<C, dim> &elem : inTreeFiltered)
+            ot::Element<C,dim>(elem).appendExteriorNodes(order, nodeList);
+
+        // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),
+        // set the neighborhood flags.
+        ot::SFC_NodeSort<C, dim>::markExtantCellFlags(nodeList, distTree.getDomainDeciderTN());
+
+        // Count unique element-exterior nodes.
+        unsigned long long glbExtNodes =
+            ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList,
+                                                       order,
+                                                       &treePartFront,
+                                                       &treePartBack,
+                                                       activeComm);
+
+        // Finish generating nodes from the tree - element-interior nodes.
+        // The neighborhood space (complement of open cell type) for interior
+        // nodes is 0000 (no shared neighbors on any axis). The only valid
+        // neighbor index is 0, which refers to the host cell. We already
+        // know the host cell exists. Therefore flag is [0]->1, [>0]->0.
+        size_t intNodeIdx = nodeList.size();
+        for (const TreeNode<C, dim> &elem : inTreeFiltered)
+            ot::Element<C,dim>(elem).appendInteriorNodes(order, nodeList);
+        while (intNodeIdx < nodeList.size())
+          nodeList[intNodeIdx++].setExtantCellFlag(1u);
+      }
+
+      // Finish constructing.
+      construct(nodeList, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+    }
+
+
+    //
+    // construct() - given the partition of owned points with extantCellFlags initialized.
+    //
+    template <unsigned int dim>
+    void DA<dim>::construct(std::vector<TNPoint<C,dim>> &ownedNodes,
+                            unsigned int eleOrder,
+                            const TreeNode<C,dim> *treePartFront,
+                            const TreeNode<C,dim> *treePartBack,
+                            bool isActive,
+                            MPI_Comm globalComm,
+                            MPI_Comm activeComm)
+    {
+      m_uiElementOrder = eleOrder;
+      m_uiNpE = intPow(eleOrder + 1, dim);
+
+      int nProc, rProc;
+
+      m_uiGlobalComm = globalComm;
+
+      MPI_Comm_size(m_uiGlobalComm, &nProc);
+      MPI_Comm_rank(m_uiGlobalComm, &rProc);
+      m_uiGlobalNpes = nProc;
+      m_uiRankGlobal = rProc;
+
+      m_uiActiveComm = activeComm;
+      m_uiIsActive = isActive;
+
+      if (m_uiIsActive)
+      {
+        MPI_Comm_size(m_uiActiveComm, &nProc);
+        MPI_Comm_rank(m_uiActiveComm, &rProc);
+        m_uiActiveNpes = nProc;
+        m_uiRankActive = rProc;
+
+        m_uiCommTag = 0;
+
+        m_treePartFront = *treePartFront;
+        m_treePartBack = *treePartBack;
+
+        //TODO locally sort our partition of the DA.
+
+        unsigned long long locNodeSz = ownedNodes.size();
+        unsigned long long globNodeSz = 0;
+        par::Mpi_Allreduce(&locNodeSz, &globNodeSz, 1, MPI_SUM, activeComm);
+
+        m_uiLocalNodalSz = locNodeSz;
+        m_uiGlobalNodeSz = globNodeSz;
+
+        // Create scatter/gather maps. Scatter map reflects whatever ordering is in ownedNodes.
+        m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(ownedNodes, &m_treePartFront, m_uiActiveComm);
+        m_gm = ot::SFC_NodeSort<C,dim>::scatter2gather(m_sm, m_uiLocalNodalSz, m_uiActiveComm);
+
+        // Export from gm: dividers between local and ghost segments.
+        m_uiTotalNodalSz   = m_gm.m_totalCount;
+        m_uiPreNodeBegin   = 0;
+        m_uiPreNodeEnd     = m_gm.m_locOffset;
+        m_uiLocalNodeBegin = m_gm.m_locOffset;
+        m_uiLocalNodeEnd   = m_gm.m_locOffset + m_gm.m_locCount;
+        m_uiPostNodeBegin  = m_gm.m_locOffset + m_gm.m_locCount;;
+        m_uiPostNodeEnd    = m_gm.m_totalCount;
+
+        // Note: We will offset the starting address whenever we copy with scattermap.
+        // Otherwise we should build-in the offset to the scattermap here.
+
+        // Find offset into the global array.
+        DendroIntL locSz = m_uiLocalNodalSz;
+        par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiActiveComm);
+        m_uiGlobalRankBegin -= locSz;
+
+        // Create vector of node coordinates, with ghost segments allocated.
+        m_tnCoords.resize(m_uiTotalNodalSz);
+        for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
+          m_tnCoords[m_uiLocalNodeBegin + ii] = ownedNodes[ii];
+        ownedNodes.clear();
+
+        // Fill ghost segments of node coordinates vector.
+        std::vector<ot::TreeNode<C,dim>> tmpSendBuf(m_sm.m_map.size());
+        ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::TreeNode<C,dim>>(
+            &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, m_uiActiveComm);
+        //TODO transfer ghostExchange into this class, then use new method.
+
+        // Compute global ids of all nodes, including local and ghosted.
+        m_uiLocalToGlobalNodalMap.resize(m_uiTotalNodalSz, 0);
+        for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
+          m_uiLocalToGlobalNodalMap[m_uiLocalNodeBegin + ii] = m_uiGlobalRankBegin + ii;
+        std::vector<ot::RankI> tmpSendGlobId(m_sm.m_map.size());
+        ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::RankI>(
+            &(*m_uiLocalToGlobalNodalMap.begin()), &(*tmpSendGlobId.begin()), m_sm, m_gm, m_uiActiveComm);
+        //TODO transfer ghostExchange into this class, then use new method.
+
+        // Identify the (local ids of) domain boundary nodes in local vector.
+        // To use the ids in the ghosted vector you need to shift by m_uiLocalNodeBegin.
+        m_uiBdyNodeIds.clear();
+        for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
         {
-          MPI_Comm_size(m_uiActiveComm, &nProc);
-          MPI_Comm_rank(m_uiActiveComm, &rProc);
-          m_uiActiveNpes = nProc;
-          m_uiRankActive = rProc;
-
-          m_uiCommTag = 0;
-
-          // Splitters for distributed exchanges.
-          m_treePartFront = inTree[0];
-          m_treePartBack = inTree[nEle-1];
-
-          // Generate nodes from the tree. First, element-exterior nodes.
-          std::vector<ot::TNPoint<C,dim>> nodeList;
-          for (unsigned int ii = 0; ii < nEle; ii++)
-              ot::Element<C,dim>(inTree[ii]).appendExteriorNodes(order, nodeList);
-
-          // Count unique element-exterior nodes.
-          unsigned int glbExtNodes = ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList, order, &m_treePartFront, &m_treePartBack, m_uiActiveComm);
-
-          // Finish generating nodes from the tree - element-interior nodes.
-          // TODO measure if keeping interior nodes at end of list good/bad for performance.
-          for (unsigned int ii = 0; ii < nEle; ii++)
-              ot::Element<C,dim>(inTree[ii]).appendInteriorNodes(order, nodeList);
-
-          unsigned int locIntNodes = intNodesPerEle * nEle;
-          unsigned int glbIntNodes = 0;
-          par::Mpi_Allreduce(&locIntNodes, &glbIntNodes, 1, MPI_SUM, m_uiActiveComm);
-
-          m_uiLocalNodalSz = nodeList.size();
-          m_uiGlobalNodeSz = glbExtNodes + glbIntNodes;
-
-          // Create scatter/gather maps. Scatter map reflects whatever ordering is in nodeList.
-          m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(nodeList, &m_treePartFront, m_uiActiveComm);
-          m_gm = ot::SFC_NodeSort<C,dim>::scatter2gather(m_sm, m_uiLocalNodalSz, m_uiActiveComm);
-
-          // Export from gm: dividers between local and ghost segments.
-          m_uiTotalNodalSz   = m_gm.m_totalCount;
-          m_uiPreNodeBegin   = 0;
-          m_uiPreNodeEnd     = m_gm.m_locOffset;
-          m_uiLocalNodeBegin = m_gm.m_locOffset;
-          m_uiLocalNodeEnd   = m_gm.m_locOffset + m_gm.m_locCount;
-          m_uiPostNodeBegin  = m_gm.m_locOffset + m_gm.m_locCount;;
-          m_uiPostNodeEnd    = m_gm.m_totalCount;
-
-          // Note: We will offset the starting address whenever we copy with scattermap.
-          // Otherwise we should build-in the offset to the scattermap here.
-
-          // Find offset into the global array.
-          DendroIntL locSz = m_uiLocalNodalSz;
-          par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiActiveComm);
-          m_uiGlobalRankBegin -= locSz;
-
-          // Create vector of node coordinates, with ghost segments allocated.
-          m_tnCoords.resize(m_uiTotalNodalSz);
-          for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
-            m_tnCoords[m_uiLocalNodeBegin + ii] = nodeList[ii];
-          nodeList.clear();
-
-          // Fill ghost segments of node coordinates vector.
-          std::vector<ot::TreeNode<C,dim>> tmpSendBuf(m_sm.m_map.size());
-          ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::TreeNode<C,dim>>(
-              &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, m_uiActiveComm);
-          //TODO transfer ghostExchange into this class, then use new method.
-
-          // Compute global ids of all nodes, including local and ghosted.
-          m_uiLocalToGlobalNodalMap.resize(m_uiTotalNodalSz, 0);
-          for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
-            m_uiLocalToGlobalNodalMap[m_uiLocalNodeBegin + ii] = m_uiGlobalRankBegin + ii;
-          std::vector<ot::RankI> tmpSendGlobId(m_sm.m_map.size());
-          ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::RankI>(
-              &(*m_uiLocalToGlobalNodalMap.begin()), &(*tmpSendGlobId.begin()), m_sm, m_gm, m_uiActiveComm);
-          //TODO transfer ghostExchange into this class, then use new method.
-
-          // Identify the (local ids of) domain boundary nodes in local vector.
-          // To use the ids in the ghosted vector you need to shift by m_uiLocalNodeBegin.
-          m_uiBdyNodeIds.clear();
-          for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
-          {
-            if (m_tnCoords[ii + m_uiLocalNodeBegin].isOnDomainBoundary())
-              m_uiBdyNodeIds.push_back(ii);
-          }
+          if (m_tnCoords[ii + m_uiLocalNodeBegin].isBoundaryNodeExtantCellFlag())
+            m_uiBdyNodeIds.push_back(ii);
         }
-        else
-        {
-          m_uiLocalNodalSz = 0;
-          m_uiGlobalNodeSz = 0;
+      }
+      else
+      {
+        m_uiLocalNodalSz = 0;
+        m_uiGlobalNodeSz = 0;
 
-          m_uiTotalNodalSz   = 0;
-          m_uiPreNodeBegin   = 0;
-          m_uiPreNodeEnd     = 0;
-          m_uiLocalNodeBegin = 0;
-          m_uiLocalNodeEnd   = 0;
-          m_uiPostNodeBegin  = 0;
-          m_uiPostNodeEnd    = 0;
+        m_uiTotalNodalSz   = 0;
+        m_uiPreNodeBegin   = 0;
+        m_uiPreNodeEnd     = 0;
+        m_uiLocalNodeBegin = 0;
+        m_uiLocalNodeEnd   = 0;
+        m_uiPostNodeBegin  = 0;
+        m_uiPostNodeEnd    = 0;
 
-          m_uiGlobalRankBegin = 0;
-        }
+        m_uiGlobalRankBegin = 0;
+      }
     }
 
 

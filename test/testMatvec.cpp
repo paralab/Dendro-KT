@@ -77,7 +77,6 @@ int main(int argc, char * argv[])
   const char * resultColor;
   const char * resultName;
 
-/*
   // testInstances
   int result_testInstances, globResult_testInstances;
   switch (inDim)
@@ -107,7 +106,6 @@ int main(int argc, char * argv[])
   resultName = globResult_testMatching ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testMatching](%s%s %d%s)", resultColor, resultName, globResult_testMatching, NRM);
-*/
 
 /*
   // testAdaptive
@@ -126,6 +124,7 @@ int main(int argc, char * argv[])
     printf("\t[testAdaptive](%s%s %d%s)", resultColor, resultName, globResult_testAdaptive, NRM);
 */
 
+/*
   // testEqualSeq
   int result_testEqualSeq, globResult_testEqualSeq;
   switch (inDim)
@@ -140,6 +139,7 @@ int main(int argc, char * argv[])
   resultName = globResult_testEqualSeq ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testEqualSeq](%s%s %d%s)", resultColor, resultName, globResult_testEqualSeq, NRM);
+*/
 
 /*
   // testNodeRank
@@ -537,7 +537,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   // Matvec.
   //
 
-  ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), (unsigned int) tree.size(), comm, order, (unsigned int) tree.size(), loadFlexibility);
+  ot::DA<dim> *octDA = new ot::DA<dim>(tree, comm, order, (unsigned int) tree.size(), loadFlexibility);
 
   /// const unsigned int block = (1u << m_uiMaxDepth - 3);
 

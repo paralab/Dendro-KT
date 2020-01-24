@@ -145,6 +145,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/parUtils.tcc
                   include/templateUtils.h
                   include/tsort.h
+                  include/distTree.h
                   include/oda.h
                   include/oda.tcc
                   include/nsort.h

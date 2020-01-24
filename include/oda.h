@@ -17,6 +17,7 @@
 #include "refel.h"
 #include "binUtils.h"
 #include "octUtils.h"
+#include "distTree.h"
 
 #include <iostream>
 #include <vector>
@@ -67,12 +68,43 @@ namespace DA_FLAGS
   enum Refine {DA_NO_CHANGE,DA_REFINE,DA_COARSEN};
 }
 
+template <unsigned int dim>
+class DA;
+
+/**
+ * @brief Construct a DA representing the nodes of a hypercuboid with grid
+ *         extents pow(2,a) * pow(2,b) * pow(2,c) * pow(2,d) (in 4D).
+ * @param level Level of the uniform refinement.
+ * @param extentPowers Array of powers {a,b,c,...} depending on the dimension. a,b,c,... <= level.
+ * @param eleOrder Elemental order.
+ * @param [out] newSubDA The resulting DA object.
+ */
+template <unsigned int dim>
+DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
+                                 unsigned int level,
+                                 std::array<unsigned int, dim> extentPowers,
+                                 unsigned int eleOrder,
+                                 MPI_Comm comm,
+                                 double sfc_tol = 0.3);
 
 
 template <unsigned int dim>
 class DA
 {
     using C = unsigned int;    // Integer coordinate type.
+
+    // Takes element coordinates and size and returns whether the element should be kept in the domain.
+    // For the unit hypercube domain, this function would be to check that the
+    // element is within the range 0..1 on each dimension.
+    using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
+    using DomainDeciderT_TN = std::function<bool(const TreeNode<C, dim> &elemTreeNode)>;
+
+    friend DendroIntL constructRegularSubdomainDA<dim>(DA<dim> &newSubDA,
+                                                 unsigned int level,
+                                                 std::array<unsigned int, dim> extentPowers,
+                                                 unsigned int eleOrder,
+                                                 MPI_Comm comm,
+                                                 double sfc_tol);
 
   private:
 
@@ -184,7 +216,9 @@ class DA
          */
         DA();
 
-        DA(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+
+        DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
 
 
         /** @brief Construct oda for regular grid. */
@@ -209,7 +243,18 @@ class DA
         /**
          * @brief does the work for the constructors.
          */
-        void construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
+        /// void construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
+        void construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
+
+
+        /** @brief The latter part of construct() if already have ownedNodes. */
+        void construct(std::vector<TNPoint<C,dim>> &ownedNodes,
+                       unsigned int eleOrder,
+                       const TreeNode<C,dim> *treePartFront,
+                       const TreeNode<C,dim> *treePartBack,
+                       bool isActive,
+                       MPI_Comm globalComm,
+                       MPI_Comm activeComm);
 
         /**@brief returns the local nodal size*/
         inline unsigned int getLocalNodalSz() const { return m_uiLocalNodalSz; }

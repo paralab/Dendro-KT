@@ -11,6 +11,7 @@
 #include "treeNode.h"
 #include "mathUtils.h"
 #include "nsort.h"
+#include "distTree.h"
 
 #include "hcurvedata.h"
 
@@ -155,10 +156,12 @@ void testExample(const char *msgPrefix, unsigned int expected, Tree<dim> &tree, 
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
   {
+    ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListExterior, ot::DistTree<T,dim>::defaultDomainDeciderTN);
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(tree.front()), &(tree.back()), comm);
     ot::RankI globInterior = 0;
     par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
     numUniqueInteriorNodes = globInterior;
+    ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListCombined, ot::DistTree<T,dim>::defaultDomainDeciderTN);
     numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListCombined, order, &(tree.front()), &(tree.back()), comm);
   }
   else

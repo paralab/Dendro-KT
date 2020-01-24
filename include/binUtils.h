@@ -79,6 +79,19 @@ namespace binOp{
   }
 
 
+  template <typename U>
+  inline unsigned int countOnes(U y)
+  {
+    unsigned int numOnes = 0;
+    while (y)
+    {
+      numOnes += y & 0x1u;
+      y >>= 1;
+    }
+    return numOnes;
+  }
+
+
   /**
    * @brief Expand/collapse bits in a bit string.
    * @description TallBitMatrix expands bits in a bit string.
@@ -126,6 +139,66 @@ namespace binOp{
         return vecInSubspace;
       }
   };
+
+
+  template <typename B, unsigned int dim>
+  constexpr B hyperplaneLoMask(unsigned int d, B multiplier = 1u)
+  {
+    return (dim == 0 ? multiplier :
+        hyperplaneLoMask<B, (dim ? dim-1 : 0)>(d,
+            multiplier*( d==dim-1? 1u : (1u | (1u << (1u<<(dim-1)))) )));
+  }
+
+
+  template <typename B, unsigned int dim>
+  constexpr B hyperplaneHiMask(unsigned int d, B multiplier = 1u)
+  {
+    return (dim == 0 ? multiplier :
+        hyperplaneHiMask<B, (dim ? dim-1 : 0)>(d,
+            multiplier*( d==dim-1? (1u << (1u<<(dim-1))) : (1u | (1u << (1u<<(dim-1)))) )));
+  }
+
+
+
+  /** @brief If each bit is a vertex in a hypercube in lexicographic order,
+   *         select the plane x_d = 1 and move it to the plane x_d = 0. */
+  template <typename B>
+  void selectHyperplanes(B binaryHypercube,
+                         unsigned int d,
+                         B &loPlane,
+                         B &hiPlane,
+                         unsigned int &shift)
+  {
+    shift = 1u << d;
+    B lomask = (1u << shift) - 1;        // d=0: xyxyxyxy...  d=2: xxxxyyyy...
+
+    // Build lomask by repeatedly shifting left and unioning.
+    // TODO add a dim template parameter and use hyperplaneLo/HiMask().
+    unsigned int periodTmp = 2*shift;
+    B oldLomask;
+    do
+    {
+      oldLomask = lomask;
+      lomask |= lomask << periodTmp;
+      periodTmp *= 2;
+    }
+    while (lomask != oldLomask);
+
+    const B himask = ~lomask;
+
+    loPlane = binaryHypercube & lomask;
+    hiPlane = binaryHypercube & himask;
+  }
+
+  /** @brief Partial reversal of the bits, by reflecting across a hyperplane. */
+  template <typename B>
+  B reflectHyperplane(B binaryHypercube, unsigned int d)
+  {
+    B loPlane, hiPlane;
+    unsigned int shift;
+    selectHyperplanes(binaryHypercube, d, loPlane, hiPlane, shift);
+    return (loPlane << shift) | (hiPlane >> shift);
+  }
 
 }//end namespace
 

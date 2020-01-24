@@ -341,6 +341,18 @@ struct SFC_Tree
                                   const int startSize,
                                   std::vector<int> &outBlocks);
 
+  // -------------------------------------------------------------
+
+  /** @brief Successively computes 0th child in SFC order to given level. */
+  static void firstDescendant(TreeNode<T,D> &parent,
+                              RotI &pRot,
+                              LevI descendantLev);
+
+  /** @brief Successively computes (n-1)th child in SFC order to given level. */
+  static void lastDescendant(TreeNode<T,D> &parent,
+                             RotI &pRot,
+                             LevI descendantLev);
+
 };
 
 // Template instantiations.

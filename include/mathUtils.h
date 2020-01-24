@@ -233,6 +233,15 @@ T intCombinationSum(T n, T k, T &combo);
 template <typename T, unsigned int L>
 void incrementBaseB(std::array<T,L> &digits, T B, unsigned int lstart = 0);
 
+/**
+ * @brief Increment a multi-index in a nested for loop.
+ * @note This version allows different limits in each axis.
+ */
+template <typename T, unsigned int L>
+void incrementFor(std::array<T,L> &digits,
+                  const std::array<T,L> &limits,
+                  unsigned int d = 0);
+
 
 
 #include "mathUtils.tcc"

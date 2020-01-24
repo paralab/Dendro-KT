@@ -166,7 +166,12 @@ namespace ot {
   template <typename T, unsigned int dim>
   CellType<dim> TNPoint<T,dim>::get_cellType(LevI lev) const
   {
-    using TreeNode = TreeNode<T,dim>;
+    return TNPoint::get_cellType(*this, lev);
+  }
+
+  template <typename T, unsigned int dim>
+  CellType<dim> TNPoint<T,dim>::get_cellType(const TreeNode<T, dim> &tnPoint, LevI lev)
+  {
     const unsigned int len = 1u << (m_uiMaxDepth - lev);
     const unsigned int interiorMask = len - 1;
 
@@ -175,7 +180,7 @@ namespace ot {
     #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
     {
-      bool axisIsInVolume = TreeNode::m_uiCoords[d] & interiorMask;
+      bool axisIsInVolume = tnPoint.getX(d) & interiorMask;
       cellOrient |= (unsigned char) axisIsInVolume << d;
       cellDim += axisIsInVolume;
     }
@@ -495,51 +500,87 @@ namespace ot {
 
 
   /**
-   * @brief Using bit-wise ops, identifies which children are touching a point.
+   * @brief Using bit-wise ops, identifies which virtual children are touching a point.
    * @param [in] pointCoords Coordinates of the point incident on 0 or more children.
    * @param [out] incidenceOffset The Morton child # of the first incident child.
    * @param [out] incidenceSubspace A bit string of axes, with a '1'
    *                for each incident child that is adjacent to the first incident child.
    * @param [out] incidenceSubspaceDim The number of set ones in incidenceSubspace.
    *                The number of incident children is pow(2, incidenceSubspaceDim).
+   * @return Convert m_extantCellFlag from point neighborhood bitstring to incident children bitstring.
    * @note Use with TallBitMatrix to easily iterate over the child numbers of incident children.
    */
   template <typename T, unsigned int dim>
-  void Element<T,dim>::incidentChildren(
-      const ot::TreeNode<T,dim> &pointCoords,
+  ExtantCellFlagT Element<T,dim>::incidentChildren(
+      const ot::TreeNode<T,dim> &pt,
       typename ot::CellType<dim>::FlagType &incidenceOffset,
       typename ot::CellType<dim>::FlagType &incidenceSubspace,
       typename ot::CellType<dim>::FlagType &incidenceSubspaceDim) const
   {
-    // TODO these type casts are ugly and they might even induce more copying than necessary.
-    std::array<T, dim> justCoords;
-    ot::TNPoint<T, dim> pt(
-        1,
-        (pointCoords.getAnchor(justCoords), justCoords),
-        pointCoords.getLevel());
-
     const LevI pLev = this->getLevel();
 
     incidenceOffset = (pt.getMortonIndex(pLev) ^ this->getMortonIndex(pLev))  | pt.getMortonIndex(pLev + 1);  // One of the duplicates.
-    ot::CellType<dim> paCellt = pt.get_cellType(pLev);
-    ot::CellType<dim> chCellt = pt.get_cellType(pLev+1);
+    ot::CellType<dim> paCellt = TNPoint<T,dim>::get_cellType(pt, pLev);
+    ot::CellType<dim> chCellt = TNPoint<T,dim>::get_cellType(pt, pLev+1);
 
     // Note that dupDim is the number of set bits in dupOrient.
     incidenceSubspace =    paCellt.get_orient_flag() & ~chCellt.get_orient_flag();
     incidenceSubspaceDim = paCellt.get_dim_flag()    -  chCellt.get_dim_flag();
 
     incidenceOffset = ~incidenceSubspace & incidenceOffset;  // The least Morton-child among all duplicates.
+
+    // Transform neighbourhood flag to extant incident children, axis by axis.
+    // On child interface, keep order.
+    // On parent boundary, reflect, then mask relevant half space.
+    // On child interior, collapse across a hyperplane. Offset by choosing direction of collapse.
+    ExtantCellFlagT extantIncidentChildren = pt.getExtantCellFlag();
+    for (int d = 0; d < dim; d++)
+    {
+      const bool childInterface = incidenceSubspace & (1u << d);
+      const bool parentBdry = !(paCellt.get_orient_flag() & (1u << d));
+      const bool childLeftRight = incidenceOffset & (1u << d);
+
+      if (childInterface)  // Don't reverse or collapse on interface.
+        continue;          // lo nbrs <-> lo children,  hi nbrs <-> hi children.
+
+      ExtantCellFlagT loStr, hiStr;
+      unsigned int axisShift;
+      binOp::selectHyperplanes(extantIncidentChildren, d, loStr, hiStr, axisShift);
+
+      if (parentBdry)  // Parent bdry -> reflect and mask.
+      {
+        if (childLeftRight == 0)
+          extantIncidentChildren = hiStr >> axisShift;  // hi nbrs are lo children.
+        else
+          extantIncidentChildren = loStr << axisShift;  // lo nbrs are hi children.
+      }
+      else             // Child interior -> collapsing union.
+      {
+        if (childLeftRight == 0)
+          extantIncidentChildren = (hiStr >> axisShift) | loStr;  // only lo children.
+        else
+          extantIncidentChildren = hiStr | (loStr << axisShift);  // only hi children.
+      }
+    }
+    return extantIncidentChildren;
   }
+
 
   template <typename T, unsigned int dim>
   bool Element<T,dim>::isIncident(const ot::TreeNode<T,dim> &pointCoords) const
   {
     const unsigned int elemSize = (1u << m_uiMaxDepth - this->getLevel());
+    unsigned int nbrId = 0;
     for (int d = 0; d < dim; d++)
-      if (!(this->getX(d) <= pointCoords.getX(d)
-                          && pointCoords.getX(d) <= this->getX(d) + elemSize))
+      if (this->getX(d) == pointCoords.getX(d))
+        nbrId += (1u << d);
+      else if (this->getX(d) < pointCoords.getX(d)
+                            && pointCoords.getX(d) <= this->getX(d) + elemSize)
+        ;
+      else
         return false;
-    return true;
+
+    return (pointCoords.getExtantCellFlag() & (1u << nbrId));
   }
 
 
@@ -912,6 +953,55 @@ namespace ot {
   }
 
 
+
+  //
+  // markExtantCellFlags()
+  //
+  template <typename T, unsigned int dim>
+  void SFC_NodeSort<T,dim>::markExtantCellFlags(std::vector<TNPoint<T,dim>> &nodeList,
+                                                const DomainDeciderT_TN &domainDecider)
+  {
+    using C = T;
+
+    for (TNPoint<C, dim> & node : nodeList)
+    {
+      const C elemSz = 1u << (m_uiMaxDepth - node.getLevel());
+
+      node.resetExtantCellFlagNoNeighbours();
+
+      // Test whether each neighbor of the node belongs in the domain.
+      using FType = typename ot::CellType<dim>::FlagType;
+      const CellType<dim> nodeCT = node.get_cellType();
+      const FType neighbourhoodDim = dim - nodeCT.get_dim_flag();
+      const FType neighbourhoodSpace = (1u << dim) - 1 - nodeCT.get_orient_flag();
+
+      const unsigned int numNeighbours = 1u << neighbourhoodDim;
+
+      binOp::TallBitMatrix<dim, FType> bitExpander =
+          binOp::TallBitMatrix<dim, FType>::generateColumns(neighbourhoodSpace);
+
+      // Check each neighbour.
+      for (unsigned int ii = 0; ii < numNeighbours; ii++)
+      {
+        const unsigned int nbrId = bitExpander.expandBitstring(ii);
+
+        TreeNode<C, dim> nbrTN = node.getCell();
+        for (int d = 0; d < dim; d++)
+          // 0 bit in nbrId means go negative, 1 bit means go positive.
+          // But if the node is interior on this axis, then adopt the coord of the cell.
+          if ((nbrId ^ neighbourhoodSpace) & (1u << d))
+            nbrTN.setX(d, nbrTN.getX(d) - elemSz);
+
+        if (domainDecider(nbrTN))
+          node.addNeighbourExtantCellFlag(nbrId);
+      }
+
+      // Now we have set the neighour flag of the node.
+    }
+  }
+
+
+
   //
   // SFC_NodeSort::computeScattermap()    (Sufficient version)
   //
@@ -1032,19 +1122,14 @@ namespace ot {
       ////   numUniqBdryPoints++;
       //// }
       // Yes, must also classify the boundary--must remove hanging nodes in dim > 2.
-      numUniqBdryPoints = (order <= 2 ?
-          resolveInterface_lowOrder(end - numDomBdryPoints, end, order) :
-          resolveInterface_highOrder(end - numDomBdryPoints, end, order));
+      numUniqBdryPoints = resolveInterface(end - numDomBdryPoints, end, order);
 
       totalUniquePoints += numUniqBdryPoints;
 
 
       // Bottom-up counting interior points
       //
-      if (order <= 2)
-        totalUniquePoints += countCGNodes_impl(resolveInterface_lowOrder, start, end - numDomBdryPoints, 1, 0, order);
-      else
-        totalUniquePoints += countCGNodes_impl(resolveInterface_highOrder, start, end - numDomBdryPoints, 1, 0, order);
+      totalUniquePoints += countCGNodes_impl(resolveInterface, start, end - numDomBdryPoints, 1, 0, order);
     }
     // Sorting/instancing task.
     else
@@ -1264,7 +1349,7 @@ namespace ot {
   // SFC_NodeSort::countCGNodes_impl()
   //
   template <typename T, unsigned int dim>
-  template<typename ResolverT>
+  template <typename ResolverT>
   RankI SFC_NodeSort<T,dim>::countCGNodes_impl(
       ResolverT &resolveInterface,
       TNPoint<T,dim> *start, TNPoint<T,dim> *end,
@@ -1320,7 +1405,7 @@ namespace ot {
       ChildI child = rot_perm[child_sfc];
       RotI cRot = orientLookup[child];
 
-      numUniqPoints += countCGNodes_impl<ResolverT>(
+      numUniqPoints += countCGNodes_impl(
           resolveInterface,
           start + tempSplitters[child_sfc+0], start + tempSplitters[child_sfc+1],
           sLev+1, cRot,
@@ -1380,13 +1465,13 @@ namespace ot {
 
 
   //
-  // SFC_NodeSort::resolveInterface_lowOrder()
+  // SFC_NodeSort::resolveInterface()
   //
   template <typename T, unsigned int dim>
-  RankI SFC_NodeSort<T,dim>::resolveInterface_lowOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
+  RankI SFC_NodeSort<T,dim>::resolveInterface(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
     //
-    // The low-order counting method is based on counting number of points per spatial location.
+    // This method is based on counting number of points per spatial location.
     // If there are points from two levels, then points from the higher level are non-hanging;
     // pick one of them as the representative (isSelected=Yes). The points from the lower
     // level are hanging and can be discarded (isSelected=No). If there are points all
@@ -1418,11 +1503,16 @@ namespace ot {
       }
       else            // All same level and cell type. Test whether hanging or not.
       {
-        unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
-        unsigned char bdim = firstCoarsest->get_cellType(0).get_dim_flag(); // Domain boundary test.
-        // If a dimension aligns with dom bdry, it necessarily aligns with grid at lev.
-        unsigned char numIntersecting = bdim - cdim; //(dim - cdim) - (dim - bdim);
-        unsigned int expectedDups = 1u << numIntersecting;
+        // OLD version that assumed boundaries of the unit hypercube.
+        /// unsigned char cdim = firstCoarsest->get_cellType().get_dim_flag();
+        /// unsigned char bdim = firstCoarsest->get_cellType(0).get_dim_flag(); // Domain boundary test.
+        /// // If a dimension aligns with dom bdry, it necessarily aligns with grid at lev.
+        /// unsigned char numIntersecting = bdim - cdim; //(dim - cdim) - (dim - bdim);
+        /// unsigned int expectedDups = 1u << numIntersecting;
+
+        // NEW version where expected neighbourhood is precomputed by DA.
+        unsigned int expectedDups = firstCoarsest->expectedNeighboursExtantCellFlag();
+
         if (numDups == expectedDups)
         {
           firstCoarsest->set_isSelected(TNP::Yes);
@@ -1436,13 +1526,23 @@ namespace ot {
 
 
   //
+  // Deprecated
+  //
   // SFC_NodeSort::resolveInterface_highOrder()
   //
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order)
   {
+    // @author Masado Ishii
+    // @note (2019-09-27) This method is overly complicated, as the other
+    //       counting method (originally resolveInterface_lowOrder) works
+    //       just fine for any order. Additionally the below method makes
+    //       it complicated to test for boundary nodes for non-trivial
+    //       domain shapes, while the original method is easily extensible.
+
     //
     // @author Masado Ishii
+    // @date 2019-02-25
     //
     // The high-order counting method (order>=3) cannot assume that a winning node
     // will co-occur with finer level nodes in the same exact coordinate location.
