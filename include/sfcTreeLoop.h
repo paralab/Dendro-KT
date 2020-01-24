@@ -257,7 +257,8 @@ namespace ot
       {
         if (m_stack.back().m_isPre)
         {
-          m_stack.reserve(m_stack.size() + NumChildren); // Avoid invalidating references.
+          /// m_stack.reserve(m_stack.size() + NumChildren); // Avoid invalidating references.
+          // Should be handled in constructor.
 
           m_stack.back().m_isPre = false;
           FrameT &parentFrame = m_stack.back();
@@ -277,6 +278,8 @@ namespace ot
 
             if (parentFrame.m_extantChildren & (1u << child_m))
             {
+              assert(m_stack.size() < m_stack.capacity());  // Otherwise, violated constructor max_depth.
+
               m_stack.emplace_back(
                   &parentFrame,
                   child_sfc,
@@ -430,8 +433,12 @@ namespace ot
       }
 
       // SFC_TreeLoop() : constructor
-      SFC_TreeLoop()  //TODO
+      SFC_TreeLoop(unsigned int max_depth)  //TODO?
       {
+        // The multi-level frame access pattern depends on references to
+        // a given level not being invalidated. So, never reallocate the stack.
+        m_stack.reserve((1+max_depth) * NumChildren);
+
         // This statement initializes references in the first stack frame
         // to refer to our member variables. If these member variables are
         // assigned to later, updated contents will be reflected in the frame.
@@ -440,6 +447,8 @@ namespace ot
         // Note that the concrete class is responsible to
         // initialize the root data and summary member variables.
       }
+
+      SFC_TreeLoop() : SFC_TreeLoop(m_uiMaxDepth) {}
 
       // getRootFrame()
       const FrameT & getRootFrame() const { return m_stack[0]; }
@@ -750,6 +759,7 @@ namespace ot
           m_extantChildren &= m_subtreeChildren;
           m_bitExpander = binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
           m_incidentSubspaceVolume = 1u << incidentSubspaceDim;
+          m_virtChildIdx = 0;
 
           if (fromChildSet())    // Try to land on a child before surrender.
             return true;

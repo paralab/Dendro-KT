@@ -205,6 +205,9 @@ namespace ot
       static MatvecBaseSummary<dim> generate_node_summary(
           const TreeNode<unsigned int, dim> *begin,
           const TreeNode<unsigned int, dim> *end);
+      static unsigned int get_max_depth(
+          const TreeNode<unsigned int, dim> *begin,
+          size_t numNodes);
 
       void fillAccessNodeCoordsFlat();
 
@@ -242,6 +245,18 @@ namespace ot
     return summary;
   }
 
+  template <unsigned int dim, typename NodeT>
+  unsigned int
+  MatvecBase<dim, NodeT>::get_max_depth( const TreeNode<unsigned int, dim> *begin,
+                                         size_t numNodes)
+  {
+    unsigned int maxDepth = 0;
+    for (size_t nIdx = 0; nIdx < numNodes; ++nIdx)
+      if (maxDepth < begin[nIdx].getLevel())
+        maxDepth = begin[nIdx].getLevel();
+    return maxDepth;
+  }
+
 
   //
   // MatvecBase()
@@ -254,7 +269,8 @@ namespace ot
                                       const NodeT * inputNodeVals,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
-  : m_ndofs(ndofs),
+  : BaseT(get_max_depth(allNodeCoords, numNodes)),
+    m_ndofs(ndofs),
     m_eleOrder(eleOrder),
     m_interp_matrices(eleOrder)
   {
