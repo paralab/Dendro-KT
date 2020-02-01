@@ -128,4 +128,8 @@ double HeatVec<dim>::gridZ_to_Z(double z)
     return (((z)/(Rg_z))*((m_uiPtMax.z()-m_uiPtMin.z()))+m_uiPtMin.z());
 }
 
+template class HeatVec<2u>;
+template class HeatVec<3u>;
+template class HeatVec<4u>;
+
 }//namespace HeatEq

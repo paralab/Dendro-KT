@@ -571,6 +571,10 @@ namespace ot
     
 #endif
 
+template class DA<2u>;
+template class DA<3u>;
+template class DA<4u>;
+
 }
 
 

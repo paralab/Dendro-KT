@@ -54,9 +54,6 @@ namespace PoissonEq
         Point<dim> gridX_to_X(Point<dim> x) const;
     };
 
-    template class PoissonVec<2u>;
-    template class PoissonVec<3u>;
-    template class PoissonVec<4u>;
 }
 
 

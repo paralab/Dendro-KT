@@ -655,10 +655,6 @@ class DA
 };
 
 
-template class DA<2u>;
-template class DA<3u>;
-template class DA<4u>;
-
 } // end of namespace ot.
 
 

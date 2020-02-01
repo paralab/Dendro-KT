@@ -359,4 +359,9 @@ int PoissonMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,un
     return status;
 }
 
+// Template instantiations.
+template class PoissonMat<2u>;
+template class PoissonMat<3u>;
+template class PoissonMat<4u>;
+
 }//namespace PoissonEq

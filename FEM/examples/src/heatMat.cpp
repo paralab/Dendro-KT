@@ -325,4 +325,10 @@ int HeatMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,unsig
     return status;
 }
 
+// Template instantiations.
+template class HeatMat<2u>;
+template class HeatMat<3u>;
+template class HeatMat<4u>;
+
+
 }//namespace HeatEq

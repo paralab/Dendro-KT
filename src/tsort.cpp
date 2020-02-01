@@ -1023,6 +1023,10 @@ SFC_Tree<T,D>::lastDescendant(TreeNode<T,D> &parent,
   }
 }
 
+// Template instantiations.
+template struct SFC_Tree<unsigned int, 2>;
+template struct SFC_Tree<unsigned int, 3>;
+template struct SFC_Tree<unsigned int, 4>;
 
 
 
