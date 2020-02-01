@@ -60,10 +60,6 @@ namespace PoissonEq
         int cgSolve(double * x ,double * b,int max_iter, double& tol,unsigned int var=0);
     };
 
-    // Template instantiations.
-    template class PoissonMat<2u>;
-    template class PoissonMat<3u>;
-    template class PoissonMat<4u>;
 }
 
 

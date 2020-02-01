@@ -25,7 +25,7 @@ namespace binOp{
   /**
     @return the minimum number of digits required to represent num in binary
     */
-  unsigned int binLength(unsigned int num) ;
+  unsigned long long binLength(unsigned long long num) ;
 
   /**
     return log to base 2 of num

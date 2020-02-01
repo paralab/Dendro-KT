@@ -87,7 +87,7 @@ bool HeatVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale)
 {
 
     // apply boundary conditions.
-    std::vector<unsigned int> bdyIndex;
+    std::vector<size_t> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
@@ -98,7 +98,7 @@ template <unsigned int dim>
 bool HeatVec<dim>::postComputeVec(const VECType* in,VECType* out, double scale) {
 
     // apply boundary conditions.
-    std::vector<unsigned int> bdyIndex;
+    std::vector<size_t> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
@@ -127,5 +127,9 @@ double HeatVec<dim>::gridZ_to_Z(double z)
     double Rg_z=1.0;
     return (((z)/(Rg_z))*((m_uiPtMax.z()-m_uiPtMin.z()))+m_uiPtMin.z());
 }
+
+template class HeatVec<2u>;
+template class HeatVec<3u>;
+template class HeatVec<4u>;
 
 }//namespace HeatEq

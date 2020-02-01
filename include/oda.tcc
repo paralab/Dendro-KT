@@ -12,7 +12,7 @@ namespace ot
     namespace util
     {
       template <typename C, unsigned int dim>
-      void constructRegularGrid(MPI_Comm comm, unsigned int grainSz, double sfc_tol, std::vector<ot::TreeNode<C,dim>> &outTree)
+      void constructRegularGrid(MPI_Comm comm, size_t grainSz, double sfc_tol, std::vector<ot::TreeNode<C,dim>> &outTree)
       {
         int nProc, rProc;
         MPI_Comm_size(comm, &nProc);
@@ -22,18 +22,18 @@ namespace ot
           grainSz = 1;
 
         // numElements == pow(2, dim*endL); --> endL = roundUp(log(numElements)/dim);
-        const unsigned int endL = (binOp::binLength(nProc*grainSz - 1) + dim - 1) / dim;
-        const unsigned int numElem1D = 1u << endL;
-        const unsigned int globNumElem = 1u << (endL*dim);
-        const unsigned int len = 1u << (m_uiMaxDepth - endL);
+        const size_t endL = (binOp::binLength(nProc*grainSz - 1) + dim - 1) / dim;
+        const size_t numElem1D = 1u << endL;
+        const size_t globNumElem = 1u << (endL*dim);
+        const size_t len = 1u << (m_uiMaxDepth - endL);
 
         // To make a distributed regular grid (regular implies balanced),
         // follow the lexicographic order and then use distTreeSort().
-        const unsigned int locEleCount = globNumElem / nProc + (rProc < globNumElem % nProc ? 1 : 0);
-        const unsigned int locEleRank = globNumElem / nProc * rProc + (rProc < globNumElem % nProc ? rProc : globNumElem % nProc);
+        const size_t locEleCount = globNumElem / nProc + (rProc < globNumElem % nProc ? 1 : 0);
+        const size_t locEleRank = globNumElem / nProc * rProc + (rProc < globNumElem % nProc ? rProc : globNumElem % nProc);
 
         std::array<C,dim> eleMultiIdx;
-        unsigned int r = locEleRank, q = 0;
+        size_t r = locEleRank, q = 0;
         eleMultiIdx[0] = 1;
         for (int d = 1; d < dim; d++)                // Build up strides.
           eleMultiIdx[d] = eleMultiIdx[d-1] * numElem1D;
@@ -47,7 +47,7 @@ namespace ot
 
         // Create part of the tree in lexicographic order.
         outTree.resize(locEleCount);
-        for (unsigned int ii = 0; ii < locEleCount; ii++)
+        for (size_t ii = 0; ii < locEleCount; ii++)
         {
           std::array<C,dim> eleCoords;
           for (int d = 0; d < dim; d++)
@@ -257,9 +257,9 @@ namespace ot
                            (rProc < totalNumElements % nProc);
       DendroIntL genStart = (totalNumElements / nProc) * rProc +
                             (rProc < totalNumElements % nProc ? rProc : totalNumElements % nProc);
-      std::array<C,dim> genLimits;
-      std::array<C,dim> genStrides;
-      std::array<C,dim> genIdx;
+      std::array<DendroIntL, dim> genLimits;
+      std::array<DendroIntL, dim> genStrides;
+      std::array<DendroIntL, dim> genIdx;
       for (int d = 0; d < dim; d++)
         genLimits[d] = 1u << extentPowers[d];
       genStrides[0] = 1;
@@ -285,7 +285,7 @@ namespace ot
 
         treePart.emplace_back(elem);
 
-        incrementFor<C,dim>(genIdx, genLimits);
+        incrementFor<DendroIntL,dim>(genIdx, genLimits);
       }
 
       /// fprintf(stderr, "[%d] Ended generating at (%llu, %llu, %llu)\n",
@@ -491,7 +491,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    DA<dim>::DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
       std::vector<unsigned int> varIndex(dofSz);
@@ -515,7 +515,7 @@ namespace ot
     }
 
     template <unsigned int dim>
-    DA<dim>::DA(MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
         // Ignore interp_tol and just pick a uniform refinement level to satisfy grainSz.
@@ -657,8 +657,8 @@ namespace ot
           m_uiMPIContexts.emplace_back(vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs);
           AsyncExchangeContex &ctx = m_uiMPIContexts.back();
 
-          const unsigned int upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
-          const unsigned int dnstBSz = m_sm.m_map.size();
+          const size_t upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
+          const size_t dnstBSz = m_sm.m_map.size();
 
           // 2. Initiate recvs. Since vec is collated [abc abc], can receive into vec.
           if (upstBSz)
@@ -671,8 +671,8 @@ namespace ot
             for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
             {
               T *upstProcStart = upstB + dof*m_gm.m_recvOffsets[upstIdx];
-              unsigned int upstCount = dof*m_gm.m_recvCounts[upstIdx];
-              unsigned int upstProc = m_gm.m_recvProc[upstIdx];
+              size_t upstCount = dof*m_gm.m_recvCounts[upstIdx];
+              size_t upstProc = m_gm.m_recvProc[upstIdx];
               par::Mpi_Irecv(upstProcStart, upstCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
             }
           }
@@ -685,7 +685,7 @@ namespace ot
             MPI_Request *reql = ctx.getDnstRequestList();
 
             // 3a. Stage the send data.
-            for (unsigned int k = 0; k < dnstBSz; k++)
+            for (size_t k = 0; k < dnstBSz; k++)
             {
               const T *nodeSrc = vec + dof * (m_sm.m_map[k] + m_uiLocalNodeBegin);
               std::copy(nodeSrc, nodeSrc + dof, dnstB + dof * k);
@@ -695,8 +695,8 @@ namespace ot
             for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
             {
               T *dnstProcStart = dnstB + dof * m_sm.m_sendOffsets[dnstIdx];
-              unsigned int dnstCount = dof*m_sm.m_sendCounts[dnstIdx];
-              unsigned int dnstProc = m_sm.m_sendProc[dnstIdx];
+              size_t dnstCount = dof*m_sm.m_sendCounts[dnstIdx];
+              size_t dnstProc = m_sm.m_sendProc[dnstIdx];
               par::Mpi_Isend(dnstProcStart, dnstCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
             }
           }
@@ -765,8 +765,8 @@ namespace ot
           m_uiMPIContexts.emplace_back(vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs);
           AsyncExchangeContex &ctx = m_uiMPIContexts.back();
 
-          const unsigned int upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
-          const unsigned int dnstBSz = m_sm.m_map.size();
+          const size_t upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
+          const size_t dnstBSz = m_sm.m_map.size();
 
           // 2. Initiate receives. (De-staging done in writeToGhostEnd().)
           if (dnstBSz)
@@ -778,8 +778,8 @@ namespace ot
             for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
             {
               T *dnstProcStart = dnstB + dof * m_sm.m_sendOffsets[dnstIdx];
-              unsigned int dnstCount = dof*m_sm.m_sendCounts[dnstIdx];
-              unsigned int dnstProc = m_sm.m_sendProc[dnstIdx];
+              size_t dnstCount = dof*m_sm.m_sendCounts[dnstIdx];
+              size_t dnstProc = m_sm.m_sendProc[dnstIdx];
               par::Mpi_Irecv(dnstProcStart, dnstCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
             }
           }
@@ -795,8 +795,8 @@ namespace ot
             for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
             {
               T *upstProcStart = upstB + dof*m_gm.m_recvOffsets[upstIdx];
-              unsigned int upstCount = dof*m_gm.m_recvCounts[upstIdx];
-              unsigned int upstProc = m_gm.m_recvProc[upstIdx];
+              size_t upstCount = dof*m_gm.m_recvCounts[upstIdx];
+              size_t upstProc = m_gm.m_recvProc[upstIdx];
               par::Mpi_Isend(upstProcStart, upstCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
             }
           }
@@ -835,7 +835,7 @@ namespace ot
 
         const unsigned int nUpstProcs = m_gm.m_recvProc.size();
         const unsigned int nDnstProcs = m_sm.m_sendProc.size();
-        const unsigned int dnstBSz = m_sm.m_map.size();
+        const size_t dnstBSz = m_sm.m_map.size();
 
         // 2. Wait on recvs.
         reql = ctxPtr->getDnstRequestList();
@@ -843,7 +843,7 @@ namespace ot
           MPI_Wait(&reql[dnstIdx], &status);
 
         // 3. "De-stage" the received downstream data.
-        for (unsigned int k = 0; k < dnstBSz; k++)
+        for (size_t k = 0; k < dnstBSz; k++)
         {
           // Instead of simply copying from the downstream data, we need to accumulate it.
           const T *nodeSrc = dnstB + dof * k;
@@ -880,9 +880,9 @@ namespace ot
 
         if (!isElemental)
         {
-            const unsigned int nodalSz = (isGhosted ? m_uiTotalNodalSz : m_uiLocalNodalSz);
+            const size_t nodalSz = (isGhosted ? m_uiTotalNodalSz : m_uiLocalNodalSz);
             // Assumes interleaved variables, [abc][abc].
-            for (unsigned int k = 0; k < nodalSz; k++)
+            for (size_t k = 0; k < nodalSz; k++)
             {
                 m_tnCoords[k].getAnchor(tnCoords);
                 #pragma unroll(edim)
@@ -904,7 +904,7 @@ namespace ot
     void DA<dim>::setVectorByScalar(T* local,const T* value,bool isElemental, bool isGhosted, unsigned int dof, unsigned int initDof) const
     {
 
-        unsigned int arrSz;
+        size_t arrSz;
 
         if(!isElemental)
         {
@@ -915,7 +915,7 @@ namespace ot
                 arrSz=m_uiLocalNodalSz;
             }
 
-            for(unsigned int node=0;node<arrSz;node++)
+            for(size_t node=0;node<arrSz;node++)
                 for(unsigned int var = 0; var < initDof; var++)
                     local[dof*node + var] = value[var];
 
@@ -930,7 +930,7 @@ namespace ot
 
             for(unsigned int var=0;var<dof;var++)
             {
-                for(unsigned int ele=0;ele<arrSz;ele++)
+                for(size_t ele=0;ele<arrSz;ele++)
                     local[ (var*arrSz) + ele]=value[var];
             }
 
@@ -947,7 +947,7 @@ namespace ot
         if(!(m_uiIsActive))
             return NULL;
 
-        unsigned int arrSz;
+        size_t arrSz;
 
         /// if(!isElemental)
         /// {
@@ -988,7 +988,7 @@ namespace ot
         if(!(m_uiIsActive))
             return ;
 
-        unsigned int arrSz;
+        size_t arrSz;
 
         if(!isElemental)
         {
@@ -1021,7 +1021,7 @@ namespace ot
         if(!(m_uiIsActive))
             return ;
 
-        unsigned int arrSz;
+        size_t arrSz;
 
         if(!isElemental)
         {

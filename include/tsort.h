@@ -355,10 +355,6 @@ struct SFC_Tree
 
 };
 
-// Template instantiations.
-template struct SFC_Tree<unsigned int, 2>;
-template struct SFC_Tree<unsigned int, 3>;
-template struct SFC_Tree<unsigned int, 4>;
 
 } // namespace ot
 

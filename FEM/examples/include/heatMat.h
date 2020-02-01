@@ -56,10 +56,6 @@ namespace HeatEq
 
     };
 
-    // Template instantiations.
-    template class HeatMat<2u>;
-    template class HeatMat<3u>;
-    template class HeatMat<4u>;
 }
 
 

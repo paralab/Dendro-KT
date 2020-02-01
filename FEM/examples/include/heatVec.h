@@ -47,9 +47,6 @@ namespace HeatEq
 
     };
 
-    template class HeatVec<2u>;
-    template class HeatVec<3u>;
-    template class HeatVec<4u>;
 }
 
 

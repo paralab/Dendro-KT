@@ -121,7 +121,7 @@ template <unsigned int dim>
 bool HeatMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 {
     // apply boundary conditions.
-    std::vector<unsigned int> bdyIndex;
+    std::vector<size_t> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
@@ -132,7 +132,7 @@ template <unsigned int dim>
 bool HeatMat<dim>::postMatVec(const VECType* in,VECType* out,double scale) {
 
     // apply boundary conditions.
-    std::vector<unsigned int> bdyIndex;
+    std::vector<size_t> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
@@ -324,5 +324,11 @@ int HeatMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,unsig
     par::Mpi_Bcast(&tol,1,0,globalComm);
     return status;
 }
+
+// Template instantiations.
+template class HeatMat<2u>;
+template class HeatMat<3u>;
+template class HeatMat<4u>;
+
 
 }//namespace HeatEq
