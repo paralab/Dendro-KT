@@ -1,12 +1,11 @@
 #!/bin/bash
-#SBATCH --time=8:00:00     # walltime, abbreviated by -t
+#SBATCH --time=3:30:00     # walltime, abbreviated by -t
 #SBATCH -o out-job-%j-node-%N.out      # name of the stdout, using the job number (%j) and 
                                        # the first node (%N)
 #SBATCH -e err-job-%j-node-%N.err      # name of the stderr, using job and first node values
 
-#SBATCH --nodes=1          # request 1 node
-#SBATCH --ntasks=20        # maximum total number of mpi tasks across all nodes.
-#SBATCH -C "m384"          # a node with at least 384 GB of memory.
+#SBATCH --nodes=4          # request 4 node
+#SBATCH --ntasks=64        # maximum total number of mpi tasks across all nodes.
 
 #SBATCH --job-name=DendroKT-4b
 #SBATCH --mail-type=ALL
@@ -22,6 +21,4 @@ module load intel impi
 
 RUNPROGRAM=./../build/tstBillionsOfElements
 
-NP=20
-
-mpirun -np $NP ./$RUNPROGRAM
+mpirun -np $SLURM_NTASKS ./$RUNPROGRAM
