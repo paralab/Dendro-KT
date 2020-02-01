@@ -46,7 +46,7 @@ namespace ot
       * @param [in] order: order of the element.
      * */
     template <unsigned int dim>
-    DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
         ot::DistTree<C, dim> distTree(inTree);   // Uses default domain decider.
@@ -63,7 +63,7 @@ namespace ot
       * @note If you have a custom domain decider function, use this overload.
      * */
     template <unsigned int dim>
-    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
         construct(inDistTree, comm, order, grainSz, sfc_tol);
@@ -76,8 +76,8 @@ namespace ot
      *        and a domain decider function.
      */
     template <unsigned int dim>
-    /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
-    void DA<dim>::construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol)
+    /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
       // TODO take into account grainSz and sfc_tol to set up activeComm.
 
@@ -85,7 +85,7 @@ namespace ot
       MPI_Comm_size(comm, &nProc);
       MPI_Comm_rank(comm, &rProc);
 
-      const unsigned int nActiveEle = distTree.getFilteredTreePartSz();
+      const size_t nActiveEle = distTree.getFilteredTreePartSz();
 
       // A processor is 'active' if it has elements, otherwise 'inactive'.
       bool isActive = (nActiveEle > 0);
@@ -208,7 +208,7 @@ namespace ot
 
         // Create vector of node coordinates, with ghost segments allocated.
         m_tnCoords.resize(m_uiTotalNodalSz);
-        for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
+        for (size_t ii = 0; ii < m_uiLocalNodalSz; ii++)
           m_tnCoords[m_uiLocalNodeBegin + ii] = ownedNodes[ii];
         ownedNodes.clear();
 
@@ -220,7 +220,7 @@ namespace ot
 
         // Compute global ids of all nodes, including local and ghosted.
         m_uiLocalToGlobalNodalMap.resize(m_uiTotalNodalSz, 0);
-        for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
+        for (size_t ii = 0; ii < m_uiLocalNodalSz; ii++)
           m_uiLocalToGlobalNodalMap[m_uiLocalNodeBegin + ii] = m_uiGlobalRankBegin + ii;
         std::vector<ot::RankI> tmpSendGlobId(m_sm.m_map.size());
         ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::RankI>(
@@ -230,7 +230,7 @@ namespace ot
         // Identify the (local ids of) domain boundary nodes in local vector.
         // To use the ids in the ghosted vector you need to shift by m_uiLocalNodeBegin.
         m_uiBdyNodeIds.clear();
-        for (unsigned int ii = 0; ii < m_uiLocalNodalSz; ii++)
+        for (size_t ii = 0; ii < m_uiLocalNodalSz; ii++)
         {
           if (m_tnCoords[ii + m_uiLocalNodeBegin].isBoundaryNodeExtantCellFlag())
             m_uiBdyNodeIds.push_back(ii);
@@ -264,13 +264,13 @@ namespace ot
     template <unsigned int dim>
     ot::DA<dim>* DA<dim>::remesh(const ot::TreeNode<C,dim> * oldTree,
                                  const DA_FLAGS::Refine * flags,
-                                 unsigned int sz,
-                                 unsigned int grainSz,
+                                 size_t sz,
+                                 size_t grainSz,
                                  double ld_bal,
                                  unsigned int sfK) const
     {
-        const unsigned int localElementBegin = 0;
-        const unsigned int localElementEnd= sz;
+        const size_t localElementBegin = 0;
+        const size_t localElementEnd= sz;
         bool isRemesh=false;
         bool isRemesh_g;
         MPI_Comm commGlobal = m_uiGlobalComm;
@@ -286,7 +286,7 @@ namespace ot
         {
           const ot::TreeNode<C,dim>* allElements = oldTree;
           //1. check to see if we need a remesh.
-          for(unsigned int i=0;i<sz;i++)
+          for(size_t i=0;i<sz;i++)
           {
             // We will enforce that all leaf siblings are on the same rank.
             //
@@ -297,7 +297,7 @@ namespace ot
             // 2. TODO How can we suppress coarsening of an element whose
             //    siblings are not actually present, but were previously refined?
             //
-            unsigned int ele=i+localElementBegin;
+            size_t ele=i+localElementBegin;
             if(flags[i]==DA_FLAGS::Refine::DA_REFINE) {
               if((allElements[ele].getLevel()+levelDiff+1)>=m_uiMaxDepth)
               {
@@ -336,7 +336,7 @@ namespace ot
         // Build (unbalanced) tree from oldTree, obeying OCT_SPLIT or OCT_COARSE.
         std::vector<ot::TreeNode<C,dim>> newOctants;
 
-        for (unsigned int octIdx = 0; octIdx < sz; octIdx++)
+        for (size_t octIdx = 0; octIdx < sz; octIdx++)
         {
           switch (octflags[octIdx])
           {
@@ -386,7 +386,7 @@ namespace ot
     template <unsigned int dim>
     PetscErrorCode DA<dim>::petscCreateVector(Vec &local, bool isElemental, bool isGhosted, unsigned int dof) const
     {
-        unsigned int sz=0;
+        size_t sz=0;
         MPI_Comm globalComm=this->getGlobalComm();
         if(!m_uiIsActive)
         {
@@ -441,7 +441,7 @@ namespace ot
             const unsigned int preAllocFactor=dof*(53*(eleOrder+1));
 
             // first determine the size ...
-            unsigned int lSz = dof*(m_uiLocalNodalSz);
+            size_t lSz = dof*(m_uiLocalNodalSz);
             MPI_Comm activeComm=m_uiActiveComm;
 
             PetscBool isAij, isAijSeq, isAijPrl, isSuperLU, isSuperLU_Dist;

@@ -90,7 +90,7 @@ template <unsigned int dim>
 bool PoissonVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale)
 {
     // apply boundary conditions.
-    std::vector<unsigned int> bdyIndex;
+    std::vector<size_t> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
@@ -101,7 +101,7 @@ template <unsigned int dim>
 bool PoissonVec<dim>::postComputeVec(const VECType* in,VECType* out, double scale)
 {
     // apply boundary conditions.
-    std::vector<unsigned int> bdyIndex;
+    std::vector<size_t> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)

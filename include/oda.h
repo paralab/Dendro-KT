@@ -112,37 +112,37 @@ class DA
     static constexpr unsigned int m_uiDim = dim; 
 
     /**@brief domain boundary node ids*/
-    std::vector<unsigned int> m_uiBdyNodeIds;
+    std::vector<size_t> m_uiBdyNodeIds;
 
     /**@brief total nodal size (with ghost nodes)*/
-    unsigned int m_uiTotalNodalSz;
+    size_t m_uiTotalNodalSz;
 
     /**@brief number of local nodes*/
-    unsigned int m_uiLocalNodalSz;
+    size_t m_uiLocalNodalSz;
 
     /**@brief number of local element sz*/ 
-    unsigned int m_uiLocalElementSz;
+    size_t m_uiLocalElementSz;
 
     /**@brief: number of total element sz (local + ghost elements)*/
-    unsigned int m_uiTotalElementSz;
+    size_t m_uiTotalElementSz;
 
     /**@brief pre ghost node begin*/
-    unsigned int m_uiPreNodeBegin;
+    size_t m_uiPreNodeBegin;
 
     /**@brief: pre ghost node end */
-    unsigned int m_uiPreNodeEnd;
+    size_t m_uiPreNodeEnd;
 
     /**@brief: local nodes begin*/ 
-    unsigned int m_uiLocalNodeBegin;
+    size_t m_uiLocalNodeBegin;
     
     /**@brief: local nodes end*/ 
-    unsigned int m_uiLocalNodeEnd;
+    size_t m_uiLocalNodeEnd;
 
     /**@brief: post ghost begin*/ 
-    unsigned int m_uiPostNodeBegin;
+    size_t m_uiPostNodeBegin;
 
     /**@brief: post ghost end*/ 
-    unsigned int m_uiPostNodeEnd;
+    size_t m_uiPostNodeEnd;
 
     /**@brief: position of local segment in the distributed array. */
     DendroIntL m_uiGlobalRankBegin;
@@ -216,13 +216,13 @@ class DA
          */
         DA();
 
-        DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
-        DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
 
         /** @brief Construct oda for regular grid. */
-        DA(MPI_Comm comm, unsigned int order, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA(MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
         /**@brief: Construct a DA from a function
          * @param [in] func : input function, we will produce a 2:1 balanced unique sorted octree from this.
@@ -233,7 +233,7 @@ class DA
          * @param [in] sfc_tol: SFC partitioning tolerance,
          */
         template <typename T>
-        DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, unsigned int grainSz = 100, double sfc_tol = 0.3);
+        DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, size_t grainSz = 100, double sfc_tol = 0.3);
 
         /**
          * @brief deconstructor for the DA class.
@@ -243,8 +243,8 @@ class DA
         /**
          * @brief does the work for the constructors.
          */
-        /// void construct(const ot::TreeNode<C,dim> *inTree, unsigned int nEle, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
-        void construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, unsigned int grainSz, double sfc_tol);
+        /// void construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
+        void construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
 
         /** @brief The latter part of construct() if already have ownedNodes. */
@@ -257,19 +257,19 @@ class DA
                        MPI_Comm activeComm);
 
         /**@brief returns the local nodal size*/
-        inline unsigned int getLocalNodalSz() const { return m_uiLocalNodalSz; }
+        inline size_t getLocalNodalSz() const { return m_uiLocalNodalSz; }
 
         /**@brief returns the start offset for local node segment in ghosted vector. */
-        inline unsigned int getLocalNodeBegin() const { return m_uiLocalNodeBegin; }
+        inline size_t getLocalNodeBegin() const { return m_uiLocalNodeBegin; }
 
         /**@brief returns the pre ghost nodal size*/
-        inline unsigned int getPreNodalSz() const { return (m_uiPreNodeEnd-m_uiPreNodeBegin); }
+        inline size_t getPreNodalSz() const { return (m_uiPreNodeEnd-m_uiPreNodeBegin); }
 
         /**@brief returns the post nodal size*/
-        inline unsigned int getPostNodalSz() const { return (m_uiPostNodeEnd-m_uiPostNodeBegin); }
+        inline size_t getPostNodalSz() const { return (m_uiPostNodeEnd-m_uiPostNodeBegin); }
 
         /**@brief returns the total nodal size (this includes the ghosted region as well.)*/
-        inline unsigned int getTotalNodalSz() const { return m_uiTotalNodalSz; }
+        inline size_t getTotalNodalSz() const { return m_uiTotalNodalSz; }
 
         /**@brief returns the global number of nodes across all processors. */
         inline ot::RankI getGlobalNodeSz() const { return m_uiGlobalNodeSz; }
@@ -343,7 +343,7 @@ class DA
         inline const RefElement * getReferenceElement() const { return &m_refel; }
 
         /**@brief replaces bdyIndex with a copy of the boundary node indices. */
-        inline void getBoundaryNodeIndices(std::vector<unsigned int> &bdyIndex) const { bdyIndex = m_uiBdyNodeIds; }
+        inline void getBoundaryNodeIndices(std::vector<size_t> &bdyIndex) const { bdyIndex = m_uiBdyNodeIds; }
 
         /**
           * @brief Creates a ODA vector
@@ -508,7 +508,7 @@ class DA
          * @param[in] sfK: splitter fix factor. better to be power of two. increase the value to 128 when running on > 64,000 cores
          * @return: Specifies the new grid, with new DA. If not NULL, you are responsible to later delete it.
          */
-        ot::DA<dim>* remesh(const ot::TreeNode<C,dim> * oldTree, const DA_FLAGS::Refine * flags, unsigned int sz,unsigned int grainSz=100,double ld_bal=0.3, unsigned int sfK=2) const;
+        ot::DA<dim>* remesh(const ot::TreeNode<C,dim> * oldTree, const DA_FLAGS::Refine * flags, size_t sz,size_t grainSz=100,double ld_bal=0.3, unsigned int sfK=2) const;
 
         /**
          * @brief performs grid transfer operations after the remesh.

@@ -21,7 +21,7 @@ namespace binOp {
     }
   }//end function
 
-  unsigned int binLength(unsigned int num) {
+  unsigned long long binLength(unsigned long long num) {
     unsigned int len = 1;
     while(num > 1) {
       num = (num >> 1);
