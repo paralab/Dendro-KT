@@ -168,6 +168,7 @@ set(DENDRO_KT_INC include/dendro.h
                   FEM/include/feVec.h
                   FEM/include/feVector.h
                   FEM/include/interpMatrices.h
+                  FEM/include/gmgMat.h
                   )
 
 set(DENDRO_KT_SRC src/binUtils.cpp
