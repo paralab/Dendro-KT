@@ -156,6 +156,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/asyncExchangeContex.h
                   include/eleTreeIterator.h
                   include/sfcTreeLoop.h
+                  include/meshLoop.h
                   IO/vtk/include/oct2vtk.h
                   array/include/arraySlice.h
                   FEM/include/matvec.h
@@ -326,6 +327,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testBillionsOfElements.cpp)
 add_executable(tstBillionsOfElements ${SRC_FILES})
 target_include_directories(tstBillionsOfElements PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstBillionsOfElements dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testMeshLoop.cpp)
+add_executable(tstMeshLoop ${SRC_FILES})
+target_include_directories(tstMeshLoop PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstMeshLoop dendroKT ${MPI_LIBRARIES} m)
 
 
 ## tsort_bench (./tsortBench)
