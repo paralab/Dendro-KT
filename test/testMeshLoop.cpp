@@ -65,16 +65,16 @@ int main(int argc, char * argv[])
   long int counter = 0;
   for (auto subtree_frame : loop)
   {
-    if (subtree_frame.is_leaf())
+    if (subtree_frame.isLeaf())
     {
-      /// fprintf(stdout, "%7s  ", (subtree_frame.get_isPre() ? "(isPre)" : "(~pre)"));
+      /// fprintf(stdout, "%7s  ", (subtree_frame.getIsPre() ? "(isPre)" : "(~pre)"));
       /// fprintf(stdout, "(%d)[%s%2d" NRM "]--[%2d]  ",
-      ///     subtree_frame.get_lev(),
-      ///     (subtree_frame.is_leaf() ? GRN : ""),
-      ///     subtree_frame.get_begin_idx(),
-      ///     subtree_frame.get_end_idx());
-      /// fprintf(stdout, "%5s  ", (subtree_frame.is_leaf() ? "Leaf" : ""));
-      /// printtn(tnlist[subtree_frame.get_begin_idx()], eLev);
+      ///     subtree_frame.getLev(),
+      ///     (subtree_frame.isLeaf() ? GRN : ""),
+      ///     subtree_frame.getBeginIdx(),
+      ///     subtree_frame.getEndIdx());
+      /// fprintf(stdout, "%5s  ", (subtree_frame.isLeaf() ? "Leaf" : ""));
+      /// printtn(tnlist[subtree_frame.getBeginIdx()], eLev);
       /// fprintf(stdout, "\n");
       counter++;
     }

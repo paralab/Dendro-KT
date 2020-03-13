@@ -11,6 +11,7 @@
 namespace ot
 {
 
+    //TODO a const mesh loop
 
 template <typename T, unsigned int dim>
 class MeshLoopImpl;
@@ -22,6 +23,9 @@ class MeshLoopInterface;
 
 template <typename T, unsigned int dim>
 using MeshLoopPreSkipEmpty = MeshLoopInterface<T, dim, false, true, false>;
+
+template <typename T, unsigned int dim>
+using MeshLoopPostSkipEmpty = MeshLoopInterface<T, dim, false, false, true>;
 
 template <typename T, unsigned int dim>
 class MeshLoopFrame;
@@ -40,6 +44,10 @@ class MeshLoopInterface : public MeshLoopImpl<T, dim>
 {
   using BaseT = MeshLoopImpl<T,dim>;
   public:
+    MeshLoopInterface(std::vector<TreeNode<T, dim>> &tnlist)
+      : MeshLoopInterface(tnlist.data(), tnlist.size())
+    { }
+
     MeshLoopInterface(TreeNode<T, dim> *tnlist, size_t sz)
       : MeshLoopImpl<T,dim>(tnlist, sz, visitEmpty, visitPre, visitPost)
     {
@@ -256,17 +264,22 @@ class MeshLoopFrame
         m_anc_end(anc_end)
     { }
 
-    bool get_isPre() const { return m_is_pre; }
-    size_t get_begin_idx() const { return m_begin_idx; }
-    size_t get_end_idx() const { return m_end_idx; }
-    LevI get_lev() const { return m_lev; }
-    RotI get_pRot() const { return m_pRot; }
-    const SplitterT & get_child_splitters() const { return m_child_splitters; }
-    RankI get_anc_begin() const { return m_anc_begin; }
-    RankI get_anc_end() const { return m_anc_end; }
+    bool getIsPre() const { return m_is_pre; }
+    size_t getBeginIdx() const { return m_begin_idx; }
+    size_t getEndIdx() const { return m_end_idx; }
+    LevI getLev() const { return m_lev; }
+    RotI getPRot() const { return m_pRot; }
+    const SplitterT & getChildSplitters() const { return m_child_splitters; }
+    RankI getAncBegin() const { return m_anc_begin; }
+    RankI getAncEnd() const { return m_anc_end; }
 
-    bool is_leaf() const { return m_begin_idx == m_anc_begin && 
-                                  m_end_idx == m_anc_end; }
+    bool isEmpty() const { return m_begin_idx == m_end_idx; }
+
+    size_t getTotalCount() const { return m_end_idx - m_begin_idx; }
+    size_t getAncCount() const { return m_anc_end - m_anc_begin; }
+
+    bool isLeaf() const { return m_begin_idx == m_anc_begin && 
+                                 m_end_idx == m_anc_end; }
 
 
   protected:
