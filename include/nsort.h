@@ -460,11 +460,6 @@ namespace ot {
       static RankI countInstances(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int unused_order);
 
       /**
-       * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.
-       */
-      static std::vector<TreeNode<T,dim>> dist_bcastSplitters(const TreeNode<T,dim> *start, MPI_Comm comm);
-
-      /**
        * @brief Find which processors upon which the node is incident.
        * @description Generates keys from pt.getDFD() and then calls getContainingBlocks().
        * @note Guaranteed to include all neighbours but may include non-neighbours too.

@@ -262,6 +262,14 @@ struct SFC_Tree
       std::vector<BucketInfo<RankI>> &bftQueue);
 
 
+  /**
+   * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.
+   */
+  static std::vector<TreeNode<T,D>> dist_bcastSplitters(const TreeNode<T,D> *start, MPI_Comm comm);
+
+
+
+
   // -------------------------------------------------------------
 
   // Notes:

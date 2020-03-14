@@ -335,5 +335,28 @@ SFC_Tree<T,D>:: SFC_locateBuckets_impl(const PointType *points,
 
 
 
+//
+// SFC_Tree::dist_bcastSplitters()
+//
+template <typename T, unsigned int dim>
+std::vector<TreeNode<T,dim>> SFC_Tree<T,dim>::dist_bcastSplitters(const TreeNode<T,dim> *start, MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  using TreeNode = TreeNode<T,dim>;
+  std::vector<TreeNode> splitters(nProc);
+  splitters[rProc] = *start;
+
+  for (int turn = 0; turn < nProc; turn++)
+    par::Mpi_Bcast<TreeNode>(&splitters[turn], 1, turn, comm);
+
+  return splitters;
+}
+
+
+
+
 
 } // end namespace ot

@@ -181,6 +181,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/KDhcurvedata_DATA.cpp
                   src/tsort.cpp
                   src/nsort.cpp
+                  src/distTree.cpp
                   src/tsearchCmpx.cpp
                   src/treeNode.cpp
                   IO/vtk/src/oct2vtk.cpp

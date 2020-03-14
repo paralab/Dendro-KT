@@ -716,7 +716,7 @@ namespace ot {
     std::vector<RankI> shareMap;
 
     // Get neighbour information.
-    std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartFront, comm);
+    std::vector<TreeNode<T,dim>> splitters = SFC_Tree<T,dim>::dist_bcastSplitters(treePartFront, comm);
     assert((splitters.size() == nProc));
     for (RankI ptIdx = 0; ptIdx < numUniquePoints; ptIdx++)
     {
@@ -1018,7 +1018,7 @@ namespace ot {
     std::vector<RankI> sendCountsAll(nProc, 0);    // Un-compacted.
 
     // Get the splitters.
-    std::vector<TreeNode<T,dim>> splitters = dist_bcastSplitters(treePartStart, comm);
+    std::vector<TreeNode<T,dim>> splitters = SFC_Tree<T,dim>::dist_bcastSplitters(treePartStart, comm);
 
     // Loop through all owned nodes, finding which procs may depend on them based on key generation.
     // Add them to a list that we will later transform into the scattermap.
@@ -1807,26 +1807,6 @@ namespace ot {
     return 0;
   }
 
-
-  //
-  // SFC_NodeSort::dist_bcastSplitters()
-  //
-  template <typename T, unsigned int dim>
-  std::vector<TreeNode<T,dim>> SFC_NodeSort<T,dim>::dist_bcastSplitters(const TreeNode<T,dim> *start, MPI_Comm comm)
-  {
-    int nProc, rProc;
-    MPI_Comm_rank(comm, &rProc);
-    MPI_Comm_size(comm, &nProc);
-
-    using TreeNode = TreeNode<T,dim>;
-    std::vector<TreeNode> splitters(nProc);
-    splitters[rProc] = *start;
-
-    for (int turn = 0; turn < nProc; turn++)
-      par::Mpi_Bcast<TreeNode>(&splitters[turn], 1, turn, comm);
-
-    return splitters;
-  }
 
   //
   // SFC_NodeSort::getProcNeighbours()
