@@ -48,7 +48,10 @@ namespace ot
       // Using default copy constructor and assignment operator.
 
       // generateGridHierarchy()
-      void generateGridHierarchy(bool isFixedNumStrata, unsigned int lev, MPI_Comm comm);
+      void generateGridHierarchy(bool isFixedNumStrata,
+                                 unsigned int lev,
+                                 double loadFlexibility,
+                                 MPI_Comm comm);
 
       // filterTree() has 2 overloads, depending on the type of your decider.
       void filterTree(

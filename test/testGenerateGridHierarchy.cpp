@@ -27,8 +27,8 @@ int main(int argc, char * argv[])
   const unsigned int numPoints = 300;
   /// const unsigned int sLev = 5;
   /// const unsigned int eLev = 5;
-  const unsigned int sLev = 2;
-  const unsigned int eLev = 2;
+  const unsigned int sLev = 3;
+  const unsigned int eLev = 3;
 
   // Normally distributed collection of points.
   /// std::vector<ot::TreeNode<T, dim>> tnlist = ot::getPts<T, dim>(numPoints, sLev, eLev);
@@ -52,7 +52,7 @@ int main(int argc, char * argv[])
   }
   std::cout << "\n\n";
 
-  dtree.generateGridHierarchy(true, 2, comm);
+  dtree.generateGridHierarchy(true, 3, 0.1, comm);
 
   const std::vector<ot::TreeNode<T, dim>> &stratum1 = dtree.getTreePartFiltered(1);
 

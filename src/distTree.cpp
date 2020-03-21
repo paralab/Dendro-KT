@@ -91,11 +91,14 @@ namespace ot
   // generateGridHierarchy()
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::generateGridHierarchy(bool isFixedNumStrata, unsigned int lev, MPI_Comm comm)
+  void DistTree<T, dim>::generateGridHierarchy(bool isFixedNumStrata,
+                                               unsigned int lev,
+                                               double loadFlexibility,
+                                               MPI_Comm comm)
   {
     /**
      * @author Masado Ishii
-     * @date 2020-02-21
+     * @date 2020-02-21 -- 2020-03-21
      */
 
     // /////////////////////////////////////////////////////////////////////
@@ -249,7 +252,19 @@ namespace ot
       // Identify fineGrid and coarseGrid.
       std::vector<TreeNode<T, dim>> &fineGrid = m_gridStrata[coarseStratum-1];
       std::vector<TreeNode<T, dim>> &coarseGrid = m_gridStrata[coarseStratum];
+      coarseGrid.clear();
 
+      // A rank is 'active' if it has elements, otherwise 'inactive'.
+      bool isActive = (fineGrid.size() > 0);
+      MPI_Comm newActiveComm;
+      MPI_Comm_split(activeComm, (isActive ? 1 : MPI_UNDEFINED), rProcActive, &newActiveComm);
+      activeComm = newActiveComm;
+
+      if (!isActive)  // We will only use the active ranks for the rest of hierarchy.
+        break;
+
+      MPI_Comm_size(activeComm, &nProcActive);
+      MPI_Comm_rank(activeComm, &rProcActive);
 
       // Coarsen from the fine grid to the coarse grid.
 
@@ -338,95 +353,101 @@ namespace ot
       // Synchronize traversal of three lists of TreeNodes
       // (splitters, candidates, disqualifiers).
       // Descend into empty subtrees and control ascension manually.
-      MeshLoopInterface<T, dim, true, true, false> lpSplitters(fsplitters);
-      MeshLoopInterface<T, dim, true, true, false> lpCandidates(candidates);
-      MeshLoopInterface<T, dim, true, true, false> lpDisqualifiers(disqualifiers);
-      int splitterCount = 0;
-      while (!lpSplitters.isFinished())
+
+      // Tree Traversal
       {
-        const MeshLoopFrame<T, dim> &subtreeSplitters = lpSplitters.getTopConst();
-        const MeshLoopFrame<T, dim> &subtreeCandidates = lpCandidates.getTopConst();
-        const MeshLoopFrame<T, dim> &subtreeDisqualifiers = lpDisqualifiers.getTopConst();
-
-        std::cout << "subtreeSplitters: lev==" << subtreeSplitters.getLev()
-          << " pRot==" << subtreeSplitters.getPRot();
-        std::cout.flush();
-        assert((subtreeSplitters.getLev() == subtreeCandidates.getLev() &&
-                subtreeCandidates.getLev() == subtreeDisqualifiers.getLev()));
-        assert((subtreeSplitters.getPRot() == subtreeCandidates.getPRot() &&
-                subtreeCandidates.getPRot() == subtreeDisqualifiers.getPRot()));
-
-        int splittersInSubtree = subtreeSplitters.getTotalCount();
-
-        // Case 1: There are no splitters in the subtree.
-        //     --> add all items to current bucket.
-        // Case 2: The splitter subtree is a leaf.
-        //     --> No items can be deeper than the current subtree.
-        //         Advance the bucket and add the items to it.
-        // Case 3a: The splitter subtree is a nonempty nonleaf, and the item subtree is a leaf.
-        //     --> add the current item to all buckets split by the splitters.
-        // Case 3b: The splitter subtree is a nonempty nonleaf, and the item subtree is not a leaf.
-        //     --> descend.
-
-        /// //DEBUG
-        /// std::cout << "    #splitters==" << splittersInSubtree;
-        /// std::cout << " (sp count==" << splitterCount << ")";
-        /// std::cout << "   sbt_split(";
-        /// if (subtreeSplitters.isEmpty()) std::cout << "_"; else std::cout << subtreeSplitters.getTotalCount();
-        /// std::cout << (subtreeSplitters.isLeaf() ? " L)" : "NL)");
-        /// std::cout << "   sbt_cand(";
-        /// if (subtreeCandidates.isEmpty()) std::cout << "_"; else std::cout << subtreeCandidates.getTotalCount();
-        /// std::cout << (subtreeCandidates.isLeaf() ? " L)" : "NL)");
-        /// std::cout << "   sbt_disq(";
-        /// if (subtreeDisqualifiers.isEmpty()) std::cout << "_"; else std::cout << subtreeDisqualifiers.getTotalCount();
-        /// std::cout << (subtreeDisqualifiers.isLeaf() ? " L)" : "NL)");
-
-
-        if (subtreeSplitters.isEmpty() || subtreeSplitters.isLeaf() ||
-            (subtreeCandidates.isEmpty() && subtreeDisqualifiers.isEmpty()))
+        MeshLoopInterface<T, dim, true, true, false> lpSplitters(fsplitters);
+        MeshLoopInterface<T, dim, true, true, false> lpCandidates(candidates);
+        MeshLoopInterface<T, dim, true, true, false> lpDisqualifiers(disqualifiers);
+        int splitterCount = 0;
+        while (!lpSplitters.isFinished())
         {
-          if (!subtreeSplitters.isEmpty() && subtreeSplitters.isLeaf())
-            ++splitterCount;
+          const MeshLoopFrame<T, dim> &subtreeSplitters = lpSplitters.getTopConst();
+          const MeshLoopFrame<T, dim> &subtreeCandidates = lpCandidates.getTopConst();
+          const MeshLoopFrame<T, dim> &subtreeDisqualifiers = lpDisqualifiers.getTopConst();
 
-          for (size_t cIdx = subtreeCandidates.getBeginIdx(); cIdx < subtreeCandidates.getEndIdx(); ++cIdx)
-            candidate_bmpx.addToBucket(cIdx, splitterCount);
-          for (size_t dIdx = subtreeDisqualifiers.getBeginIdx(); dIdx < subtreeDisqualifiers.getEndIdx(); ++dIdx)
-            disqualif_bmpx.addToBucket(dIdx, splitterCount);
+          /// // DEBUG
+          /// std::cout << "subtreeSplitters: lev==" << subtreeSplitters.getLev()
+          ///   << " pRot==" << subtreeSplitters.getPRot();
+          /// std::cout.flush();
+          assert((subtreeSplitters.getLev() == subtreeCandidates.getLev() &&
+                  subtreeCandidates.getLev() == subtreeDisqualifiers.getLev()));
+          assert((subtreeSplitters.getPRot() == subtreeCandidates.getPRot() &&
+                  subtreeCandidates.getPRot() == subtreeDisqualifiers.getPRot()));
 
-          lpSplitters.next();
-          lpCandidates.next();
-          lpDisqualifiers.next();
-        }
-        else
-        {
-          // A candidate that overlaps multiple partitions should be duplicated.
-          if (!subtreeCandidates.isEmpty() && subtreeCandidates.isLeaf() && splittersInSubtree > 0)
+          int splittersInSubtree = subtreeSplitters.getTotalCount();
+
+          // Case 1: There are no splitters in the subtree.
+          //     --> add all items to current bucket.
+          // Case 2: The splitter subtree is a leaf.
+          //     --> No items can be deeper than the current subtree.
+          //         Advance the bucket and add the items to it.
+          // Case 3a: The splitter subtree is a nonempty nonleaf, and the item subtree is a leaf.
+          //     --> add the current item to all buckets split by the splitters.
+          // Case 3b: The splitter subtree is a nonempty nonleaf, and the item subtree is not a leaf.
+          //     --> descend.
+
+          /// //DEBUG
+          /// std::cout << "    #splitters==" << splittersInSubtree;
+          /// std::cout << " (sp count==" << splitterCount << ")";
+          /// std::cout << "   sbt_split(";
+          /// if (subtreeSplitters.isEmpty()) std::cout << "_"; else std::cout << subtreeSplitters.getTotalCount();
+          /// std::cout << (subtreeSplitters.isLeaf() ? " L)" : "NL)");
+          /// std::cout << "   sbt_cand(";
+          /// if (subtreeCandidates.isEmpty()) std::cout << "_"; else std::cout << subtreeCandidates.getTotalCount();
+          /// std::cout << (subtreeCandidates.isLeaf() ? " L)" : "NL)");
+          /// std::cout << "   sbt_disq(";
+          /// if (subtreeDisqualifiers.isEmpty()) std::cout << "_"; else std::cout << subtreeDisqualifiers.getTotalCount();
+          /// std::cout << (subtreeDisqualifiers.isLeaf() ? " L)" : "NL)");
+
+
+          if (subtreeSplitters.isEmpty() || subtreeSplitters.isLeaf() ||
+              (subtreeCandidates.isEmpty() && subtreeDisqualifiers.isEmpty()))
           {
-            size_t candidateIdx = subtreeCandidates.getBeginIdx();
-            int bucketIdx;
-            for (bucketIdx = splitterCount; bucketIdx < splitterCount + splittersInSubtree; bucketIdx++)
+            if (!subtreeSplitters.isEmpty() && subtreeSplitters.isLeaf())
+              ++splitterCount;
+
+            for (size_t cIdx = subtreeCandidates.getBeginIdx(); cIdx < subtreeCandidates.getEndIdx(); ++cIdx)
+              candidate_bmpx.addToBucket(cIdx, splitterCount);
+            for (size_t dIdx = subtreeDisqualifiers.getBeginIdx(); dIdx < subtreeDisqualifiers.getEndIdx(); ++dIdx)
+              disqualif_bmpx.addToBucket(dIdx, splitterCount);
+
+            lpSplitters.next();
+            lpCandidates.next();
+            lpDisqualifiers.next();
+          }
+          else
+          {
+            // A candidate that overlaps multiple partitions should be duplicated.
+            if (!subtreeCandidates.isEmpty() && subtreeCandidates.isLeaf() && splittersInSubtree > 0)
+            {
+              size_t candidateIdx = subtreeCandidates.getBeginIdx();
+              int bucketIdx;
+              for (bucketIdx = splitterCount; bucketIdx < splitterCount + splittersInSubtree; bucketIdx++)
+                candidate_bmpx.addToBucket(candidateIdx, bucketIdx);
               candidate_bmpx.addToBucket(candidateIdx, bucketIdx);
-            candidate_bmpx.addToBucket(candidateIdx, bucketIdx);
-          }
+            }
   
-          // A disqualifier that overlaps multiple partitions should be duplicated.
-          if (!subtreeCandidates.isEmpty() && subtreeDisqualifiers.isLeaf() && splittersInSubtree > 0)
-          {
-            size_t disqualifIdx = subtreeDisqualifiers.getBeginIdx();
-            int bucketIdx;
-            for (bucketIdx = splitterCount; bucketIdx < splitterCount + splittersInSubtree; bucketIdx++)
+            // A disqualifier that overlaps multiple partitions should be duplicated.
+            if (!subtreeCandidates.isEmpty() && subtreeDisqualifiers.isLeaf() && splittersInSubtree > 0)
+            {
+              size_t disqualifIdx = subtreeDisqualifiers.getBeginIdx();
+              int bucketIdx;
+              for (bucketIdx = splitterCount; bucketIdx < splitterCount + splittersInSubtree; bucketIdx++)
+                disqualif_bmpx.addToBucket(disqualifIdx, bucketIdx);
               disqualif_bmpx.addToBucket(disqualifIdx, bucketIdx);
-            disqualif_bmpx.addToBucket(disqualifIdx, bucketIdx);
+            }
+
+            lpSplitters.step();
+            lpCandidates.step();
+            lpDisqualifiers.step();
           }
 
-          lpSplitters.step();
-          lpCandidates.step();
-          lpDisqualifiers.step();
+          /// //DEBUG
+          /// std::cout << "\n";
+
         }
-
-        std::cout << "\n";
-
-      }
+      } // end tree traversal
 
       // Send counts, offsets, buffer for candidates.
       std::vector<int> scountCandidates = candidate_bmpx.getBucketCounts();
@@ -441,8 +462,8 @@ namespace ot
       disqualif_bmpx.transferCopies(sendbufDisqualifiers.data(), disqualifiers.data());
 
       // Exchange scounts, rcounts.
-      std::vector<int> rcountCandidates(nProcActive, 0),    roffsetsCandidates(nProc, 0);
-      std::vector<int> rcountDisqualifiers(nProcActive, 0), roffsetsDisqualifiers(nProc, 0);
+      std::vector<int> rcountCandidates(nProcActive, 0),    roffsetsCandidates(nProcActive, 0);
+      std::vector<int> rcountDisqualifiers(nProcActive, 0), roffsetsDisqualifiers(nProcActive, 0);
       par::Mpi_Alltoall(scountCandidates.data(), rcountCandidates.data(), 1, activeComm);
       par::Mpi_Alltoall(scountDisqualifiers.data(), rcountDisqualifiers.data(), 1, activeComm);
 
@@ -476,19 +497,73 @@ namespace ot
                                 activeComm);
 
 
-      // 5. Simultaneously traverse candidates, disqualifiers, and the fine grid
-      //    5.1 If there exists a candidate, and it's not disqualified,
-      //          add it as a cell in the coarse grid.
-      //    5.2 Otherwise, add the subtree from the fine grid.
+      // 5. Simultaneously traverse candidates, disqualifiers, and the fine grid.
+      //
+      //    If candidate subtree is empty  -->  Add all fine grid elements; next()
+      //    Else
+      //      if candidate subtree is a leaf
+      //        if not disqualified  -->  Add the candidate; next()
+      //        else                 -->  Add all fine grid elements; next()
+      //      else
+      //        --> step()
 
+      // Tree Traversal
+      {
+        MeshLoopInterface<T, dim, true, true, false> lpFineGrid(fineGrid);
+        MeshLoopInterface<T, dim, true, true, false> lpCandidates(candidates);
+        MeshLoopInterface<T, dim, true, true, false> lpDisqualifiers(disqualifiers);
+        int splitterCount = 0;
+        while (!lpCandidates.isFinished())
+        {
+          const MeshLoopFrame<T, dim> &subtreeFineGrid = lpFineGrid.getTopConst();
+          const MeshLoopFrame<T, dim> &subtreeCandidates = lpCandidates.getTopConst();
+          const MeshLoopFrame<T, dim> &subtreeDisqualifiers = lpDisqualifiers.getTopConst();
 
-      // After finalize the candidates, repartition and get partFront/Back.
+          if (!subtreeCandidates.isEmpty() && !subtreeCandidates.isLeaf())
+          {
+            lpFineGrid.step();
+            lpCandidates.step();
+            lpDisqualifiers.step();
+          }
+          else
+          {
+            if (!subtreeCandidates.isEmpty() && subtreeDisqualifiers.getAncCount() == 0)
+            {
+              // Add the candidate (parent of its child).
+              // A child exists on at least one rank, but maybe not all.
+              if (!subtreeFineGrid.isEmpty())
+                coarseGrid.emplace_back(fineGrid[subtreeFineGrid.getBeginIdx()].getParent());
+            }
+            else
+            {
+              // Add all the fine grid elements of the subtree.
+              coarseGrid.insert(coarseGrid.end(),
+                                &fineGrid[subtreeFineGrid.getBeginIdx()],
+                                &fineGrid[subtreeFineGrid.getEndIdx()]);
+            }
 
-      //TODO test for empty, replace activeComm
+            lpFineGrid.next();
+            lpCandidates.next();
+            lpDisqualifiers.next();
+          }
+        }
+      } // end tree traversal
 
+      // Since we potentially added (strictly) duplicate candidates,
+      // now need to remove them.
+      SFC_Tree<T, dim>::distRemoveDuplicates(coarseGrid, loadFlexibility, true, activeComm);
+
+      // Coarse grid is finalized!
+
+      if (coarseGrid.size() > 0)
+      {
+        m_tpFrontStrata[coarseStratum] = coarseGrid.front();
+        m_tpBackStrata[coarseStratum] = coarseGrid.back();
+      }
+
+      // The active comm is initialized at the beginning of the loop.
+      // No cleanup to do here at the end if coarseGrid is empty.
     }
-
-
   }
 
 

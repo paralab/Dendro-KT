@@ -203,6 +203,9 @@ class DA
 
     //TODO I don't think RefElement member belongs in DA (distributed array),
     //  but it has to go somewhere that the polyOrder is known.
+    //
+    //  --> It is ok here, but it should be made a shared_ptr
+    //      so that mutligrid only needs one refel.
     RefElement m_refel;
 
   public:
