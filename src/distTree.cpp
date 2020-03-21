@@ -32,14 +32,6 @@ namespace ot
         m_srcDestList.reserve(listReserveSz);
       }
 
-      /// // Declarations
-      /// inline void addToBucket(IdxT index, BdxT bucket);
-      /// inline IdxT getTotalItems() const;
-      /// std::vector<IdxT> getBucketCounts() const;
-      /// std::vector<IdxT> getBucketOffsets() const;
-      /// template <typename X, typename Y>
-      /// inline void transferCopies(Y * dest, const X * src) const;
-
 
       // Definitions
 
@@ -210,12 +202,6 @@ namespace ot
     // /////////////////////////////////////////////////////////////////////
 
 
-
-      /// // Multilevel grids, finest first. Must initialize with at least one level.
-      /// std::vector<std::vector<TreeNode<T, dim>>> m_gridStrata;
-      /// std::vector<TreeNode<T, dim>> m_tpFrontStrata;
-      /// std::vector<TreeNode<T, dim>> m_tpBackStrata;
-
     int nProc, rProc;
     MPI_Comm_size(comm, &nProc);
     MPI_Comm_rank(comm, &rProc);
@@ -330,13 +316,6 @@ namespace ot
       // 4. Use the fine grid splitters to partition the candidates and disqualifiers.
       //    (Could use other splitters, but the fine grid splitters are handy.)
 
-      //TODO what if not everybody has something to broadcast?
-      // We need to add a bool at each level saying are we active.
-      // Assume the finest level has contents and thus splitters on every rank.
-      // Use the fine splitters to finalize the coarse contents.
-      // Redistribute the coarse contents, and evaluate the coarse active/inactive,
-      // create a new comm that includes only the nonempty ranks.
-      // We can terminate early if the comm has a single rank.
       std::vector<TreeNode<T, dim>> fsplitters =
           SFC_Tree<T, dim>::dist_bcastSplitters(&m_tpFrontStrata[coarseStratum-1], activeComm);
 
@@ -366,10 +345,6 @@ namespace ot
           const MeshLoopFrame<T, dim> &subtreeCandidates = lpCandidates.getTopConst();
           const MeshLoopFrame<T, dim> &subtreeDisqualifiers = lpDisqualifiers.getTopConst();
 
-          /// // DEBUG
-          /// std::cout << "subtreeSplitters: lev==" << subtreeSplitters.getLev()
-          ///   << " pRot==" << subtreeSplitters.getPRot();
-          /// std::cout.flush();
           assert((subtreeSplitters.getLev() == subtreeCandidates.getLev() &&
                   subtreeCandidates.getLev() == subtreeDisqualifiers.getLev()));
           assert((subtreeSplitters.getPRot() == subtreeCandidates.getPRot() &&
@@ -386,20 +361,6 @@ namespace ot
           //     --> add the current item to all buckets split by the splitters.
           // Case 3b: The splitter subtree is a nonempty nonleaf, and the item subtree is not a leaf.
           //     --> descend.
-
-          /// //DEBUG
-          /// std::cout << "    #splitters==" << splittersInSubtree;
-          /// std::cout << " (sp count==" << splitterCount << ")";
-          /// std::cout << "   sbt_split(";
-          /// if (subtreeSplitters.isEmpty()) std::cout << "_"; else std::cout << subtreeSplitters.getTotalCount();
-          /// std::cout << (subtreeSplitters.isLeaf() ? " L)" : "NL)");
-          /// std::cout << "   sbt_cand(";
-          /// if (subtreeCandidates.isEmpty()) std::cout << "_"; else std::cout << subtreeCandidates.getTotalCount();
-          /// std::cout << (subtreeCandidates.isLeaf() ? " L)" : "NL)");
-          /// std::cout << "   sbt_disq(";
-          /// if (subtreeDisqualifiers.isEmpty()) std::cout << "_"; else std::cout << subtreeDisqualifiers.getTotalCount();
-          /// std::cout << (subtreeDisqualifiers.isLeaf() ? " L)" : "NL)");
-
 
           if (subtreeSplitters.isEmpty() || subtreeSplitters.isLeaf() ||
               (subtreeCandidates.isEmpty() && subtreeDisqualifiers.isEmpty()))
@@ -442,9 +403,6 @@ namespace ot
             lpCandidates.step();
             lpDisqualifiers.step();
           }
-
-          /// //DEBUG
-          /// std::cout << "\n";
 
         }
       } // end tree traversal
@@ -497,7 +455,8 @@ namespace ot
                                 activeComm);
 
 
-      // 5. Simultaneously traverse candidates, disqualifiers, and the fine grid.
+      // 5. Generate the coarse grid.
+      //    Simultaneously traverse candidates, disqualifiers, and the fine grid.
       //
       //    If candidate subtree is empty  -->  Add all fine grid elements; next()
       //    Else
@@ -548,6 +507,9 @@ namespace ot
           }
         }
       } // end tree traversal
+
+
+      // 6. Re-sort and remove duplicates.
 
       // Since we potentially added (strictly) duplicate candidates,
       // now need to remove them.
