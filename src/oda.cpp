@@ -17,8 +17,8 @@
 namespace ot
 {
     template <unsigned int dim>
-    DA<dim>::DA() : m_refel{dim,1} {
-        // Does nothing!
+    DA<dim>::DA(unsigned int order) : m_refel{dim,order} {
+        // Does nothing except set order!
         m_uiTotalNodalSz = 0;
         m_uiLocalNodalSz = 0;
         m_uiLocalElementSz = 0;
@@ -31,7 +31,7 @@ namespace ot
         m_uiPostNodeEnd = 0;
         m_uiCommTag = 0;
         m_uiGlobalNodeSz = 0;
-        m_uiElementOrder = 0;
+        m_uiElementOrder = order;
         m_uiNpE = 0;
         m_uiActiveNpes = 0;
         m_uiGlobalNpes = 0;
@@ -57,17 +57,45 @@ namespace ot
     /**@brief: Constructor for the DA data structures
       * @param [in] inDistTree : input octree that is already filtered,
       *                          need to be 2:1 balanced unique sorted octree.
-      *                          Will be emptied during construction of DA.
+      *                          Will NOT be emptied during construction of DA.
       * @param [in] comm: MPI global communicator for mesh generation.
       * @param [in] order: order of the element.
       * @note If you have a custom domain decider function, use this overload.
      * */
     template <unsigned int dim>
-    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
-        construct(inDistTree, comm, order, grainSz, sfc_tol);
-        inDistTree.destroyTree();
+      construct(inDistTree, stratum, comm, order, grainSz, sfc_tol);
+    }
+
+    /**@brief: Constructor for the DA data structures
+      * @param [in] inDistTree : input octree that is already filtered,
+      *                          need to be 2:1 balanced unique sorted octree.
+      *                          Will be emptied during construction of DA.
+      * @param [in] comm: MPI global communicator for mesh generation.
+      * @param [in] order: order of the element.
+      * @note If you have a custom domain decider function, use this overload.
+     * */
+
+    template <unsigned int dim>
+    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+        : DA(inDistTree, 0, comm, order, grainSz, sfc_tol)
+    {
+      inDistTree.destroyTree();
+    }
+
+    // Construct multiple DA for multigrid.
+    template <unsigned int dim>
+    void DA<dim>::multiLevelDA(std::vector<DA> &outDAPerStratum, DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    {
+      outDAPerStratum.clear();
+      const int numStrata = inDistTree.getNumStrata();
+      std::vector<DA> daPerStratum(numStrata);
+      for (int l = 0; l < numStrata; ++l)
+        daPerStratum[l].construct(inDistTree, l, comm, order, grainSz, sfc_tol);
+      std::swap(outDAPerStratum, daPerStratum);
+      inDistTree.destroyTree();
     }
 
 
@@ -79,13 +107,24 @@ namespace ot
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     void DA<dim>::construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
+      construct(distTree, 0, comm, order, grainSz, sfc_tol);
+    }
+
+    /**
+     * @param distTree contains a vector of TreeNode (will be drained),
+     *        and a domain decider function.
+     */
+    template <unsigned int dim>
+    /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::construct(ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    {
       // TODO take into account grainSz and sfc_tol to set up activeComm.
 
       int nProc, rProc;
       MPI_Comm_size(comm, &nProc);
       MPI_Comm_rank(comm, &rProc);
 
-      const size_t nActiveEle = distTree.getFilteredTreePartSz();
+      const size_t nActiveEle = distTree.getFilteredTreePartSz(stratum);
 
       // A processor is 'active' if it has elements, otherwise 'inactive'.
       bool isActive = (nActiveEle > 0);
@@ -99,10 +138,10 @@ namespace ot
       if (isActive)
       {
         // Splitters for distributed exchanges.
-        treePartFront = distTree.getTreePartFront();
-        treePartBack = distTree.getTreePartBack();
+        treePartFront = distTree.getTreePartFront(stratum);
+        treePartBack = distTree.getTreePartBack(stratum);
 
-        const std::vector<TreeNode<C, dim>> &inTreeFiltered = distTree.getTreePartFiltered();
+        const std::vector<TreeNode<C, dim>> &inTreeFiltered = distTree.getTreePartFiltered(stratum);
 
         // Generate nodes from the tree. First, element-exterior nodes.
         for (const TreeNode<C, dim> &elem : inTreeFiltered)
@@ -149,6 +188,9 @@ namespace ot
                             MPI_Comm globalComm,
                             MPI_Comm activeComm)
     {
+      if (eleOrder != m_refel.getOrder())
+        m_refel = RefElement(dim, eleOrder);
+
       m_uiElementOrder = eleOrder;
       m_uiNpE = intPow(eleOrder + 1, dim);
 

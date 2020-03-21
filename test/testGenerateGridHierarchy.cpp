@@ -1,6 +1,6 @@
-///#include "meshLoop.h"
 #include "distTree.h"
 #include "octUtils.h"
+#include "oda.h"
 
 #include <vector>
 #include <iostream>
@@ -64,6 +64,20 @@ int main(int argc, char * argv[])
     std::cout << "\n";
   }
   std::cout << "\n\n";
+
+
+  const unsigned int order = 2;
+
+  std::vector<ot::DA<dim>> multiDA;
+  ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, order);
+  for (int l = 0; l < multiDA.size(); ++l)
+  {
+    fprintf(stdout, "%*s[%2d]---DA[%2d] localNodalSz==%u\n",
+        10*rProc, "",
+        rProc,
+        l,
+        (unsigned int) multiDA[l].getLocalNodalSz());
+  }
 
   _DestroyHcurve();
 

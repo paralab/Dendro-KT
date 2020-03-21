@@ -93,9 +93,15 @@ class DA
 {
     using C = unsigned int;    // Integer coordinate type.
 
-    // Takes element coordinates and size and returns whether the element should be kept in the domain.
-    // For the unit hypercube domain, this function would be to check that the
-    // element is within the range 0..1 on each dimension.
+    /**
+     * Takes element coordinates and size and returns whether the element should be kept in the domain.
+     * For the unit hypercube domain, this function would be to check that the
+     * element is within the range 0..1 on each dimension.
+     *
+     * Note: In order for DA construction with DistTree to work with a grid hierarchy,
+     * the domain decider must have the interpretation of returning true for any
+     * octant that has an intersection with the domain, and returning false otherwise.
+     */
     using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
     using DomainDeciderT_TN = std::function<bool(const TreeNode<C, dim> &elemTreeNode)>;
 
@@ -148,16 +154,16 @@ class DA
     DendroIntL m_uiGlobalRankBegin;
 
     /**@brief: map, size of ghosted node array, gives global node indices.*/
-    std::vector<ot::RankI> m_uiLocalToGlobalNodalMap;
+    std::vector<RankI> m_uiLocalToGlobalNodalMap;
     
     /**@brief: internal scatter map. */
-    ot::ScatterMap m_sm;
+    ScatterMap m_sm;
 
     /**@brief: internal gather map. */
-    ot::GatherMap m_gm;
+    GatherMap m_gm;
 
     /**@brief contexts for async data transfers*/
-    std::vector<ot::AsyncExchangeContex> m_uiMPIContexts;
+    std::vector<AsyncExchangeContex> m_uiMPIContexts;
 
     /**@brief: mpi tags*/
     unsigned int m_uiCommTag;
@@ -193,13 +199,13 @@ class DA
     unsigned int m_uiRankGlobal;
 
     /**@brief: First treeNode in the local partition of the tree.*/
-    ot::TreeNode<C,dim> m_treePartFront;
+    TreeNode<C,dim> m_treePartFront;
 
     /**@brief: Last treeNode in the local partition of the tree.*/
-    ot::TreeNode<C,dim> m_treePartBack;
+    TreeNode<C,dim> m_treePartBack;
 
     /**@brief: coordinates of nodes in the vector. */
-    std::vector<ot::TreeNode<C,dim>> m_tnCoords;
+    std::vector<TreeNode<C,dim>> m_tnCoords;
 
     //TODO I don't think RefElement member belongs in DA (distributed array),
     //  but it has to go somewhere that the polyOrder is known.
@@ -217,11 +223,19 @@ class DA
          * @param [in] grainSz: Number of suggested elements per processor,
          * @param [in] sfc_tol: SFC partitioning tolerance,
          */
-        DA();
+        DA(unsigned int order = 1);
 
-        DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+        DA(std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
-        DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+        DA(DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+
+        /**
+         * @brief Construct DA assuming only one level of grid. Delegates to the "stratum" constructor using stratum=0.
+         */
+        DA(DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+
+        // Construct multiple DA for multigrid.
+        static void multiLevelDA(std::vector<DA> &outDAPerStratum, DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
 
         /** @brief Construct oda for regular grid. */
@@ -246,8 +260,10 @@ class DA
         /**
          * @brief does the work for the constructors.
          */
-        /// void construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
-        void construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
+        /// void construct(const TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
+        void construct(DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
+
+        void construct(DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
 
         /** @brief The latter part of construct() if already have ownedNodes. */
@@ -275,12 +291,12 @@ class DA
         inline size_t getTotalNodalSz() const { return m_uiTotalNodalSz; }
 
         /**@brief returns the global number of nodes across all processors. */
-        inline ot::RankI getGlobalNodeSz() const { return m_uiGlobalNodeSz; }
+        inline RankI getGlobalNodeSz() const { return m_uiGlobalNodeSz; }
 
         /**@brief returns the rank of the begining of local segment among all processors. */
-        inline ot::RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
+        inline RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
 
-        inline const std::vector<ot::RankI> getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
+        inline const std::vector<RankI> getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
 
         /**@brief see if the current DA is active*/
         inline bool isActive() { return m_uiIsActive; }
@@ -334,13 +350,13 @@ class DA
         inline unsigned int getDimension() const { return m_uiDim; };
 
         /**@brief: get pointer to the (ghosted) array of nodal coordinates. */
-        inline const ot::TreeNode<C,dim> * getTNCoords() const { return &(*m_tnCoords.cbegin()); }
+        inline const TreeNode<C,dim> * getTNCoords() const { return &(*m_tnCoords.cbegin()); }
 
         /**@brief: get first treeNode of the local partition of the tree (front splitter). */
-        inline const ot::TreeNode<C,dim> * getTreePartFront() const { return &m_treePartFront; }
+        inline const TreeNode<C,dim> * getTreePartFront() const { return &m_treePartFront; }
 
         /**@brief: get last treeNode of the local partition of the tree (back splitter). */
-        inline const ot::TreeNode<C,dim> * getTreePartBack() const { return &m_treePartBack; }
+        inline const TreeNode<C,dim> * getTreePartBack() const { return &m_treePartBack; }
 
         //TODO again, I don't think RefElement belongs in DA, but it is for now. Maybe it belongs?
         inline const RefElement * getReferenceElement() const { return &m_refel; }
@@ -511,7 +527,7 @@ class DA
          * @param[in] sfK: splitter fix factor. better to be power of two. increase the value to 128 when running on > 64,000 cores
          * @return: Specifies the new grid, with new DA. If not NULL, you are responsible to later delete it.
          */
-        ot::DA<dim>* remesh(const ot::TreeNode<C,dim> * oldTree, const DA_FLAGS::Refine * flags, size_t sz,size_t grainSz=100,double ld_bal=0.3, unsigned int sfK=2) const;
+        DA<dim>* remesh(const TreeNode<C,dim> * oldTree, const DA_FLAGS::Refine * flags, size_t sz,size_t grainSz=100,double ld_bal=0.3, unsigned int sfK=2) const;
 
         /**
          * @brief performs grid transfer operations after the remesh.
@@ -522,7 +538,7 @@ class DA
          * @param[in] dof: degrees of freedoms.
          * */
         template<typename T>
-        void intergridTransfer(const T* varIn, T* & varOut, const ot::DA<dim>* newDA, bool isElemental=false, bool isGhosted=false, unsigned int dof=1);
+        void intergridTransfer(const T* varIn, T* & varOut, const DA<dim>* newDA, bool isElemental=false, bool isGhosted=false, unsigned int dof=1);
 
 
 
@@ -648,7 +664,7 @@ class DA
             * @return an error flag
             * @note records will be cleared inside the function
             */
-        //PetscErrorCode petscSetValuesInMatrix(Mat mat, std::vector<ot::MatRecord> &records, unsigned int dof, InsertMode mode) const;
+        //PetscErrorCode petscSetValuesInMatrix(Mat mat, std::vector<MatRecord> &records, unsigned int dof, InsertMode mode) const;
      
         /**@brief: dealloc the petsc vector
          * */  
