@@ -517,6 +517,10 @@ namespace ot
 
       // Coarse grid is finalized!
 
+      if (!m_hasBeenFiltered)
+        m_originalTreePartSz[coarseStratum] = coarseGrid.size();
+      m_filteredTreePartSz[coarseStratum] = coarseGrid.size();
+
       if (coarseGrid.size() > 0)
       {
         m_tpFrontStrata[coarseStratum] = coarseGrid.front();

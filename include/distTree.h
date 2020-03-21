@@ -71,10 +71,10 @@ namespace ot
 
       // Tree accessors.
       const std::vector<TreeNode<T, dim>> & getTreePartFiltered(int stratum = 0) const;
-      size_t getOriginalTreePartSz() const;
-      size_t getFilteredTreePartSz() const;
-      TreeNode<T, dim> getTreePartFront() const;
-      TreeNode<T, dim> getTreePartBack() const;
+      size_t getOriginalTreePartSz(int stratum = 0) const;
+      size_t getFilteredTreePartSz(int stratum = 0) const;
+      TreeNode<T, dim> getTreePartFront(int stratum = 0) const;
+      TreeNode<T, dim> getTreePartBack(int stratum = 0) const;
 
 
       int getNumStrata() { return m_numStrata; }
@@ -118,15 +118,15 @@ namespace ot
 
       bool m_usePhysCoordsDecider;
 
-      size_t m_originalTreePartSz;
-      size_t m_filteredTreePartSz;
-
       bool m_hasBeenFiltered;
 
       // Multilevel grids, finest first. Must initialize with at least one level.
       std::vector<std::vector<TreeNode<T, dim>>> m_gridStrata;
       std::vector<TreeNode<T, dim>> m_tpFrontStrata;
       std::vector<TreeNode<T, dim>> m_tpBackStrata;
+      std::vector<size_t> m_originalTreePartSz;
+      std::vector<size_t> m_filteredTreePartSz;
+
 
       int m_numStrata;
 
@@ -169,14 +169,14 @@ namespace ot
   : m_gridStrata(m_uiMaxDepth+1),
     m_tpFrontStrata(m_uiMaxDepth+1),
     m_tpBackStrata(m_uiMaxDepth+1),
+    m_originalTreePartSz(m_uiMaxDepth+1, 0),
+    m_filteredTreePartSz(m_uiMaxDepth+1, 0),
     m_numStrata(0)
   {
     m_usePhysCoordsDecider = false;
 
     m_domainDeciderTN = DistTree::defaultDomainDeciderTN;
     m_domainDeciderPh = DistTree::defaultDomainDeciderPh;
-    m_originalTreePartSz = 0;
-    m_filteredTreePartSz = 0;
 
     m_hasBeenFiltered = false;
   }
@@ -190,14 +190,16 @@ namespace ot
   : m_gridStrata(m_uiMaxDepth+1),
     m_tpFrontStrata(m_uiMaxDepth+1),
     m_tpBackStrata(m_uiMaxDepth+1),
+    m_originalTreePartSz(m_uiMaxDepth+1, 0),
+    m_filteredTreePartSz(m_uiMaxDepth+1, 0),
     m_numStrata(1)
   {
     m_usePhysCoordsDecider = false;
 
     m_domainDeciderTN = DistTree::defaultDomainDeciderTN;
     m_domainDeciderPh = DistTree::defaultDomainDeciderPh;
-    m_originalTreePartSz = treePart.size();
-    m_filteredTreePartSz = treePart.size();
+    m_originalTreePartSz[0] = treePart.size();
+    m_filteredTreePartSz[0] = treePart.size();
 
     if (treePart.size())
     {
@@ -227,7 +229,7 @@ namespace ot
 
 
   //
-  // filterTree() (treeNode)
+  // filterTree() (treeNode)  //TODO incorporate whole grid hierarchy.
   //
   template <typename T, unsigned int dim>
   void DistTree<T, dim>::filterTree( const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
@@ -240,28 +242,31 @@ namespace ot
       m_domainDeciderPh = std::bind(&DistTree<T,dim>::conversionDomainDeciderPh, this, _1, _2);
     }
 
-    const size_t oldSz = get_m_treePartFiltered().size();
-    size_t ii = 0;
+    for (int l = 0; l < m_numStrata; ++l)
+    {
+      const size_t oldSz = m_gridStrata[l].size();
+      size_t ii = 0;
 
-    // Find first element to delete.
-    while (ii < oldSz && domainDecider(get_m_treePartFiltered()[ii]))
-      ii++;
+      // Find first element to delete.
+      while (ii < oldSz && domainDecider(m_gridStrata[l][ii]))
+        ii++;
 
-    m_filteredTreePartSz = ii;
+      m_filteredTreePartSz[l] = ii;
 
-    // Keep finding and deleting elements.
-    for ( ; ii < oldSz ; ii++)
-      if (!domainDecider(get_m_treePartFiltered()[ii]))
-        get_m_treePartFiltered()[m_filteredTreePartSz++] = std::move(get_m_treePartFiltered()[ii]);
+      // Keep finding and deleting elements.
+      for ( ; ii < oldSz ; ii++)
+        if (!domainDecider(m_gridStrata[l][ii]))
+          m_gridStrata[l][m_filteredTreePartSz[l]++] = std::move(m_gridStrata[l][ii]);
 
-    get_m_treePartFiltered().resize(m_filteredTreePartSz);
+      m_gridStrata[l].resize(m_filteredTreePartSz[l]);
+    }
 
     m_hasBeenFiltered = true;
   }
 
 
   //
-  // filterTree() (physical)
+  // filterTree() (physical)  //TODO incorporate whole grid hierarchy.
   //
   template <typename T, unsigned int dim>
   void DistTree<T, dim>::filterTree( const std::function<bool(const double *elemPhysCoords,
@@ -278,24 +283,27 @@ namespace ot
     double physCoords[dim];
     double physSize;
 
-    const size_t oldSz = get_m_treePartFiltered().size();
-    size_t ii = 0;
+    for (int l = 0; l < m_numStrata; ++l)
+    {
+      const size_t oldSz = m_gridStrata[l].size();
+      size_t ii = 0;
 
-    // Find first element to delete.
-    while (ii < oldSz
-        && (treeNode2Physical(get_m_treePartFiltered()[ii], physCoords, physSize)
-            , domainDecider(physCoords, physSize)))
-      ii++;
+      // Find first element to delete.
+      while (ii < oldSz
+          && (treeNode2Physical(m_gridStrata[l][ii], physCoords, physSize)
+              , domainDecider(physCoords, physSize)))
+        ii++;
 
-    m_filteredTreePartSz = ii;
+      m_filteredTreePartSz[l] = ii;
 
-    // Keep finding and deleting elements.
-    for ( ; ii < oldSz ; ii++)
-      if ( !(treeNode2Physical(get_m_treePartFiltered()[ii], physCoords, physSize)
-            , domainDecider(physCoords, physSize)) )
-        get_m_treePartFiltered()[m_filteredTreePartSz++] = std::move(get_m_treePartFiltered()[ii]);
+      // Keep finding and deleting elements.
+      for ( ; ii < oldSz ; ii++)
+        if ( !(treeNode2Physical(m_gridStrata[l][ii], physCoords, physSize)
+              , domainDecider(physCoords, physSize)) )
+          m_gridStrata[l][m_filteredTreePartSz[l]++] = std::move(m_gridStrata[l][ii]);
 
-    get_m_treePartFiltered().resize(m_filteredTreePartSz);
+      m_gridStrata[l].resize(m_filteredTreePartSz[l]);
+    }
 
     m_hasBeenFiltered = true;
   }
@@ -339,9 +347,9 @@ namespace ot
   // getOriginalTreePartSz()
   //
   template <typename T, unsigned int dim>
-  size_t DistTree<T, dim>::getOriginalTreePartSz() const
+  size_t DistTree<T, dim>::getOriginalTreePartSz(int stratum) const
   {
-    return m_originalTreePartSz;
+    return m_originalTreePartSz[stratum];
   }
 
 
@@ -349,9 +357,9 @@ namespace ot
   // getFilteredTreePartSz()
   //
   template <typename T, unsigned int dim>
-  size_t DistTree<T, dim>::getFilteredTreePartSz() const
+  size_t DistTree<T, dim>::getFilteredTreePartSz(int stratum) const
   {
-    return m_filteredTreePartSz;
+    return m_filteredTreePartSz[stratum];
   }
 
 
@@ -359,9 +367,9 @@ namespace ot
   // getTreePartFront()
   //
   template <typename T, unsigned int dim>
-  TreeNode<T, dim> DistTree<T, dim>::getTreePartFront() const
+  TreeNode<T, dim> DistTree<T, dim>::getTreePartFront(int stratum) const
   {
-    return get_m_treePartFront();
+    return m_tpFrontStrata[stratum];
   }
 
 
@@ -369,9 +377,9 @@ namespace ot
   // getTreePartBack()
   //
   template <typename T, unsigned int dim>
-  TreeNode<T, dim> DistTree<T, dim>::getTreePartBack() const
+  TreeNode<T, dim> DistTree<T, dim>::getTreePartBack(int stratum) const
   {
-    return get_m_treePartBack();
+    return m_tpBackStrata[stratum];
   }
 
 
