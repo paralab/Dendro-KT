@@ -82,7 +82,6 @@ namespace ot
       inline void transferCopies(Y * dest, const X * src) const
       {
         std::vector<IdxT> bucketOffsets = getBucketOffsets();
-
         for (const SrcDestPair &sd : m_srcDestList)
           dest[bucketOffsets[sd.bucket]++] = src[sd.idx];
       }
@@ -222,7 +221,7 @@ namespace ot
     int nProcActive = nProc;
     int rProcActive = rProc;
 
-    // Determine the number of grids in the grid hierarchy.
+    // Determine the number of grids in the grid hierarchy. (m_numStrata)
     if (isFixedNumStrata)
       m_numStrata = lev;
     else
@@ -242,6 +241,8 @@ namespace ot
     //
     // Any set of siblings is coarsened to create their parent, unless
     // doing so would violate the 2:1 balancing constraint in the coarse grid.
+    //
+    // Requires a pass over the grid + communication for every level.
     //
     for (int coarseStratum = 1; coarseStratum < m_numStrata; coarseStratum++)
     {
@@ -324,26 +325,36 @@ namespace ot
       std::vector<TreeNode<T, dim>> fsplitters =
           SFC_Tree<T, dim>::dist_bcastSplitters(&m_tpFrontStrata[coarseStratum-1], activeComm);
 
-      //TODO this whole section could be factored out as a general
-      // method that sends octants to their owners
+      // May need to send some candidates & disqualifiers to multiple ranks,
+      // if the splits are one level finer than the candidates.
+      // - Then we guarantee all children of a surviving candidate are removed.
+      // - Finally need to do a merge and global removed duplicates using
+      //   the set of surviving candidates and set of surviving fine grid elements.
 
+      // Bucket sort helpers.
+      BucketMultiplexer<int, int> candidate_bmpx(nProcActive, candidates.size());
+      BucketMultiplexer<int, int> disqualif_bmpx(nProcActive, disqualifiers.size());
 
-      BucketMultiplexer<size_t, int> candidate_bmpx(nProcActive, candidates.size());
-      BucketMultiplexer<size_t, int> disqualif_bmpx(nProcActive, disqualifiers.size());
-
-      // Synchronize traversal of three lists of TreeNodes.
+      // Synchronize traversal of three lists of TreeNodes
+      // (splitters, candidates, disqualifiers).
       // Descend into empty subtrees and control ascension manually.
       MeshLoopInterface<T, dim, true, true, false> lpSplitters(fsplitters);
       MeshLoopInterface<T, dim, true, true, false> lpCandidates(candidates);
       MeshLoopInterface<T, dim, true, true, false> lpDisqualifiers(disqualifiers);
       int splitterCount = 0;
-      /// std::vector<size_t> scountCandidates(nProc, 0);
-      /// std::vector<size_t> scountDisqualifiers(nProc, 0);
       while (!lpSplitters.isFinished())
       {
         const MeshLoopFrame<T, dim> &subtreeSplitters = lpSplitters.getTopConst();
         const MeshLoopFrame<T, dim> &subtreeCandidates = lpCandidates.getTopConst();
         const MeshLoopFrame<T, dim> &subtreeDisqualifiers = lpDisqualifiers.getTopConst();
+
+        std::cout << "subtreeSplitters: lev==" << subtreeSplitters.getLev()
+          << " pRot==" << subtreeSplitters.getPRot();
+        std::cout.flush();
+        assert((subtreeSplitters.getLev() == subtreeCandidates.getLev() &&
+                subtreeCandidates.getLev() == subtreeDisqualifiers.getLev()));
+        assert((subtreeSplitters.getPRot() == subtreeCandidates.getPRot() &&
+                subtreeCandidates.getPRot() == subtreeDisqualifiers.getPRot()));
 
         int splittersInSubtree = subtreeSplitters.getTotalCount();
 
@@ -352,19 +363,30 @@ namespace ot
         // Case 2: The splitter subtree is a leaf.
         //     --> No items can be deeper than the current subtree.
         //         Advance the bucket and add the items to it.
-        // Case 2a: The splitter subtree is a nonempty nonleaf, and the item subtree is a leaf.
+        // Case 3a: The splitter subtree is a nonempty nonleaf, and the item subtree is a leaf.
         //     --> add the current item to all buckets split by the splitters.
-        // Case 2b: The splitter subtree is a nonempty nonleaf, and the item subtree is not a leaf.
+        // Case 3b: The splitter subtree is a nonempty nonleaf, and the item subtree is not a leaf.
         //     --> descend.
+
+        /// //DEBUG
+        /// std::cout << "    #splitters==" << splittersInSubtree;
+        /// std::cout << " (sp count==" << splitterCount << ")";
+        /// std::cout << "   sbt_split(";
+        /// if (subtreeSplitters.isEmpty()) std::cout << "_"; else std::cout << subtreeSplitters.getTotalCount();
+        /// std::cout << (subtreeSplitters.isLeaf() ? " L)" : "NL)");
+        /// std::cout << "   sbt_cand(";
+        /// if (subtreeCandidates.isEmpty()) std::cout << "_"; else std::cout << subtreeCandidates.getTotalCount();
+        /// std::cout << (subtreeCandidates.isLeaf() ? " L)" : "NL)");
+        /// std::cout << "   sbt_disq(";
+        /// if (subtreeDisqualifiers.isEmpty()) std::cout << "_"; else std::cout << subtreeDisqualifiers.getTotalCount();
+        /// std::cout << (subtreeDisqualifiers.isLeaf() ? " L)" : "NL)");
+
 
         if (subtreeSplitters.isEmpty() || subtreeSplitters.isLeaf() ||
             (subtreeCandidates.isEmpty() && subtreeDisqualifiers.isEmpty()))
         {
-          if (subtreeSplitters.isLeaf())
+          if (!subtreeSplitters.isEmpty() && subtreeSplitters.isLeaf())
             ++splitterCount;
-
-          /// scountCandidates[splitterCount - 1] += subtreeCandidates.getTotalCount();
-          /// scountDisqualifiers[splitterCount - 1] += subtreeDisqualifiers.getTotalCount();
 
           for (size_t cIdx = subtreeCandidates.getBeginIdx(); cIdx < subtreeCandidates.getEndIdx(); ++cIdx)
             candidate_bmpx.addToBucket(cIdx, splitterCount);
@@ -397,68 +419,62 @@ namespace ot
             disqualif_bmpx.addToBucket(disqualifIdx, bucketIdx);
           }
 
-          /// scountCandidates[splitterCount - 1] += subtreeCandidates.getAncCount();
-          /// scountDisqualifiers[splitterCount - 1] += subtreeDisqualifiers.getAncCount();
-
           lpSplitters.step();
           lpCandidates.step();
           lpDisqualifiers.step();
         }
+
+        std::cout << "\n";
+
       }
 
-      /// std::vector<size_t> soffsetsCandidates(nProc, 0);
-      /// { int offset = candidates.size();
-      ///   for (int i = nProc-1; i >= 0; i--)
-      ///     soffsetsCandidates[i] = (offset -= scountCandidates[i]);
-      /// }
-
-      /// std::vector<size_t> soffsetsDisqualifiers(nProc, 0);
-      /// { int offset = candidates.size();
-      ///   for (int i = nProc-1; i >= 0; i--)
-      ///     soffsetsDisqualifiers[i] = (offset -= scountDisqualifiers[i]);
-      /// }
-
       // Send counts, offsets, buffer for candidates.
-      std::vector<size_t> scountCandidates = candidate_bmpx.getBucketCounts();
-      std::vector<size_t> soffsetsCandidates = candidate_bmpx.getBucketOffsets();
+      std::vector<int> scountCandidates = candidate_bmpx.getBucketCounts();
+      std::vector<int> soffsetsCandidates = candidate_bmpx.getBucketOffsets();
       std::vector<TreeNode<T, dim>> sendbufCandidates(candidate_bmpx.getTotalItems());
       candidate_bmpx.transferCopies(sendbufCandidates.data(), candidates.data());
 
       // Send counts, offsets, buffer for disqualifiers.
-      std::vector<size_t> scountDisqualifiers = disqualif_bmpx.getBucketCounts();
-      std::vector<size_t> soffsetsDisqualifiers = disqualif_bmpx.getBucketOffsets();
+      std::vector<int> scountDisqualifiers = disqualif_bmpx.getBucketCounts();
+      std::vector<int> soffsetsDisqualifiers = disqualif_bmpx.getBucketOffsets();
       std::vector<TreeNode<T, dim>> sendbufDisqualifiers(disqualif_bmpx.getTotalItems());
       disqualif_bmpx.transferCopies(sendbufDisqualifiers.data(), disqualifiers.data());
 
+      // Exchange scounts, rcounts.
+      std::vector<int> rcountCandidates(nProcActive, 0),    roffsetsCandidates(nProc, 0);
+      std::vector<int> rcountDisqualifiers(nProcActive, 0), roffsetsDisqualifiers(nProc, 0);
+      par::Mpi_Alltoall(scountCandidates.data(), rcountCandidates.data(), 1, activeComm);
+      par::Mpi_Alltoall(scountDisqualifiers.data(), rcountDisqualifiers.data(), 1, activeComm);
 
+      // Compute roffsets and resize recv bufers.
+      std::vector<TreeNode<T, dim>> recvbufCandidates, recvbufDisqualifiers;
+      { int offset = 0;
+        for (int i = 0; i < nProcActive; ++i)
+          offset = (roffsetsCandidates[i] = offset) + rcountCandidates[i];
+        recvbufCandidates.resize(offset);
+      }
+      { int offset = 0;
+        for (int i = 0; i < nProcActive; ++i)
+          offset = (roffsetsDisqualifiers[i] = offset) + rcountDisqualifiers[i];
+        recvbufDisqualifiers.resize(offset);
+      }
 
-      //TODO exchange scounts rcounts
+      // Exchange data.
+      par::Mpi_Alltoallv_sparse(sendbufCandidates.data(),
+                                scountCandidates.data(),
+                                soffsetsCandidates.data(),
+                                recvbufCandidates.data(),
+                                rcountCandidates.data(),
+                                roffsetsCandidates.data(),
+                                activeComm);
+      par::Mpi_Alltoallv_sparse(sendbufDisqualifiers.data(),
+                                scountDisqualifiers.data(),
+                                soffsetsDisqualifiers.data(),
+                                recvbufDisqualifiers.data(),
+                                rcountDisqualifiers.data(),
+                                roffsetsDisqualifiers.data(),
+                                activeComm);
 
-      std::vector<size_t> rcountCandidates(nProc, 0);
-      std::vector<size_t> rcountDisqualifiers(nProc, 0);
-
-      // Send/recv candidates and disqualifiers
-
-      std::vector<TreeNode<T, dim>> recvCandidates, recvDisqualifiers;
-
-
-
-      //TODO
-
-
-      //            3.2.1 Simultaneously traverse the list of candidates,
-      //                    so as to eliminate disqualifiers that are not relevant.
-      //            3.2.2 Need to check the before and after address of the
-      //                    disqualifier against the local partition splitters.
-      //            3.2.3 Any disqualifier that belongs to another partition
-      //                    can be added to a sendcount.
-
-
-
-
-
-      // 4. Collect and send/recv candidates and disqualifiers that belong
-      //      to another partition.
 
       // 5. Simultaneously traverse candidates, disqualifiers, and the fine grid
       //    5.1 If there exists a candidate, and it's not disqualified,

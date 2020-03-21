@@ -66,11 +66,15 @@ namespace ot
       const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
         & getDomainDeciderPh() const;
 
-      const std::vector<TreeNode<T, dim>> & getTreePartFiltered() const;
+      // Tree accessors.
+      const std::vector<TreeNode<T, dim>> & getTreePartFiltered(int stratum = 0) const;
       size_t getOriginalTreePartSz() const;
       size_t getFilteredTreePartSz() const;
       TreeNode<T, dim> getTreePartFront() const;
       TreeNode<T, dim> getTreePartBack() const;
+
+
+      int getNumStrata() { return m_numStrata; }
 
 
       // These deciders can be called directly.
@@ -102,9 +106,6 @@ namespace ot
 
         return isInside;
       }
-
-
-      int getNumStrata() { return m_numStrata; }
 
     protected:
       // Member variables.
@@ -325,9 +326,9 @@ namespace ot
   //
   template <typename T, unsigned int dim>
   const std::vector<TreeNode<T, dim>> &
-      DistTree<T, dim>::getTreePartFiltered() const
+      DistTree<T, dim>::getTreePartFiltered(int stratum) const
   {
-    return get_m_treePartFiltered();
+    return m_gridStrata[stratum];
   }
 
 

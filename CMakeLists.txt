@@ -334,6 +334,11 @@ add_executable(tstMeshLoop ${SRC_FILES})
 target_include_directories(tstMeshLoop PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstMeshLoop dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testGenerateGridHierarchy.cpp)
+add_executable(tstGenerateGridHierarchy ${SRC_FILES})
+target_include_directories(tstGenerateGridHierarchy PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstGenerateGridHierarchy dendroKT ${MPI_LIBRARIES} m)
+
 
 ## tsort_bench (./tsortBench)
 ## -----------
