@@ -303,6 +303,18 @@ struct SFC_Tree
   //   - Nodes only removed if strictly equal to other nodes. Ancestors retained.
   static void locRemoveDuplicatesStrict(std::vector<TreeNode<T,D>> &tnodes);
 
+  /**
+   * distCoalesceSiblings()
+   *
+   * @brief If all siblings are leafs, push them onto the first incident rank.
+   *
+   * Enforcing this criterion is a prerequisite to intergrid transfer.
+   *
+   * Simpler than keepSiblingLeafsTogether.
+   */
+  static void distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
+                                    MPI_Comm comm );
+
 
   // -------------------------------------------------------------
 

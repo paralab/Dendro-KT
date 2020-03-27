@@ -757,6 +757,132 @@ SFC_Tree<T,D>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,D>> &tnodes)
 
 
 //
+// distCoalesceSiblings()
+//
+template <typename T, unsigned int D>
+void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
+                                           MPI_Comm comm )
+{
+  int nProc, rProc;
+  MPI_Comm_size(comm, &nProc);
+  MPI_Comm_rank(comm, &rProc);
+
+  int locDone = false;
+  int globDone = false;
+
+  while (!globDone)
+  {
+    // Exclude self if don't contain any TreeNodes.
+    bool isActive = (tree.size() > 0);
+    MPI_Comm activeComm;
+    MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
+    comm = activeComm;
+
+    if (!isActive)
+      break;
+
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+
+    // Assess breakage on front and back.
+    TreeNode<T, D> locFrontParent = tree.front().getParent();
+    TreeNode<T, D> locBackParent = tree.back().getParent();
+    bool locFrontIsBroken = false;
+    bool locBackIsBroken = false;
+
+    int sendLeft = 0, recvRight = 0;
+
+    int idx = 0;
+    while (idx < tree.size()
+        && !locFrontIsBroken
+        && locFrontParent.isAncestorInclusive(tree[idx]))
+    {
+      if (tree[idx].getParent() != locFrontParent)
+        locFrontIsBroken = true;
+      else
+        sendLeft++;
+    }
+
+    idx = tree.size()-1;
+    while (idx >= 0
+        && !locBackIsBroken
+        && locBackParent.isAncestorInclusive(tree[idx]))
+    {
+      if (tree[idx].getParent() != locBackParent)
+        locBackIsBroken = true;
+    }
+
+
+    // Check with left and right ranks to see if an exchange is needed.
+    TreeNode<T, D> leftParent, rightParent;
+    bool leftIsBroken, rightIsBroken;
+
+    bool exchangeLeft = false;
+    bool exchangeRight = false;
+
+    constexpr int tagToLeft1 = 72;
+    constexpr int tagToRight1 = 73;
+    constexpr int tagToLeft2 = 74;
+    constexpr int tagToRight2 = 75;
+    constexpr int tagToLeft3 = 76;
+    constexpr int tagToLeft4 = 77;
+    MPI_Status status;
+
+    int leftRank = (rProc > 0 ? rProc - 1 : MPI_PROC_NULL);
+    int rightRank = (rProc < nProc-1 ? rProc+1 : MPI_PROC_NULL);
+
+    par::Mpi_Sendrecv(&locFrontParent, 1, leftRank, tagToLeft1,
+                      &rightParent, 1, rightRank, tagToLeft1, comm, &status);
+    par::Mpi_Sendrecv(&locBackParent, 1, rightRank, tagToRight1,
+                      &leftParent, 1, leftRank, tagToRight1, comm, &status);
+
+    par::Mpi_Sendrecv(&locFrontIsBroken, 1, leftRank, tagToLeft2,
+                      &rightIsBroken, 1, rightRank, tagToLeft2, comm, &status);
+    par::Mpi_Sendrecv(&locBackIsBroken, 1, rightRank, tagToRight2,
+                      &leftIsBroken, 1, leftRank, tagToRight2, comm, &status);
+
+    if (rProc > 0)
+      exchangeLeft = (!locFrontIsBroken && !leftIsBroken && locFrontParent == leftParent);
+
+    if (rProc < nProc-1)
+      exchangeRight = (!locBackIsBroken && !rightIsBroken && locBackParent == rightParent);
+
+
+    // Do the exchanges. Send to left, recv from right.
+    if (!exchangeLeft)
+      leftRank = MPI_PROC_NULL;
+    if (!exchangeRight)
+      rightRank = MPI_PROC_NULL;
+
+    par::Mpi_Sendrecv(&sendLeft, 1, leftRank, tagToLeft3,
+                      &recvRight, 1, rightRank, tagToLeft3, comm, &status);
+
+    if (exchangeRight)
+    {
+      tree.resize(tree.size() + recvRight);
+    }
+
+    par::Mpi_Sendrecv(&(*tree.begin()), sendLeft, leftRank, tagToLeft4,
+                      &(*tree.end()) - recvRight, recvRight, rightRank, tagToLeft4,
+                      comm, &status);
+
+    if (exchangeLeft)
+    {
+      tree.erase(tree.begin(), tree.begin() + sendLeft);
+    }
+
+
+    // Global reduction to find out if the tree partition has converged.
+    locDone = (!exchangeLeft && !exchangeRight);
+    par::Mpi_Allreduce(&locDone, &globDone, 1, MPI_LAND, comm);
+  }
+
+}
+
+
+
+//
 // propagateNeighbours()
 //
 template <typename T, unsigned int D>
