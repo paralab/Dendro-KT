@@ -80,10 +80,10 @@ namespace ot
   };
 
   //
-  // generateGridHierarchy()
+  // generateGridHierarchyUp()
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::generateGridHierarchy(bool isFixedNumStrata,
+  void DistTree<T, dim>::generateGridHierarchyUp(bool isFixedNumStrata,
                                                unsigned int lev,
                                                double loadFlexibility,
                                                MPI_Comm comm)
@@ -529,6 +529,101 @@ namespace ot
 
       // The active comm is initialized at the beginning of the loop.
       // No cleanup to do here at the end if coarseGrid is empty.
+    }
+  }
+
+
+  // generateGridHierarchyDown()
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::generateGridHierarchyDown(unsigned int numStrata,
+                                                   double loadFlexibility,
+                                                   MPI_Comm comm)
+  {
+    int nProc, rProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+    m_numStrata = numStrata;
+
+    // Determine the number of grids in the grid hierarchy. (m_numStrata)
+    {
+      LevI observedMaxDepth_loc = 0, observedMaxDepth_glob = 0;
+      for (const TreeNode<T, dim> & tn : m_gridStrata[0])
+        if (observedMaxDepth_loc < tn.getLevel())
+          observedMaxDepth_loc = tn.getLevel();
+
+      par::Mpi_Allreduce<LevI>(&observedMaxDepth_loc, &observedMaxDepth_glob, 1, MPI_MAX, comm);
+
+      const unsigned int strataLimit = 1 + m_uiMaxDepth - observedMaxDepth_glob;
+
+      if (numStrata > strataLimit)
+      {
+        std::cerr << "Warning: generateGridHierarchyDown() cannot generate all requested "
+                  << numStrata << " grids.\n"
+                  "Conditional refinement is currently unsupported. "
+                  "(Enforcing m_uiMaxDepth would require conditional refinement).\n"
+                  "Only " << strataLimit << " grids are generated.\n";
+
+        m_numStrata = strataLimit;
+      }
+      else
+        m_numStrata = numStrata;
+    }
+
+    // The only grid we know about is in layer [0].
+    // It becomes the coarsest, in layer [m_numStrata-1].
+    std::swap(m_gridStrata[0], m_gridStrata[m_numStrata-1]);
+    std::swap(m_tpFrontStrata[0], m_tpFrontStrata[m_numStrata-1]);
+    std::swap(m_tpBackStrata[0], m_tpBackStrata[m_numStrata-1]);
+    std::swap(m_originalTreePartSz[0], m_originalTreePartSz[m_numStrata-1]);
+    std::swap(m_filteredTreePartSz[0], m_filteredTreePartSz[m_numStrata-1]);
+
+    for (int coarseStratum = m_numStrata-1; coarseStratum >= 1; coarseStratum--)
+    {
+      // Identify coarse and fine strata.
+      int fineStratum = coarseStratum - 1;
+      std::vector<TreeNode<T, dim>> &coarseGrid = m_gridStrata[coarseStratum];
+      std::vector<TreeNode<T, dim>> &fineGrid = m_gridStrata[fineStratum];
+
+      fineGrid.clear();
+
+      // Generate fine grid elements.
+      // For each element in the coarse grid, add all children to fine grid.
+      MeshLoopInterface<T, dim, false, true, false> lpCoarse(coarseGrid);
+      while (!lpCoarse.isFinished())
+      {
+        const MeshLoopFrame<T, dim> &subtreeCoarse = lpCoarse.getTopConst();
+
+        if (subtreeCoarse.isLeaf())
+        {
+          const TreeNode<T, dim> &parent = coarseGrid[subtreeCoarse.getBeginIdx()];
+          for (int cm = 0; cm < (1u << dim); cm++)
+          {
+            // Children added in Morton order.
+            // Could add them in SFC order, but no need if they will be sorted later.
+            fineGrid.emplace_back(parent.getChildMorton(cm));
+          }
+        }
+
+        lpCoarse.step();
+      }
+
+      // Re partition and sort the fine grid.
+      SFC_Tree<T, dim>::distTreeSort(fineGrid, loadFlexibility, comm);
+
+      // Enforce intergrid criterion, distCoalesceSiblings().
+      SFC_Tree<T, dim>::distCoalesceSiblings(fineGrid, comm);
+
+      // Initialize fine grid meta data.
+      if (!m_hasBeenFiltered)
+        m_originalTreePartSz[fineStratum] = fineGrid.size();
+      m_filteredTreePartSz[fineStratum] = fineGrid.size();
+
+      if (fineGrid.size() > 0)
+      {
+        m_tpFrontStrata[fineStratum] = fineGrid.front();
+        m_tpBackStrata[fineStratum] = fineGrid.back();
+      }
     }
   }
 

@@ -52,7 +52,8 @@ int main(int argc, char * argv[])
   }
   std::cout << "\n\n";
 
-  dtree.generateGridHierarchy(true, 3, 0.1, comm);
+  /// dtree.generateGridHierarchyUp(true, 3, 0.1, comm);
+  dtree.generateGridHierarchyDown(3, 0.1, comm);
 
   const std::vector<ot::TreeNode<T, dim>> &stratum1 = dtree.getTreePartFiltered(1);
 

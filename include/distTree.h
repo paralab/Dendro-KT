@@ -47,11 +47,14 @@ namespace ot
       DistTree(std::vector<TreeNode<T, dim>> &treePart);
       // Using default copy constructor and assignment operator.
 
-      // generateGridHierarchy()
-      void generateGridHierarchy(bool isFixedNumStrata,
+      // generateGridHierarchyUp()
+      void generateGridHierarchyUp(bool isFixedNumStrata,
                                  unsigned int lev,
                                  double loadFlexibility,
                                  MPI_Comm comm);
+
+      // generateGridHierarchyDown()
+      void generateGridHierarchyDown(unsigned int numStrata, double loadFlexibility, MPI_Comm comm);
 
       // filterTree() has 2 overloads, depending on the type of your decider.
       void filterTree(
