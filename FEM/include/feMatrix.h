@@ -38,6 +38,8 @@ protected:
          * */
         feMatrix(ot::DA<dim>* da,unsigned int dof=1);
 
+        feMatrix(feMatrix &&other);
+
         ~feMatrix();
 
         /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
@@ -173,17 +175,34 @@ feMatrix<LeafT,dim>::feMatrix(ot::DA<dim>* da,unsigned int dof) : feMat<dim>(da)
     m_uiEleCoords= new double[m_uiDim*nPe];
 
 }
+
+template <typename LeafT, unsigned int dim>
+feMatrix<LeafT, dim>::feMatrix(feMatrix &&other)
+  : feMat<dim>(std::forward<feMat<dim>>(other)),
+    m_uiDof{other.m_uiDof},
+    m_uiEleVecIn{other.m_uiEleVecIn},
+    m_uiEleVecOut{other.m_uiEleVecOut},
+    m_uiEleCoords{other.m_uiEleCoords}
+{
+  other.m_uiEleVecIn = nullptr;
+  other.m_uiEleVecOut = nullptr;
+  other.m_uiEleCoords = nullptr;
+}
+
+
 template <typename LeafT, unsigned int dim>
 feMatrix<LeafT,dim>::~feMatrix()
 {
-    delete [] m_uiEleVecIn;
-    delete [] m_uiEleVecOut;
-    delete [] m_uiEleCoords;
+    if (m_uiEleVecIn != nullptr)
+      delete [] m_uiEleVecIn;
+    if (m_uiEleVecOut != nullptr)
+      delete [] m_uiEleVecOut;
+    if (m_uiEleCoords != nullptr)
+      delete [] m_uiEleCoords;
 
     m_uiEleVecIn=NULL;
     m_uiEleVecOut=NULL;
     m_uiEleCoords=NULL;
-
 }
 
 template <typename LeafT, unsigned int dim>

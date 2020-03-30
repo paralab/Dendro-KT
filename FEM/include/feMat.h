@@ -49,6 +49,10 @@ public:
         m_uiOctDA=da;
     }
 
+    feMat(feMat &&other)
+      : m_uiOctDA{other.m_uiOctDA}
+    { }
+
     /**@brief deconstructor*/
     ~feMat()
     {
