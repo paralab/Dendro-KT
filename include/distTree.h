@@ -45,16 +45,23 @@ namespace ot
       //
       DistTree();
       DistTree(std::vector<TreeNode<T, dim>> &treePart);
-      // Using default copy constructor and assignment operator.
+      DistTree(const DistTree &other) { this->operator=(other); }
+      DistTree & operator=(const DistTree &other);
+
 
       // generateGridHierarchyUp()
+      //   TODO should return surrogate DistTree
       void generateGridHierarchyUp(bool isFixedNumStrata,
                                  unsigned int lev,
                                  double loadFlexibility,
                                  MPI_Comm comm);
 
       // generateGridHierarchyDown()
-      void generateGridHierarchyDown(unsigned int numStrata, double loadFlexibility, MPI_Comm comm);
+      //
+      //   Replaces internal single grid with internal list of grids.
+      //   Returns a DistTree with the surrogate grid at same level as each
+      //     coarse grid (the finest grid has no surrogate).
+      DistTree generateGridHierarchyDown(unsigned int numStrata, double loadFlexibility, MPI_Comm comm);
 
       // filterTree() has 2 overloads, depending on the type of your decider.
       void filterTree(
@@ -214,6 +221,25 @@ namespace ot
     std::swap(get_m_treePartFiltered(), treePart);  // Steal the tree vector.
 
     m_hasBeenFiltered = false;
+  }
+
+
+  //
+  // operator=()
+  //
+  template <typename T, unsigned int dim>
+  DistTree<T, dim> &  DistTree<T, dim>::operator=(const DistTree &other)
+  {
+    m_domainDeciderTN =       other.m_domainDeciderTN;
+    m_domainDeciderPh =       other.m_domainDeciderPh;
+    m_usePhysCoordsDecider =  other.m_usePhysCoordsDecider;
+    m_hasBeenFiltered =       other.m_hasBeenFiltered;
+    m_gridStrata =            other.m_gridStrata;
+    m_tpFrontStrata =         other.m_tpFrontStrata;
+    m_tpBackStrata =          other.m_tpBackStrata;
+    m_originalTreePartSz =    other.m_originalTreePartSz;
+    m_filteredTreePartSz =    other.m_filteredTreePartSz;
+    m_numStrata =             other.m_numStrata;
   }
 
 

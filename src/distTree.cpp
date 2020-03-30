@@ -79,6 +79,61 @@ namespace ot
       }
   };
 
+
+  template <typename T, unsigned int dim>
+  std::vector<int> getSendcounts(std::vector<TreeNode<T, dim>> &items,
+                                 std::vector<TreeNode<T, dim>> &frontSplitters)
+  {
+    int numSplittersSeen = 0;
+    int ancCarry = 0;
+    std::vector<int> scounts(frontSplitters.size(), 0);
+
+    MeshLoopInterface<T, dim, true, true, false> itemLoop(items);
+    MeshLoopInterface<T, dim, true, true, false> splitterLoop(frontSplitters);
+    while (!itemLoop.isFinished())
+    {
+      const MeshLoopFrame<T, dim> &itemSubtree = itemLoop.getTopConst();
+      const MeshLoopFrame<T, dim> &splitterSubtree = splitterLoop.getTopConst();
+
+      if (splitterSubtree.isEmpty())
+      {
+        scounts[numSplittersSeen-1] += itemSubtree.getTotalCount();
+        scounts[numSplittersSeen-1] += ancCarry;
+        ancCarry = 0;
+
+        itemLoop.next();
+        splitterLoop.next();
+      }
+      else if (itemSubtree.isEmpty() && ancCarry == 0)
+      {
+        numSplittersSeen += splitterSubtree.getTotalCount();
+
+        itemLoop.next();
+        splitterLoop.next();
+      }
+      else
+      {
+        ancCarry += itemSubtree.getAncCount();
+
+        if (splitterSubtree.isLeaf())
+        {
+          numSplittersSeen++;
+
+          scounts[numSplittersSeen-1] += ancCarry;
+          ancCarry = 0;
+        }
+
+        itemLoop.step();
+        splitterLoop.step();
+      }
+    }
+
+    return scounts;
+  }
+
+
+
+
   //
   // generateGridHierarchyUp()
   //
@@ -535,15 +590,16 @@ namespace ot
 
   // generateGridHierarchyDown()
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::generateGridHierarchyDown(unsigned int numStrata,
-                                                   double loadFlexibility,
-                                                   MPI_Comm comm)
+  DistTree<T, dim>  DistTree<T, dim>::generateGridHierarchyDown(unsigned int numStrata,
+                                                                double loadFlexibility,
+                                                                MPI_Comm comm)
   {
+    DistTree surrogateDT(*this);
+    //TODO use the surrogate
+
     int nProc, rProc;
     MPI_Comm_size(comm, &nProc);
     MPI_Comm_rank(comm, &rProc);
-
-    m_numStrata = numStrata;
 
     // Determine the number of grids in the grid hierarchy. (m_numStrata)
     {
@@ -570,6 +626,8 @@ namespace ot
         m_numStrata = numStrata;
     }
 
+    surrogateDT.m_numStrata = m_numStrata;
+
     // The only grid we know about is in layer [0].
     // It becomes the coarsest, in layer [m_numStrata-1].
     std::swap(m_gridStrata[0], m_gridStrata[m_numStrata-1]);
@@ -578,14 +636,22 @@ namespace ot
     std::swap(m_originalTreePartSz[0], m_originalTreePartSz[m_numStrata-1]);
     std::swap(m_filteredTreePartSz[0], m_filteredTreePartSz[m_numStrata-1]);
 
+    surrogateDT.m_gridStrata[0].clear();
+    surrogateDT.m_tpFrontStrata[0] = TreeNode<T, dim>{};
+    surrogateDT.m_tpBackStrata[0] = TreeNode<T, dim>{};
+    surrogateDT.m_originalTreePartSz[0] = 0;
+    surrogateDT.m_filteredTreePartSz[0] = 0;
+
     for (int coarseStratum = m_numStrata-1; coarseStratum >= 1; coarseStratum--)
     {
       // Identify coarse and fine strata.
       int fineStratum = coarseStratum - 1;
       std::vector<TreeNode<T, dim>> &coarseGrid = m_gridStrata[coarseStratum];
       std::vector<TreeNode<T, dim>> &fineGrid = m_gridStrata[fineStratum];
+      std::vector<TreeNode<T, dim>> &surrogateCoarseGrid = surrogateDT.m_gridStrata[coarseStratum];
 
       fineGrid.clear();
+      surrogateCoarseGrid.clear();
 
       // Generate fine grid elements.
       // For each element in the coarse grid, add all children to fine grid.
@@ -619,12 +685,44 @@ namespace ot
         m_originalTreePartSz[fineStratum] = fineGrid.size();
       m_filteredTreePartSz[fineStratum] = fineGrid.size();
 
-      if (fineGrid.size() > 0)
-      {
-        m_tpFrontStrata[fineStratum] = fineGrid.front();
-        m_tpBackStrata[fineStratum] = fineGrid.back();
-      }
+      m_tpFrontStrata[fineStratum] = fineGrid.front();
+      m_tpBackStrata[fineStratum] = fineGrid.back();
+
+
+      // Create the surrogate coarse grid by duplicating the
+      // coarse grid but partitioning it by the fine grid splitters.
+
+      std::vector<TreeNode<T, dim>> fineFrontSplitters
+          = SFC_Tree<T, dim>::dist_bcastSplitters(&m_tpFrontStrata[fineStratum], comm);
+
+      std::vector<int> surrogateSendCounts = getSendcounts(coarseGrid, fineFrontSplitters);
+      std::vector<int> surrogateRecvCounts(nProc, 0);
+      par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, comm);
+
+      std::vector<int> surrogateSendDispls(1, 0);
+      surrogateSendDispls.reserve(nProc + 1);
+      for (int c : surrogateSendCounts)
+        surrogateSendDispls.push_back(surrogateSendDispls.back() + c);
+      surrogateSendDispls.pop_back();
+
+      std::vector<int> surrogateRecvDispls(1, 0);
+      surrogateRecvDispls.reserve(nProc + 1);
+      for (int c : surrogateRecvCounts)
+        surrogateRecvDispls.push_back(surrogateRecvDispls.back() + c);
+
+      surrogateCoarseGrid.resize(surrogateRecvDispls.back());
+
+      // Copy coarse grid to surrogate grid.
+      par::Mpi_Alltoallv_sparse(coarseGrid.data(),
+                                surrogateSendCounts.data(),
+                                surrogateSendDispls.data(),
+                                surrogateCoarseGrid.data(),
+                                surrogateRecvCounts.data(),
+                                surrogateRecvDispls.data(),
+                                comm);
     }
+
+    return surrogateDT;
   }
 
 
