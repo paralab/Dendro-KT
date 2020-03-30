@@ -31,8 +31,10 @@ int main(int argc, char * argv[])
   const unsigned int sLev = 3;
   const unsigned int eLev = 3;
 
-  // Normally distributed collection of points.
-  /// std::vector<ot::TreeNode<T, dim>> tnlist = ot::getPts<T, dim>(numPoints, sLev, eLev);
+  /// // Normally distributed collection of points.
+  /// std::vector<ot::TreeNode<T, dim>> points = ot::getPts<T, dim>(numPoints, sLev, eLev);
+  /// std::vector<ot::TreeNode<T, dim>> tnlist;
+  /// ot::SFC_Tree<T, dim>::distTreeConstruction(points, tnlist, nProc, 0.1, comm);
 
   // Complete regular grid.
   std::vector<ot::TreeNode<T, dim>> tnlist;
