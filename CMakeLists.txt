@@ -156,6 +156,8 @@ set(DENDRO_KT_INC include/dendro.h
                   include/asyncExchangeContex.h
                   include/eleTreeIterator.h
                   include/sfcTreeLoop.h
+                  include/sfcTreeLoop_matvec.h
+                  include/sfcTreeLoop_matvec_io.h
                   include/meshLoop.h
                   IO/vtk/include/oct2vtk.h
                   array/include/arraySlice.h
@@ -338,6 +340,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testGenerateGridHierarchy.cpp)
 add_executable(tstGenerateGridHierarchy ${SRC_FILES})
 target_include_directories(tstGenerateGridHierarchy PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstGenerateGridHierarchy dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIntergridTransfer.cpp)
+add_executable(tstIntergridTransfer ${SRC_FILES})
+target_include_directories(tstIntergridTransfer PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstIntergridTransfer dendroKT ${MPI_LIBRARIES} m)
 
 
 ## tsort_bench (./tsortBench)
