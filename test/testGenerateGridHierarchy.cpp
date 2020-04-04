@@ -85,6 +85,14 @@ int main(int argc, char * argv[])
         l,
         (unsigned int) multiDA[l].getLocalNodalSz());
   }
+  for (int l = 0; l < numStrata; ++l)
+  {
+    fprintf(stdout, "%*s[%2d]---Surrogate DA[%2d] localNodalSz==%u\n",
+        10*rProc, "",
+        rProc,
+        l,
+        (unsigned int) surrogateMultiDA[l].getLocalNodalSz());
+  }
 
 
   // Try to do a matvec on each level.
