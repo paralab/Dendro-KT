@@ -46,6 +46,11 @@ int main(int argc, char * argv[])
 
   const std::vector<ot::TreeNode<T, dim>> &stratum0 = dtree.getTreePartFiltered(0);
 
+  /// dtree.generateGridHierarchyUp(true, 3, 0.1, comm);
+  ot::DistTree<T, dim> surrogateDTree = dtree.generateGridHierarchyDown(2, 0.1, comm);
+
+  const std::vector<ot::TreeNode<T, dim>> &stratum1 = dtree.getTreePartFiltered(1);
+
   std::cout << "---------------------------------\n";
   std::cout << "Stratum0 (size==" << stratum0.size() << ")\n\n";
   /// for (const ot::TreeNode<T, dim> &tn : stratum0)
@@ -55,20 +60,26 @@ int main(int argc, char * argv[])
   /// }
   /// std::cout << "\n\n";
 
-  /// dtree.generateGridHierarchyUp(true, 3, 0.1, comm);
-  ot::DistTree<T, dim> surrogateDTree = dtree.generateGridHierarchyDown(3, 0.1, comm);
 
-  const std::vector<ot::TreeNode<T, dim>> &stratum1 = dtree.getTreePartFiltered(1);
 
   std::cout << "---------------------------------\n";
   std::cout << "Stratum1 (size==" << stratum1.size() << ")\n\n";
-  /// for (const ot::TreeNode<T, dim> &tn : stratum1)
+
+  /// std::cout << "Coarse tree...\n";
+  /// for (const ot::TreeNode<T, dim> &tn : dtree.getTreePartFiltered(1))
   /// {
-  ///   ot::printtn(tn, eLev);
+  ///   fprintf(stdout, "%*s[%2d]---  ", 10*rProc, "", rProc);
+  ///   ot::printtn(tn, eLev+1);
   ///   std::cout << "\n";
   /// }
-  /// std::cout << "\n\n";
 
+  /// std::cout << "Surrogate tree...\n";
+  /// for (const ot::TreeNode<T, dim> &tn : surrogateDTree.getTreePartFiltered(1))
+  /// {
+  ///   fprintf(stdout, "%*s[%2d]---  ", 10*rProc, "", rProc);
+  ///   ot::printtn(tn, eLev+1);
+  ///   std::cout << "\n";
+  /// }
 
   const unsigned int order = 2;
 
@@ -106,7 +117,27 @@ int main(int argc, char * argv[])
 
     surrogateMultiDA[l].createVector(surrogateVecIn[l], false, false, dofs);
     surrogateMultiDA[l].createVector(surrogateVecOut[l], false, false, dofs);
+
+    std::fill(surrogateVecIn[l].begin(), surrogateVecIn[l].end(), 0.0);
+    std::fill(surrogateVecOut[l].begin(), surrogateVecOut[l].end(), 0.0);
   }
+
+  /// // Draw node positions of surrogate ODA, if 2D
+  /// for (int turn = 0; turn < nProc; turn++)
+  /// {
+  ///   if (turn == rProc)
+  ///   {
+  ///     std::cout << "Rank " << rProc << "\n";
+  ///     const ot::TreeNode<T, dim> *coords = surrogateMultiDA[1].getTNCoords();
+  ///     const unsigned int coordSz = surrogateMultiDA[1].getLocalNodalSz();
+  ///     ot::printNodes(coords, coords + coordSz, surrogateVecIn[1].data(), order, std::cout);
+  ///     /// ot::printNodeCoords(coords, coords + coordSz, order, std::cout);
+  ///     std::cout << "\n";
+  ///   }
+
+  ///   int dummy_buffer = 0;
+  ///   MPI_Bcast(&dummy_buffer, 1, MPI_INT, turn, comm);
+  /// }
 
   std::cerr << "Finished all createVector().\n";
 

@@ -595,7 +595,6 @@ namespace ot
                                                                 MPI_Comm comm)
   {
     DistTree surrogateDT(*this);
-    //TODO use the surrogate
 
     int nProc, rProc;
     MPI_Comm_size(comm, &nProc);
@@ -720,6 +719,13 @@ namespace ot
                                 surrogateRecvCounts.data(),
                                 surrogateRecvDispls.data(),
                                 comm);
+
+      if (!surrogateDT.m_hasBeenFiltered)
+        surrogateDT.m_originalTreePartSz[coarseStratum] = surrogateCoarseGrid.size();
+      surrogateDT.m_filteredTreePartSz[coarseStratum] = surrogateCoarseGrid.size();
+
+      surrogateDT.m_tpFrontStrata[coarseStratum] = surrogateCoarseGrid.front();
+      surrogateDT.m_tpBackStrata[coarseStratum] = surrogateCoarseGrid.back();
     }
 
     return surrogateDT;
