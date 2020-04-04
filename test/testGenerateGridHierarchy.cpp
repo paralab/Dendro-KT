@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <iostream>
+#include <sstream>
 
 #include "hcurvedata.h"
 
@@ -103,6 +104,23 @@ int main(int argc, char * argv[])
         rProc,
         l,
         (unsigned int) surrogateMultiDA[l].getLocalNodalSz());
+  }
+
+  // Check that the number of nodes is unchanged in surrogate vs coarse.
+  DendroIntL localCoarseNodes = multiDA[1].getLocalNodalSz();
+  DendroIntL globalCoarseNodes = 0;
+  par::Mpi_Reduce(&localCoarseNodes, &globalCoarseNodes, 1, MPI_SUM, 0, comm);
+
+  DendroIntL localSurrogateNodes = surrogateMultiDA[1].getLocalNodalSz();
+  DendroIntL globalSurrogateNodes = 0;
+  par::Mpi_Reduce(&localSurrogateNodes, &globalSurrogateNodes, 1, MPI_SUM, 0, comm);
+
+  if (rProc == 0)
+  {
+    std::stringstream ss;
+    ss << "coarse: " << globalCoarseNodes << "   surr: " << globalSurrogateNodes << "   "
+              << (globalSurrogateNodes == globalCoarseNodes ? "EQUAL" : "NOT EQUAL!!") << "\n";
+    std::cout << ss.str();
   }
 
 
