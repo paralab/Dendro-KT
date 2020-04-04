@@ -220,18 +220,18 @@ namespace ot
       //   bool isFinished();
       //   const TreeNode<C,dim> & getCurrentSubtree();
 
-    protected:
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
-      void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
-      void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
-
       static MatvecBaseSummary<dim> generate_node_summary(
           const TreeNode<unsigned int, dim> *begin,
           const TreeNode<unsigned int, dim> *end);
       static unsigned int get_max_depth(
           const TreeNode<unsigned int, dim> *begin,
           size_t numNodes);
+
+    protected:
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
+      void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
+      void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
       void fillAccessNodeCoordsFlat();
       void fillLeafNodeBdry();
@@ -317,6 +317,9 @@ namespace ot
     rootFrame.mySummaryHandle.m_segmentByLastElement = true;
     rootFrame.mySummaryHandle.m_firstElement = firstElement;
     rootFrame.mySummaryHandle.m_lastElement = lastElement;
+
+    //TODO extend the invariant that a leaf subtree has all nodes
+    //  in lexicographic order
 
     // m_rootInputData
     std::vector<TreeNode<unsigned int, dim>> &rootInputNodeCoords
@@ -521,6 +524,12 @@ namespace ot
       size_t allocNodes = childNodeCounts[child_sfc];
       allocNodes = (allocNodes == 0 ? 0 : allocNodes < npe ? npe : allocNodes);
       parentFrame.template getChildInput<1>(child_sfc).resize(m_ndofs * allocNodes);
+
+      // TODO currently the size of the vector  getChildInput<0>(child_sfc)
+      //   determines the size of both input and output, as seen by
+      //   SubtreeAccess and bottomUpNodes()
+      //   This should be refactored as a separate attribute.
+
       if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1)
         parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
       else

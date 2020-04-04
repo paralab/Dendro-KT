@@ -59,8 +59,9 @@ namespace fem
     const unsigned int eleOrder = refElement->getOrder();
     const unsigned int npe = intPow(eleOrder+1, dim);
 
-    ot::MatvecBaseIn<dim, DofT> treeLoopIn(in.sz, ndofs, eleOrder, in.coords, in.vecIn, in.partFront, in.partBack);
-    ot::MatvecBaseOut<dim, DofT> treeLoopOut(out.sz, ndofs, eleOrder, out.coords, out.partFront, out.partBack);
+    const bool visitEmpty = true;
+    ot::MatvecBaseIn<dim, DofT> treeLoopIn(in.sz, ndofs, eleOrder, visitEmpty, in.coords, in.vecIn, in.partFront, in.partBack);
+    ot::MatvecBaseOut<dim, DofT> treeLoopOut(out.sz, ndofs, eleOrder, visitEmpty, out.coords, out.partFront, out.partBack);
 
     while (!treeLoopOut.isFinished())
     {
