@@ -105,10 +105,16 @@ bool testMultiDA()
 
   std::cerr << "---- BEFORE ----\n";
   std::cerr << "In vector\n";
-  ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
+  if (dim == 2)
+    ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
+  else
+    std::cerr << "Can't print high-dimensional grid.\n";
 
   std::cerr << "Out vector\n";
-  ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, coarseVec.data(), eleOrder, std::cerr) << "\n";
+  if (dim == 2)
+    ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, coarseVec.data(), eleOrder, std::cerr) << "\n";
+  else
+    std::cerr << "Can't print high-dimensional grid.\n";
 
 
   fem::intergridTransfer(igtIn, igtOut, ndofs, refel);
@@ -118,10 +124,16 @@ bool testMultiDA()
   std::cerr << "\n\n";
   std::cerr << "---- AFTER ----\n";
   std::cerr << "In vector\n";
-  ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
+  if (dim == 2)
+    ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
+  else
+    std::cerr << "Can't print high-dimensional grid.\n";
 
   std::cerr << "Out vector\n";
-  ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, coarseVec.data(), eleOrder, std::cerr) << "\n";
+  if (dim == 2)
+    ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, coarseVec.data(), eleOrder, std::cerr) << "\n";
+  else
+    std::cerr << "Can't print high-dimensional grid.\n";
 
 
   return true;
