@@ -111,6 +111,7 @@ namespace ot
                  unsigned int ndofs,
                  unsigned int eleOrder,
                  bool visitEmpty,
+                 unsigned int padlevel,
                  const TreeNode<unsigned int, dim> * allNodeCoords,
                  const NodeT * inputNodeVals,
                  const TreeNode<unsigned int, dim> &firstElement,
@@ -261,6 +262,7 @@ namespace ot
                  unsigned int ndofs,
                  unsigned int eleOrder,
                  bool visitEmpty,
+                 unsigned int padlevel,
                  const TreeNode<unsigned int, dim> * allNodeCoords,
                  const TreeNode<unsigned int, dim> &firstElement,
                  const TreeNode<unsigned int, dim> &lastElement );
@@ -404,11 +406,12 @@ namespace ot
                                       unsigned int ndofs,
                                       unsigned int eleOrder,
                                       bool visitEmpty,
+                                      unsigned int padlevel,
                                       const TreeNode<unsigned int, dim> * allNodeCoords,
                                       const NodeT * inputNodeVals,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
-  : BaseT(numNodes > 0, get_max_depth(allNodeCoords, numNodes)),
+  : BaseT(numNodes > 0, get_max_depth(allNodeCoords, numNodes) + (visitEmpty ? padlevel : 0)),
     m_ndofs(ndofs),
     m_eleOrder(eleOrder),
     m_visitEmpty(visitEmpty),
@@ -457,10 +460,11 @@ namespace ot
                                       unsigned int ndofs,
                                       unsigned int eleOrder,
                                       bool visitEmpty,
+                                      unsigned int padlevel,
                                       const TreeNode<unsigned int, dim> * allNodeCoords,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
-  : BaseT(numNodes > 0, get_max_depth(allNodeCoords, numNodes)),
+  : BaseT(numNodes > 0, get_max_depth(allNodeCoords, numNodes) + (visitEmpty ? padlevel : 0)),
     m_ndofs(ndofs),
     m_eleOrder(eleOrder),
     m_visitEmpty(visitEmpty),
@@ -813,7 +817,6 @@ namespace ot
 
     if (m_visitEmpty)
       *extantChildren = segmentChildren;
-    std::cout << " in: segmentChildren==" << int(*extantChildren) << "\n";
   }
 
 
@@ -1031,7 +1034,6 @@ namespace ot
 
     if (m_visitEmpty)
       *extantChildren = segmentChildren;
-    std::cout << "out: segmentChildren==" << int(*extantChildren) << "\n";
   }
 
 

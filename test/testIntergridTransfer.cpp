@@ -64,8 +64,8 @@ bool testMultiDA()
   // Create grid hierarchy.
   ot::DistTree<C, dim> surrogateDTree = dtree.generateGridHierarchyDown(2, 0.1, comm);
 
-  std::cerr << "surrogateDTree.getFilteredTreePartSz(0)==" << surrogateDTree.getFilteredTreePartSz(0) << "\n"
-            << "surrogateDTree.getFilteredTreePartSz(0)==" << surrogateDTree.getFilteredTreePartSz(0) << "\n";
+  std::cerr << "surrogateDTree.getFilteredTreePartSz(1)==" << surrogateDTree.getFilteredTreePartSz(1) << "\n"
+            << "surrogateDTree.getFilteredTreePartSz(1)==" << surrogateDTree.getFilteredTreePartSz(1) << "\n";
 
   // Create DA for all levels.
   std::vector<ot::DA<dim>> multiDA, surrogateMultiDA;
@@ -76,10 +76,10 @@ bool testMultiDA()
   multiDA[0].createVector(fineVec, false, false, ndofs);
   surrogateMultiDA[1].createVector(coarseVec, false, false, ndofs);
   std::fill(fineVec.begin(), fineVec.end(), 1.0);
-  std::fill(coarseVec.begin(), coarseVec.end(), 1.0);
+  std::fill(coarseVec.begin(), coarseVec.end(), 0.0);
 
-  std::cerr << "surrogateMultiDA[0].getLocalNodalSz()==" << surrogateMultiDA[0].getLocalNodalSz() << "\n"
-            << "surrogateMultiDA[0].getLocalNodalSz()==" << surrogateMultiDA[0].getLocalNodalSz() << "\n";
+  std::cerr << "surrogateMultiDA[1].getLocalNodalSz()==" << surrogateMultiDA[1].getLocalNodalSz() << "\n"
+            << "surrogateMultiDA[1].getLocalNodalSz()==" << surrogateMultiDA[1].getLocalNodalSz() << "\n";
 
   // TODO read and write ghost
 
@@ -108,7 +108,7 @@ bool testMultiDA()
   ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
 
   std::cerr << "Out vector\n";
-  ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
+  ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, coarseVec.data(), eleOrder, std::cerr) << "\n";
 
 
   fem::intergridTransfer(igtIn, igtOut, ndofs, refel);
@@ -121,7 +121,7 @@ bool testMultiDA()
   ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
 
   std::cerr << "Out vector\n";
-  ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
+  ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, coarseVec.data(), eleOrder, std::cerr) << "\n";
 
 
   return true;
