@@ -203,6 +203,7 @@ namespace ot
 
     protected:
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren) {}
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
