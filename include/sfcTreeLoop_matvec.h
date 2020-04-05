@@ -489,7 +489,8 @@ namespace ot
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
-      if (childFinestLevel[child_sfc] <= parSubtree.getLevel())
+      const LevI parLev = parSubtree.getLevel();
+      if (childFinestLevel[child_sfc] <= parLev)
       {
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
         *extantChildren &= ~(1u << child_m);
@@ -504,8 +505,8 @@ namespace ot
       summaries[child_sfc].m_initializedOut = false;
 
       // firstElement and lastElement of local segment.
-      summaries[child_sfc].m_segmentByFirstElement = (child_sfc == segmentChildFirst);
-      summaries[child_sfc].m_segmentByLastElement = (child_sfc == segmentChildLast);
+      summaries[child_sfc].m_segmentByFirstElement = (child_sfc == segmentChildFirst && parLev+1 < parentFrame.mySummaryHandle.m_firstElement.getLevel());
+      summaries[child_sfc].m_segmentByLastElement = (child_sfc == segmentChildLast && parLev+1 < parentFrame.mySummaryHandle.m_lastElement.getLevel());
       if (summaries[child_sfc].m_segmentByFirstElement)
         summaries[child_sfc].m_firstElement = parentFrame.mySummaryHandle.m_firstElement;
       if (summaries[child_sfc].m_segmentByLastElement)
