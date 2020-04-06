@@ -41,10 +41,10 @@ namespace fem
 
 
   /**
-   * intergridTransfer()
+   * locIntergridTransfer()
    */
   template <typename DofT, typename TN>
-  void intergridTransfer(MeshFreeInputContext<DofT, TN> in,
+  void locIntergridTransfer(MeshFreeInputContext<DofT, TN> in,
                          MeshFreeOutputContext<DofT, TN> out,
                          unsigned int ndofs,
                          /// EleOpT<DofT> eleOp,
@@ -94,7 +94,7 @@ namespace fem
       }
       else
       {
-        std::cerr << "Error: intergridTransfer() traversals out of sync." << std::endl;
+        std::cerr << "Error: locIntergridTransfer() traversals out of sync." << std::endl;
         assert(false);
       }
     }
@@ -102,7 +102,7 @@ namespace fem
     size_t writtenSz = treeLoopOut.finalize(out.vecOut);
 
     if (out.sz > 0 && writtenSz == 0)
-      std::cerr << "Warning: intergridTransfer did not write any data! Loop misconfigured?\n";
+      std::cerr << "Warning: locIntergridTransfer did not write any data! Loop misconfigured?\n";
   }
 }
 

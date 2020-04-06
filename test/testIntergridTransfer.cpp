@@ -117,7 +117,7 @@ bool testMultiDA()
     std::cerr << "Can't print high-dimensional grid.\n";
 
 
-  fem::intergridTransfer(igtIn, igtOut, ndofs, refel);
+  fem::locIntergridTransfer(igtIn, igtOut, ndofs, refel);
 
 
 
@@ -160,7 +160,7 @@ bool testNull()
   RefElement refel(dim, eleOrder);
 
 
-  fem::intergridTransfer(
+  fem::locIntergridTransfer(
       fem::MeshFreeInputContext<T, TN>{vecIn.data(), coordsIn.data(), sz, frontIn, backIn},
       fem::MeshFreeOutputContext<T, TN>{vecOut.data(), coordsOut.data(), sz, frontOut, backOut},
       ndofs,
