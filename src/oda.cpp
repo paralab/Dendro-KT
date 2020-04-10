@@ -242,12 +242,28 @@ namespace ot
 
         // Note: We will offset the starting address whenever we copy with scattermap.
         // Otherwise we should build-in the offset to the scattermap here.
+      }
+      else
+      {
+        m_uiLocalNodalSz = 0;
+        m_uiGlobalNodeSz = 0;
 
-        // Find offset into the global array.
-        DendroIntL locSz = m_uiLocalNodalSz;
-        par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiActiveComm);
-        m_uiGlobalRankBegin -= locSz;
+        m_uiTotalNodalSz   = 0;
+        m_uiPreNodeBegin   = 0;
+        m_uiPreNodeEnd     = 0;
+        m_uiLocalNodeBegin = 0;
+        m_uiLocalNodeEnd   = 0;
+        m_uiPostNodeBegin  = 0;
+        m_uiPostNodeEnd    = 0;
+      }
 
+      // Find offset into the global array.  All ranks take part.
+      DendroIntL locSz = m_uiLocalNodalSz;
+      par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiGlobalComm);
+      m_uiGlobalRankBegin -= locSz;
+
+      if (m_uiIsActive)
+      {
         // Create vector of node coordinates, with ghost segments allocated.
         m_tnCoords.resize(m_uiTotalNodalSz);
         for (size_t ii = 0; ii < m_uiLocalNodalSz; ii++)
@@ -277,21 +293,6 @@ namespace ot
           if (m_tnCoords[ii + m_uiLocalNodeBegin].isBoundaryNodeExtantCellFlag())
             m_uiBdyNodeIds.push_back(ii);
         }
-      }
-      else
-      {
-        m_uiLocalNodalSz = 0;
-        m_uiGlobalNodeSz = 0;
-
-        m_uiTotalNodalSz   = 0;
-        m_uiPreNodeBegin   = 0;
-        m_uiPreNodeEnd     = 0;
-        m_uiLocalNodeBegin = 0;
-        m_uiLocalNodeEnd   = 0;
-        m_uiPostNodeBegin  = 0;
-        m_uiPostNodeEnd    = 0;
-
-        m_uiGlobalRankBegin = 0;
       }
     }
 
