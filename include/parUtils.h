@@ -313,14 +313,14 @@ namespace par {
    * @author Rahul S. Sampath
    */
   template <typename T>
-    int Mpi_Allgatherv(T* sendbuf, int sendcount, T* recvbuf,
+    int Mpi_Allgatherv(const T* sendbuf, int sendcount, T* recvbuf,
         int* recvcounts, int* displs, MPI_Comm comm);
 
   /**
     @author Rahul S. Sampath 
     */
   template <typename T>
-    int Mpi_Allgather(T* sendbuf, T* recvbuf, int count, MPI_Comm comm);
+    int Mpi_Allgather(const T* sendbuf, T* recvbuf, int count, MPI_Comm comm);
 
   /**
     @author Rahul S. Sampath 

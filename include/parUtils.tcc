@@ -175,7 +175,7 @@ namespace par {
   }
 
   template<typename T>
-  int Mpi_Allgatherv(T *sendBuf, int sendCount, T *recvBuf,
+  int Mpi_Allgatherv(const T *sendBuf, int sendCount, T *recvBuf,
                      int *recvCounts, int *displs, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
@@ -228,7 +228,7 @@ namespace par {
   }
 
   template<typename T>
-  int Mpi_Allgather(T *sendBuf, T *recvBuf, int count, MPI_Comm comm) {
+  int Mpi_Allgather(const T *sendBuf, T *recvBuf, int count, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
 #endif
