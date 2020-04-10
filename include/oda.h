@@ -312,7 +312,7 @@ class DA
         inline const std::vector<RankI> getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
 
         /**@brief see if the current DA is active*/
-        inline bool isActive() { return m_uiIsActive; }
+        inline bool isActive() const { return m_uiIsActive; }
 
         /**@brief get number of nodes per element*/
         inline unsigned int getNumNodesPerElement() const { return m_uiNpE; }
