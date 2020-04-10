@@ -517,6 +517,8 @@ namespace ot
       //----
       // Instead: Simple. Upfront Allgather, locally make pairs, point-to-point.
 
+      constexpr bool printDebug = false;
+
       MPI_Comm comm = srcDA.getGlobalComm();
       int rProc, nProc;
       MPI_Comm_rank(comm, &rProc);
@@ -527,7 +529,7 @@ namespace ot
         ss << "[" << rProc << "] ";
         rankPrefix = ss.str();
       }
-      /// std::cerr << rankPrefix << "Enter. nProc==" << nProc << "\n";
+      if(printDebug) std::cerr << rankPrefix << "Enter. nProc==" << nProc << "\n";
 
       int compare_comms;
       MPI_Comm_compare(srcDA.getGlobalComm(), dstDA.getGlobalComm(), &compare_comms);
@@ -549,7 +551,7 @@ namespace ot
 
       if (nProc == 1)
       {
-        /// std::cerr << rankPrefix << "Single processor policy.\n";
+        if(printDebug) std::cerr << rankPrefix << "Single processor policy.\n";
         std::copy_n(srcLocal, dstDA.getLocalNodalSz(), dstLocal);
         return;
       }
@@ -562,18 +564,18 @@ namespace ot
       // Includes boundaries, [0]=0 and [n]=(total global number nodes)
       std::vector<DendroIntL> allSrcSplit(nProc+1, 0);
       std::vector<DendroIntL> allDstSplit(nProc+1, 0);
-      /// std::cerr << rankPrefix << "Begin Allgather (#1)\n";
+      if(printDebug) std::cerr << rankPrefix << "Begin Allgather (#1)\n";
       par::Mpi_Allgather(&mySrcGlobEnd, &allSrcSplit[1], 1, comm);
-      /// std::cerr << rankPrefix << "Begin Allgather (#2)\n";
+      if(printDebug) std::cerr << rankPrefix << "Begin Allgather (#2)\n";
       par::Mpi_Allgather(&myDstGlobEnd, &allDstSplit[1], 1, comm);
-      /// std::cerr << rankPrefix << "Concluded Allgather\n";
+      if(printDebug) std::cerr << rankPrefix << "Concluded Allgather\n";
 
       const bool isActiveSrc = srcDA.isActive();
       const bool isActiveDst = dstDA.isActive();
 
       if (!isActiveSrc && !isActiveDst)
       {
-        /// std::cerr << rankPrefix << "Not active. Returning.\n";
+        if(printDebug) std::cerr << rankPrefix << "Not active. Returning.\n";
         return;
       }
 
@@ -585,7 +587,7 @@ namespace ot
       int dst_r0, dst_r1;
       int src_r0, src_r1;
 
-      /// std::cerr << rankPrefix << "Begin binary search (#1)\n";
+      if(printDebug) std::cerr << rankPrefix << "Begin binary search (#1)\n";
 
       // Binary search to determine  dst_r0, dst_r1,  src_r0, src_r1.
       constexpr int bSplit = 0;
@@ -599,7 +601,7 @@ namespace ot
       }
       dst_r0 = r_lb;
 
-      /// std::cerr << rankPrefix << "Begin binary search (#2)\n";
+      if(printDebug) std::cerr << rankPrefix << "Begin binary search (#2)\n";
       r_ub = nProc - 1;
       { while (r_lb < r_ub)
           if (allDstSplit[(r_lb + r_ub)/2 + eSplit] >= mySrcGlobEnd)
@@ -609,7 +611,7 @@ namespace ot
       }
       dst_r1 = r_lb;
 
-      /// std::cerr << rankPrefix << "Begin binary search (#3)\n";
+      if(printDebug) std::cerr << rankPrefix << "Begin binary search (#3)\n";
       r_lb = 0;  r_ub = nProc-1;
       { while (r_lb < r_ub)
           if (allSrcSplit[(r_lb + r_ub + 1)/2 + bSplit] <= myDstGlobBegin)
@@ -619,7 +621,7 @@ namespace ot
       }
       src_r0 = r_lb;
 
-      /// std::cerr << rankPrefix << "Begin binary search (#4)\n";
+      if(printDebug) std::cerr << rankPrefix << "Begin binary search (#4)\n";
       r_ub = nProc - 1;
       { while (r_lb < r_ub)
           if (allSrcSplit[(r_lb + r_ub)/2 + eSplit] >= myDstGlobEnd)
@@ -629,7 +631,7 @@ namespace ot
       }
       src_r1 = r_lb;
 
-      /// std::cerr << rankPrefix << "Concluded binary search\n";
+      if(printDebug) std::cerr << rankPrefix << "Concluded binary search\n";
 
       // The binary search should automaticallly take care of the case
       // that some ranks are not active, but if it doesn't, give error.
@@ -638,8 +640,8 @@ namespace ot
       assert(!(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
       assert(!(allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd));
 
-      /// std::cerr << rankPrefix << "dst[" << dst_r0 << "," << dst_r1 << "] "
-      ///                         << "src[" << src_r0 << "," << src_r1 << "]\n";
+      if(printDebug) std::cerr << rankPrefix << "dst[" << dst_r0 << "," << dst_r1 << "] "
+                              << "src[" << src_r0 << "," << src_r1 << "]\n";
 
       // We know whom to exchange with. Next find distribution.
       std::vector<int> dstTo(dst_r1 - dst_r0 + 1);
@@ -675,12 +677,12 @@ namespace ot
         ss << "]";
         srcCountStr = ss.str();
       }
-      /// std::cerr << rankPrefix << "dstCount==" << dstCountStr
-      ///                         << "    srcCount==" << srcCountStr << "\n";
+      if(printDebug) std::cerr << rankPrefix << "dstCount==" << dstCountStr
+                              << "    srcCount==" << srcCountStr << "\n";
 
 
       // Point-to-point exchanges. Based on par::Mpi_Alltoallv_sparse().
-      /// std::cerr << rankPrefix << "Begin point-to-point.\n";
+      if(printDebug) std::cerr << rankPrefix << "Begin point-to-point.\n";
 
       int commCnt = 0;
 
@@ -695,7 +697,7 @@ namespace ot
       int i = 0;
       for(i = 0; i < src_r1-src_r0+1 && srcFrom[i] < rProc; i++) {
         if(srcCount[i] > 0) {
-          par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], i, 1,
+          par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], srcFrom[i], 1,
               comm, &(requests[commCnt]) );
           commCnt++;
         }
@@ -703,7 +705,7 @@ namespace ot
       const int selfSrcI = i;
       for(++i; i < src_r1-src_r0+1; i++) {
         if(srcCount[i] > 0) {
-          par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], i, 1,
+          par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], srcFrom[i], 1,
               comm, &(requests[commCnt]) );
           commCnt++;
         }
@@ -712,7 +714,7 @@ namespace ot
       //Next send the messages. Do not send to self.
       for(i = 0; i < dst_r1-dst_r0+1 && dstTo[i] < rProc; i++) {
         if(dstCount[i] > 0) {
-          par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], i, 1,
+          par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], dstTo[i], 1,
               comm, &(requests[commCnt]) );
           commCnt++;
         }
@@ -720,7 +722,7 @@ namespace ot
       const int selfDstI = i;
       for(++i; i < dst_r1-dst_r0+1; i++) {
         if(dstCount[i] > 0) {
-          par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], i, 1,
+          par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], dstTo[i], 1,
               comm, &(requests[commCnt]) );
           commCnt++;
         }
@@ -733,11 +735,11 @@ namespace ot
 
       std::copy_n(&srcLocal[dstDspls[selfDstI]], dstCount[selfDstI], &dstLocal[srcDspls[selfSrcI]]);
 
-      /// std::cerr << rankPrefix << "Waiting...\n";
+      if(printDebug) std::cerr << rankPrefix << "Waiting...\n";
 
       MPI_Waitall(commCnt, requests, statuses);
 
-      /// std::cerr << rankPrefix << "  Done.\n";
+      if(printDebug) std::cerr << rankPrefix << "  Done.\n";
 
       delete [] requests;
       delete [] statuses;
