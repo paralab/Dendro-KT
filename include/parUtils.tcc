@@ -30,7 +30,7 @@
 namespace par {
 
   template<typename T>
-  inline int Mpi_Isend(T *buf, int count, int dest, int tag,
+  inline int Mpi_Isend(const T *buf, int count, int dest, int tag,
                        MPI_Comm comm, MPI_Request *request) {
 
     MPI_Isend(buf, count, par::Mpi_datatype<T>::value(),
@@ -41,7 +41,7 @@ namespace par {
   }
 
   template<typename T>
-  inline int Mpi_Issend(T *buf, int count, int dest, int tag,
+  inline int Mpi_Issend(const T *buf, int count, int dest, int tag,
                         MPI_Comm comm, MPI_Request *request) {
 
     MPI_Issend(buf, count, par::Mpi_datatype<T>::value(),
@@ -74,7 +74,7 @@ namespace par {
   }
 
   template<typename T, typename S>
-  inline int Mpi_Sendrecv(T *sendBuf, int sendCount, int dest, int sendTag,
+  inline int Mpi_Sendrecv(const T *sendBuf, int sendCount, int dest, int sendTag,
                           S *recvBuf, int recvCount, int source, int recvTag,
                           MPI_Comm comm, MPI_Status *status) {
     PROF_PAR_SENDRECV_BEGIN
@@ -86,7 +86,7 @@ namespace par {
   }
 
   template<typename T>
-  inline int Mpi_Scan(T *sendbuf, T *recvbuf, int count, MPI_Op op, MPI_Comm comm) {
+  inline int Mpi_Scan(const T *sendbuf, T *recvbuf, int count, MPI_Op op, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
 #endif
@@ -98,7 +98,7 @@ namespace par {
   }
 
   template<typename T>
-  inline int Mpi_Allreduce(T *sendbuf, T *recvbuf, int count, MPI_Op op, MPI_Comm comm) {
+  inline int Mpi_Allreduce(const T *sendbuf, T *recvbuf, int count, MPI_Op op, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
 #endif
@@ -110,7 +110,7 @@ namespace par {
   }
 
   template<typename T>
-  inline int Mpi_Alltoall(T *sendbuf, T *recvbuf, int count, MPI_Comm comm) {
+  inline int Mpi_Alltoall(const T *sendbuf, T *recvbuf, int count, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
 #endif
@@ -124,7 +124,7 @@ namespace par {
 
   template<typename T>
   inline int Mpi_Alltoallv
-      (T *sendbuf, int *sendcnts, int *sdispls,
+      (const T *sendbuf, int *sendcnts, int *sdispls,
        T *recvbuf, int *recvcnts, int *rdispls, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
@@ -138,7 +138,7 @@ namespace par {
   }
 
   template<typename T>
-  inline int Mpi_Gather(T *sendBuffer, T *recvBuffer, int count, int root, MPI_Comm comm) {
+  inline int Mpi_Gather(const T *sendBuffer, T *recvBuffer, int count, int root, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
 #endif
@@ -163,7 +163,7 @@ namespace par {
   }
 
   template<typename T>
-  inline int Mpi_Reduce(T *sendbuf, T *recvbuf, int count, MPI_Op op, int root, MPI_Comm comm) {
+  inline int Mpi_Reduce(const T *sendbuf, T *recvbuf, int count, MPI_Op op, int root, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
 #endif
@@ -260,7 +260,7 @@ namespace par {
   }
 
   template<typename T>
-  int Mpi_Alltoallv_sparse(T *sendbuf, int *sendcnts, int *sdispls,
+  int Mpi_Alltoallv_sparse(const T *sendbuf, int *sendcnts, int *sdispls,
                            T *recvbuf, int *recvcnts, int *rdispls, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
@@ -365,7 +365,7 @@ namespace par {
   }
 
   template<typename T>
-  int Mpi_Alltoallv_dense(T *sendbuf, int *sendcnts, int *sdispls,
+  int Mpi_Alltoallv_dense(const T *sendbuf, int *sendcnts, int *sdispls,
                           T *recvbuf, int *recvcnts, int *rdispls, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
@@ -453,7 +453,7 @@ namespace par {
 
 
     template <typename T>
-    int Mpi_Alltoallv_Kway(T* sbuff_, int* s_cnt_, int* sdisp_,
+    int Mpi_Alltoallv_Kway(const T* sbuff_, int* s_cnt_, int* sdisp_,
                             T* rbuff_, int* r_cnt_, int* rdisp_, MPI_Comm c){
 
         //std::vector<double> tt(4096*200,0);
@@ -757,7 +757,7 @@ namespace par {
   }
 
   template<typename T>
-  int scatterValues(std::vector<T> &in, std::vector<T> &out,
+  int scatterValues(const std::vector<T> &in, std::vector<T> &out,
                     DendroIntL outSz, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
@@ -878,10 +878,10 @@ namespace par {
 
     assert(static_cast<unsigned int>(nn) == outSz);
     // perform All2All  ...
-    T *inPtr = NULL;
+    const T *inPtr = NULL;
     T *outPtr = NULL;
     if (!in.empty()) {
-      inPtr = &(*(in.begin()));
+      inPtr = &(*(in.cbegin()));
     }
     if (!out.empty()) {
       outPtr = &(*(out.begin()));
