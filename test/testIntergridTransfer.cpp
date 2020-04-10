@@ -52,6 +52,12 @@ bool testMultiDA()
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
+  std::string rankPrefix;
+  { std::stringstream ss;
+    ss << "[" << rProc << "] ";
+    rankPrefix = ss.str();
+  }
+
   using TN = ot::TreeNode<C, dim>;
 
   // Complete regular grid.
@@ -64,7 +70,8 @@ bool testMultiDA()
   // Create grid hierarchy.
   ot::DistTree<C, dim> surrogateDTree = dtree.generateGridHierarchyDown(2, 0.1, comm);
 
-  std::cerr << "surrogateDTree.getFilteredTreePartSz(1)==" << surrogateDTree.getFilteredTreePartSz(1) << "\n"
+  std::cerr << rankPrefix
+            << "surrogateDTree.getFilteredTreePartSz(1)==" << surrogateDTree.getFilteredTreePartSz(1) << "\n"
             << "surrogateDTree.getFilteredTreePartSz(1)==" << surrogateDTree.getFilteredTreePartSz(1) << "\n";
 
   // Create DA for all levels.
@@ -72,17 +79,17 @@ bool testMultiDA()
   ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, eleOrder);
   ot::DA<dim>::multiLevelDA(surrogateMultiDA, surrogateDTree, comm, eleOrder);
 
-  std::vector<DofT> fineVec, coarseVec;
+  std::vector<DofT> fineVec, coarseVec, surrogateVec;
   multiDA[0].createVector(fineVec, false, false, ndofs);
-  surrogateMultiDA[1].createVector(coarseVec, false, false, ndofs);
+  multiDA[1].createVector(coarseVec, false, false, ndofs);
+  surrogateMultiDA[1].createVector(surrogateVec, false, false, ndofs);
   std::fill(fineVec.begin(), fineVec.end(), 1.0);
-  std::fill(coarseVec.begin(), coarseVec.end(), 0.0);
+  std::fill(coarseVec.begin(), coarseVec.end(), -1.0);
+  std::fill(surrogateVec.begin(), surrogateVec.end(), 0.0);
 
-  std::cerr << "surrogateMultiDA[1].getLocalNodalSz()==" << surrogateMultiDA[1].getLocalNodalSz() << "\n"
+  std::cerr << rankPrefix
+            << "surrogateMultiDA[1].getLocalNodalSz()==" << surrogateMultiDA[1].getLocalNodalSz() << "\n"
             << "surrogateMultiDA[1].getLocalNodalSz()==" << surrogateMultiDA[1].getLocalNodalSz() << "\n";
-
-  // TODO read and write ghost
-
 
   fem::MeshFreeInputContext<DofT, TN> igtIn{
       fineVec.data(),
@@ -93,7 +100,7 @@ bool testMultiDA()
   };
 
   fem::MeshFreeOutputContext<DofT, TN> igtOut{
-      coarseVec.data(),
+      surrogateVec.data(),
       surrogateMultiDA[1].getTNCoords(),
       surrogateMultiDA[1].getLocalNodalSz(),
       *surrogateMultiDA[1].getTreePartFront(),
@@ -103,37 +110,89 @@ bool testMultiDA()
   const RefElement * refel = multiDA[0].getReferenceElement();
 
 
-  std::cerr << "---- BEFORE ----\n";
-  std::cerr << "In vector\n";
+  std::cerr << rankPrefix
+            << "---- BEFORE ----\n";
+  std::cerr << rankPrefix
+            << "In vector\n";
   if (dim == 2)
     ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
   else
-    std::cerr << "Can't print high-dimensional grid.\n";
+    std::cerr << rankPrefix
+              << "Can't print high-dimensional grid.\n";
 
-  std::cerr << "Out vector\n";
+  std::cerr << rankPrefix
+            << "Out vector (surrogate)\n";
   if (dim == 2)
-    ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, coarseVec.data(), eleOrder, std::cerr) << "\n";
+    ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, surrogateVec.data(), eleOrder, std::cerr) << "\n";
   else
-    std::cerr << "Can't print high-dimensional grid.\n";
+    std::cerr << rankPrefix
+              << "Can't print high-dimensional grid.\n";
 
+  std::cerr << rankPrefix
+            << "Out vector (coarse)\n";
+  if (dim == 2)
+    ot::printNodes(multiDA[1].getTNCoords(), multiDA[1].getTNCoords() + multiDA[1].getLocalNodalSz(), coarseVec.data(), eleOrder, std::cerr) << "\n";
+  else
+    std::cerr << rankPrefix
+              << "Can't print high-dimensional grid.\n";
+
+
+  std::cerr << rankPrefix
+            << "locIntergridTransfer\n";
 
   fem::locIntergridTransfer(igtIn, igtOut, ndofs, refel);
 
 
-
   std::cerr << "\n\n";
-  std::cerr << "---- AFTER ----\n";
-  std::cerr << "In vector\n";
-  if (dim == 2)
-    ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
-  else
-    std::cerr << "Can't print high-dimensional grid.\n";
+  std::cerr << rankPrefix
+            << "---- AFTER ----\n";
+//   std::cerr << "In vector\n";
+//   if (dim == 2)
+//     ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
+//   else
+//     std::cerr << "Can't print high-dimensional grid.\n";
 
-  std::cerr << "Out vector\n";
+  std::cerr << rankPrefix
+            << "Out vector (surrogate)\n";
   if (dim == 2)
-    ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, coarseVec.data(), eleOrder, std::cerr) << "\n";
+    ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, surrogateVec.data(), eleOrder, std::cerr) << "\n";
   else
-    std::cerr << "Can't print high-dimensional grid.\n";
+    std::cerr << rankPrefix
+              << "Can't print high-dimensional grid.\n";
+
+
+  std::cerr << rankPrefix
+            << "Shift nodes\n";
+  ot::distShiftNodes(surrogateMultiDA[1], surrogateVec.data(), multiDA[1], coarseVec.data());
+
+
+  std::cerr << rankPrefix
+            << "Out vector (coarse)\n";
+  if (dim == 2)
+    ot::printNodes(multiDA[1].getTNCoords(), multiDA[1].getTNCoords() + multiDA[1].getLocalNodalSz(), coarseVec.data(), eleOrder, std::cerr) << "\n";
+  else
+    std::cerr << rankPrefix
+              << "Can't print high-dimensional grid.\n";
+
+
+  std::vector<TN> coarseTNVerify;
+  multiDA[1].createVector(coarseTNVerify, false, false, ndofs);
+  ot::distShiftNodes(surrogateMultiDA[1], surrogateMultiDA[1].getTNCoords(), multiDA[1], coarseTNVerify.data());
+  bool verifyPartition = true;
+  int misses = 0;
+  for (int i = 0; i < multiDA[1].getLocalNodalSz(); ++i)
+    if (coarseTNVerify[i] != multiDA[1].getTNCoords()[i])
+    {
+      verifyPartition = false;
+      misses++;
+    }
+
+  if (verifyPartition)
+    std::cerr << rankPrefix
+              << "Partition verified.\n";
+  else
+    std::cerr << rankPrefix
+              << "&&&&&&&&&&&&&&&&&&& Partition failed &&&&&&&&&&&&&&&&&&&&&&\n";
 
 
   return true;

@@ -98,7 +98,7 @@ DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
  * @param comm MPI communicator over which the transfer takes place. Need not equal the src/dest DA comms.
  */
 template <unsigned int dim, typename DofT>
-void distShiftNodes(const DA<dim> &srcDA, const DofT *srcLocal, const DA<dim> &destDA, DofT *destLocal, MPI_Comm comm);
+void distShiftNodes(const DA<dim> &srcDA, const DofT *srcLocal, const DA<dim> &destDA, DofT *destLocal);
 
 
 template <unsigned int dim>
