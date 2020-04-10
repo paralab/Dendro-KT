@@ -640,8 +640,16 @@ namespace ot
       assert(!(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
       assert(!(allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd));
 
-      if(printDebug) std::cerr << rankPrefix << "dst[" << dst_r0 << "," << dst_r1 << "] "
-                              << "src[" << src_r0 << "," << src_r1 << "]\n";
+      std::string dstRangeStr, srcRangeStr;
+      { std::stringstream ss;
+        ss << "dst[" << dst_r0 << "," << dst_r1 << "]  ";
+        dstRangeStr = ss.str();
+        ss.str("");
+        ss << "src[" << src_r0 << "," << src_r1 << "]  ";
+        srcRangeStr = ss.str();
+      }
+
+      if(printDebug) std::cerr << rankPrefix << dstRangeStr << srcRangeStr << "\n";
 
       // We know whom to exchange with. Next find distribution.
       std::vector<int> dstTo(dst_r1 - dst_r0 + 1);
@@ -693,6 +701,8 @@ namespace ot
 
       commCnt = 0;
 
+      int selfSrcI = -1, selfDstI = -1;
+
       //First place all recv requests. Do not recv from self.
       int i = 0;
       for(i = 0; i < src_r1-src_r0+1 && srcFrom[i] < rProc; i++) {
@@ -702,7 +712,8 @@ namespace ot
           commCnt++;
         }
       }
-      const int selfSrcI = i;
+      if (i < src_r1-src_r0+1 && srcFrom[i] == rProc)
+        selfSrcI = i;
       for(++i; i < src_r1-src_r0+1; i++) {
         if(srcCount[i] > 0) {
           par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], srcFrom[i], 1,
@@ -719,7 +730,8 @@ namespace ot
           commCnt++;
         }
       }
-      const int selfDstI = i;
+      if (i < dst_r1-dst_r0+1 && dstTo[i] == rProc)
+        selfDstI = i;
       for(++i; i < dst_r1-dst_r0+1; i++) {
         if(dstCount[i] > 0) {
           par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], dstTo[i], 1,
@@ -729,11 +741,24 @@ namespace ot
       }
 
       //Now copy local portion.
-      assert((selfSrcI < src_r1-src_r0+1) == (selfDstI < dst_r1-dst_r0+1));
-      if (selfSrcI < src_r1-src_r0+1)
-        assert(srcCount[selfSrcI] == dstCount[selfDstI]);
+      const bool selfConsistentSendRecv = (selfSrcI != -1) == (selfDstI != -1);
+      if (!selfConsistentSendRecv)
+      {
+        std::cerr << rankPrefix << "**Violates self consistency. "
+                  << dstRangeStr << srcRangeStr << "\n";
+        assert(false);
+      }
+      if (selfSrcI != -1)
+      {
+        if (!(srcCount[selfSrcI] == dstCount[selfDstI]))
+        {
+          std::cerr << rankPrefix << "Sending different number to self than receiving from self.\n";
+          assert(false);
+        }
+      }
 
-      std::copy_n(&srcLocal[dstDspls[selfDstI]], dstCount[selfDstI], &dstLocal[srcDspls[selfSrcI]]);
+      if (selfSrcI != -1 && srcCount[selfSrcI] > 0)
+        std::copy_n(&srcLocal[dstDspls[selfDstI]], dstCount[selfDstI], &dstLocal[srcDspls[selfSrcI]]);
 
       if(printDebug) std::cerr << rankPrefix << "Waiting...\n";
 

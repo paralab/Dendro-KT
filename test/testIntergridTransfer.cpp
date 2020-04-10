@@ -110,31 +110,31 @@ bool testMultiDA()
   const RefElement * refel = multiDA[0].getReferenceElement();
 
 
-  std::cerr << rankPrefix
-            << "---- BEFORE ----\n";
-  std::cerr << rankPrefix
-            << "In vector\n";
-  if (dim == 2)
-    ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
-  else
-    std::cerr << rankPrefix
-              << "Can't print high-dimensional grid.\n";
+  /// std::cerr << rankPrefix
+  ///           << "---- BEFORE ----\n";
+  /// std::cerr << rankPrefix
+  ///           << "In vector\n";
+  /// if (dim == 2)
+  ///   ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
+  /// else
+  ///   std::cerr << rankPrefix
+  ///             << "Can't print high-dimensional grid.\n";
 
-  std::cerr << rankPrefix
-            << "Out vector (surrogate)\n";
-  if (dim == 2)
-    ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, surrogateVec.data(), eleOrder, std::cerr) << "\n";
-  else
-    std::cerr << rankPrefix
-              << "Can't print high-dimensional grid.\n";
+  /// std::cerr << rankPrefix
+  ///           << "Out vector (surrogate)\n";
+  /// if (dim == 2)
+  ///   ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, surrogateVec.data(), eleOrder, std::cerr) << "\n";
+  /// else
+  ///   std::cerr << rankPrefix
+  ///             << "Can't print high-dimensional grid.\n";
 
-  std::cerr << rankPrefix
-            << "Out vector (coarse)\n";
-  if (dim == 2)
-    ot::printNodes(multiDA[1].getTNCoords(), multiDA[1].getTNCoords() + multiDA[1].getLocalNodalSz(), coarseVec.data(), eleOrder, std::cerr) << "\n";
-  else
-    std::cerr << rankPrefix
-              << "Can't print high-dimensional grid.\n";
+  /// std::cerr << rankPrefix
+  ///           << "Out vector (coarse)\n";
+  /// if (dim == 2)
+  ///   ot::printNodes(multiDA[1].getTNCoords(), multiDA[1].getTNCoords() + multiDA[1].getLocalNodalSz(), coarseVec.data(), eleOrder, std::cerr) << "\n";
+  /// else
+  ///   std::cerr << rankPrefix
+  ///             << "Can't print high-dimensional grid.\n";
 
 
   std::cerr << rankPrefix
@@ -152,13 +152,13 @@ bool testMultiDA()
 //   else
 //     std::cerr << "Can't print high-dimensional grid.\n";
 
-  std::cerr << rankPrefix
-            << "Out vector (surrogate)\n";
-  if (dim == 2)
-    ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, surrogateVec.data(), eleOrder, std::cerr) << "\n";
-  else
-    std::cerr << rankPrefix
-              << "Can't print high-dimensional grid.\n";
+  /// std::cerr << rankPrefix
+  ///           << "Out vector (surrogate)\n";
+  /// if (dim == 2)
+  ///   ot::printNodes(igtOut.coords, igtOut.coords + igtOut.sz, surrogateVec.data(), eleOrder, std::cerr) << "\n";
+  /// else
+  ///   std::cerr << rankPrefix
+  ///             << "Can't print high-dimensional grid.\n";
 
 
   std::cerr << rankPrefix
@@ -166,13 +166,13 @@ bool testMultiDA()
   ot::distShiftNodes(surrogateMultiDA[1], surrogateVec.data(), multiDA[1], coarseVec.data());
 
 
-  std::cerr << rankPrefix
-            << "Out vector (coarse)\n";
-  if (dim == 2)
-    ot::printNodes(multiDA[1].getTNCoords(), multiDA[1].getTNCoords() + multiDA[1].getLocalNodalSz(), coarseVec.data(), eleOrder, std::cerr) << "\n";
-  else
-    std::cerr << rankPrefix
-              << "Can't print high-dimensional grid.\n";
+  /// std::cerr << rankPrefix
+  ///           << "Out vector (coarse)\n";
+  /// if (dim == 2)
+  ///   ot::printNodes(multiDA[1].getTNCoords(), multiDA[1].getTNCoords() + multiDA[1].getLocalNodalSz(), coarseVec.data(), eleOrder, std::cerr) << "\n";
+  /// else
+  ///   std::cerr << rankPrefix
+  ///             << "Can't print high-dimensional grid.\n";
 
 
   std::vector<TN> coarseTNVerify;
