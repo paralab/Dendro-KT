@@ -88,6 +88,19 @@ DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
                                  double sfc_tol = 0.3);
 
 
+/**
+ * @brief Transfer data to an identically-structured but differently-partitioned grid, e.g. surrogate.
+ *
+ * @param srcDA Mesh-free representation of the source grid.
+ * @param srcLocal Pointer to local segment of the source vector.
+ * @param destDA Mesh-free representation of the destination grid.
+ * @param destLocal Pointer to the local segment of the destination vector.
+ * @param comm MPI communicator over which the transfer takes place. Need not equal the src/dest DA comms.
+ */
+template <unsigned int dim, typename DofT>
+void distShiftNodes(const DA<dim> &srcDA, const DofT *srcLocal, const DA<dim> &destDA, DofT *destLocal, MPI_Comm comm);
+
+
 template <unsigned int dim>
 class DA
 {

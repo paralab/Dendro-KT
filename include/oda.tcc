@@ -6,6 +6,8 @@
  * @date 04/04/2019
  **/
 
+#include "parUtils.h"
+
 namespace ot
 {
 
@@ -486,6 +488,198 @@ namespace ot
 
       return locNumActiveElements;
     }
+
+
+
+
+    template <unsigned int dim, typename DofT>
+    void distShiftNodes(const DA<dim> &srcDA,
+                        const DofT *srcLocal,
+                        const DA<dim> &dstDA,
+                        DofT *dstLocal,
+                        MPI_Comm comm)
+    {
+      // TODO
+      // Efficiency target: Communication latency should be linear in the
+      //   size of the overlap between the src and dest partitions.
+
+      // Approach:  TODO make this work?
+      //   Propagate the local dest vector bounds left and right across comm.
+      //   Propagate the local src vector bounds left and right across comm.
+      //   After several steps, every rank will know its overlap with neighboring ranks.
+      //   The data is transfered via peer-to-peer communication.
+      //   To avoid deadlock, all data is sent non-blocking, and received with blocking wait.
+
+      // It will not work to coordinate the overlap using src/dest comms.
+      //   There could gaps such that the information from one
+      //   never makes it into the other stream.
+
+      //----
+      // Instead: Simple. Upfront Allgather, locally make pairs, point-to-point.
+
+      int rProc, nProc;
+      MPI_Comm_rank(comm, &rProc);
+      MPI_Comm_size(comm, &nProc);
+
+      if (nProc == 1)
+      {
+        std::copy_n(srcLocal, dstDA.getLocalNodalSz(), dstLocal);
+        return;
+      }
+
+      const DendroIntL mySrcGlobBegin = srcDA.getGlobalRankBegin();
+      const DendroIntL myDstGlobBegin = dstDA.getGlobalRankBegin();
+      const DendroIntL mySrcGlobEnd = mySrcGlobBegin + srcDA.getLocalNodalSz();
+      const DendroIntL myDstGlobEnd = myDstGlobBegin + dstDA.getLocalNodalSz();
+
+      // Includes boundaries, [0]=0 and [n]=(total global number nodes)
+      std::vector<DendroIntL> allSrcSplit(nProc+1, 0);
+      std::vector<DendroIntL> allDstSplit(nProc+1, 0);
+      par::Mpi_Allgather(&mySrcGlobEnd, &allSrcSplit[1], 1, comm);
+      par::Mpi_Allgather(&myDstGlobEnd, &allDstSplit[1], 1, comm);
+
+      const bool isActiveSrc = srcDA.isActive();
+      const bool isActiveDst = dstDA.isActive();
+
+      if (!isActiveSrc && !isActiveDst)
+        return;
+
+
+      // Figure out whom to send to / recv from.
+      // - otherDstBegin[r0] <= mySrcBegin <= mySrcRank[x] < mySrcEnd <= otherDstEnd[r1];
+      // - otherSrcBegin[r0] <= myDstBegin <= myDstRank[x] < myDstEnd <= otherSrcEnd[r1];
+
+      int dst_r0, dst_r1;
+      int src_r0, src_r1;
+
+      // Binary search to determine  dst_r0, dst_r1,  src_r0, src_r1.
+      constexpr int bSplit = 0;
+      constexpr int eSplit = 1;
+      int r_lb = 0, r_ub = nProc-1;  // Inclusive lower/upper bounds.
+      { while (r_lb < r_ub)
+          if (allDstSplit[(r_lb + r_ub + 1)/2 + bSplit] <= mySrcGlobBegin)
+            r_lb = (r_lb + r_ub + 1)/2;
+          else
+            r_ub = (r_lb + r_ub + 1)/2 - 1;
+      }
+      dst_r0 = r_lb;
+      r_ub = nProc - 1;
+      { while (r_lb < r_ub)
+          if (allDstSplit[(r_lb + r_ub + 1)/2 + eSplit] >= mySrcGlobEnd)
+            r_ub = (r_lb + r_ub + 1)/2;
+          else
+            r_lb = (r_lb + r_ub + 1)/2 + 1;
+      }
+      dst_r1 = r_lb;
+
+      r_lb = 0;  r_ub = nProc-1;
+      { while (r_lb < r_ub)
+          if (allSrcSplit[(r_lb + r_ub + 1)/2 + bSplit] <= myDstGlobBegin)
+            r_lb = (r_lb + r_ub + 1)/2;
+          else
+            r_ub = (r_lb + r_ub + 1)/2 - 1;
+      }
+      src_r0 = r_lb;
+      r_ub = nProc - 1;
+      { while (r_lb < r_ub)
+          if (allSrcSplit[(r_lb + r_ub + 1)/2 + eSplit] >= myDstGlobEnd)
+            r_ub = (r_lb + r_ub + 1)/2;
+          else
+            r_lb = (r_lb + r_ub + 1)/2 + 1;
+      }
+      src_r1 = r_lb;
+
+      // The binary search should automaticallly take care of the case
+      // that some ranks are not active, but if it doesn't, give error.
+      assert(!(allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
+      assert(!(allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd));
+      assert(!(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
+      assert(!(allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd));
+
+
+      // We know whom to exchange with. Next find distribution.
+      std::vector<int> dstTo(dst_r1 - dst_r0 + 1);
+      std::vector<int> srcFrom(src_r1 - src_r0 + 1);
+      std::iota(dstTo.begin(), dstTo.end(), dst_r0);
+      std::iota(srcFrom.begin(), srcFrom.end(), src_r0);
+      std::vector<int> dstCount(dst_r1 - dst_r0 + 1, 0);
+      std::vector<int> srcCount(src_r1 - src_r0 + 1, 0);
+      // otherDstBegin[r], mySrcBegin  <=  mySrcRank[x]  <  mySrcEnd, otherDstEnd[r];
+      // otherSrcBegin[r], myDstBegin  <=  myDstRank[x]  <  myDstEnd, otherSrcEnd[r];
+      for (int i = 0; i < dstTo.size(); ++i)
+        dstCount[i] = fmin(mySrcGlobEnd, allDstSplit[dstTo[i] + eSplit])
+                      - fmax(mySrcGlobBegin, allDstSplit[dstTo[i] + bSplit]);
+      for (int i = 0; i < srcFrom.size(); ++i)
+        srcCount[i] = fmin(myDstGlobEnd, allSrcSplit[srcFrom[i] + eSplit])
+                      - fmax(myDstGlobBegin, allSrcSplit[srcFrom[i] + bSplit]);
+      std::vector<int> dstDspls(1, 0);
+      std::vector<int> srcDspls(1, 0);
+      for (int c : dstCount)
+        dstDspls.emplace_back(dstDspls.back() + c);
+      for (int c : srcCount)
+        srcDspls.emplace_back(srcDspls.back() + c);
+
+
+      // Point-to-point exchanges. Based on par::Mpi_Alltoallv_sparse().
+      int commCnt = 0;
+
+      MPI_Request* requests = new MPI_Request[(src_r1-src_r0+1) + (dst_r1-dst_r0+1)];
+      assert(requests);
+      MPI_Status* statuses = new MPI_Status[(src_r1-src_r0+1) + (dst_r1-dst_r0+1)];
+      assert(statuses);
+
+      commCnt = 0;
+
+      //First place all recv requests. Do not recv from self.
+      int i = 0;
+      for(i = 0; i < src_r1-src_r0+1 && srcFrom[i] < rProc; i++) {
+        if(srcCount[i] > 0) {
+          par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], i, 1,
+              comm, &(requests[commCnt]) );
+          commCnt++;
+        }
+      }
+      const int selfSrcI = i;
+      for(++i; i < src_r1-src_r0+1; i++) {
+        if(srcCount[i] > 0) {
+          par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], i, 1,
+              comm, &(requests[commCnt]) );
+          commCnt++;
+        }
+      }
+
+      //Next send the messages. Do not send to self.
+      for(i = 0; i < dst_r1-dst_r0+1 && dstTo[i] < rProc; i++) {
+        if(dstCount[i] > 0) {
+          par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], i, 1,
+              comm, &(requests[commCnt]) );
+          commCnt++;
+        }
+      }
+      const int selfDstI = i;
+      for(++i; i < dst_r1-dst_r0+1; i++) {
+        if(dstCount[i] > 0) {
+          par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], i, 1,
+              comm, &(requests[commCnt]) );
+          commCnt++;
+        }
+      }
+
+      //Now copy local portion.
+#ifdef __DEBUG_PAR__
+      assert((selfSrcI < src_r1-src_r0+1) == (selfDstI < dst_r1-dst_r0+1));
+      if (selfSrcI < src_r1-src_r0+1)
+        assert(srcCount[selfSrcI] == dstCount[selfDstI]);
+#endif
+
+      std::copy_n(&srcLocal[dstDspls[selfDstI]], dstCount[selfDstI], &dstLocal[srcDspls[selfSrcI]]);
+
+      MPI_Waitall(commCnt, requests, statuses);
+
+      delete [] requests;
+      delete [] statuses;
+    }
+
 
 
 
