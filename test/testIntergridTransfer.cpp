@@ -48,6 +48,7 @@ bool testMultiDA()
 
   const bool reportSize = false;
   const bool reportEmpty = true;
+  const bool reportContext = false;
 
   MPI_Comm comm = MPI_COMM_WORLD;
 
@@ -57,7 +58,7 @@ bool testMultiDA()
 
   std::string rankPrefix;
   { std::stringstream ss;
-    ss << "[" << rProc << "] ";
+    ss << "[" << std::setfill('0') << std::setw(2) << rProc << "] ";
     rankPrefix = ss.str();
   }
 
@@ -170,6 +171,39 @@ bool testMultiDA()
   ///   std::cerr << rankPrefix
   ///             << "Can't print high-dimensional grid.\n";
 
+  if (reportContext)
+  {
+    std::string igtInStr, igtOutStr;
+    { std::stringstream ss;
+      ss << " Front: ";
+      ot::printtn(igtIn.partFront, 3, ss);
+      ss << " Back: ";
+      ot::printtn(igtIn.partBack, 3, ss);
+      ss << "  Sz==" << igtIn.sz;
+      for (int i = 0; i < igtIn.sz; ++i)
+      {
+        ss << "  ";
+        ot::printtn(igtIn.coords[i], 3, ss);
+      }
+      igtInStr = ss.str();
+    }
+    { std::stringstream ss;
+      ss << " Front: ";
+      ot::printtn(igtOut.partFront, 3, ss);
+      ss << " Back: ";
+      ot::printtn(igtOut.partBack, 3, ss);
+      ss << "  Sz==" << igtOut.sz;
+      for (int i = 0; i < igtOut.sz; ++i)
+      {
+        ss << "  ";
+        ot::printtn(igtOut.coords[i], 3, ss);
+      }
+      igtOutStr = ss.str();
+    }
+
+    fprintf(stderr, "%s \t IN_INFO \t %s\n", rankPrefix.c_str(), igtInStr.c_str());
+    fprintf(stderr, "%s \t OUT_INFO \t %s\n", rankPrefix.c_str(), igtOutStr.c_str());
+  }
 
   fprintf(stderr, "%s \t PHASE \t locIntergridTransfer\n", rankPrefix.c_str());
   fem::locIntergridTransfer(igtIn, igtOut, ndofs, refel);

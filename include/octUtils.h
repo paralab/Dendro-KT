@@ -605,6 +605,45 @@ void printtn(const TreeNode<T, dim> &tn, unsigned int eLev, FILE *out=stdout)
 
 
 template <typename T, unsigned int dim>
+void printtn(const TreeNode<T, dim> &tn, unsigned int eLev, std::ostream &out=std::cout)
+{
+  const T x0 = (dim >= 1 ? tn.getX(0) >> (m_uiMaxDepth - eLev) : 0);
+  const T x1 = (dim >= 2 ? tn.getX(1) >> (m_uiMaxDepth - eLev) : 0);
+  const T x2 = (dim >= 3 ? tn.getX(2) >> (m_uiMaxDepth - eLev) : 0);
+  const T x3 = (dim >= 4 ? tn.getX(3) >> (m_uiMaxDepth - eLev) : 0);
+  const int w = 4;
+
+  switch (dim)
+  {
+    case 1:
+      out << "(" << tn.getLevel() << "/" << eLev << ")["
+          << std::setw(w) << x0 << "]";
+      break;
+    case 2:
+      out << "(" << tn.getLevel() << "/" << eLev << ")["
+          << std::setw(w) << x0 << " "
+          << std::setw(w) << x1 << "]";
+      break;
+    case 3:
+      out << "(" << tn.getLevel() << "/" << eLev << ")["
+          << std::setw(w) << x0 << " "
+          << std::setw(w) << x1 << " "
+          << std::setw(w) << x2 << "]";
+      break;
+    case 4:
+      out << "(" << tn.getLevel() << "/" << eLev << ")["
+          << std::setw(w) << x0 << " "
+          << std::setw(w) << x1 << " "
+          << std::setw(w) << x2 << " "
+          << std::setw(w) << x3 << "]";
+      break;
+    default:
+      out << "Add higher dimensions to printtn() in octUtils.h ";
+  }
+}
+
+
+template <typename T, unsigned int dim>
 std::ostream & printNodeCoords(const ot::TreeNode<T, dim> *coordBegin,
                           const ot::TreeNode<T, dim> *coordEnd,
                           unsigned int order = 1,
