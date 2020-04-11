@@ -51,6 +51,11 @@ namespace fem
                          /// double scale,
                          const RefElement *refElement)
   {
+    if (in.sz == 0 && out.sz == 0)
+      return;
+
+    assert(in.sz > 0 && out.sz > 0);
+
     // Initialize output vector to 0.
     std::fill(out.vecOut, out.vecOut + ndofs * out.sz, 0);
 
@@ -66,7 +71,10 @@ namespace fem
 
     while (!treeLoopOut.isFinished())
     {
-      assert(treeLoopIn.getCurrentSubtree() == treeLoopOut.getCurrentSubtree());
+      if (!(treeLoopIn.getCurrentSubtree() == treeLoopOut.getCurrentSubtree()))
+      {
+        assert(!"MatvecBaseIn/Out subtree mismatch!");
+      }
 
       if (!treeLoopIn.isPre() && !treeLoopOut.isPre())
       {
