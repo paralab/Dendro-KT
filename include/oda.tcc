@@ -713,8 +713,8 @@ namespace ot
         }
       }
       if (i < src_r1-src_r0+1 && srcFrom[i] == rProc)
-        selfSrcI = i;
-      for(++i; i < src_r1-src_r0+1; i++) {
+        selfSrcI = i++;
+      for(i; i < src_r1-src_r0+1; i++) {
         if(srcCount[i] > 0) {
           par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], srcFrom[i], 1,
               comm, &(requests[commCnt]) );
@@ -731,8 +731,8 @@ namespace ot
         }
       }
       if (i < dst_r1-dst_r0+1 && dstTo[i] == rProc)
-        selfDstI = i;
-      for(++i; i < dst_r1-dst_r0+1; i++) {
+        selfDstI = i++;
+      for(; i < dst_r1-dst_r0+1; i++) {
         if(dstCount[i] > 0) {
           par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], dstTo[i], 1,
               comm, &(requests[commCnt]) );
