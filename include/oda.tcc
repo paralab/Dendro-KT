@@ -592,42 +592,74 @@ namespace ot
       // Binary search to determine  dst_r0, dst_r1,  src_r0, src_r1.
       constexpr int bSplit = 0;
       constexpr int eSplit = 1;
+      // Search for last rank : dstBegin[rank] <= mySrcBegin
       int r_lb = 0, r_ub = nProc-1;  // Inclusive lower/upper bounds.
       { while (r_lb < r_ub)
-          if (allDstSplit[(r_lb + r_ub + 1)/2 + bSplit] <= mySrcGlobBegin)
-            r_lb = (r_lb + r_ub + 1)/2;
+        {
+          const int test = (r_lb + r_ub + 1)/2;
+          if (allDstSplit[test + bSplit] <= mySrcGlobBegin)
+          {
+            r_lb = test;
+          }
           else
-            r_ub = (r_lb + r_ub + 1)/2 - 1;
+          {
+            r_ub = test - 1;
+          }
+        }
       }
       dst_r0 = r_lb;
 
       if(printDebug) std::cerr << rankPrefix << "Begin binary search (#2)\n";
+      // Search for last rank : dstBegin[rank] < mySrcEnd
       r_ub = nProc - 1;
       { while (r_lb < r_ub)
-          if (allDstSplit[(r_lb + r_ub)/2 + eSplit] >= mySrcGlobEnd)
-            r_ub = (r_lb + r_ub)/2;
+        {
+          const int test = (r_lb + r_ub + 1)/2;
+          if (allDstSplit[test + bSplit] < mySrcGlobEnd)
+          {
+            r_lb = test;
+          }
           else
-            r_lb = (r_lb + r_ub)/2 + 1;
+          {
+            r_ub = test - 1;
+          }
+        }
       }
       dst_r1 = r_lb;
 
       if(printDebug) std::cerr << rankPrefix << "Begin binary search (#3)\n";
+      // Search for last rank : srcBegin[rank] <= myDstBegin
       r_lb = 0;  r_ub = nProc-1;
       { while (r_lb < r_ub)
-          if (allSrcSplit[(r_lb + r_ub + 1)/2 + bSplit] <= myDstGlobBegin)
-            r_lb = (r_lb + r_ub + 1)/2;
+        {
+          const int test = (r_lb + r_ub + 1)/2;
+          if (allSrcSplit[test + bSplit] <= myDstGlobBegin)
+          {
+            r_lb = test;
+          }
           else
-            r_ub = (r_lb + r_ub + 1)/2 - 1;
+          {
+            r_ub = test - 1;
+          }
+        }
       }
       src_r0 = r_lb;
 
       if(printDebug) std::cerr << rankPrefix << "Begin binary search (#4)\n";
+      // Search for last rank : srcBegin[rank] < myDstEnd
       r_ub = nProc - 1;
       { while (r_lb < r_ub)
-          if (allSrcSplit[(r_lb + r_ub)/2 + eSplit] >= myDstGlobEnd)
-            r_ub = (r_lb + r_ub)/2;
+        {
+          const int test = (r_lb + r_ub + 1)/2;
+          if (allSrcSplit[test + bSplit] < myDstGlobEnd)
+          {
+            r_lb = test;
+          }
           else
-            r_lb = (r_lb + r_ub)/2 + 1;
+          {
+            r_ub = test - 1;
+          }
+        }
       }
       src_r1 = r_lb;
 
@@ -635,10 +667,18 @@ namespace ot
 
       // The binary search should automaticallly take care of the case
       // that some ranks are not active, but if it doesn't, give error.
-      assert(!(allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
-      assert(!(allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd));
-      assert(!(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
-      assert(!(allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd));
+      if (!(
+            !(allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin) &&
+            !(allDstSplit[dst_r1+1 + bSplit] < mySrcGlobEnd) &&
+            !(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin) &&
+            !(allSrcSplit[src_r1+1 + bSplit] < myDstGlobEnd)
+           ))
+      {
+        assert(!(allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
+        assert(!(allDstSplit[dst_r1+1 + bSplit] < mySrcGlobEnd));
+        assert(!(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
+        assert(!(allSrcSplit[src_r1+1 + bSplit] < myDstGlobEnd));
+      }
 
       std::string dstRangeStr, srcRangeStr;
       { std::stringstream ss;
@@ -740,20 +780,26 @@ namespace ot
         }
       }
 
-      //Now copy local portion.
+      // Now copy local portion.
+      // Empty self-sends/recvs don't count.
+      if (selfSrcI != -1 && srcCount[selfSrcI] == 0)
+        selfSrcI = -1;
+      if (selfDstI != -1 && srcCount[selfDstI] == 0)
+        selfDstI = -1;
+
       const bool selfConsistentSendRecv = (selfSrcI != -1) == (selfDstI != -1);
       if (!selfConsistentSendRecv)
       {
         std::cerr << rankPrefix << "**Violates self consistency. "
                   << dstRangeStr << srcRangeStr << "\n";
-        assert(false);
+        assert(!"Violates self consistency");
       }
       if (selfSrcI != -1)
       {
         if (!(srcCount[selfSrcI] == dstCount[selfDstI]))
         {
           std::cerr << rankPrefix << "Sending different number to self than receiving from self.\n";
-          assert(false);
+          assert(!"Sending different number to self than receiving from self.\n");
         }
       }
 
