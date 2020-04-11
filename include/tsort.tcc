@@ -380,8 +380,8 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::dist_bcastSplitters(
 
   // Decide on a global root, who must also be an active rank.
   const int voteRoot = (isActive ? rProc : nProc);
-  int globalRoot, activeRoot;
-  par::Mpi_Reduce(&voteRoot, &globalRoot, 1, MPI_MIN, 0, globalComm);
+  int globalRoot = -1, activeRoot = -1;
+  par::Mpi_Allreduce(&voteRoot, &globalRoot, 1, MPI_MIN, globalComm);
   if (rProc == globalRoot)
     activeRoot = activeRank;
   par::Mpi_Bcast(&activeRoot, 1, globalRoot, globalComm); // For active ranks.
