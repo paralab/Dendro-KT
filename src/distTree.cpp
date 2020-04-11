@@ -594,8 +594,6 @@ namespace ot
                                                                 double loadFlexibility,
                                                                 MPI_Comm comm)
   {
-    DistTree surrogateDT(*this);
-
     int nProc, rProc;
     MPI_Comm_size(comm, &nProc);
     MPI_Comm_rank(comm, &rProc);
@@ -625,7 +623,20 @@ namespace ot
         m_numStrata = numStrata;
     }
 
+    // Goal: Copy over global properties from primary DT to surrogate DT,
+    //   but initialize all local properties on every level to empty.
+    DistTree surrogateDT(*this);
+    //
     surrogateDT.m_numStrata = m_numStrata;
+    //
+    for (int vl = 0; vl < surrogateDT.m_gridStrata.size(); vl++)
+    {
+      surrogateDT.m_gridStrata[vl].clear();
+      surrogateDT.m_tpFrontStrata[vl] = TreeNode<T, dim>{};
+      surrogateDT.m_tpBackStrata[vl] = TreeNode<T, dim>{};
+      surrogateDT.m_originalTreePartSz[vl] = 0;
+      surrogateDT.m_filteredTreePartSz[vl] = 0;
+    }
 
     // The only grid we know about is in layer [0].
     // It becomes the coarsest, in layer [m_numStrata-1].
@@ -634,12 +645,6 @@ namespace ot
     std::swap(m_tpBackStrata[0], m_tpBackStrata[m_numStrata-1]);
     std::swap(m_originalTreePartSz[0], m_originalTreePartSz[m_numStrata-1]);
     std::swap(m_filteredTreePartSz[0], m_filteredTreePartSz[m_numStrata-1]);
-
-    surrogateDT.m_gridStrata[0].clear();
-    surrogateDT.m_tpFrontStrata[0] = TreeNode<T, dim>{};
-    surrogateDT.m_tpBackStrata[0] = TreeNode<T, dim>{};
-    surrogateDT.m_originalTreePartSz[0] = 0;
-    surrogateDT.m_filteredTreePartSz[0] = 0;
 
     for (int coarseStratum = m_numStrata-1; coarseStratum >= 1; coarseStratum--)
     {
@@ -684,18 +689,36 @@ namespace ot
         m_originalTreePartSz[fineStratum] = fineGrid.size();
       m_filteredTreePartSz[fineStratum] = fineGrid.size();
 
-      m_tpFrontStrata[fineStratum] = fineGrid.front();
-      m_tpBackStrata[fineStratum] = fineGrid.back();
+      m_tpFrontStrata[fineStratum] = (fineGrid.size() ? fineGrid.front() : TreeNode<T, dim>{});
+      m_tpBackStrata[fineStratum] = (fineGrid.size() ? fineGrid.back() : TreeNode<T, dim>{});
 
 
       // Create the surrogate coarse grid by duplicating the
       // coarse grid but partitioning it by the fine grid splitters.
 
-      std::vector<TreeNode<T, dim>> fineFrontSplitters
-          = SFC_Tree<T, dim>::dist_bcastSplitters(&m_tpFrontStrata[fineStratum], comm);
+      // Temporary activeComm, in case fineGrid has holes, this
+      // make it more convenient to construct surrogate grid.
+      const bool isFineGridActive = fineGrid.size() > 0;
+      MPI_Comm fgActiveComm;
+      MPI_Comm_split(comm, (isFineGridActive ? 1 : MPI_UNDEFINED), rProc, &fgActiveComm);
 
-      std::vector<int> surrogateSendCounts = getSendcounts(coarseGrid, fineFrontSplitters);
+
+      std::vector<int> fgActiveList;
+      std::vector<TreeNode<T, dim>> fineFrontSplitters;
+      fineFrontSplitters = SFC_Tree<T, dim>::dist_bcastSplitters(
+          &m_tpFrontStrata[fineStratum],
+          comm,
+          fgActiveComm,
+          isFineGridActive,
+          fgActiveList);
+
+      std::vector<int> surrogateSendCountsCompact = getSendcounts(coarseGrid, fineFrontSplitters);
+      std::vector<int> surrogateSendCounts(nProc, 0);
+      for (int i = 0; i < fgActiveList.size(); ++i)
+        surrogateSendCounts[fgActiveList[i]] = surrogateSendCountsCompact[i];
+
       std::vector<int> surrogateRecvCounts(nProc, 0);
+
       par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, comm);
 
       std::vector<int> surrogateSendDispls(1, 0);
@@ -724,8 +747,11 @@ namespace ot
         surrogateDT.m_originalTreePartSz[coarseStratum] = surrogateCoarseGrid.size();
       surrogateDT.m_filteredTreePartSz[coarseStratum] = surrogateCoarseGrid.size();
 
-      surrogateDT.m_tpFrontStrata[coarseStratum] = surrogateCoarseGrid.front();
-      surrogateDT.m_tpBackStrata[coarseStratum] = surrogateCoarseGrid.back();
+      if (surrogateCoarseGrid.size())
+      {
+        surrogateDT.m_tpFrontStrata[coarseStratum] = surrogateCoarseGrid.front();
+        surrogateDT.m_tpBackStrata[coarseStratum] = surrogateCoarseGrid.back();
+      }
     }
 
     return surrogateDT;
