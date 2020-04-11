@@ -267,6 +267,12 @@ struct SFC_Tree
    */
   static std::vector<TreeNode<T,D>> dist_bcastSplitters(const TreeNode<T,D> *start, MPI_Comm comm);
 
+  static std::vector<TreeNode<T, D>> dist_bcastSplitters(
+      const TreeNode<T, D> *start,
+      MPI_Comm globalComm,
+      MPI_Comm activeComm,
+      bool isActive,
+      std::vector<int> &activeList);
 
 
 

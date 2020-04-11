@@ -356,7 +356,53 @@ std::vector<TreeNode<T,dim>> SFC_Tree<T,dim>::dist_bcastSplitters(const TreeNode
 }
 
 
+//
+// SFC_Tree::dist_bcastSplitters() (when activeComm != globalComm)
+//
+template <typename T, unsigned int dim>
+std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::dist_bcastSplitters(
+    const TreeNode<T, dim> *start,
+    MPI_Comm globalComm,
+    MPI_Comm activeComm,
+    bool isActive,
+    std::vector<int> &activeList)
+{
+  int rProc, nProc;
+  MPI_Comm_size(globalComm, &nProc);
+  MPI_Comm_rank(globalComm, &rProc);
 
+  int activeSize, activeRank;;
+  if (isActive)
+  {
+    MPI_Comm_size(activeComm, &activeSize);
+    MPI_Comm_rank(activeComm, &activeRank);
+  }
+
+  // Decide on a global root, who must also be an active rank.
+  const int voteRoot = (isActive ? rProc : nProc);
+  int globalRoot, activeRoot;
+  par::Mpi_Reduce(&voteRoot, &globalRoot, 1, MPI_MIN, 0, globalComm);
+  if (rProc == globalRoot)
+    activeRoot = activeRank;
+  par::Mpi_Bcast(&activeRoot, 1, globalRoot, globalComm); // For active ranks.
+  par::Mpi_Bcast(&activeSize, 1, globalRoot, globalComm); // For inactive ranks.
+
+  activeList.clear();
+  activeList.resize(activeSize);
+  std::vector<TreeNode<T, dim>> activeSplitters(activeSize);
+
+  if (isActive)
+  {
+    // Collect from active ranks to active root.
+    par::Mpi_Gather(&rProc, &activeList[0], 1, activeRoot, activeComm);
+    par::Mpi_Gather(start, &activeSplitters[0], 1, activeRoot, activeComm);
+  }
+  // Share with everyone.
+  par::Mpi_Bcast(&activeList[0], activeSize, globalRoot, globalComm);
+  par::Mpi_Bcast(&activeSplitters[0], activeSize, globalRoot, globalComm);
+
+  return activeSplitters;
+}
 
 
 } // end namespace ot
