@@ -814,7 +814,7 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
       if (tree[idx].getParent() != locBackParent)
         locBackIsBroken = true;
 
-      idx++;
+      idx--;
     }
 
 
