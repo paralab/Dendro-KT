@@ -578,28 +578,28 @@ std::string dbgCoordStr(const TreeNode<T,dim> &tnCoords, unsigned int refLev)
 
 
 template <typename T, unsigned int dim>
-void printtn(const TreeNode<T, dim> &tn, unsigned int eLev)
+void printtn(const TreeNode<T, dim> &tn, unsigned int eLev, FILE *out=stdout)
 {
   switch (dim)
   {
     case 1:
-      fprintf(stdout, "(%d/%d)[%4u]",
+      fprintf(out, "(%d/%d)[%4u]",
           tn.getLevel(), eLev, tn.getX(0) >> (m_uiMaxDepth - eLev));
       break;
     case 2:
-      fprintf(stdout, "(%d/%d)[%4u %4u]",
+      fprintf(out, "(%d/%d)[%4u %4u]",
           tn.getLevel(), eLev, tn.getX(0) >> (m_uiMaxDepth - eLev), tn.getX(1) >> (m_uiMaxDepth - eLev));
       break;
     case 3:
-      fprintf(stdout, "(%d/%d)[%4u %4u %4u]",
+      fprintf(out, "(%d/%d)[%4u %4u %4u]",
           tn.getLevel(), eLev, tn.getX(0) >> (m_uiMaxDepth - eLev), tn.getX(1) >> (m_uiMaxDepth - eLev), tn.getX(2) >> (m_uiMaxDepth - eLev));
       break;
     case 4:
-      fprintf(stdout, "(%d/%d)[%4u %4u %4u %4u]",
+      fprintf(out, "(%d/%d)[%4u %4u %4u %4u]",
           tn.getLevel(), eLev, tn.getX(0) >> (m_uiMaxDepth - eLev), tn.getX(1) >> (m_uiMaxDepth - eLev), tn.getX(2) >> (m_uiMaxDepth - eLev), tn.getX(3) >> (m_uiMaxDepth - eLev));
       break;
     default:
-      fprintf(stdout, "Add higher dimensions to printtn() in octUtils.h ");
+      fprintf(out, "Add higher dimensions to printtn() in octUtils.h ");
   }
 }
 
