@@ -46,6 +46,9 @@ bool testMultiDA()
   const unsigned int eLev = 2;
   unsigned int ndofs = 1;
 
+  const bool reportSize = false;
+  const bool reportEmpty = true;
+
   MPI_Comm comm = MPI_COMM_WORLD;
 
   int rProc, nProc;
@@ -67,12 +70,31 @@ bool testMultiDA()
   // Give DistTree ownership of the octree.
   ot::DistTree<C,dim> dtree(tnlist);
 
+  /// for (int turn = 0; turn < nProc; ++turn)
+  /// {
+  ///   if (turn == rProc)
+  ///     std::cerr << "-----------------------------------------------------------------------------" << rankPrefix << "Here!\n";
+  ///   MPI_Barrier(comm);
+  /// }
+
   // Create grid hierarchy.
   ot::DistTree<C, dim> surrogateDTree = dtree.generateGridHierarchyDown(2, 0.1, comm);
 
-  std::cerr << rankPrefix
-            << "surrogateDTree.getFilteredTreePartSz(1)==" << surrogateDTree.getFilteredTreePartSz(1) << "\n"
-            << "surrogateDTree.getFilteredTreePartSz(1)==" << surrogateDTree.getFilteredTreePartSz(1) << "\n";
+  if (reportSize)
+  {
+    fprintf(stderr, "%s \t SIZE \t %s%lu\n", rankPrefix.c_str(), "dtree.getFilteredTreePartSz(1)==", dtree.getFilteredTreePartSz(1));
+    fprintf(stderr, "%s \t SIZE \t %s%lu\n", rankPrefix.c_str(), "surrogateDTree.getFilteredTreePartSz(1)==", surrogateDTree.getFilteredTreePartSz(1));
+  }
+
+  if (reportEmpty)
+  {
+    if (dtree.getFilteredTreePartSz(0) == 0)
+      fprintf(stderr, "%s \t EMPTY \t Fine tree is empty!\n", rankPrefix.c_str());
+    if (dtree.getFilteredTreePartSz(1) == 0)
+      fprintf(stderr, "%s \t EMPTY \t Coarse tree is empty!\n", rankPrefix.c_str());
+    if (surrogateDTree.getFilteredTreePartSz(1) == 0)
+      fprintf(stderr, "%s \t EMPTY \t Surrogate tree is empty!\n", rankPrefix.c_str());
+  }
 
   // Create DA for all levels.
   std::vector<ot::DA<dim>> multiDA, surrogateMultiDA;
@@ -87,9 +109,21 @@ bool testMultiDA()
   std::fill(coarseVec.begin(), coarseVec.end(), -1.0);
   std::fill(surrogateVec.begin(), surrogateVec.end(), 0.0);
 
-  std::cerr << rankPrefix
-            << "surrogateMultiDA[1].getLocalNodalSz()==" << surrogateMultiDA[1].getLocalNodalSz() << "\n"
-            << "surrogateMultiDA[1].getLocalNodalSz()==" << surrogateMultiDA[1].getLocalNodalSz() << "\n";
+  if (reportSize)
+  {
+    fprintf(stderr, "%s \t SIZE \t %s%lu\n", rankPrefix.c_str(), "multiDA[1].getLocalNodalSz()==", multiDA[1].getLocalNodalSz());
+    fprintf(stderr, "%s \t SIZE \t %s%lu\n", rankPrefix.c_str(), "surrogateMultiDA[1].getLocalNodalSz()==", surrogateMultiDA[1].getLocalNodalSz());
+  }
+
+  if (reportEmpty)
+  {
+    if (multiDA[0].getLocalNodalSz() == 0)
+      fprintf(stderr, "%s \t EMPTY \t Fine ODA is empty!\n", rankPrefix.c_str());
+    if (multiDA[1].getLocalNodalSz() == 0)
+      fprintf(stderr, "%s \t EMPTY \t Coarse ODA is empty!\n", rankPrefix.c_str());
+    if (surrogateMultiDA[1].getLocalNodalSz() == 0)
+      fprintf(stderr, "%s \t EMPTY \t Surrogate ODA is empty!\n", rankPrefix.c_str());
+  }
 
   fem::MeshFreeInputContext<DofT, TN> igtIn{
       fineVec.data(),
@@ -137,15 +171,14 @@ bool testMultiDA()
   ///             << "Can't print high-dimensional grid.\n";
 
 
-  std::cerr << rankPrefix
-            << "locIntergridTransfer\n";
-
+  fprintf(stderr, "%s \t PHASE \t locIntergridTransfer\n", rankPrefix.c_str());
   fem::locIntergridTransfer(igtIn, igtOut, ndofs, refel);
 
 
-  std::cerr << "\n\n";
-  std::cerr << rankPrefix
-            << "---- AFTER ----\n";
+  /// std::cerr << "\n\n";
+  /// std::cerr << rankPrefix
+  ///           << "---- AFTER ----\n";
+
 //   std::cerr << "In vector\n";
 //   if (dim == 2)
 //     ot::printNodes(igtIn.coords, igtIn.coords + igtIn.sz, fineVec.data(), eleOrder, std::cerr) << "\n";
@@ -161,8 +194,7 @@ bool testMultiDA()
   ///             << "Can't print high-dimensional grid.\n";
 
 
-  std::cerr << rankPrefix
-            << "Shift nodes\n";
+  fprintf(stderr, "%s \t PHASE \t Shift nodes\n", rankPrefix.c_str());
   ot::distShiftNodes(surrogateMultiDA[1], surrogateVec.data(), multiDA[1], coarseVec.data());
 
 
@@ -188,11 +220,9 @@ bool testMultiDA()
     }
 
   if (verifyPartition)
-    std::cerr << rankPrefix
-              << "Partition verified.\n";
+    fprintf(stderr, "%s \t RESULT \t Partition verified.\n", rankPrefix.c_str());
   else
-    std::cerr << rankPrefix
-              << "&&&&&&&&&&&&&&&&&&& Partition failed &&&&&&&&&&&&&&&&&&&&&&\n";
+    fprintf(stderr, "%s \t RESULT \t %s.\n", rankPrefix.c_str(), "&&&&&&&&&&&&&&&&&&& Partition failed &&&&&&&&&&&&&&&&&&&&&&\n");
 
 
   return true;
