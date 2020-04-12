@@ -759,6 +759,163 @@ namespace ot
 
 
 
+
+
+
+
+  template <typename T, unsigned int dim>
+  void addMortonDescendants(unsigned int finestLevel,
+                            const TreeNode<T, dim> &anc,
+                            std::vector<TreeNode<T, dim>> &list)
+  {
+    if (anc.getLevel() == finestLevel)
+      list.emplace_back(anc);
+    else
+      for (int c = 0; c < (1u << dim); ++c)
+        addMortonDescendants(finestLevel, anc.getChildMorton(c), list);
+  }
+
+
+
+  template <typename T, unsigned int dim>
+  DistTree<T, dim>  DistTree<T, dim>::constructSubdomainDistTree(
+          unsigned int finestLevel,
+          MPI_Comm comm,
+          double sfc_tol)
+  {
+    int rProc, nProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+    std::vector<TreeNode<T, dim>> treePart;
+    if (rProc == 0)
+      treePart.emplace_back(); // Root
+
+    unsigned int level = 0;
+    const unsigned int jump = 3;
+
+    while (level < finestLevel)
+    {
+      // Extend deeper.
+      std::vector<TreeNode<T, dim>> finerTreePart;
+      unsigned int nextLevel = fmin(finestLevel, level + jump);
+      for (const TreeNode<T, dim> &tn : treePart)
+        addMortonDescendants(nextLevel, tn, finerTreePart);
+
+      // Re-partition.
+      SFC_Tree<T, dim>::distTreeSort(finerTreePart, sfc_tol, comm);
+      SFC_Tree<T, dim>::distCoalesceSiblings(finerTreePart, comm);
+
+      std::swap(treePart, finerTreePart);
+      level = nextLevel;
+    }
+
+    DistTree<T, dim> dtree(treePart);
+    return dtree;
+  }
+
+  template <typename T, unsigned int dim>
+  DistTree<T, dim>  DistTree<T, dim>::constructSubdomainDistTree(
+          unsigned int finestLevel,
+          const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
+              &domainDecider,
+          MPI_Comm comm,
+          double sfc_tol)
+  {
+    int rProc, nProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+    std::vector<TreeNode<T, dim>> treePart;
+    if (rProc == 0)
+      treePart.emplace_back(); // Root
+
+    unsigned int level = 0;
+    const unsigned int jump = 3;
+
+    while (level < finestLevel)
+    {
+      // Extend deeper.
+      std::vector<TreeNode<T, dim>> finerTreePart;
+      unsigned int nextLevel = fmin(finestLevel, level + jump);
+      for (const TreeNode<T, dim> &tn : treePart)
+        addMortonDescendants(nextLevel, tn, finerTreePart);
+
+      // Re-filter.
+      DendroIntL numKept = 0;
+      for (DendroIntL i = 0; i < finerTreePart.size(); ++i)
+        if (domainDecider(finerTreePart[i]) && (numKept++ < i))
+          finerTreePart[numKept-1] = finerTreePart[i];
+      finerTreePart.resize(numKept);
+
+      // Re-partition.
+      SFC_Tree<T, dim>::distTreeSort(finerTreePart, sfc_tol, comm);
+      SFC_Tree<T, dim>::distCoalesceSiblings(finerTreePart, comm);
+
+      std::swap(treePart, finerTreePart);
+      level = nextLevel;
+    }
+
+    DistTree<T, dim> dtree(treePart);
+    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+
+    return dtree;
+  }
+
+  template <typename T, unsigned int dim>
+  DistTree<T, dim>  DistTree<T, dim>::constructSubdomainDistTree(
+          unsigned int finestLevel,
+          const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
+            &domainDecider,
+          MPI_Comm comm,
+          double sfc_tol)
+  {
+    int rProc, nProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+    std::vector<TreeNode<T, dim>> treePart;
+    if (rProc == 0)
+      treePart.emplace_back(); // Root
+
+    unsigned int level = 0;
+    const unsigned int jump = 3;
+
+    while (level < finestLevel)
+    {
+      // Extend deeper.
+      std::vector<TreeNode<T, dim>> finerTreePart;
+      unsigned int nextLevel = fmin(finestLevel, level + jump);
+      for (const TreeNode<T, dim> &tn : treePart)
+        addMortonDescendants(nextLevel, tn, finerTreePart);
+
+      // Re-filter.
+      DendroIntL numKept = 0;
+
+      double phycd[dim];
+      double physz;
+
+      for (DendroIntL i = 0; i < finerTreePart.size(); ++i)
+        if ((treeNode2Physical(finerTreePart[i], phycd, physz), domainDecider(phycd, physz)) && (numKept++ < i))
+          finerTreePart[numKept-1] = finerTreePart[i];
+      finerTreePart.resize(numKept);
+
+      // Re-partition.
+      SFC_Tree<T, dim>::distTreeSort(finerTreePart, sfc_tol, comm);
+      SFC_Tree<T, dim>::distCoalesceSiblings(finerTreePart, comm);
+
+      std::swap(treePart, finerTreePart);
+      level = nextLevel;
+    }
+
+    DistTree<T, dim> dtree(treePart);
+    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+
+    return dtree;
+  }
+
+
+
   // Explicit instantiations
   template class DistTree<unsigned int, 2u>;
   template class DistTree<unsigned int, 3u>;

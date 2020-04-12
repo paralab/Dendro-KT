@@ -48,6 +48,22 @@ namespace ot
       DistTree(const DistTree &other) { this->operator=(other); }
       DistTree & operator=(const DistTree &other);
 
+      static DistTree constructSubdomainDistTree(
+          unsigned int finestLevel,
+          MPI_Comm comm,
+          double sfc_tol = 0.3);
+      static DistTree constructSubdomainDistTree(
+          unsigned int finestLevel,
+          const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
+              &domainDecider_tn,
+          MPI_Comm comm,
+          double sfc_tol = 0.3);
+      static DistTree constructSubdomainDistTree(
+          unsigned int finestLevel,
+          const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
+            &domainDecider_phys,
+          MPI_Comm comm,
+          double sfc_tol = 0.3);
 
       // generateGridHierarchyUp()
       //   TODO should return surrogate DistTree
@@ -258,7 +274,7 @@ namespace ot
 
 
   //
-  // filterTree() (treeNode)  //TODO incorporate whole grid hierarchy.
+  // filterTree() (treeNode)
   //
   template <typename T, unsigned int dim>
   void DistTree<T, dim>::filterTree( const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
@@ -284,7 +300,7 @@ namespace ot
 
       // Keep finding and deleting elements.
       for ( ; ii < oldSz ; ii++)
-        if (!domainDecider(m_gridStrata[l][ii]))
+        if (domainDecider(m_gridStrata[l][ii]))
           m_gridStrata[l][m_filteredTreePartSz[l]++] = std::move(m_gridStrata[l][ii]);
 
       m_gridStrata[l].resize(m_filteredTreePartSz[l]);
@@ -295,7 +311,7 @@ namespace ot
 
 
   //
-  // filterTree() (physical)  //TODO incorporate whole grid hierarchy.
+  // filterTree() (physical)
   //
   template <typename T, unsigned int dim>
   void DistTree<T, dim>::filterTree( const std::function<bool(const double *elemPhysCoords,
@@ -327,7 +343,7 @@ namespace ot
 
       // Keep finding and deleting elements.
       for ( ; ii < oldSz ; ii++)
-        if ( !(treeNode2Physical(m_gridStrata[l][ii], physCoords, physSize)
+        if ( (treeNode2Physical(m_gridStrata[l][ii], physCoords, physSize)
               , domainDecider(physCoords, physSize)) )
           m_gridStrata[l][m_filteredTreePartSz[l]++] = std::move(m_gridStrata[l][ii]);
 
