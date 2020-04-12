@@ -71,6 +71,9 @@ namespace DA_FLAGS
 template <unsigned int dim>
 class DA;
 
+template <unsigned int dim>
+using MultiDA = std::vector<DA<dim>>;
+
 /**
  * @brief Construct a DA representing the nodes of a hypercuboid with grid
  *         extents pow(2,a) * pow(2,b) * pow(2,c) * pow(2,d) (in 4D).
@@ -94,7 +97,9 @@ DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
  *        the coarse grid until finestLevel is reached.
  */
 template <unsigned int dim>
-void constructRegularSubdomainDAHierarchy(std::vector<DA<dim>> &newMultiSubDA,
+void constructRegularSubdomainDAHierarchy(
+                                 std::vector<DA<dim>> &newMultiSubDA,
+                                 std::vector<DA<dim>> &newSurrogateMultiSubDA,
                                  unsigned int coarsestLevel,
                                  unsigned int finestLevel,
                                  std::array<unsigned int, dim> extentPowers,

@@ -67,7 +67,9 @@ namespace ot
 
 
     template <unsigned int dim>
-    void constructRegularSubdomainDAHierarchy(std::vector<DA<dim>> &newMultiSubDA,
+    void constructRegularSubdomainDAHierarchy(
+                                     std::vector<DA<dim>> &newMultiSubDA,
+                                     std::vector<DA<dim>> &newSurrogateMultiSubDA,
                                      unsigned int coarsestLevel,
                                      unsigned int finestLevel,
                                      std::array<unsigned int, dim> extentPowers,
@@ -102,9 +104,11 @@ namespace ot
                                                         comm,
                                                         sfc_tol );
 
-      dtree.generateGridHierarchyDown(finestLevel-coarsestLevel+1, sfc_tol, comm);
+      DistTree<C, dim> surrogate =
+          dtree.generateGridHierarchyDown(finestLevel-coarsestLevel+1, sfc_tol, comm);
 
       DA<dim>::multiLevelDA(newMultiSubDA, dtree, comm, eleOrder, grainSz, sfc_tol);
+      DA<dim>::multiLevelDA(newSurrogateMultiSubDA, surrogate, comm, eleOrder, grainSz, sfc_tol);
     }
 
 
