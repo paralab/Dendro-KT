@@ -51,6 +51,7 @@ namespace fem
                          /// double scale,
                          const RefElement *refElement)
   {
+#warning "locIntergridTransfer() needs to give refElement to MatvecBaseIn/Out"
     if (in.sz == 0 && out.sz == 0)
       return;
 

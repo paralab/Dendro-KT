@@ -37,8 +37,6 @@ struct gmgMatStratumWrapper
 };
 
 
-//TODO change DA, m_uiOctDA, da  to multi-level da, if we go that route.
-
 // =================================
 // gmgMat
 // =================================
@@ -49,7 +47,9 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief: pointer to OCT DA*/
-    ot::DA<dim>* m_uiOctDA;
+    ot::MultiDA<dim> * m_multiDA;
+    ot::MultiDA<dim> * m_surrogateMultiDA;
+    unsigned int m_ndofs;
 
     /**@brief problem domain min point*/
     Point<dim> m_uiPtMin;
@@ -70,12 +70,14 @@ public:
       * @par[in] daType: type of the DA
       * @note Does not own da.
     **/
-    gmgMat(ot::DA<dim>* da)
+    gmgMat(ot::MultiDA<dim>* mda, ot::MultiDA<dim> *smda, unsigned int ndofs)
+      : m_multiDA{mda}, m_surrogateMultiDA{smda}, m_ndofs{ndofs}
     {
-      m_uiOctDA=da;
+      assert(mda != nullptr);
+      assert(smda != nullptr);
+      assert(mda->size() == smda->size());  // Did you generate DA from surrogate tree?
 
-      // TODO get the appropriate numStrata from da/multi-level da.
-      const unsigned int numStrata = m_uiMaxDepth + 1;
+      const unsigned int numStrata = mda->size();
       for (int ii = 0; ii < numStrata; ++ii)
         m_stratumWrappers.emplace_back(this, ii);
     }
@@ -90,6 +92,14 @@ public:
     {
       return static_cast<LeafClass &>(*this);
     }
+
+
+    //TODO I think this is actually where we do the ghost exchanges and call local versions,
+    //  meaning these actually need to be defined. The leaf type should only
+    //  have to define elemental operators.
+    //    - Elemental mass-matrix multiplication -> matvec
+    //    - Elemental set mass-matrix diagonal.  -> smooth
+    //
 
     /**@brief Computes the LHS of the weak formulation, normally the stiffness matrix times a given vector.
      * @param [in] in input vector u
@@ -127,7 +137,7 @@ public:
     {
       static bool reentrant = false;
       if (reentrant)
-        throw std::logic_error{"smooth() not implemented by LeafClass"};
+        throw std::logic_error{"residual() not implemented by LeafClass"};
       reentrant = true;
       {
         asConcreteType().residual(x, f, r, stratum);
@@ -142,6 +152,91 @@ public:
       m_uiPtMin=pt_min;
       m_uiPtMax=pt_max;
     }
+
+
+    void restriction(const VECType *fineErr, VECType *coarseErr, unsigned int fineStratum = 0)
+    {
+      /// using namespace std::placeholders;   // Convenience for std::bind().
+
+      ot::DA<dim> &fineDA = (*this->m_multiDA)[fineStratum];
+      ot::DA<dim> &surrDA = (*this->m_surrogateMultiDA)[fineStratum+1];
+      ot::DA<dim> &coarseDA = (*this->m_multiDA)[fineStratum+1];
+
+      // Static buffers for ghosting. Check/increase size.
+      static std::vector<VECType> fineGhosted, surrGhosted;
+      fineDA.template createVector<VECType>(fineGhosted, false, true, m_ndofs);
+      surrDA.template createVector<VECType>(surrGhosted, false, true, m_ndofs);
+      VECType *fineGhostedPtr = fineGhosted.data();
+      VECType *surrGhostedPtr = surrGhosted.data();
+
+      // 1. Copy input data to ghosted buffer.
+      fineDA.template nodalVecToGhostedNodal<VECType>(fineErr, fineGhostedPtr, true, m_ndofs);
+
+      // code import note: There was prematvec here.
+
+      using TN = ot::TreeNode<typename ot::DA<dim>::C, dim>
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_ghostexchange.start();
+#endif
+
+      // 2. Upstream->downstream ghost exchange.
+      fineDA.template readFromGhostBegin<VECType>(fineGhostedPtr, m_ndofs);
+      fineDA.template readFromGhostEnd<VECType>(fineGhostedPtr, m_ndofs);
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_ghostexchange.stop();
+#endif
+
+      // code import note: There was binding elementalMatvec here.
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_gmg_loc_restrict.start();
+#endif
+
+      ot::MeshFreeInputContext<VECType, TN>
+          inctx{ fineGhostedPtr,
+                 fineDA.getTNCoords(),
+                 fineDA.getTotalNodalSz(),
+                 *fineDA.getTreePartFront(),
+                 *fineDA.getTreePartBack() };
+
+      ot::MeshFreeOutputContext<VECType, TN>
+          outctx{surrGhostedPtr,
+                 surrDA.getTNCoords(),
+                 surrDA.getTotalNodalSz(),
+                 *surrDA.getTreePartFront(),
+                 *surrDA.getTreePartBack() };
+
+      const RefElement * refel = fineDA.getReferenceElement();
+
+      ot::locIntergridTransfer(inctx, outctx, m_ndofs, refel);
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_gmg_loc_restrict.start();
+#endif
+
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_ghostexchange.start();
+#endif
+
+      // 4. Downstream->Upstream ghost exchange.
+      surrDA.template writeToGhostsBegin<VECType>(surrGhostedPtr, m_ndofs);
+      surrDA.template writeToGhostsEnd<VECType>(surrGhostedPtr, m_ndofs);
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_ghostexchange.stop();
+#endif
+
+      // 5. Copy output data from ghosted buffer.
+      ot::distShiftNodes(surrDA,    surrGhostedPtr + surrDA.getLocalNodeBegin(),
+                         coarseDA,  coarseErr,
+                         m_ndofs);
+                         
+      // code import note: There was postmatvec here.
+    }
+
 
 
 #ifdef BUILD_WITH_PETSC
@@ -238,6 +333,7 @@ public:
 
 
     //TODO what user mult interface do the other PETSC multigrid operators need?
+    // where do restriction and prolongation go?
 
 
     /** @brief The 'user defined' matvec we give to petsc to make a matrix-free matrix. Don't call this directly. */
@@ -250,6 +346,7 @@ public:
     };
 
     //TODO what user mult interface do the other PETSC multigrid operators need?
+    // petscUserMultSmooth
 
 
 #endif
