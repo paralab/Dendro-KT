@@ -119,7 +119,7 @@ void constructRegularSubdomainDAHierarchy(
  * @param comm MPI communicator over which the transfer takes place. Need not equal the src/dest DA comms.
  */
 template <unsigned int dim, typename DofT>
-void distShiftNodes(const DA<dim> &srcDA, const DofT *srcLocal, const DA<dim> &destDA, DofT *destLocal);
+void distShiftNodes(const DA<dim> &srcDA, const DofT *srcLocal, const DA<dim> &destDA, DofT *destLocal, unsigned int ndofs = 1);
 
 
 template <unsigned int dim>

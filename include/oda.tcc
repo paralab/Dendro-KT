@@ -542,7 +542,8 @@ namespace ot
     void distShiftNodes(const DA<dim> &srcDA,
                         const DofT *srcLocal,
                         const DA<dim> &dstDA,
-                        DofT *dstLocal)
+                        DofT *dstLocal,
+                        unsigned int ndofs)
     {
       // TODO
       // Efficiency target: Communication latency should be linear in the
@@ -746,11 +747,11 @@ namespace ot
       // otherDstBegin[r], mySrcBegin  <=  mySrcRank[x]  <  mySrcEnd, otherDstEnd[r];
       // otherSrcBegin[r], myDstBegin  <=  myDstRank[x]  <  myDstEnd, otherSrcEnd[r];
       for (int i = 0; i < dstTo.size(); ++i)
-        dstCount[i] = fmin(mySrcGlobEnd, allDstSplit[dstTo[i] + eSplit])
-                      - fmax(mySrcGlobBegin, allDstSplit[dstTo[i] + bSplit]);
+        dstCount[i] = ndofs * (fmin(mySrcGlobEnd, allDstSplit[dstTo[i] + eSplit])
+                               - fmax(mySrcGlobBegin, allDstSplit[dstTo[i] + bSplit]));
       for (int i = 0; i < srcFrom.size(); ++i)
-        srcCount[i] = fmin(myDstGlobEnd, allSrcSplit[srcFrom[i] + eSplit])
-                      - fmax(myDstGlobBegin, allSrcSplit[srcFrom[i] + bSplit]);
+        srcCount[i] = ndofs * (fmin(myDstGlobEnd, allSrcSplit[srcFrom[i] + eSplit])
+                               - fmax(myDstGlobBegin, allSrcSplit[srcFrom[i] + bSplit]));
       std::vector<int> dstDspls(1, 0);
       std::vector<int> srcDspls(1, 0);
       for (int c : dstCount)
