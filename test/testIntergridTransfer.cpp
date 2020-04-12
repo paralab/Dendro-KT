@@ -128,7 +128,7 @@ bool testMultiDA()
 
   fem::MeshFreeInputContext<DofT, TN> igtIn{
       fineVec.data(),
-      multiDA[0].getTNCoords(),
+      multiDA[0].getTNCoords() + multiDA[0].getLocalNodeBegin(),
       multiDA[0].getLocalNodalSz(),
       *multiDA[0].getTreePartFront(),
       *multiDA[0].getTreePartBack()
@@ -136,7 +136,7 @@ bool testMultiDA()
 
   fem::MeshFreeOutputContext<DofT, TN> igtOut{
       surrogateVec.data(),
-      surrogateMultiDA[1].getTNCoords(),
+      surrogateMultiDA[1].getTNCoords() + surrogateMultiDA[1].getLocalNodeBegin(),
       surrogateMultiDA[1].getLocalNodalSz(),
       *surrogateMultiDA[1].getTreePartFront(),
       *surrogateMultiDA[1].getTreePartBack()
@@ -243,10 +243,13 @@ bool testMultiDA()
 
   std::vector<TN> coarseTNVerify;
   multiDA[1].createVector(coarseTNVerify, false, false, ndofs);
-  ot::distShiftNodes(surrogateMultiDA[1], surrogateMultiDA[1].getTNCoords(), multiDA[1], coarseTNVerify.data());
+  ot::distShiftNodes(surrogateMultiDA[1],
+                     surrogateMultiDA[1].getTNCoords() + surrogateMultiDA[1].getLocalNodeBegin(),
+                     multiDA[1],
+                     coarseTNVerify.data() + multiDA[1].getLocalNodeBegin());
   bool verifyPartition = true;
   int misses = 0;
-  for (int i = 0; i < multiDA[1].getLocalNodalSz(); ++i)
+  for (int i = multiDA[1].getLocalNodeBegin(); i < multiDA[1].getLocalNodeBegin() + multiDA[1].getLocalNodalSz(); ++i)
     if (coarseTNVerify[i] != multiDA[1].getTNCoords()[i])
     {
       verifyPartition = false;
