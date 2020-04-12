@@ -118,7 +118,7 @@ namespace ot
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     void DA<dim>::construct(ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
-      // TODO take into account grainSz and sfc_tol to set up activeComm.
+      // TODO remove grainSz parameter from ODA, which must respect the tree!
 
       int nProc, rProc;
       MPI_Comm_size(comm, &nProc);

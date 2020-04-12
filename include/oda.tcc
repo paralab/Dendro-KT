@@ -66,6 +66,47 @@ namespace ot
     }//namespace ot::util
 
 
+    template <unsigned int dim>
+    void constructRegularSubdomainDAHierarchy(std::vector<DA<dim>> &newMultiSubDA,
+                                     unsigned int coarsestLevel,
+                                     unsigned int finestLevel,
+                                     std::array<unsigned int, dim> extentPowers,
+                                     unsigned int eleOrder,
+                                     MPI_Comm comm,
+                                     size_t grainSz,
+                                     double sfc_tol)
+    {
+      using C = typename DA<dim>::C;
+
+      std::array<C, dim> bounds;
+      for (int d = 0; d < dim; ++d)
+        bounds[d] = 1u << (m_uiMaxDepth - (coarsestLevel - extentPowers[d]));
+
+      struct BoxDecider
+      {
+        std::array<C, dim> m_bounds;
+
+        bool operator()(const TreeNode<C, dim> &tn)
+        {
+          bool notOutside = true;
+          for (int d = 0; d < dim; ++d)
+            notOutside &= (tn.getX(d) < m_bounds[d]);
+          return notOutside;
+        }
+      }
+      boxDecider{bounds};
+
+      DistTree<C, dim> dtree =
+          DistTree<C, dim>::constructSubdomainDistTree( coarsestLevel,
+                                                        boxDecider,
+                                                        comm,
+                                                        sfc_tol );
+
+      dtree.generateGridHierarchyDown(finestLevel-coarsestLevel+1, sfc_tol, comm);
+
+      DA<dim>::multiLevelDA(newMultiSubDA, dtree, comm, eleOrder, grainSz, sfc_tol);
+    }
+
 
     template <unsigned int dim>
     DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,

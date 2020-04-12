@@ -87,6 +87,22 @@ DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
                                  MPI_Comm comm,
                                  double sfc_tol = 0.3);
 
+/**
+ * @brief Creates a uniform coarse grid at level coarsestLevel,
+ *        having the extents determined by extentPowers,
+ *        then generates a grid hierarchy by subdividing uniformly
+ *        the coarse grid until finestLevel is reached.
+ */
+template <unsigned int dim>
+void constructRegularSubdomainDAHierarchy(std::vector<DA<dim>> &newMultiSubDA,
+                                 unsigned int coarsestLevel,
+                                 unsigned int finestLevel,
+                                 std::array<unsigned int, dim> extentPowers,
+                                 unsigned int eleOrder,
+                                 MPI_Comm comm,
+                                 size_t grainSz = 100,
+                                 double sfc_tol = 0.3);
+
 
 /**
  * @brief Transfer data to an identically-structured but differently-partitioned grid, e.g. surrogate.
