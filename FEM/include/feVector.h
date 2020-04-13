@@ -131,6 +131,7 @@ void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
   static std::vector<VECType> inGhosted, outGhosted;
   m_oda->template createVector<VECType>(inGhosted, false, true, m_uiDof);
   m_oda->template createVector<VECType>(outGhosted, false, true, m_uiDof);
+  std::fill(outGhosted.begin(), outGhosted.end(), 0);
   VECType *inGhostedPtr = inGhosted.data();
   VECType *outGhostedPtr = outGhosted.data();
 
