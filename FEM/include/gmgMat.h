@@ -8,6 +8,7 @@
 #define DENDRO_KT_GMG_MAT_H
 
 #include "oda.h"
+#include "intergridTransfer.h"
 #include "point.h"
 #include <stdexcept>
 #ifdef BUILD_WITH_PETSC
@@ -174,7 +175,7 @@ public:
 
       // code import note: There was prematvec here.
 
-      using TN = ot::TreeNode<typename ot::DA<dim>::C, dim>
+      using TN = ot::TreeNode<typename ot::DA<dim>::C, dim>;
 
 #ifdef DENDRO_KT_GMG_BENCH_H
       bench::t_ghostexchange.start();
@@ -194,14 +195,14 @@ public:
       bench::t_gmg_loc_restrict.start();
 #endif
 
-      ot::MeshFreeInputContext<VECType, TN>
+      fem::MeshFreeInputContext<VECType, TN>
           inctx{ fineGhostedPtr,
                  fineDA.getTNCoords(),
                  fineDA.getTotalNodalSz(),
                  *fineDA.getTreePartFront(),
                  *fineDA.getTreePartBack() };
 
-      ot::MeshFreeOutputContext<VECType, TN>
+      fem::MeshFreeOutputContext<VECType, TN>
           outctx{surrGhostedPtr,
                  surrDA.getTNCoords(),
                  surrDA.getTotalNodalSz(),
@@ -210,7 +211,7 @@ public:
 
       const RefElement * refel = fineDA.getReferenceElement();
 
-      ot::locIntergridTransfer(inctx, outctx, m_ndofs, refel);
+      fem::locIntergridTransfer(inctx, outctx, m_ndofs, refel);
 
 #ifdef DENDRO_KT_GMG_BENCH_H
       bench::t_gmg_loc_restrict.start();
@@ -311,10 +312,9 @@ public:
      */
     void petscMatCreateShellMatVec(Mat &matrixFreeMat, unsigned int stratum = 0)
     {
-      //TODO get the node size at given stratum.
-      PetscInt localM = m_uiOctDA->getLocalNodalSz();
-      PetscInt globalM = m_uiOctDA->getGlobalNodeSz();
-      MPI_Comm comm = m_uiOctDA->getGlobalComm();
+      PetscInt localM = (*m_multiDA[stratum]).getLocalNodalSz();
+      PetscInt globalM = (*m_multiDA[stratum]).getGlobalNodeSz();
+      MPI_Comm comm = (*m_multiDA[stratum]).getGlobalComm();
 
       MatCreateShell(comm, localM, localM, globalM, globalM, &m_stratumWrappers[stratum], &matrixFreeMat);
       MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserMultMatVec);
@@ -322,10 +322,9 @@ public:
 
     void petscMatCreateShellSmooth(Mat &matrixFreeMat, unsigned int stratum = 0)
     {
-      //TODO get the node size at given stratum.
-      PetscInt localM = m_uiOctDA->getLocalNodalSz();
-      PetscInt globalM = m_uiOctDA->getGlobalNodeSz();
-      MPI_Comm comm = m_uiOctDA->getGlobalComm();
+      PetscInt localM = (*m_multiDA[stratum]).getLocalNodalSz();
+      PetscInt globalM = (*m_multiDA[stratum]).getGlobalNodeSz();
+      MPI_Comm comm = (*m_multiDA[stratum]).getGlobalComm();
 
       MatCreateShell(comm, localM, localM, globalM, globalM, &m_stratumWrappers[stratum], &matrixFreeMat);
       MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserMultSmooth);
