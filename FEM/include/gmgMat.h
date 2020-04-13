@@ -167,6 +167,7 @@ public:
       static std::vector<VECType> fineGhosted, surrGhosted;
       fineDA.template createVector<VECType>(fineGhosted, false, true, m_ndofs);
       surrDA.template createVector<VECType>(surrGhosted, false, true, m_ndofs);
+      std::fill(surrGhosted.begin(), surrGhosted.end(), 0);
       VECType *fineGhostedPtr = fineGhosted.data();
       VECType *surrGhostedPtr = surrGhosted.data();
 
@@ -235,6 +236,91 @@ public:
                          coarseDA,  coarseErr,
                          m_ndofs);
                          
+      // code import note: There was postmatvec here.
+    }
+
+
+    void prolongation(const VECType *coarseCrx, VECType *fineCrx, unsigned int fineStratum = 0)
+    {
+      /// using namespace std::placeholders;   // Convenience for std::bind().
+
+      ot::DA<dim> &fineDA = (*this->m_multiDA)[fineStratum];
+      ot::DA<dim> &surrDA = (*this->m_surrogateMultiDA)[fineStratum+1];
+      ot::DA<dim> &coarseDA = (*this->m_multiDA)[fineStratum+1];
+
+      // Static buffers for ghosting. Check/increase size.
+      static std::vector<VECType> fineGhosted, surrGhosted;
+      fineDA.template createVector<VECType>(fineGhosted, false, true, m_ndofs);
+      surrDA.template createVector<VECType>(surrGhosted, false, true, m_ndofs);
+      std::fill(fineGhosted.begin(), fineGhosted.end(), 0);
+      VECType *fineGhostedPtr = fineGhosted.data();
+      VECType *surrGhostedPtr = surrGhosted.data();
+
+      // 1. Copy input data to ghosted buffer.
+      ot::distShiftNodes(coarseDA,   coarseCrx,
+                         surrDA,     surrGhostedPtr + surrDA.getLocalNodeBegin(),
+                         m_ndofs);
+
+      // code import note: There was prematvec here.
+
+      using TN = ot::TreeNode<typename ot::DA<dim>::C, dim>;
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_ghostexchange.start();
+#endif
+
+      // 2. Upstream->downstream ghost exchange.
+      surrDA.template readFromGhostBegin<VECType>(surrGhostedPtr, m_ndofs);
+      surrDA.template readFromGhostEnd<VECType>(surrGhostedPtr, m_ndofs);
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_ghostexchange.stop();
+#endif
+
+      // code import note: There was binding elementalMatvec here.
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_gmg_loc_restrict.start();
+#endif
+
+      fem::MeshFreeInputContext<VECType, TN>
+          inctx{ surrGhostedPtr,
+                 surrDA.getTNCoords(),
+                 surrDA.getTotalNodalSz(),
+                 *surrDA.getTreePartFront(),
+                 *surrDA.getTreePartBack() };
+
+      fem::MeshFreeOutputContext<VECType, TN>
+          outctx{fineGhostedPtr,
+                 fineDA.getTNCoords(),
+                 fineDA.getTotalNodalSz(),
+                 *fineDA.getTreePartFront(),
+                 *fineDA.getTreePartBack() };
+
+      const RefElement * refel = fineDA.getReferenceElement();
+
+      fem::locIntergridTransfer(inctx, outctx, m_ndofs, refel);
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_gmg_loc_restrict.start();
+#endif
+
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_ghostexchange.start();
+#endif
+
+      // 4. Downstream->Upstream ghost exchange.
+      fineDA.template writeToGhostsBegin<VECType>(fineGhostedPtr, m_ndofs);
+      fineDA.template writeToGhostsEnd<VECType>(fineGhostedPtr, m_ndofs);
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+      bench::t_ghostexchange.stop();
+#endif
+
+      // 5. Copy output data from ghosted buffer.
+      fineDA.template ghostedNodalToNodalVec<VECType>(fineGhostedPtr, fineCrx, true, m_ndofs);
+
       // code import note: There was postmatvec here.
     }
 
