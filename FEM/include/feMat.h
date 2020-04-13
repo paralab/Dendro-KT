@@ -66,6 +66,8 @@ public:
      * */
     virtual void matVec(const VECType * in, VECType* out,double scale=1.0)=0;
 
+    virtual void setDiag(VECType *out, double scale = 1.0) = 0;
+
     /**@brief set the problem dimension*/
     inline void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max)
     {

@@ -171,6 +171,8 @@ set(DENDRO_KT_INC include/dendro.h
                   FEM/include/feVec.h
                   FEM/include/feVector.h
                   FEM/include/interpMatrices.h
+                  FEM/include/intergridTransfer.h
+                  FEM/include/setDiag.h
                   FEM/include/gmgMat.h
                   )
 
@@ -345,7 +347,6 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIntergridTransfer.cpp)
 add_executable(tstIntergridTransfer ${SRC_FILES})
 target_include_directories(tstIntergridTransfer PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstIntergridTransfer dendroKT ${MPI_LIBRARIES} m)
-
 
 ## tsort_bench (./tsortBench)
 ## -----------

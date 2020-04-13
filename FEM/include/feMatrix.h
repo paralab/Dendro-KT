@@ -49,6 +49,8 @@ protected:
         * */
         virtual void matVec(const VECType* in,VECType* out, double scale=1.0);
 
+        virtual void setDiag(VECType *out, double scale = 1.0);
+
 
         /**@brief Computes the elemental matvec
           * @param [in] in input vector u
@@ -56,6 +58,24 @@ protected:
           * @param [in] scale vector by scale*Ku
         **/
         virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) = 0;
+
+        /**@brief Sets the diagonal of the elemental matrix.
+         * @param [out] out output vector diag(K)
+         * @param [in] in coords physical space coordinates of the element.
+         * @param [in] in scale diagonal by scale*diag(K).
+         * Leaf class responsible to implement (static polymorphism).
+         */
+        virtual void elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale)
+        {
+          static bool reentrant = false;
+          if (reentrant)
+            throw std::logic_error{"elementalSetDiag() not implemented by feMatrix leaf derived class"};
+          reentrant = true;
+          {
+            asLeaf().elementalSetDiag(out, ndofs, coords, scale);
+          }
+          reentrant = false;
+        }
 
 
 
@@ -67,6 +87,9 @@ protected:
           * @param [in] default parameter scale vector by scale*Ku
         * */
         virtual void matVec(const Vec& in,Vec& out, double scale=1.0);
+
+        virtual void setDiag(VEC& out, double scale = 1.0);
+
 
         /**
          * @brief Performs the matrix assembly.
@@ -278,6 +301,56 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   // TODO what is the return value supposed to represent?
 }
 
+
+template <typename LeafT, unsigned int dim>
+void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
+{
+  using namespace std::placeholders;   // Convenience for std::bind().
+
+  // Shorter way to refer to our member DA.
+  ot::DA<dim> * &m_oda = feMat<dim>::m_uiOctDA;
+
+  // Static buffers for ghosting. Check/increase size.
+  static std::vector<VECType> outGhosted;
+  m_oda->template createVector<VECType>(outGhosted, false, true, m_uiDof);
+  std::fill(outGhosted.begin(), outGhosted.end(), 0);
+  VECType *outGhostedPtr = outGhosted.data();
+
+  // Local setDiag().
+  const auto * tnCoords = m_oda->getTNCoords();
+  std::function<void(VECType *, unsigned int, const double *, double)> eleSet =
+      std::bind(&feMatrix<LeafT,dim>::elementalSetDiag, this, _1, _2, _3, _4,);
+
+#ifdef DENDRO_KT_GMG_BENCH_H
+  bench::t_matvec.start();
+#endif
+  fem::locSetDiag(outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),
+      *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
+      eleSet, scale, m_oda->getReferenceElement());
+
+#ifdef DENRO_KT_GMG_BENCH_H
+  bench::t_matvec.stop();
+#endif
+
+
+#ifdef DENRO_KT_GMG_BENCH_H
+  bench::t_ghostexchange.start();
+#endif
+
+  // Downstream->Upstream ghost exchange.
+  m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof);
+  m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, m_uiDof);
+
+#ifdef DENRO_KT_GMG_BENCH_H
+  bench::t_ghostexchange.stop();
+#endif
+
+  // 5. Copy output data from ghosted buffer.
+  m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, m_uiDof);
+}
+
+
+
 #ifdef BUILD_WITH_PETSC
 
 template <typename LeafT, unsigned int dim>
@@ -297,11 +370,23 @@ void feMatrix<LeafT,dim>::matVec(const Vec &in, Vec &out, double scale)
 
 }
 
+template <typename LeafT, unsigned int dim>
+void feMatrix<LeafT, dim>::setDiag(VEC& out, double scale)
+{
+  PetscScalar * outArry=NULL;
+  VecGetArray(out,&outArry);
+
+  setDiag(outArry, scale);
+
+  VecRestoreArray(out,&outArry);
+}
 
 
 template <typename LeafT, unsigned int dim>
 bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {
+  assert(!"Not implemented!");
+
     // todo we can skip this part for sc. 
     // Octree part ...
     /*char matType[30];

@@ -95,12 +95,15 @@ public:
     }
 
 
-    //TODO I think this is actually where we do the ghost exchanges and call local versions,
-    //  meaning these actually need to be defined. The leaf type should only
-    //  have to define elemental operators.
-    //    - Elemental mass-matrix multiplication -> matvec
-    //    - Elemental set mass-matrix diagonal.  -> smooth
-    //
+    // Design note (static polymorphism)
+    //   The gmgMat does not impose a mass matrix or smoothing operator.
+    //   The leaf derived type is responsible to implement those.
+    //   Suggestion:
+    //     Define a leaf derived type from gmgMat that contains
+    //     (via class composition) an feMat instance per level.
+    //     The feMat class knows how to do a matvec and extract the diagonal,
+    //     provided that the elemental versions are implemented in a leaf
+    //     derived type of feMat.
 
     /**@brief Computes the LHS of the weak formulation, normally the stiffness matrix times a given vector.
      * @param [in] in input vector u
