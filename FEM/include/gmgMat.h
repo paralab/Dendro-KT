@@ -2,6 +2,10 @@
  * @author Masado Ishii
  * @date 2020-02-14
  * @brief Abstract class for geometric multigrid smoother & residual.
+ *
+ * @note When used with petsc, this interface ignores some of
+ *       the smoother options passed through petsc, and assumes that the
+ *       application smoother makes the right choice.
  */
 
 #ifndef DENDRO_KT_GMG_MAT_H
@@ -12,6 +16,8 @@
 #include "point.h"
 #include <stdexcept>
 #ifdef BUILD_WITH_PETSC
+#include "petscpc.h"
+#include "petscksp.h"
 #include "petscdmda.h"
 #endif
 
@@ -50,6 +56,7 @@ protected:
     /**@brief: pointer to OCT DA*/
     ot::MultiDA<dim> * m_multiDA;
     ot::MultiDA<dim> * m_surrogateMultiDA;
+    unsigned int m_numStrata;
     unsigned int m_ndofs;
 
     /**@brief problem domain min point*/
@@ -60,11 +67,11 @@ protected:
 
     std::vector<gmgMatStratumWrapper<dim, LeafClass>> m_stratumWrappers;
 
-    // I don't know what this is
-/// #ifdef BUILD_WITH_PETSC
-///     /**@brief: petsc DM*/
-///     DM m_uiPETSC_DA;
-/// #endif
+#ifdef BUILD_WITH_PETSC
+    Vec * m_stratumWorkRhs;
+    Vec * m_stratumWorkX;
+    Vec * m_stratumWorkR;
+#endif
 
 public:
     /**@brief: gmgMat constructor
@@ -72,21 +79,48 @@ public:
       * @note Does not own da.
     **/
     gmgMat(ot::MultiDA<dim>* mda, ot::MultiDA<dim> *smda, unsigned int ndofs)
-      : m_multiDA{mda}, m_surrogateMultiDA{smda}, m_ndofs{ndofs}
+      : m_multiDA(mda), m_surrogateMultiDA(smda), m_ndofs(ndofs)
     {
       assert(mda != nullptr);
       assert(smda != nullptr);
       assert(mda->size() == smda->size());  // Did you generate DA from surrogate tree?
 
-      const unsigned int numStrata = mda->size();
-      for (int ii = 0; ii < numStrata; ++ii)
+      m_numStrata = mda->size();
+      for (int ii = 0; ii < m_numStrata; ++ii)
         m_stratumWrappers.emplace_back(this, ii);
+
+
+#ifdef BUILD_WITH_PETSC
+      m_stratumWorkRhs = new Vec[m_numStrata];
+      m_stratumWorkX = new Vec[m_numStrata];
+      m_stratumWorkR = new Vec[m_numStrata];
+
+      m_multiDA[0].petscCreateVector(m_stratumWorkR[0], false, false, m_ndofs);
+      for (int ii = 1; ii < m_numStrata; ++ii)
+      {
+        m_multiDA[ii].petscCreateVector(m_stratumWorkRhs[ii], false, false, m_ndofs);
+        m_multiDA[ii].petscCreateVector(m_stratumWorkX[ii], false, false, m_ndofs);
+        m_multiDA[ii].petscCreateVector(m_stratumWorkR[ii], false, false, m_ndofs);
+      }
+#endif
     }
 
     /**@brief deconstructor*/
     ~gmgMat()
     {
+#ifdef BUILD_WITH_PETSC
+      m_multiDA[0].petscDestroyVec(m_stratumWorkR[0]);
+      for (int ii = 1; ii < m_numStrata; ++ii)
+      {
+        m_multiDA[ii].petscDestroyVec(m_stratumWorkRhs[ii]);
+        m_multiDA[ii].petscDestroyVec(m_stratumWorkX[ii]);
+        m_multiDA[ii].petscDestroyVec(m_stratumWorkR[ii]);
+      }
 
+      delete [] m_stratumWorkRhs;
+      delete [] m_stratumWorkX;
+      delete [] m_stratumWorkR;
+#endif
     }
 
     LeafClass & asConcreteType()
@@ -124,14 +158,23 @@ public:
     }
 
 
-    void smooth(VECType *u, const VECType *f, unsigned int stratum = 0)//=0
+    /**
+     * @brief Update the vector 'u' by applying one or more SOR smoothing steps.
+     * @param [in out] u Approximate solution to be improved.
+     * @param [in] rhs Righthand side of the linear system.
+     * @param [in] omega Relaxation factor.
+     * @param [in] iters Number of (global) iterations.
+     * @param [in] localIters Number of local iterations.
+     * @note Total number of smoothing steps should be (iters*localIters).
+     */
+    void smooth(VECType *u, const VECType *rhs, double omega, int iters, int localIters, unsigned int stratum = 0)//=0
     {
       static bool reentrant = false;
       if (reentrant)
         throw std::logic_error{"smooth() not implemented by LeafClass"};
       reentrant = true;
       {
-        asConcreteType().smooth(u, f, stratum);
+        asConcreteType().smooth(u, rhs, omega, iters, localIters, stratum);
       }
       reentrant = false;
     }
@@ -158,7 +201,7 @@ public:
     }
 
 
-    void restriction(const VECType *fineErr, VECType *coarseErr, unsigned int fineStratum = 0)
+    void restriction(const VECType *fineRes, VECType *coarseRes, unsigned int fineStratum = 0)
     {
       /// using namespace std::placeholders;   // Convenience for std::bind().
 
@@ -175,7 +218,7 @@ public:
       VECType *surrGhostedPtr = surrGhosted.data();
 
       // 1. Copy input data to ghosted buffer.
-      fineDA.template nodalVecToGhostedNodal<VECType>(fineErr, fineGhostedPtr, true, m_ndofs);
+      fineDA.template nodalVecToGhostedNodal<VECType>(fineRes, fineGhostedPtr, true, m_ndofs);
 
       // code import note: There was prematvec here.
 
@@ -236,7 +279,7 @@ public:
 
       // 5. Copy output data from ghosted buffer.
       ot::distShiftNodes(surrDA,    surrGhostedPtr + surrDA.getLocalNodeBegin(),
-                         coarseDA,  coarseErr,
+                         coarseDA,  coarseRes,
                          m_ndofs);
                          
       // code import note: There was postmatvec here.
@@ -356,37 +399,37 @@ public:
     //
     // smooth() [Petsc Vec]
     //
-    void smooth(Vec &u, const Vec &f, unsigned int stratum = 0)
+    void smooth(Vec &u, const Vec &rhs, PetscReal omega, PetscInt iters, PetscInt localIters, unsigned int stratum = 0)
     {
       PetscScalar * uArry = nullptr;
       const PetscScalar * fArry = nullptr;
 
       VecGetArray(u, &uArry);
-      VecGetArrayRead(f, &fArry);
+      VecGetArrayRead(rhs, &fArry);
 
-      smooth(uArry, fArry, stratum);
+      smooth(uArry, fArry, (double) omega, (int) iters, (int) localIters, stratum);
 
       VecRestoreArray(u, &uArry);
-      VecRestoreArrayRead(f, &fArry);
+      VecRestoreArrayRead(rhs, &fArry);
     }
 
     //
     // residual() [Petsc Vec]
     //
-    void residual(const Vec &x, const Vec &f, Vec &r, unsigned int stratum = 0)
+    void residual(const Vec &x, const Vec &rhs, Vec &r, unsigned int stratum = 0)
     {
       const PetscScalar * xArry = nullptr;
       const PetscScalar * fArry = nullptr;
       PetscScalar * rArry = nullptr;
 
       VecGetArrayRead(x, &xArry);
-      VecGetArrayRead(f, &fArry);
+      VecGetArrayRead(rhs, &fArry);
       VecGetArray(r, &rArry);
 
       residual(xArry, fArry, rArry, stratum);
 
       VecRestoreArrayRead(x, &xArry);
-      VecRestoreArrayRead(f, &fArry);
+      VecRestoreArrayRead(rhs, &fArry);
       VecRestoreArray(r, &rArry);
     }
 
@@ -394,6 +437,114 @@ public:
     // -------------------------
     // Mat Shell wrappers
     // -------------------------
+
+    // Note that Dendro-KT indexing of levels is inverted w.r.t. PETSc indexing.
+    // In Dendro-KT, the finest level is 0 and the coarsest level is numStrata-1.
+    // In PETSc, the finest level is numStrata-1 and the coarsest level is 0.
+    // The interface of gmgMat assumes the Dendro-KT indexing.
+    // The conversion from Dendro-KT to PETSc indexing is done in petscCreateGMG().
+
+
+    /// void petscCreateGMG(int smoothUp, int smoothDown, MPI_Comm comm)
+    void petscCreateGMG(MPI_Comm comm)
+    {
+      KSP gmgKSP;
+      PC  gmgPC;
+
+      KSPCreate(comm, &gmgKSP);
+      KSPSetType(gmgKSP, KSPRICHARDSON);  // standalone solver, not preconditioner.
+
+      KSPGetPC(gmgKSP, &gmgPC);
+      PCSetType(gmgPC, PCMG);
+
+      /// PCMGSetLevels(gmgPC, (int) m_numStrata, ???comms???);
+
+      PCMGSetType(gmgPC, PC_MG_MULTIPLICATIVE); // MGMULTIPLICATIVE,MGADDITIVE,MGFULL,MGCASCADE
+
+      PCMGSetLevels(gmgPC, (int) m_numStrata, PETSC_NULL); // PETSC_NULL indicates don't use separate comm for each level.
+
+      PCMGSetCycleType(gmgPC, PC_MG_CYCLE_V);
+
+      /// MGSetNumberSmoothUp(gmgPC, smoothUp);      // Outdated petsc interface
+      /// MGSetNumberSmoothDown(gmgPC, smoothDown);
+
+      // Set smoothers.
+      for (int s = 0; s < m_numStrata-1; ++s)  //0<petscLevel<nlevels
+      {
+        const PetscInt petscLevel = m_numStrata-1 - s;
+
+        Mat matrixFreeSmoothMat;
+        this->petscMatCreateShellSmooth(matrixFreeSmoothMat, s);
+
+        KSP gmgSmootherKSP;
+        PCMGGetSmoother(gmgPC, petscLevel, &gmgSmootherKSP);
+        KSPSetOperators(gmgSmootherKSP, matrixFreeSmoothMat, matrixFreeSmoothMat);
+
+        // Slight confusion here..
+        //  The manual says, to set the matrix that defines the smoother on level 1, do
+        //      PCMGGetSmoother(pc, 1, &ksp);
+        //      KSPSetOperators(ksp, A1, A1);
+        //  On the other hand, to set SOR as the smoother to use on level 1, do
+        //      PCMGGetSmoother(pc, 1, &ksp);
+        //      KSPGetPC(ksp, &pc);
+        //      PCSetType(pc, PCSOR);
+        //  I want to use SOR, but how could petsc know how to apply SOR
+        //  without us giving it the matrix? So I am going with the first option.
+      }
+
+      // Set coarse solver.
+      {
+        Mat matrixFreeSmoothMat;
+        this->petscMatCreateShellSmooth(matrixFreeSmoothMat, m_numStrata-1);
+
+        KSP gmgSmootherKSP;
+        PCMGGetCoarseSolve(gmgPC, &gmgSmootherKSP);
+        KSPSetOperators(gmgSmootherKSP, matrixFreeSmoothMat, matrixFreeSmoothMat);
+      }
+
+      // Set workspace vectors.
+      PCMGSetR(gmgPC, m_numStrata-1, m_stratumWorkR[0]);
+      for (int s = 1; s < m_numStrata; ++s)  // All but finest
+      {
+        const PetscInt petscLevel = m_numStrata-1 - s;
+
+        PCMGSetRhs(gmgPC, petscLevel, m_stratumWorkRhs[s]);
+        PCMGSetX(gmgPC, petscLevel, m_stratumWorkX[s]);
+        PCMGSetR(gmgPC, petscLevel, m_stratumWorkR[s]);
+      }
+
+      // Set restriction/prolongation
+      for (int s = 0; s < m_numStrata-1; ++s)  //0<petscLevel<nlevels
+      {
+        const PetscInt petscLevel = m_numStrata-1 - s;
+
+        Mat matrixFreeRestrictionMat;
+        Mat matrixFreeProlongationMat;
+        this->petscMatCreateShellRestriction(matrixFreeRestrictionMat, s);
+        this->petscMatCreateShellProlongation(matrixFreeProlongationMat, s);
+
+        PCMGSetRestriction(gmgPC, petscLevel, matrixFreeRestrictionMat);
+        PCMGSetInterpolation(gmgPC, petscLevel, matrixFreeProlongationMat);
+      }
+
+      // Set residual functions.
+      //
+      for (int s = 0; s < m_numStrata-1; ++s)  //0<petscLevel<nlevels
+      {
+        const PetscInt petscLevel = m_numStrata-1 - s;
+
+        Mat matrixFreeOperatorMat;
+        this->petscMatCreateShellMatVec(matrixFreeOperatorMat, s);
+
+        // PETSC_NULL indicates that the default petsc residual method will
+        // be used, which will take A (our matvec), u, and rhs,
+        // and compute rhs - A*u.
+        PCMGSetResidual(gmgPC, petscLevel, PETSC_NULL, matrixFreeOperatorMat);
+      }
+
+
+    }
+
 
     /**
      * @brief Calls MatCreateShell and MatShellSetOperation to create a matrix-free matrix usable by petsc, e.g. in KSPSetOperators().
@@ -405,36 +556,110 @@ public:
       PetscInt globalM = (*m_multiDA[stratum]).getGlobalNodeSz();
       MPI_Comm comm = (*m_multiDA[stratum]).getGlobalComm();
 
+      // MATOP_MULT is for registering a multiply.
       MatCreateShell(comm, localM, localM, globalM, globalM, &m_stratumWrappers[stratum], &matrixFreeMat);
       MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserMultMatVec);
     }
 
-    void petscMatCreateShellSmooth(Mat &matrixFreeMat, unsigned int stratum = 0)
+    void petscMatCreateShellSmooth(Mat &matrixFreeMat, unsigned int stratum)
     {
       PetscInt localM = (*m_multiDA[stratum]).getLocalNodalSz();
       PetscInt globalM = (*m_multiDA[stratum]).getGlobalNodeSz();
       MPI_Comm comm = (*m_multiDA[stratum]).getGlobalComm();
 
+      // MATOP_SOR is for providing a smoother.
       MatCreateShell(comm, localM, localM, globalM, globalM, &m_stratumWrappers[stratum], &matrixFreeMat);
-      MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserMultSmooth);
+      MatShellSetOperation(matrixFreeMat, MATOP_SOR, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserSmooth);
+    }
+
+    void petscMatCreateShellRestriction(Mat &matrixFreeMat, unsigned int fineStratum)
+    {
+      PetscInt localM_in = (*m_multiDA[fineStratum]).getLocalNodalSz();
+      PetscInt globalM_in = (*m_multiDA[fineStratum]).getGlobalNodeSz();
+
+      PetscInt localM_out = (*m_multiDA[fineStratum+1]).getLocalNodalSz();
+      PetscInt globalM_out = (*m_multiDA[fineStratum+1]).getGlobalNodeSz();
+
+      MPI_Comm comm = (*m_multiDA[fineStratum]).getGlobalComm();
+
+      // MATOP_MULT is for registering a multiply.
+      MatCreateShell(comm, localM_out, localM_in, globalM_out, globalM_in, &m_stratumWrappers[fineStratum], &matrixFreeMat);
+      MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserMultRestriction);
+    }
+
+    void petscMatCreateShellProlongation(Mat &matrixFreeMat, unsigned int fineStratum)
+    {
+      PetscInt localM_in = (*m_multiDA[fineStratum+1]).getLocalNodalSz();
+      PetscInt globalM_in = (*m_multiDA[fineStratum+1]).getGlobalNodeSz();
+
+      PetscInt localM_out = (*m_multiDA[fineStratum]).getLocalNodalSz();
+      PetscInt globalM_out = (*m_multiDA[fineStratum]).getGlobalNodeSz();
+
+      MPI_Comm comm = (*m_multiDA[fineStratum]).getGlobalComm();
+
+      // MATOP_MULT is for registering a multiply.
+      MatCreateShell(comm, localM_out, localM_in, globalM_out, globalM_in, &m_stratumWrappers[fineStratum], &matrixFreeMat);
+      MatShellSetOperation(matrixFreeMat, MATOP_MULT, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserMultProlongation);
     }
 
 
-    //TODO what user mult interface do the other PETSC multigrid operators need?
-    // where do restriction and prolongation go?
-
-
-    /** @brief The 'user defined' matvec we give to petsc to make a matrix-free matrix. Don't call this directly. */
-    static void petscUserMultMatVec(Mat mat, Vec x, Vec y)
+    /**
+     * @brief The 'user defined' matvec we give to petsc to make a matrix-free matrix. Don't call this directly.
+     * Must follow the same interface as petsc MatMult().
+     */
+    static void petscUserMultMatVec(Mat mat, Vec x, Vec y_out)
     {
       gmgMatStratumWrapper<dim, LeafClass> *gmgMatWrapper;
       MatShellGetContext(mat, &gmgMatWrapper);
       const unsigned int stratum = gmgMatWrapper->m_stratum;
-      gmgMatWrapper->m_gmgMat->matVec(x, y, stratum);
+      gmgMatWrapper->m_gmgMat->matVec(x, y_out, stratum);
     };
 
-    //TODO what user mult interface do the other PETSC multigrid operators need?
-    // petscUserMultSmooth
+    /**
+     * @brief The 'user defined' sor routine we give to petsc to make a matrix-free smoother. Don't call this directly.
+     * Must follow the same interface as petsc MatSOR().
+     */
+    static void petscUserSmooth(Mat mat,
+                                Vec rhs,
+                                PetscReal omega,
+                                MatSORType sorTypeFlag,
+                                PetscReal diagShift,
+                                PetscInt iters,
+                                PetscInt localIters,
+                                Vec x_out)
+    {
+      // Note: Only forwards omega, iters, and localIters,
+      //       ignores sorTypeFlag and diagShift.
+      gmgMatStratumWrapper<dim, LeafClass> *gmgMatWrapper;
+      MatShellGetContext(mat, &gmgMatWrapper);
+      const unsigned int stratum = gmgMatWrapper->m_stratum;
+      gmgMatWrapper->m_gmgMat->smooth(x_out, rhs, omega, iters, localIters, stratum);
+    };
+
+    /**
+     * @brief The 'user defined' matvec we give to petsc to make matrix-free restriction. Don't call this directly.
+     * Must follow the same interface as petsc MatMult().
+     */
+    static void petscUserMultRestriction(Mat mat, Vec x, Vec y_out)
+    {
+      gmgMatStratumWrapper<dim, LeafClass> *gmgMatWrapper;
+      MatShellGetContext(mat, &gmgMatWrapper);
+      const unsigned int fineStratum = gmgMatWrapper->m_stratum;
+      gmgMatWrapper->m_gmgMat->restriction(x, y_out, fineStratum);
+    };
+
+    /**
+     * @brief The 'user defined' matvec we give to petsc to make matrix-free prolongation. Don't call this directly.
+     * Must follow the same interface as petsc MatMult().
+     */
+    static void petscUserMultProlongation(Mat mat, Vec x, Vec y_out)
+    {
+      gmgMatStratumWrapper<dim, LeafClass> *gmgMatWrapper;
+      MatShellGetContext(mat, &gmgMatWrapper);
+      const unsigned int fineStratum = gmgMatWrapper->m_stratum;
+      gmgMatWrapper->m_gmgMat->prolongation(x, y_out, fineStratum);
+    };
+
 
 
 #endif
