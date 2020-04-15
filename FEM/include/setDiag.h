@@ -5,7 +5,7 @@
 #ifndef DENDRO_KT_SETDIAG_H
 #define DENDRO_KT_SETDIAG_H
 
-#include "sfcTreeLoop_matvec.h"
+#include "sfcTreeLoop_matvec_io.h"
 
 namespace fem
 {
@@ -29,23 +29,23 @@ namespace fem
     constexpr bool noVisitEmpty = false;
     ot::MatvecBaseOut<dim, DofT> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, partFront, partBack);
 
-    while (!treeloop.isFinished())
+    while (!treeLoopOut.isFinished())
     {
-      if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf())
+      if (treeLoopOut.isPre() && treeLoopOut.subtreeInfo().isLeaf())
       {
-        const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
+        const double * nodeCoordsFlat = treeLoopOut.subtreeInfo().getNodeCoords();
 
         eleSet(&(*leafResult.begin()), ndofs, nodeCoordsFlat, scale);
 
-        treeloop.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
+        treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
 
-        treeloop.next();
+        treeLoopOut.next();
       }
       else
-        treeloop.step();
+        treeLoopOut.step();
     }
 
-    size_t writtenSz = treeloop.finalize(vecOut);
+    size_t writtenSz = treeLoopOut.finalize(vecOut);
 
     if (sz > 0 && writtenSz == 0)
       std::cerr << "Warning: locSetDiag() did not write any data! Loop misconfigured?\n";

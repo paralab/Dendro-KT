@@ -46,6 +46,8 @@ namespace PoissonEq
         /**@brief elemental matvec*/
         virtual void elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords=NULL,double scale=1.0);
 
+        void elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale = 1.0);
+
         /**@brief things need to be performed before matvec (i.e. coords transform)*/
         bool preMatVec(const VECType* in,VECType* out,double scale=1.0);
 

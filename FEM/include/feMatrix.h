@@ -11,6 +11,7 @@
 #include "feMat.h"
 #include "matvec.h"
 #include "refel.h"
+#include "setDiag.h"
 
 template <typename LeafT, unsigned int dim>
 class feMatrix : public feMat<dim> {
@@ -65,7 +66,7 @@ protected:
          * @param [in] in scale diagonal by scale*diag(K).
          * Leaf class responsible to implement (static polymorphism).
          */
-        virtual void elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale)
+        void elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale)
         {
           static bool reentrant = false;
           if (reentrant)
@@ -88,7 +89,7 @@ protected:
         * */
         virtual void matVec(const Vec& in,Vec& out, double scale=1.0);
 
-        virtual void setDiag(VEC& out, double scale = 1.0);
+        virtual void setDiag(Vec& out, double scale = 1.0);
 
 
         /**
@@ -319,7 +320,7 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
   // Local setDiag().
   const auto * tnCoords = m_oda->getTNCoords();
   std::function<void(VECType *, unsigned int, const double *, double)> eleSet =
-      std::bind(&feMatrix<LeafT,dim>::elementalSetDiag, this, _1, _2, _3, _4,);
+      std::bind(&feMatrix<LeafT,dim>::elementalSetDiag, this, _1, _2, _3, _4);
 
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_matvec.start();
@@ -371,7 +372,7 @@ void feMatrix<LeafT,dim>::matVec(const Vec &in, Vec &out, double scale)
 }
 
 template <typename LeafT, unsigned int dim>
-void feMatrix<LeafT, dim>::setDiag(VEC& out, double scale)
+void feMatrix<LeafT, dim>::setDiag(Vec& out, double scale)
 {
   PetscScalar * outArry=NULL;
   VecGetArray(out,&outArry);

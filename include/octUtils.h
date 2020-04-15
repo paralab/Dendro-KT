@@ -263,7 +263,39 @@ int createRegularOctree(std::vector<TreeNode<T, dim>>& out,
    */
 
 template <typename T, unsigned int dim>
-int function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<ot::TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm );
+int function2Octree(std::function<void(const double *, double*)> fx,
+                    const unsigned int numVars,
+                    const unsigned int* varIndex,
+                    const unsigned int numInterpVars,
+                    std::vector<ot::TreeNode<T,dim>> & nodes,
+                    unsigned int maxDepth,
+                    const double & interp_tol,
+                    const double sfc_tol,
+                    unsigned int elementOrder,
+                    MPI_Comm comm );
+
+
+template <typename DofT, typename TNT, unsigned int dim>
+std::vector<ot::TreeNode<TNT, dim>> function2BalancedOctree(
+    std::function<void(const DofT *, DofT *)> func,
+    const unsigned int dofSz,
+    const unsigned int maxDepth,
+    const double interp_tol,
+    const double sfc_tol,
+    const unsigned int order,
+    MPI_Comm comm )
+{
+  std::vector<unsigned int> varIndex(dofSz);
+  for (unsigned int ii = 0; ii < dofSz; ii++)
+    varIndex[ii] = ii;
+
+  // Get a complete tree sufficiently granular to represent func with accuracy interp_tol.
+  std::vector<ot::TreeNode<TNT, dim>> completeTree;
+  function2Octree<TNT, dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, maxDepth, interp_tol, sfc_tol, order, comm);
+
+  return completeTree;
+}
+
 
 template <typename T, unsigned int dim>
 int function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<ot::TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm )

@@ -125,6 +125,7 @@ void distShiftNodes(const DA<dim> &srcDA, const DofT *srcLocal, const DA<dim> &d
 template <unsigned int dim>
 class DA
 {
+  public:
     using C = unsigned int;    // Integer coordinate type.
 
     /**

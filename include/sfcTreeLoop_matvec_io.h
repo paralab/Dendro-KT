@@ -1225,39 +1225,39 @@ namespace ot
   // The definitions are here if you need them, just copy for
   //   both MatvecBaseIn and MatvecBaseOut.
 
-  /// // fillAccessNodeCoordsFlat()
-  /// template <unsigned int dim, typename NodeT>
-  /// void MatvecBase<dim, NodeT>::fillAccessNodeCoordsFlat()
-  /// {
-  ///   const FrameT &frame = BaseT::getCurrentFrame();
-  ///   /// const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
-  ///   const size_t numNodes = frame.template getMyInputHandle<0>().size();
-  ///   const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
-  ///   const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
-  ///   const unsigned int curLev = subtree.getLevel();
+  // fillAccessNodeCoordsFlat()
+  template <unsigned int dim, typename NodeT>
+  void MatvecBaseOut<dim, NodeT>::fillAccessNodeCoordsFlat()
+  {
+    const FrameT &frame = BaseT::getCurrentFrame();
+    /// const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
+    const size_t numNodes = frame.template getMyInputHandle<0>().size();
+    const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
+    const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
+    const unsigned int curLev = subtree.getLevel();
 
-  ///   const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
-  ///   const double elemSz = double(1u << m_uiMaxDepth - curLev) / double(1u << m_uiMaxDepth);
-  ///   double translate[dim];
-  ///   for (int d = 0; d < dim; d++)
-  ///     translate[d] = domainScale * subtree.getX(d);
+    const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
+    const double elemSz = double(1u << m_uiMaxDepth - curLev) / double(1u << m_uiMaxDepth);
+    double translate[dim];
+    for (int d = 0; d < dim; d++)
+      translate[d] = domainScale * subtree.getX(d);
 
-  ///   std::array<unsigned int, dim> numerators;
-  ///   unsigned int denominator;
+    std::array<unsigned int, dim> numerators;
+    unsigned int denominator;
 
-  ///   m_accessNodeCoordsFlat.resize(dim * numNodes);
+    m_accessNodeCoordsFlat.resize(dim * numNodes);
 
-  ///   for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
-  ///   {
-  ///     TNPoint<unsigned int, dim>::get_relNodeCoords(
-  ///         subtree, nodeCoords[nIdx], m_eleOrder,
-  ///         numerators, denominator);
+    for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
+    {
+      TNPoint<unsigned int, dim>::get_relNodeCoords(
+          subtree, nodeCoords[nIdx], m_eleOrder,
+          numerators, denominator);
 
-  ///     for (int d = 0; d < dim; ++d)
-  ///       m_accessNodeCoordsFlat[nIdx * dim + d] =
-  ///           translate[d] + elemSz * numerators[d] / denominator;
-  ///   }
-  /// }
+      for (int d = 0; d < dim; ++d)
+        m_accessNodeCoordsFlat[nIdx * dim + d] =
+            translate[d] + elemSz * numerators[d] / denominator;
+    }
+  }
 
 
   /// // fillLeafNodeBdry()

@@ -159,6 +159,25 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 
 
 template <unsigned int dim>
+void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale)
+{
+  // TODO I need help coming up with the FEM elemental diagonal for Poisson
+
+  const RefElement* refEl=m_uiOctDA->getReferenceElement();
+
+  const unsigned int eleOrder=refEl->getOrder();
+  const unsigned int nPe=intPow(eleOrder+1, dim);
+  const unsigned int nrp=eleOrder+1;
+
+  for (int n = 0; n < nPe; ++n)
+    for (int d = 0; d < ndofs; ++d)
+      out[n*ndofs + d] = (1u << dim) / pow(scale, dim); //FIXME
+}
+
+
+
+
+template <unsigned int dim>
 bool PoissonMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 {
     // apply boundary conditions.

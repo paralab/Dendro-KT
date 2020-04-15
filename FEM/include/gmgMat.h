@@ -87,7 +87,7 @@ public:
 
       m_numStrata = mda->size();
       for (int ii = 0; ii < m_numStrata; ++ii)
-        m_stratumWrappers.emplace_back(this, ii);
+        m_stratumWrappers.emplace_back(gmgMatStratumWrapper<dim, LeafClass>{this, ii});
 
 
 #ifdef BUILD_WITH_PETSC
@@ -95,26 +95,26 @@ public:
       m_stratumWorkX = new Vec[m_numStrata];
       m_stratumWorkR = new Vec[m_numStrata];
 
-      m_multiDA[0].petscCreateVector(m_stratumWorkR[0], false, false, m_ndofs);
+      (*m_multiDA)[0].petscCreateVector(m_stratumWorkR[0], false, false, m_ndofs);
       for (int ii = 1; ii < m_numStrata; ++ii)
       {
-        m_multiDA[ii].petscCreateVector(m_stratumWorkRhs[ii], false, false, m_ndofs);
-        m_multiDA[ii].petscCreateVector(m_stratumWorkX[ii], false, false, m_ndofs);
-        m_multiDA[ii].petscCreateVector(m_stratumWorkR[ii], false, false, m_ndofs);
+        (*m_multiDA)[ii].petscCreateVector(m_stratumWorkRhs[ii], false, false, m_ndofs);
+        (*m_multiDA)[ii].petscCreateVector(m_stratumWorkX[ii], false, false, m_ndofs);
+        (*m_multiDA)[ii].petscCreateVector(m_stratumWorkR[ii], false, false, m_ndofs);
       }
 #endif
     }
 
-    /**@brief deconstructor*/
-    ~gmgMat()
+    /**@brief Destructor*/
+    virtual ~gmgMat()
     {
 #ifdef BUILD_WITH_PETSC
-      m_multiDA[0].petscDestroyVec(m_stratumWorkR[0]);
+      (*m_multiDA)[0].petscDestroyVec(m_stratumWorkR[0]);
       for (int ii = 1; ii < m_numStrata; ++ii)
       {
-        m_multiDA[ii].petscDestroyVec(m_stratumWorkRhs[ii]);
-        m_multiDA[ii].petscDestroyVec(m_stratumWorkX[ii]);
-        m_multiDA[ii].petscDestroyVec(m_stratumWorkR[ii]);
+        (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkRhs[ii]);
+        (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkX[ii]);
+        (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkR[ii]);
       }
 
       delete [] m_stratumWorkRhs;
@@ -131,7 +131,8 @@ public:
 
     // Design note (static polymorphism)
     //   The gmgMat does not impose a mass matrix or smoothing operator.
-    //   The leaf derived type is responsible to implement those.
+    //   The leaf derived type is responsible to implement those as
+    //   leafMatVec() and leafSmooth().
     //   Suggestion:
     //     Define a leaf derived type from gmgMat that contains
     //     (via class composition) an feMat instance per level.
@@ -147,14 +148,7 @@ public:
      * */
     void matVec(const VECType *in, VECType *out, unsigned int stratum = 0, double scale=1.0)//=0
     {
-      static bool reentrant = false;
-      if (reentrant)
-        throw std::logic_error{"matVec() not implemented by LeafClass"};
-      reentrant = true;
-      {
-        asConcreteType().matVec(in, out, stratum, scale);
-      }
-      reentrant = false;
+      asConcreteType().leafMatVec(in, out, stratum, scale);
     }
 
 
@@ -169,28 +163,9 @@ public:
      */
     void smooth(VECType *u, const VECType *rhs, double omega, int iters, int localIters, unsigned int stratum = 0)//=0
     {
-      static bool reentrant = false;
-      if (reentrant)
-        throw std::logic_error{"smooth() not implemented by LeafClass"};
-      reentrant = true;
-      {
-        asConcreteType().smooth(u, rhs, omega, iters, localIters, stratum);
-      }
-      reentrant = false;
+      asConcreteType().leafSmooth(u, rhs, omega, iters, localIters, stratum);
     }
 
-
-    void residual(const VECType *x, const VECType *f, VECType *r, unsigned int stratum = 0)//=0
-    {
-      static bool reentrant = false;
-      if (reentrant)
-        throw std::logic_error{"residual() not implemented by LeafClass"};
-      reentrant = true;
-      {
-        asConcreteType().residual(x, f, r, stratum);
-      }
-      reentrant = false;
-    }
 
 
     /**@brief set the problem dimension*/
@@ -245,14 +220,14 @@ public:
       fem::MeshFreeInputContext<VECType, TN>
           inctx{ fineGhostedPtr,
                  fineDA.getTNCoords(),
-                 fineDA.getTotalNodalSz(),
+                 (unsigned) fineDA.getTotalNodalSz(),
                  *fineDA.getTreePartFront(),
                  *fineDA.getTreePartBack() };
 
       fem::MeshFreeOutputContext<VECType, TN>
           outctx{surrGhostedPtr,
                  surrDA.getTNCoords(),
-                 surrDA.getTotalNodalSz(),
+                 (unsigned) surrDA.getTotalNodalSz(),
                  *surrDA.getTreePartFront(),
                  *surrDA.getTreePartBack() };
 
@@ -332,14 +307,14 @@ public:
       fem::MeshFreeInputContext<VECType, TN>
           inctx{ surrGhostedPtr,
                  surrDA.getTNCoords(),
-                 surrDA.getTotalNodalSz(),
+                 (unsigned) surrDA.getTotalNodalSz(),
                  *surrDA.getTreePartFront(),
                  *surrDA.getTreePartBack() };
 
       fem::MeshFreeOutputContext<VECType, TN>
           outctx{fineGhostedPtr,
                  fineDA.getTNCoords(),
-                 fineDA.getTotalNodalSz(),
+                 (unsigned) fineDA.getTotalNodalSz(),
                  *fineDA.getTreePartFront(),
                  *fineDA.getTreePartBack() };
 
@@ -414,23 +389,37 @@ public:
     }
 
     //
-    // residual() [Petsc Vec]
+    // restriction() [Petsc Vec]
     //
-    void residual(const Vec &x, const Vec &rhs, Vec &r, unsigned int stratum = 0)
+    void restriction(const Vec &fineRes, Vec &coarseRes, unsigned int stratum = 0)
     {
-      const PetscScalar * xArry = nullptr;
-      const PetscScalar * fArry = nullptr;
-      PetscScalar * rArry = nullptr;
+      const PetscScalar * inArry = nullptr;
+      PetscScalar * outArry = nullptr;
 
-      VecGetArrayRead(x, &xArry);
-      VecGetArrayRead(rhs, &fArry);
-      VecGetArray(r, &rArry);
+      VecGetArrayRead(fineRes, &inArry);
+      VecGetArray(coarseRes, &outArry);
 
-      residual(xArry, fArry, rArry, stratum);
+      restriction(inArry, outArry, stratum);
 
-      VecRestoreArrayRead(x, &xArry);
-      VecRestoreArrayRead(rhs, &fArry);
-      VecRestoreArray(r, &rArry);
+      VecRestoreArrayRead(fineRes, &inArry);
+      VecRestoreArray(coarseRes, &outArry);
+    }
+
+    //
+    // prolongation() [Petsc Vec]
+    //
+    void prolongation(const Vec &coarseCrx, Vec &fineCrx, unsigned int stratum = 0)
+    {
+      const PetscScalar * inArry = nullptr;
+      PetscScalar * outArry = nullptr;
+
+      VecGetArrayRead(coarseCrx, &inArry);
+      VecGetArray(fineCrx, &outArry);
+
+      prolongation(inArry, outArry, stratum);
+
+      VecRestoreArrayRead(coarseCrx, &inArry);
+      VecRestoreArray(fineCrx, &outArry);
     }
 
 
@@ -446,7 +435,7 @@ public:
 
 
     /// void petscCreateGMG(int smoothUp, int smoothDown, MPI_Comm comm)
-    void petscCreateGMG(MPI_Comm comm)
+    KSP petscCreateGMG(MPI_Comm comm)
     {
       KSP gmgKSP;
       PC  gmgPC;
@@ -542,7 +531,7 @@ public:
         PCMGSetResidual(gmgPC, petscLevel, PETSC_NULL, matrixFreeOperatorMat);
       }
 
-
+      return gmgKSP;
     }
 
 
@@ -552,9 +541,9 @@ public:
      */
     void petscMatCreateShellMatVec(Mat &matrixFreeMat, unsigned int stratum = 0)
     {
-      PetscInt localM = (*m_multiDA[stratum]).getLocalNodalSz();
-      PetscInt globalM = (*m_multiDA[stratum]).getGlobalNodeSz();
-      MPI_Comm comm = (*m_multiDA[stratum]).getGlobalComm();
+      PetscInt localM = (*m_multiDA)[stratum].getLocalNodalSz();
+      PetscInt globalM = (*m_multiDA)[stratum].getGlobalNodeSz();
+      MPI_Comm comm = (*m_multiDA)[stratum].getGlobalComm();
 
       // MATOP_MULT is for registering a multiply.
       MatCreateShell(comm, localM, localM, globalM, globalM, &m_stratumWrappers[stratum], &matrixFreeMat);
@@ -563,9 +552,9 @@ public:
 
     void petscMatCreateShellSmooth(Mat &matrixFreeMat, unsigned int stratum)
     {
-      PetscInt localM = (*m_multiDA[stratum]).getLocalNodalSz();
-      PetscInt globalM = (*m_multiDA[stratum]).getGlobalNodeSz();
-      MPI_Comm comm = (*m_multiDA[stratum]).getGlobalComm();
+      PetscInt localM = (*m_multiDA)[stratum].getLocalNodalSz();
+      PetscInt globalM = (*m_multiDA)[stratum].getGlobalNodeSz();
+      MPI_Comm comm = (*m_multiDA)[stratum].getGlobalComm();
 
       // MATOP_SOR is for providing a smoother.
       MatCreateShell(comm, localM, localM, globalM, globalM, &m_stratumWrappers[stratum], &matrixFreeMat);
@@ -574,13 +563,13 @@ public:
 
     void petscMatCreateShellRestriction(Mat &matrixFreeMat, unsigned int fineStratum)
     {
-      PetscInt localM_in = (*m_multiDA[fineStratum]).getLocalNodalSz();
-      PetscInt globalM_in = (*m_multiDA[fineStratum]).getGlobalNodeSz();
+      PetscInt localM_in = (*m_multiDA)[fineStratum].getLocalNodalSz();
+      PetscInt globalM_in = (*m_multiDA)[fineStratum].getGlobalNodeSz();
 
-      PetscInt localM_out = (*m_multiDA[fineStratum+1]).getLocalNodalSz();
-      PetscInt globalM_out = (*m_multiDA[fineStratum+1]).getGlobalNodeSz();
+      PetscInt localM_out = (*m_multiDA)[fineStratum+1].getLocalNodalSz();
+      PetscInt globalM_out = (*m_multiDA)[fineStratum+1].getGlobalNodeSz();
 
-      MPI_Comm comm = (*m_multiDA[fineStratum]).getGlobalComm();
+      MPI_Comm comm = (*m_multiDA)[fineStratum].getGlobalComm();
 
       // MATOP_MULT is for registering a multiply.
       MatCreateShell(comm, localM_out, localM_in, globalM_out, globalM_in, &m_stratumWrappers[fineStratum], &matrixFreeMat);
@@ -589,13 +578,13 @@ public:
 
     void petscMatCreateShellProlongation(Mat &matrixFreeMat, unsigned int fineStratum)
     {
-      PetscInt localM_in = (*m_multiDA[fineStratum+1]).getLocalNodalSz();
-      PetscInt globalM_in = (*m_multiDA[fineStratum+1]).getGlobalNodeSz();
+      PetscInt localM_in = (*m_multiDA)[fineStratum+1].getLocalNodalSz();
+      PetscInt globalM_in = (*m_multiDA)[fineStratum+1].getGlobalNodeSz();
 
-      PetscInt localM_out = (*m_multiDA[fineStratum]).getLocalNodalSz();
-      PetscInt globalM_out = (*m_multiDA[fineStratum]).getGlobalNodeSz();
+      PetscInt localM_out = (*m_multiDA)[fineStratum].getLocalNodalSz();
+      PetscInt globalM_out = (*m_multiDA)[fineStratum].getGlobalNodeSz();
 
-      MPI_Comm comm = (*m_multiDA[fineStratum]).getGlobalComm();
+      MPI_Comm comm = (*m_multiDA)[fineStratum].getGlobalComm();
 
       // MATOP_MULT is for registering a multiply.
       MatCreateShell(comm, localM_out, localM_in, globalM_out, globalM_in, &m_stratumWrappers[fineStratum], &matrixFreeMat);

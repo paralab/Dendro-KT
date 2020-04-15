@@ -411,6 +411,17 @@ if(BUILD_EXAMPLES)
   target_include_directories(exPoissonEq PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
   target_link_libraries(exPoissonEq dendroKT ${MPI_LIBRARIES} m)
 
+  ## Poisson equation with gmg.
+  set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonGMG.cpp)
+  add_executable(exPoissonGMG ${SRC_FILES})
+  set_property(TARGET exPoissonGMG PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+  target_include_directories(exPoissonGMG PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+  target_link_libraries(exPoissonGMG dendroKT ${MPI_LIBRARIES} m)
+
 endif(BUILD_EXAMPLES)
 
 
