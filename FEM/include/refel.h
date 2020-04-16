@@ -128,6 +128,17 @@ class RefElement
     /** 1D quadrature matrix transpose*/
     std::vector<double> quadT_1D;
 
+
+    // Could avoid storing the entrywise squares if simplify KroneckerProduct
+    // to allow squaring on the fly.
+
+    /** Entrywise square of quadT_1D, used in computing elemental diagonals. */
+    std::vector<double> quadT_1D_hadm2;
+
+    /** Entrywise square of DgT, used in computing elemental diagonals. */
+    std::vector<double> DgT_hadm2;
+
+
     /**Vandermonde matrix for interpolation points of child 0   */
     std::vector<double> Vu_0;
 
@@ -192,6 +203,9 @@ class RefElement
     inline const double *getDg1d() const { return &(*(Dg.begin())); }
     inline const double *getDgT1d() const { return &(*(DgT.begin())); }
     inline const double *getDr1d() const { return &(*(Dr.begin())); }
+
+    inline const double *getQT1d_hadm2()  const { return &(*quadT_1D_hadm2.begin()); }
+    inline const double *getDgT1d_hadm2() const { return &(*DgT_hadm2.begin()); }
 
     inline double *getImVec1() const { return (double *) &(*(im_vec1.begin())); }
     inline double *getImVec2() const { return (double *) &(*(im_vec2.begin())); }

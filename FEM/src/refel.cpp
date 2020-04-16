@@ -72,6 +72,10 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
     ipT_1D_1.resize(m_uiNrp*m_uiNrp);
 
 
+    quadT_1D_hadm2.resize(m_uiNrp*m_uiNrp);
+    DgT_hadm2.resize(m_uiNrp*m_uiNrp);
+
+
 #ifdef WITH_BLAS_LAPACK
 
    unsigned int info;
@@ -183,10 +187,13 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
             ipT_1D_1[i*m_uiNrp+j]=ip_1D_1[j*m_uiNrp+i];
             quadT_1D[i*m_uiNrp+j]=quad_1D[j*m_uiNrp+i];
             DgT[i*m_uiNrp+j]=Dg[j*m_uiNrp+i];
-
-
         }
+    }
 
+    for (unsigned int ij = 0; ij < m_uiNrp*m_uiNrp; ij++)
+    {
+        quadT_1D_hadm2[ij] = quadT_1D[ij] * quadT_1D[ij];
+        DgT_hadm2[ij] = DgT[ij] * DgT[ij];
     }
 
 
@@ -220,7 +227,6 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
     //std::cout<<" wg: ";printArray_1D((&(*(w.begin()))),m_uiNrp);
 
 #else
-
 
     if(m_uiDimension==3 && m_uiOrder==1)
     {

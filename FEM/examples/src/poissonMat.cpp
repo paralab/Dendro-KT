@@ -39,6 +39,9 @@ PoissonMat<dim>::~PoissonMat()
 template <unsigned int dim>
 void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale)
 {
+    if (ndofs != 1)
+      throw "PoissonMat elementalMatVec() assumes scalar data, but called on non-scalar data.";
+
     // 1D operators.
 
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
@@ -61,6 +64,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 
     const double refElSz=refEl->getElementSz();
 
+    // Phase 1
     // Evaluate derivatives at quadrature points.
     for (unsigned int d = 0; d < dim; d++)
       mat1dPtrs[d] = Q1d;
@@ -116,6 +120,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 
     //std::cout<<"Stifness:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
 
+    // Phase 2
     // Quadrature for each basis function.
     for (unsigned int d = 0; d < dim; d++)
       SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, Qx[d], W1d, scaleDQD[d]);  //TODO SymmetricOuterProduct does not support ndofs.
@@ -131,6 +136,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
     ///         }
 
 
+    // Phase 3
     // Back to regular-spaced points.
     for (unsigned int d = 0; d < dim; d++)
       mat1dPtrs[d] = QT1d;
@@ -170,17 +176,108 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 template <unsigned int dim>
 void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale)
 {
-  // TODO I need help coming up with the FEM elemental diagonal for Poisson
+    if (ndofs != 1)
+      throw "PoissonMat elementalSetDiag() assumes scalar data, but called on non-scalar data.";
 
-  const RefElement* refEl=m_uiOctDA->getReferenceElement();
+    // For each basis function phi_i,
+    // compute Integral_elem{ grad(phi_i) \cdot grad(phi_i) }
+    //
+    // = Sum_axis=a
+    //   {
+    //     Sum_gausspt=g
+    //     {
+    //       vol_scale * qweight_g * ((d_a phi_i)|eval(g))^2 / (J[a])^2
+    //     }
+    //   }
+    //
+    // For a fixed i, the factors 
+    //     (d_a phi_i)|eval(g)
+    // are elements of a column in one of the tensorized derivative eval matrices.
+    //
+    // We can compute the sum for each axis by performing a matrix-vector product,
+    // where
+    //   - the matrix is the entrywise square of the derivative-eval matrix
+    //   - the vector is the sequence of scaled quadrature weights.
+    // We need to go from indices over quadrature points to indices
+    // over regular points, so we need to use DgT and QT1d .
 
-  const unsigned int eleOrder=refEl->getOrder();
-  const unsigned int nPe=intPow(eleOrder+1, dim);
-  const unsigned int nrp=eleOrder+1;
 
-  for (int n = 0; n < nPe; ++n)
-    for (int d = 0; d < ndofs; ++d)
-      out[n*ndofs + d] = (1u << dim) / pow(scale, dim); //FIXME
+    // 1D operators.
+
+    const RefElement* refEl=m_uiOctDA->getReferenceElement();
+
+    // Could avoid storing the entrywise squares if simplify KroneckerProduct
+    // to allow squaring on the fly.
+    const double * QT1d_sq=refEl->getQT1d_hadm2();
+    const double * DgT_sq=refEl->getDgT1d_hadm2();
+
+    const double * W1d=refEl->getWgq();
+
+    const double * mat1dPtrs[dim];
+
+    const unsigned int eleOrder=refEl->getOrder();
+    const unsigned int nPe=intPow(eleOrder+1, dim);
+    const unsigned int nrp=eleOrder+1;
+
+    Point<dim> eleMin(&coords[0*m_uiDim]);
+    Point<dim> eleMax(&coords[(nPe-1)*m_uiDim]);
+
+    const double refElSz=refEl->getElementSz();
+
+    const Point<dim> sz = gridX_to_X(eleMax) - gridX_to_X(eleMin);
+    const Point<dim> J = sz * (1.0 / refElSz);
+    // For us the Jacobian is diagonal.
+    //   dx^a/du_a = J[a]
+    //   det(J) = Product_a{ J[a] }
+    //
+    // To take the physical-space derivative, need to divide by J[a].
+    // We are multiplying d{phi_i} by d{phi_j}, so need to divide by J[a] twice.
+    //
+    // Also the quadrature weights need to be scaled by det(J).
+    //
+    // scaleDQD[a] = det(J) / (J[a])*(J[a])
+    //             = Product_b{ (J[b])^((-1)^delta(a,b)) }.
+
+    double scaleDQD[dim];
+    for (unsigned int d = 0; d < dim; d++)
+    {
+      scaleDQD[d] = 1.0;
+      for (unsigned int dd = 0; dd < dim; dd++)
+        scaleDQD[d] *= (dd == d ? (1.0 / J.x(dd)) : J.x(dd));
+    }
+
+    // Quadrature weights for each Gauss point.
+    for (unsigned int d = 0; d < dim; d++)
+    {
+      for (int nIdx = 0; nIdx < nPe; nIdx++)
+        Qx[d][nIdx] = 1.0f;
+
+      SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, Qx[d], W1d, scaleDQD[d]);
+    }
+
+    // Quadrature of square of derivative of each basis function.
+    // Same sequence as third phase of elemental matvec,
+    // except QT1d-->QT1d_sq and DgT-->DgT_sq.
+    for (unsigned int d = 0; d < dim; d++)
+      mat1dPtrs[d] = QT1d_sq;
+    for (unsigned int d = 0; d < dim; d++)
+    {
+      const double * imFromPtrs[dim];
+      double * imToPtrs[dim];
+
+      mat1dPtrs[d] = DgT_sq;
+      getImPtrs(imFromPtrs, imToPtrs, Qx[d], Qx[d]);
+      KroneckerProduct<dim, double, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs, ndofs);
+      mat1dPtrs[d] = QT1d_sq;
+    }
+
+    for(unsigned int i=0;i<nPe;i++)
+    {
+      double sum = 0.0;
+      for (unsigned int d = 0; d < dim; d++)
+        sum += Qx[d][i];
+      out[i] = sum;
+    }
 }
 
 
