@@ -61,7 +61,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 
     const double refElSz=refEl->getElementSz();
 
-    // Take derivatives.
+    // Evaluate derivatives at quadrature points.
     for (unsigned int d = 0; d < dim; d++)
       mat1dPtrs[d] = Q1d;
     for (unsigned int d = 0; d < dim; d++)
@@ -94,23 +94,31 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 
     const Point<dim> sz = gridX_to_X(eleMax) - gridX_to_X(eleMin);
     const Point<dim> J = sz * (1.0 / refElSz);
+    // For us the Jacobian is diagonal.
+    //   dx^a/du_a = J[a]
+    //   det(J) = Product_a{ J[a] }
+    //
+    // To take the physical-space derivative, need to divide by J[a].
+    // We are multiplying d{phi_i} by d{phi_j}, so need to divide by J[a] twice.
+    //
+    // Also the quadrature weights need to be scaled by det(J).
+    //
+    // scaleDQD[a] = det(J) / (J[a])*(J[a])
+    //             = Product_b{ (J[b])^((-1)^delta(a,b)) }.
 
-    //TODO what was this representing mathematically? Need to generalize correctly.
-    double J_quotient[dim];
+    double scaleDQD[dim];
     for (unsigned int d = 0; d < dim; d++)
     {
-      J_quotient[d] = 1.0;
+      scaleDQD[d] = 1.0;
       for (unsigned int dd = 0; dd < dim; dd++)
-        if (dd != d)
-          J_quotient[d] *= J.x(dd);
-        else
-          J_quotient[d] /= J.x(dd);
+        scaleDQD[d] *= (dd == d ? (1.0 / J.x(dd)) : J.x(dd));
     }
 
     //std::cout<<"Stifness:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
 
+    // Quadrature for each basis function.
     for (unsigned int d = 0; d < dim; d++)
-      SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, Qx[d], W1d, J_quotient[d]);  //TODO SymmetricOuterProduct does not support ndofs.
+      SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, Qx[d], W1d, scaleDQD[d]);  //TODO SymmetricOuterProduct does not support ndofs.
 
     // Backup.
     /// for(unsigned int k=0;k<(eleOrder+1);k++)
@@ -123,6 +131,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
     ///         }
 
 
+    // Back to regular-spaced points.
     for (unsigned int d = 0; d < dim; d++)
       mat1dPtrs[d] = QT1d;
     for (unsigned int d = 0; d < dim; d++)
