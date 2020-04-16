@@ -168,7 +168,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
     {
       out[i] = Qx[0][i];
       for (unsigned int d = 1; d < dim; d++)
-        out[i]=Qx[d][i];
+        out[i]+=Qx[d][i];
     }
 }
 
