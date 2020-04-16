@@ -1130,33 +1130,35 @@ namespace ot
       const size_t nIdx = nodeInstance.getPNodeIdx();
       const size_t childOffset = childNodeOffsets[child_sfc];
 
-      if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
-      {
-        // Nodal values.
-        for (int dof = 0; dof < m_ndofs; dof++)
-          myOutNodeValues[m_ndofs * nIdx + dof]
-            += parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * childOffset + dof];
+      auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
+      if (childOutput.size() > 0)
+        if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
+        {
+          // Nodal values.
+          for (int dof = 0; dof < m_ndofs; dof++)
+            myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * childOffset + dof];
 
-        childNodeOffsets[child_sfc]++;
+          childNodeOffsets[child_sfc]++;
+        }
+        else   // Leaf
+        {
+          const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
+                  childSubtreesSFC[child_sfc],
+                  myNodes[nIdx],
+                  m_eleOrder );
+
+          // Nodal values.
+          for (int dof = 0; dof < m_ndofs; dof++)
+          {
+            myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank];
+          }
+
+          // Zero out the values after they are transferred.
+          // This is necessary so that later linear transforms are not contaminated.
+          std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
+                       m_ndofs, zero );
+        }
       }
-      else   // Leaf
-      {
-        const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
-                childSubtreesSFC[child_sfc],
-                myNodes[nIdx],
-                m_eleOrder );
-
-        // Nodal values.
-        for (int dof = 0; dof < m_ndofs; dof++)
-          myOutNodeValues[m_ndofs * nIdx + dof]
-            += parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank];
-
-        // Zero out the values after they are transferred.
-        // This is necessary so that later linear transforms are not contaminated.
-        std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
-                     m_ndofs, zero );
-      }
-    }
 
     //
     // Perform any needed transpose-interpolations.
