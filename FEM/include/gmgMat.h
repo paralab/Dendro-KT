@@ -446,16 +446,11 @@ public:
       KSPGetPC(gmgKSP, &gmgPC);
       PCSetType(gmgPC, PCMG);
 
-      /// PCMGSetLevels(gmgPC, (int) m_numStrata, ???comms???);
+      PCMGSetLevels(gmgPC, (int) m_numStrata, PETSC_NULL); // PETSC_NULL indicates don't use separate comm for each level.
 
       PCMGSetType(gmgPC, PC_MG_MULTIPLICATIVE); // MGMULTIPLICATIVE,MGADDITIVE,MGFULL,MGCASCADE
 
-      PCMGSetLevels(gmgPC, (int) m_numStrata, PETSC_NULL); // PETSC_NULL indicates don't use separate comm for each level.
-
       PCMGSetCycleType(gmgPC, PC_MG_CYCLE_V);
-
-      /// MGSetNumberSmoothUp(gmgPC, smoothUp);      // Outdated petsc interface
-      /// MGSetNumberSmoothDown(gmgPC, smoothDown);
 
       // Set smoothers.
       for (int s = 0; s < m_numStrata-1; ++s)  //0<petscLevel<nlevels
@@ -535,7 +530,7 @@ public:
         // PETSC_NULL indicates that the default petsc residual method will
         // be used, which will take A (our matvec), u, and rhs,
         // and compute rhs - A*u.
-        PCMGSetResidual(gmgPC, petscLevel, PETSC_NULL, matrixFreeOperatorMat);
+        PCMGSetResidual(gmgPC, petscLevel, PCMGResidualDefault, matrixFreeOperatorMat);
       }
 
       return gmgKSP;
