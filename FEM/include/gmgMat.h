@@ -132,7 +132,7 @@ public:
     // Design note (static polymorphism)
     //   The gmgMat does not impose a mass matrix or smoothing operator.
     //   The leaf derived type is responsible to implement those as
-    //   leafMatVec() and leafSmooth().
+    //   leafMatVec() and leafApplySmoother().
     //   Suggestion:
     //     Define a leaf derived type from gmgMat that contains
     //     (via class composition) an feMat instance per level.
@@ -153,17 +153,12 @@ public:
 
 
     /**
-     * @brief Update the vector 'u' by applying one or more SOR smoothing steps.
-     * @param [in out] u Approximate solution to be improved.
-     * @param [in] rhs Righthand side of the linear system.
-     * @param [in] omega Relaxation factor.
-     * @param [in] iters Number of (global) iterations.
-     * @param [in] localIters Number of local iterations.
-     * @note Total number of smoothing steps should be (iters*localIters).
+     * @brief Apply smoother directly (to residual),
+     *        e.g. for Jacobi, multiply by reciprocal of diagonal.
      */
-    void smooth(VECType *u, const VECType *rhs, double omega, int iters, int localIters, unsigned int stratum = 0)//=0
+    void applySmoother(const VECType * res, VECType * resLeft, unsigned int stratum)
     {
-      asConcreteType().leafSmooth(u, rhs, omega, iters, localIters, stratum);
+      asConcreteType().leafApplySmoother(res, resLeft, stratum);
     }
 
 
@@ -372,21 +367,22 @@ public:
     }
 
     //
-    // smooth() [Petsc Vec]
+    // applySmoother [Petsc Vec]
     //
-    void smooth(Vec &u, const Vec &rhs, PetscReal omega, PetscInt iters, PetscInt localIters, unsigned int stratum = 0)
+    void applySmoother(const Vec res, Vec resLeft, unsigned int stratum)
     {
-      PetscScalar * uArry = nullptr;
-      const PetscScalar * fArry = nullptr;
+      const PetscScalar * inArry = nullptr;
+      PetscScalar * outArry = nullptr;
 
-      VecGetArray(u, &uArry);
-      VecGetArrayRead(rhs, &fArry);
+      VecGetArrayRead(res, &inArry);
+      VecGetArray(resLeft, &outArry);
 
-      smooth(uArry, fArry, (double) omega, (int) iters, (int) localIters, stratum);
+      applySmoother(inArry, outArry, stratum);
 
-      VecRestoreArray(u, &uArry);
-      VecRestoreArrayRead(rhs, &fArry);
+      VecRestoreArrayRead(res, &inArry);
+      VecRestoreArray(resLeft, &outArry);
     }
+
 
     //
     // restriction() [Petsc Vec]
@@ -441,7 +437,14 @@ public:
       PC  gmgPC;
 
       KSPCreate(comm, &gmgKSP);
-      KSPSetType(gmgKSP, KSPRICHARDSON);  // standalone solver, not preconditioner.
+      {
+        // Associate the fine grid linear system to the overall ksp.
+        Mat matrixFreeLinearSystem;
+        this->petscMatCreateShellMatVec(matrixFreeLinearSystem, 0);
+        KSPSetOperators(gmgKSP, matrixFreeLinearSystem, matrixFreeLinearSystem);
+      }
+
+      KSPSetType(gmgKSP, KSPRICHARDSON);  // multigrid as standalone solver, not preconditioner.
 
       KSPGetPC(gmgKSP, &gmgPC);
       PCSetType(gmgPC, PCMG);
@@ -452,43 +455,40 @@ public:
 
       PCMGSetCycleType(gmgPC, PC_MG_CYCLE_V);
 
-      // Set smoothers.
-      for (int s = 0; s < m_numStrata-1; ++s)  //0<petscLevel<nlevels
+      // Set smoothers and residual functions.
+      for (int s = 0; s < m_numStrata; ++s)
       {
         const PetscInt petscLevel = m_numStrata-1 - s;
 
-        Mat matrixFreeSmoothMat;
-        this->petscMatCreateShellSmooth(matrixFreeSmoothMat, s);
+        Mat matrixFreeOperatorMat;
+        this->petscMatCreateShellMatVec(matrixFreeOperatorMat, s);
 
+        if (petscLevel > 0)
+        {
+          // Residual.
+          //
+          PCMGSetResidual(gmgPC, petscLevel, PCMGResidualDefault, matrixFreeOperatorMat);
+            // PETSC_NULL indicates that the default petsc residual method will
+            // be used, which will take A (our matvec), u, and rhs,
+            // and compute rhs - A*u.
+        }
+
+
+
+        // Use PCSHELL so we can directly apply the smoother.
+
+        // Smoother
+        //
         KSP gmgSmootherKSP;
         PCMGGetSmoother(gmgPC, petscLevel, &gmgSmootherKSP);
-        KSPSetOperators(gmgSmootherKSP, matrixFreeSmoothMat, matrixFreeSmoothMat);
+        /// KSPSetType(gmgSmootherKSP, KSPRICHARDSON);  // Not sure if needed.
+        KSPSetOperators(gmgSmootherKSP, matrixFreeOperatorMat, matrixFreeOperatorMat);
 
-        /// PC smootherPC;
-        /// KSPGetPC(gmgSmootherKSP, &smootherPC);
-        /// PCSetType(smootherPC, PCSOR);
-        /// // ^^ Both?
-
-        // Slight confusion here..
-        //  The manual says, to set the matrix that defines the smoother on level 1, do
-        //      PCMGGetSmoother(pc, 1, &ksp);
-        //      KSPSetOperators(ksp, A1, A1);
-        //  On the other hand, to set SOR as the smoother to use on level 1, do
-        //      PCMGGetSmoother(pc, 1, &ksp);
-        //      KSPGetPC(ksp, &pc);
-        //      PCSetType(pc, PCSOR);
-        //  I want to use SOR, but how could petsc know how to apply SOR
-        //  without us giving it the matrix? So I am going with the first option.
-      }
-
-      // Set coarse solver.
-      {
-        Mat matrixFreeSmoothMat;
-        this->petscMatCreateShellSmooth(matrixFreeSmoothMat, m_numStrata-1);
-
-        KSP gmgSmootherKSP;
-        PCMGGetCoarseSolve(gmgPC, &gmgSmootherKSP);
-        KSPSetOperators(gmgSmootherKSP, matrixFreeSmoothMat, matrixFreeSmoothMat);
+        PC smootherPC;
+        KSPGetPC(gmgSmootherKSP, &smootherPC);
+        PCSetType(smootherPC, PCSHELL);
+        PCShellSetContext(smootherPC, &m_stratumWrappers[s]);
+        PCShellSetApply(smootherPC, gmgMat<dim, LeafClass>::petscUserApplySmoother);
       }
 
       // Set workspace vectors.
@@ -518,20 +518,7 @@ public:
         PCMGSetInterpolation(gmgPC, petscLevel, matrixFreeProlongationMat);
       }
 
-      // Set residual functions.
-      //
-      for (int s = 0; s < m_numStrata-1; ++s)  //0<petscLevel<nlevels
-      {
-        const PetscInt petscLevel = m_numStrata-1 - s;
-
-        Mat matrixFreeOperatorMat;
-        this->petscMatCreateShellMatVec(matrixFreeOperatorMat, s);
-
-        // PETSC_NULL indicates that the default petsc residual method will
-        // be used, which will take A (our matvec), u, and rhs,
-        // and compute rhs - A*u.
-        PCMGSetResidual(gmgPC, petscLevel, PCMGResidualDefault, matrixFreeOperatorMat);
-      }
+      KSPSetUp(gmgKSP);
 
       return gmgKSP;
     }
@@ -606,26 +593,18 @@ public:
       gmgMatWrapper->m_gmgMat->matVec(x, y_out, stratum);
     };
 
+
     /**
-     * @brief The 'user defined' sor routine we give to petsc to make a matrix-free smoother. Don't call this directly.
-     * Must follow the same interface as petsc MatSOR().
+     * @brief The 'user defined' preconditioner application method, to use PC Shell interface. Don't call directly.
      */
-    static void petscUserSmooth(Mat mat,
-                                Vec rhs,
-                                PetscReal omega,
-                                MatSORType sorTypeFlag,
-                                PetscReal diagShift,
-                                PetscInt iters,
-                                PetscInt localIters,
-                                Vec x_out)
+    static PetscErrorCode petscUserApplySmoother(PC pc, Vec res, Vec resLeft)
     {
-      // Note: Only forwards omega, iters, and localIters,
-      //       ignores sorTypeFlag and diagShift.
       gmgMatStratumWrapper<dim, LeafClass> *gmgMatWrapper;
-      MatShellGetContext(mat, &gmgMatWrapper);
+      PCShellGetContext(pc, (void **) &gmgMatWrapper);
       const unsigned int stratum = gmgMatWrapper->m_stratum;
-      gmgMatWrapper->m_gmgMat->smooth(x_out, rhs, omega, iters, localIters, stratum);
-    };
+      gmgMatWrapper->m_gmgMat->applySmoother(res, resLeft, stratum);
+    }
+
 
     /**
      * @brief The 'user defined' matvec we give to petsc to make matrix-free restriction. Don't call this directly.
