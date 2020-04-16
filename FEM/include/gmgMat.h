@@ -469,6 +469,11 @@ public:
         PCMGGetSmoother(gmgPC, petscLevel, &gmgSmootherKSP);
         KSPSetOperators(gmgSmootherKSP, matrixFreeSmoothMat, matrixFreeSmoothMat);
 
+        /// PC smootherPC;
+        /// KSPGetPC(gmgSmootherKSP, &smootherPC);
+        /// PCSetType(smootherPC, PCSOR);
+        /// // ^^ Both?
+
         // Slight confusion here..
         //  The manual says, to set the matrix that defines the smoother on level 1, do
         //      PCMGGetSmoother(pc, 1, &ksp);
@@ -492,8 +497,8 @@ public:
       }
 
       // Set workspace vectors.
-      PCMGSetR(gmgPC, m_numStrata-1, m_stratumWorkR[0]);
-      for (int s = 1; s < m_numStrata; ++s)  // All but finest
+      PCMGSetR(gmgPC, m_numStrata-1, m_stratumWorkR[0]);  // Finest
+      for (int s = 1; s < m_numStrata - 1; ++s)  // All but finest and coarsest.
       {
         const PetscInt petscLevel = m_numStrata-1 - s;
 
@@ -501,6 +506,8 @@ public:
         PCMGSetX(gmgPC, petscLevel, m_stratumWorkX[s]);
         PCMGSetR(gmgPC, petscLevel, m_stratumWorkR[s]);
       }
+      PCMGSetRhs(gmgPC, 0, m_stratumWorkRhs[m_numStrata-1]);  // Coarsest
+      PCMGSetX(gmgPC, 0, m_stratumWorkX[m_numStrata-1]);      // Coarsest
 
       // Set restriction/prolongation
       for (int s = 0; s < m_numStrata-1; ++s)  //0<petscLevel<nlevels
