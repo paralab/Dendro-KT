@@ -131,16 +131,13 @@ template <unsigned int dim>
 int main_ (Parameters &pm, MPI_Comm comm)
 {
     const bool outputStatus = true;
+    const bool usePetscVersion = false;
 
     int rProc, nProc;
     MPI_Comm_rank(comm, &rProc);
     MPI_Comm_size(comm, &nProc);
 
     const unsigned int m_uiDim = dim;
-
-    int rank, npes;
-    MPI_Comm_rank(comm, &rank);
-    MPI_Comm_size(comm, &npes);
 
     m_uiMaxDepth = pm.maxDepth;
     const unsigned int nGrids = pm.nGrids;
@@ -224,92 +221,160 @@ int main_ (Parameters &pm, MPI_Comm comm)
     if (!rProc && outputStatus)
       std::cout << "Setting up problem.\n" << std::flush;
 
+    if (!usePetscVersion)
+    {
+      //
+      // Non-PETSc version.
+      //
+
+      const int smoothStepsPerCycle = 1;
+      const double relaxationFactor = 0.67;
+
+      // - - - - - - - - - - -
+
+      std::vector<VECType> _ux, _frhs, _Mfrhs;
+      fineDA.createVector(_ux, false, false, 1);
+      fineDA.createVector(_frhs, false, false, 1);
+      fineDA.createVector(_Mfrhs, false, false, 1);
+
+      PoissonEq::PoissonVec<dim> poissonVec(&fineDA,1);
+      poissonVec.setProblemDimensions(domain_min,domain_max);
+
+      fineDA.setVectorByFunction(_ux.data(),    f_init, false, false, 1);
+      fineDA.setVectorByFunction(_Mfrhs.data(), f_init, false, false, 1);
+      fineDA.setVectorByFunction(_frhs.data(),  f_rhs, false, false, 1);
+
+      if (!rProc && outputStatus)
+        std::cout << "Computing RHS.\n" << std::flush;
+
+      poissonVec.computeVec(&(*_frhs.cbegin()), &(*_Mfrhs.begin()), 1.0);
+      double normb = 0.0;
+      for (VECType b : _Mfrhs)
+        normb = fmax(fabs(b), normb);
+      if (!rProc)
+        std::cout << "normb==" << normb << "\n";
+
+      const VECType *frhs = &(*_frhs.cbegin());
+      const VECType *Mfrhs = &(*_Mfrhs.cbegin());
+      VECType *ux = &(*_ux.begin());
+
+      // - - - - - - - - - - -
+
+      double tol=1e-6;
+      unsigned int max_iter=1000;
+
+      if (!rProc && outputStatus)
+      {
+        std::cout << "Solving system.\n" << std::flush;
+        std::cout << "    numStrata ==           " << poissonGMG.getNumStrata() << "\n";
+        std::cout << "    smoothStepsPerCycle == " << smoothStepsPerCycle << "\n";
+        std::cout << "    relaxationFactor ==    " << relaxationFactor << "\n";
+      }
+
+      unsigned int countIter = 0;
+      double res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
+      while (countIter < max_iter && res > tol)
+      {
+        poissonGMG.vcycle(0, ux, Mfrhs, smoothStepsPerCycle, relaxationFactor);
+        countIter++;
+        /// if (!rProc && !(countIter & 15)) // Every 16th iteration
+        if (!rProc && !(countIter & 0))  // Every iteration
+          std::cout << "After iteration " << countIter << ", residual == " << res << "\n";
+      }
+
+      if (!rProc)
+        std::cout << " finished at iteration " << countIter << " ...\n";
+
+      // Now that we have an approximate solution, test convergence by evaluating the residual.
+      if (!rProc)
+        std::cout << "Final relative residual error == " << res / normb << ".\n";
+    }
+
+    else
+    {
+
 #ifndef BUILD_WITH_PETSC
-    //
-    // Non-PETSc version.
-    //
-
-    throw "Not implemented!";
-
+      throw "Petsc version requested but not built! (BUILD_WITH_PETSC)";
 #else
-    //
-    // PETSc version.
-    //
+      //
+      // PETSc version.
+      //
 
-    Vec ux, frhs, Mfrhs;
-    fineDA.petscCreateVector(ux, false, false, 1);
-    fineDA.petscCreateVector(frhs, false, false, 1);
-    fineDA.petscCreateVector(Mfrhs, false, false, 1);
+      Vec ux, frhs, Mfrhs;
+      fineDA.petscCreateVector(ux, false, false, 1);
+      fineDA.petscCreateVector(frhs, false, false, 1);
+      fineDA.petscCreateVector(Mfrhs, false, false, 1);
 
-    /// PoissonEq::PoissonMat<dim> poissonMat(octDA,1);
-    /// poissonMat.setProblemDimensions(domain_min,domain_max);
+      /// PoissonEq::PoissonMat<dim> poissonMat(octDA,1);
+      /// poissonMat.setProblemDimensions(domain_min,domain_max);
 
-    PoissonEq::PoissonVec<dim> poissonVec(&fineDA,1);
-    poissonVec.setProblemDimensions(domain_min,domain_max);
+      PoissonEq::PoissonVec<dim> poissonVec(&fineDA,1);
+      poissonVec.setProblemDimensions(domain_min,domain_max);
 
-    fineDA.petscSetVectorByFunction(ux, f_init, false, false, 1);
-    fineDA.petscSetVectorByFunction(Mfrhs, f_init, false, false, 1);
-    fineDA.petscSetVectorByFunction(frhs, f_rhs, false, false, 1);
+      fineDA.petscSetVectorByFunction(ux, f_init, false, false, 1);
+      fineDA.petscSetVectorByFunction(Mfrhs, f_init, false, false, 1);
+      fineDA.petscSetVectorByFunction(frhs, f_rhs, false, false, 1);
 
-    if (!rProc && outputStatus)
-      std::cout << "Computing RHS.\n" << std::flush;
+      if (!rProc && outputStatus)
+        std::cout << "Computing RHS.\n" << std::flush;
 
-    poissonVec.computeVec(frhs, Mfrhs, 1.0);
+      poissonVec.computeVec(frhs, Mfrhs, 1.0);
 
-    double tol=1e-6;
-    unsigned int max_iter=1000;
+      double tol=1e-6;
+      unsigned int max_iter=1000;
 
-    /// Mat matrixFreeMat;
-    /// poissonMat.petscMatCreateShell(matrixFreeMat);
+      /// Mat matrixFreeMat;
+      /// poissonMat.petscMatCreateShell(matrixFreeMat);
 
-    if (!rProc && outputStatus)
-      std::cout << "Creating Petsc multigrid shells.\n" << std::flush;
+      if (!rProc && outputStatus)
+        std::cout << "Creating Petsc multigrid shells.\n" << std::flush;
 
-    // PETSc solver context.
-    KSP ksp = poissonGMG.petscCreateGMG(comm);
+      // PETSc solver context.
+      KSP ksp = poissonGMG.petscCreateGMG(comm);
 
-    /// KSPCreate(comm, &ksp);
-    /// KSPSetOperators(ksp, matrixFreeMat, matrixFreeMat);
+      /// KSPCreate(comm, &ksp);
+      /// KSPSetOperators(ksp, matrixFreeMat, matrixFreeMat);
 
-    KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter);
+      KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter);
 
-    if (!rProc && outputStatus)
-      std::cout << "Solving system.\n" << std::flush;
+      if (!rProc && outputStatus)
+        std::cout << "Solving system.\n" << std::flush;
 
-    KSPSolve(ksp, Mfrhs, ux);
+      KSPSolve(ksp, Mfrhs, ux);
 
-    PetscInt numIterations;
-    KSPGetIterationNumber(ksp, &numIterations);
+      PetscInt numIterations;
+      KSPGetIterationNumber(ksp, &numIterations);
 
-    if (!rank)
-      std::cout << " finished at iteration " << numIterations << " ...\n";
+      if (!rProc)
+        std::cout << " finished at iteration " << numIterations << " ...\n";
 
-    KSPDestroy(&ksp);
+      KSPDestroy(&ksp);
 
-    // Now that we have an approximate solution, test convergence by evaluating the residual.
-    Vec residual;
-    fineDA.petscCreateVector(residual, false, false, 1);
-    poissonGMG.matVec(ux, residual);
-    VecAXPY(residual, -1.0, Mfrhs);
-    PetscScalar normr, normb;
-    VecNorm(Mfrhs, NORM_INFINITY, &normb);
-    VecNorm(residual, NORM_INFINITY, &normr);
-    PetscScalar rel_resid_err = normr / normb;
+      // Now that we have an approximate solution, test convergence by evaluating the residual.
+      Vec residual;
+      fineDA.petscCreateVector(residual, false, false, 1);
+      poissonGMG.matVec(ux, residual);
+      VecAXPY(residual, -1.0, Mfrhs);
+      PetscScalar normr, normb;
+      VecNorm(Mfrhs, NORM_INFINITY, &normb);
+      VecNorm(residual, NORM_INFINITY, &normr);
+      PetscScalar rel_resid_err = normr / normb;
 
-    if (!rank)
-      std::cout << "Final relative residual error == " << rel_resid_err << ".\n";
+      if (!rProc)
+        std::cout << "Final relative residual error == " << rel_resid_err << ".\n";
 
-    // TODO
-    // octDA->vecTopvtu(...);
+      // TODO
+      // octDA->vecTopvtu(...);
 
-    fineDA.petscDestroyVec(ux);
-    fineDA.petscDestroyVec(frhs);
-    fineDA.petscDestroyVec(Mfrhs);
-    fineDA.petscDestroyVec(residual);
+      fineDA.petscDestroyVec(ux);
+      fineDA.petscDestroyVec(frhs);
+      fineDA.petscDestroyVec(Mfrhs);
+      fineDA.petscDestroyVec(residual);
 
 #endif
+    }
 
-    if(!rank)
+    if(!rProc)
         std::cout<<" end of poissonGMG: "<<std::endl;
 
     return 0;

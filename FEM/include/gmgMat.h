@@ -67,6 +67,11 @@ protected:
 
     std::vector<gmgMatStratumWrapper<dim, LeafClass>> m_stratumWrappers;
 
+    std::vector<std::vector<VECType>> m_stratumWork_R_h;
+    std::vector<std::vector<VECType>> m_stratumWork_E_h;
+    std::vector<std::vector<VECType>> m_stratumWork_R_2h;
+    std::vector<std::vector<VECType>> m_stratumWork_E_2h;
+
 #ifdef BUILD_WITH_PETSC
     Vec * m_stratumWorkRhs;
     Vec * m_stratumWorkX;
@@ -93,6 +98,10 @@ public:
       for (int ii = 0; ii < m_numStrata; ++ii)
         m_stratumWrappers.emplace_back(gmgMatStratumWrapper<dim, LeafClass>{this, ii});
 
+      m_stratumWork_R_h.resize(m_numStrata);
+      m_stratumWork_E_h.resize(m_numStrata);
+      m_stratumWork_R_2h.resize(m_numStrata);
+      m_stratumWork_E_2h.resize(m_numStrata);
 
 #ifdef BUILD_WITH_PETSC
       m_stratumWorkRhs = new Vec[m_numStrata];
@@ -139,6 +148,12 @@ public:
       m_uiPtMax=pt_max;
     }
 
+
+    unsigned int getNumStrata() const { return m_numStrata; }
+
+    unsigned int getNdofs() const { return m_ndofs; }
+
+
     // Design note (static polymorphism)
     //   The gmgMat does not impose a mass matrix or smoothing operator.
     //   The leaf derived type is responsible to implement those as
@@ -171,9 +186,90 @@ public:
       asConcreteType().leafApplySmoother(res, resLeft, stratum);
     }
 
-
+    // restriction()
     void restriction(const VECType *fineRes, VECType *coarseRes, unsigned int fineStratum = 0);
+
+    // prolongation()
     void prolongation(const VECType *coarseCrx, VECType *fineCrx, unsigned int fineStratum = 0);
+
+
+    // --------------------------------
+
+    // residual()
+    VECType residual(unsigned int stratum, VECType * res, const VECType * u, const VECType * rhs, double scale = 1.0)
+    {
+      const size_t localSz = (*m_multiDA)[stratum].getLocalNodalSz();
+      this->matVec(u, res, stratum, scale);
+      VECType resLInf = 0.0f;
+      for (size_t i = 0; i < m_ndofs * localSz; i++)
+      {
+        res[i] = rhs[i] - res[i];
+        resLInf = fmax(fabs(res[i]), resLInf);
+      }
+      return resLInf;
+    }
+
+    // residual()
+    VECType residual(unsigned int stratum, const VECType * u, const VECType * rhs, double scale = 1.0)
+    {
+      const size_t localSz = (*m_multiDA)[stratum].getLocalNodalSz();
+      m_stratumWork_R_h[stratum].resize(m_ndofs * localSz);
+      return residual(stratum, m_stratumWork_R_h[stratum].data(), u, rhs, scale);
+    }
+
+    // vcycle()
+    void vcycle(unsigned int fineStratum, VECType * u, const VECType * rhs, int smoothSteps = 1, double omega = 0.67)
+    {
+      const double scale = 1.0;//TODO
+      const unsigned int fs = fineStratum;
+      if (fs >= m_numStrata)
+        throw "Cannot start vcycle coarser than coarsest grid.";
+
+      const size_t localFineSz = (*m_multiDA)[fs].getLocalNodalSz();
+      m_stratumWork_R_h[fs].resize(m_ndofs * localFineSz);
+      m_stratumWork_E_h[fs].resize(m_ndofs * localFineSz);
+
+      smooth(fs, u, rhs, smoothSteps, omega);
+
+      if (fs < m_numStrata-1)
+      {
+        this->residual(fs, m_stratumWork_R_h[fs].data(), u, rhs, scale);
+
+        const size_t localCoarseSz = (*m_multiDA)[fs+1].getLocalNodalSz();
+        m_stratumWork_R_2h[fs].resize(m_ndofs * localCoarseSz);
+        m_stratumWork_E_2h[fs].resize(m_ndofs * localCoarseSz);
+
+        this->restriction(m_stratumWork_R_h[fs].data(), m_stratumWork_R_2h[fs].data(), fs);
+
+        std::fill(m_stratumWork_E_2h[fs].begin(), m_stratumWork_E_2h[fs].end(), 0.0f);
+        this->vcycle(fineStratum+1, m_stratumWork_E_2h[fs].data(), m_stratumWork_R_2h[fs].data(), smoothSteps, omega);
+
+        this->prolongation(m_stratumWork_E_2h[fs].data(), m_stratumWork_E_h[fs].data(), fs);
+
+        for (size_t i = 0; i < m_ndofs * localFineSz; i++)
+          u[i] += m_stratumWork_E_h[fs][i];
+      }
+
+      smooth(fs, u, rhs, smoothSteps, omega);
+    }
+
+    // smooth()
+    void smooth(unsigned int stratum, VECType * u, const VECType * rhs, int smoothSteps = 1, double omega = 0.67)
+    {
+      const double scale = 1.0;//TODO
+      const size_t localSz = (*m_multiDA)[stratum].getLocalNodalSz();
+      m_stratumWork_R_h[stratum].resize(m_ndofs * localSz);
+
+      for (int step = 0; step < smoothSteps; step++)
+      {
+        this->residual(stratum, m_stratumWork_R_h[stratum].data(), u, rhs, scale);
+        for (size_t i = 0; i < m_ndofs * localSz; i++)
+          u[i] += omega * m_stratumWork_R_h[stratum][i];
+      }
+    }
+
+    // --------------------------------
+
 
 
 #ifdef BUILD_WITH_PETSC
