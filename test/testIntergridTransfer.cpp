@@ -3,18 +3,62 @@
 #include "intergridTransfer.h"
 
 #include "distTree.h"
+#include "gmgMat.h"
 #include "oda.h"
 
 #include <stdio.h>
 #include <iostream>
+#include <limits>
 
+
+#define UCHK u8"\u2713"
+#define UXXX u8"\u2717"
 
 
 template <int dim>
-bool testNull();
+bool testNull(int argc, char * argv[]);
 
 template <int dim>
-bool testMultiDA();
+bool testMultiDA(int argc, char * argv[]);
+
+template <int dim>
+bool testUniform2(int argc, char * argv[]);
+bool testUniform2(int argc, char * argv[]);
+
+template <typename T>
+struct VRange
+{
+  T lo;
+  T hi;
+};
+
+template <typename T>
+VRange<T> getBounds(const std::vector<T> &v)
+{
+  VRange<T> b;
+  b.lo = std::numeric_limits<VECType>::max();
+  b.hi = std::numeric_limits<VECType>::min();
+  for (auto x : v)
+  {
+    b.lo = fmin(b.lo, x);
+    b.hi = fmax(b.hi, x);
+  }
+  return b;
+}
+
+bool mpiAllTrue(int test, MPI_Comm comm, int root = 0)
+{
+  int globTest = 0;
+  par::Mpi_Reduce(&test, &globTest, 1, MPI_LAND, root, comm);
+  return globTest;
+}
+
+bool mpiAnyTrue(int test, MPI_Comm comm, int root = 0)
+{
+  int globTest = 0;
+  par::Mpi_Reduce(&test, &globTest, 1, MPI_LOR, root, comm);
+  return globTest;
+}
 
 
 /**
@@ -27,8 +71,9 @@ int main(int argc, char *argv[])
   MPI_Init(&argc, &argv);
   _InitializeHcurve(dim);
 
-  /// bool success = testNull<dim>();
-  bool success = testMultiDA<dim>();
+  /// bool success = testNull<dim>(argc, argv);
+  /// bool success = testMultiDA<dim>(argc, argv);
+  bool success  = testUniform2(argc, argv);
 
   _DestroyHcurve();
   MPI_Finalize();
@@ -36,9 +81,193 @@ int main(int argc, char *argv[])
   return !success;
 }
 
+bool testUniform2(int argc, char * argv[])
+{
+  if (argc < 2)
+  {
+    std::cout << "First argument should be dim\n";
+    return false;
+  }
+
+  const unsigned int dim = static_cast<unsigned>(strtoul(argv[1], NULL, 0));
+
+  switch(dim)
+  {
+    case 2: return testUniform2<2>(argc, argv); break;
+    case 3: return testUniform2<3>(argc, argv); break;
+    case 4: return testUniform2<4>(argc, argv); break;
+    default:
+      std::cout << "dim==" << dim << " is not supported.\n";
+  }
+  return false;
+}
 
 template <int dim>
-bool testMultiDA()
+bool testUniform2(int argc, char * argv[])
+{
+  MPI_Comm comm = MPI_COMM_WORLD;
+
+  int rProc, nProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  const bool outputStatus = true;
+
+  if (!rProc)
+    std::cout << "Running testUniform2<" << dim << ">()\n" << std::flush;
+
+  enum ArgPlace { PRG,
+                  DIM,
+                  DEPTH,
+                  ORDER,
+                  NARGS };
+  std::string argNames[NARGS];
+  argNames[PRG]   = argv[0];
+  argNames[DIM]   = "dim";
+  argNames[DEPTH] = "depth";
+  argNames[ORDER] = "order";
+
+  if (!rProc && argc != NARGS)
+  {
+    std::cout << "Usage:";
+    for (int a = 0; a < NARGS; a++)
+      std::cout << " " << argNames[a];
+    std::cout << "\n" << std::flush;
+    return false;
+  }
+
+  // Get args.
+  const unsigned int fineDepth = static_cast<unsigned>(strtoul(argv[DEPTH], NULL, 0));
+  const unsigned int eOrder = static_cast<unsigned int>(strtoul(argv[ORDER], NULL, 0));
+
+  // Compute m_uiMaxDepth.
+  m_uiMaxDepth = fineDepth;
+  while ((1u << (m_uiMaxDepth - fineDepth)) < eOrder)
+    m_uiMaxDepth++;
+  if (!rProc && outputStatus)
+    std::cout << "fineDepth==" << fineDepth << "  m_uiMaxDepth==" << m_uiMaxDepth << "\n" << std::flush;
+
+  if (!rProc && outputStatus)
+    std::cout << "sizeof(VECType)==" << sizeof(VECType) << "\n";
+
+  const double partition_tol = 0.1;
+
+  // Construct coarse grid.
+  if (!rProc && outputStatus)
+    std::cout << "Generating coarseTree.\n" << std::flush;
+  const int nGrids = 2;
+  std::vector<ot::TreeNode<unsigned int, dim>> coarseTree;
+  {
+    unsigned int coarseDepth = fineDepth - (nGrids-1);
+    ot::createRegularOctree(coarseTree, coarseDepth, comm);
+  }
+
+  // Create two-level grid.
+  if (!rProc && outputStatus)
+    std::cout << "Creating grid hierarchy.\n" << std::flush;
+  ot::DistTree<unsigned int, dim> dtree(coarseTree);
+  ot::DistTree<unsigned int, dim> surrDTree
+    = dtree.generateGridHierarchyDown(nGrids, partition_tol, comm);
+
+  // Create DAs
+  if (!rProc && outputStatus)
+    std::cout << "Creating multilevel ODA.\n" << std::flush;
+  ot::MultiDA<dim> multiDA, surrMultiDA;
+  ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, eOrder, 100, partition_tol);
+  ot::DA<dim>::multiLevelDA(surrMultiDA, surrDTree, comm, eOrder, 100, partition_tol);
+
+  // Reference to the fine grid and coarse grid, and create vectors.
+  ot::DA<dim> & fineDA = multiDA[0];
+  ot::DA<dim> & coarseDA = multiDA[1];
+  std::vector<VECType> fineVec, coarseVec;
+  const int singleDof = 1;
+  fineDA.createVector(fineVec, false, false, singleDof);
+  coarseDA.createVector(coarseVec, false, false, singleDof);
+  if (!rProc && outputStatus)
+  {
+    std::cout << "Coarse DA has " << coarseDA.getTotalNodalSz() << " total nodes.\n" << std::flush;
+    std::cout << "Refined DA has " << fineDA.getTotalNodalSz() << " total nodes.\n" << std::flush;
+  }
+
+  // Create gmgMatObj
+  if (!rProc && outputStatus)
+  {
+    std::cout << "Creating gmgMat object for restriction() and prolongation().\n" << std::flush;
+  }
+  gmgMat<dim> gmgMatObj(&multiDA, &surrMultiDA, singleDof);
+
+
+  //
+  // Begin checks.
+  //
+  int checkIdx = 0;
+  bool lastCheck = false;
+  std::vector<bool> checks;
+
+  VRange<VECType> bounds;
+
+  // Fill fine with 1 and test intergrid fine2coarse
+  if (!rProc && outputStatus)
+  {
+    std::cout << "Check " << checkIdx << ": Testing restriction (fine2coarse) using uniform field.\n" << std::flush;
+  }
+  std::fill(fineVec.begin(), fineVec.end(), 1.0);
+  std::fill(coarseVec.begin(), coarseVec.end(), 0.0);
+  gmgMatObj.restriction(&(*fineVec.cbegin()), &(*coarseVec.begin()), 0);
+
+  bounds = getBounds(coarseVec);
+  (checks.emplace_back(), checks[checkIdx++] = lastCheck = 
+          mpiAllTrue(bounds.lo == 1.0 && bounds.hi == 1.0, comm));
+  if (!rProc && outputStatus)
+  {
+    if (lastCheck)
+      std::cout << "Check passed. " << GRN << UCHK << NRM << "\n" << std::flush;
+    else
+    {
+      std::cout << "Check failed. " << RED << UXXX << NRM << "\n" << std::flush;
+      std::cout << "  Detail: bounds=={" << bounds.lo << ", " << bounds.hi << "}\n";
+    }
+  }
+
+
+  // Fill coarse with 1 and test intergrid coarse2fine
+  if (!rProc && outputStatus)
+  {
+    std::cout << "Check " << checkIdx << ": Testing prolongation (coarse2fine) using uniform field.\n" << std::flush;
+  }
+  std::fill(fineVec.begin(), fineVec.end(), 0.0);
+  std::fill(coarseVec.begin(), coarseVec.end(), 1.0);
+  gmgMatObj.prolongation(&(*coarseVec.cbegin()), &(*fineVec.begin()), 0);
+
+  bounds = getBounds(coarseVec);
+  (checks.emplace_back(), checks[checkIdx++] = lastCheck = 
+          mpiAllTrue(bounds.lo == 1.0 && bounds.hi == 1.0, comm));
+  if (!rProc && outputStatus)
+  {
+    if (lastCheck)
+      std::cout << "Check passed. " << GRN << UCHK << NRM << "\n" << std::flush;
+    else
+    {
+      std::cout << "Check failed. " << RED << UXXX << NRM << "\n" << std::flush;
+      std::cout << "  Detail: bounds=={" << bounds.lo << ", " << bounds.hi << "}\n";
+    }
+  }
+
+
+  bool countPassed = 0;
+  for (auto c : checks)
+    countPassed += c;
+  if (!rProc)
+  {
+    std::cout << countPassed << " of " << checks.size() << " checks passed.\n" << std::flush;
+  }
+  return (countPassed == checks.size());
+}
+
+
+
+template <int dim>
+bool testMultiDA(int argc, char * argv[])
 {
   using C = unsigned int;
   using DofT = float;
@@ -267,7 +496,7 @@ bool testMultiDA()
 
 
 template <int dim>
-bool testNull()
+bool testNull(int argc, char * argv[])
 {
   using C = unsigned int;
   using T = float;
