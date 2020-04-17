@@ -59,6 +59,8 @@ class RefElement
     /** Number of 1D interpolation points */
     int m_uiNrp;
 
+    bool m_isValid;
+
     /** reference element volume */
     unsigned int m_uiVol;
 
@@ -145,16 +147,19 @@ class RefElement
     /**Vandermonde matrix for interpolation points of child 1   */
     std::vector<double> Vu_1;
 
-    /**intermidiate vec 1 needed during interploation */
+    /**intermediate vec 1 needed during interploation */
     std::vector<double> im_vec1;
 
-    /**intermidiate vec 1 needed during interploation */
+    /**intermediate vec 1 needed during interploation */
     std::vector<double> im_vec2;
 
 
     template <unsigned int dim>   // TODO make this a class template parameter
     inline void getIpPtrs(const double * ipAxis[], unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
       const double * const ip[2] = {&(*ip_1D_0.cbegin()), &(*ip_1D_1.cbegin())};
       #pragma unroll(dim)
       for (int d = 0; d < dim; d++)
@@ -164,6 +169,9 @@ class RefElement
     template <unsigned int dim>   // TODO make this a class template parameter
     inline void getIpTPtrs(const double * ipTAxis[], unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
       const double * const ipT[2] = {&(*ipT_1D_0.cbegin()), &(*ipT_1D_1.cbegin())};
       #pragma unroll(dim)
       for (int d = 0; d < dim; d++)
@@ -173,6 +181,9 @@ class RefElement
     template <typename da, unsigned int dim>
     inline void getDoubleBufferPipeline(const da * fromPtrs[], da * toPtrs[], const da * in, da * out) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
       toPtrs[0] = getImVec1();
       fromPtrs[0] = getImVec2();
       for (int d = 1; d < dim; d++)
@@ -190,30 +201,36 @@ class RefElement
     RefElement();
     RefElement(unsigned int dim, unsigned int order);
     ~RefElement();
+    RefElement(const RefElement &other) = delete;
+    RefElement & operator= (const RefElement &other) = delete;
+
+    RefElement(RefElement &&other);
+    RefElement & operator= (RefElement &&other);
+
     // some getter methods to access required data.
     inline int getOrder() const { return m_uiOrder; }
     inline int getDim() const { return m_uiDimension; }
-    inline int get1DNumInterpolationPoints() { return m_uiNrp; }
+    inline int get1DNumInterpolationPoints() const { return m_uiNrp; }
 
-    inline const double *getIMChild0() const { return &(*(ip_1D_0.begin())); }
-    inline const double *getIMChild1() const { return &(*(ip_1D_1.begin())); }
+    inline const double *getIMChild0() const { if (!m_isValid) throw "Invalid!"; return &(*(ip_1D_0.begin())); }
+    inline const double *getIMChild1() const { if (!m_isValid) throw "Invalid!"; return &(*(ip_1D_1.begin())); }
 
-    inline const double *getQ1d() const { return &(*(quad_1D.begin())); }
-    inline const double *getQT1d() const { return &(*(quadT_1D.begin())); }
-    inline const double *getDg1d() const { return &(*(Dg.begin())); }
-    inline const double *getDgT1d() const { return &(*(DgT.begin())); }
-    inline const double *getDr1d() const { return &(*(Dr.begin())); }
+    inline const double *getQ1d() const { if (!m_isValid) throw "Invalid!"; return &(*(quad_1D.begin())); }
+    inline const double *getQT1d() const { if (!m_isValid) throw "Invalid!"; return &(*(quadT_1D.begin())); }
+    inline const double *getDg1d() const { if (!m_isValid) throw "Invalid!"; return &(*(Dg.begin())); }
+    inline const double *getDgT1d() const { if (!m_isValid) throw "Invalid!"; return &(*(DgT.begin())); }
+    inline const double *getDr1d() const { if (!m_isValid) throw "Invalid!"; return &(*(Dr.begin())); }
 
-    inline const double *getQT1d_hadm2()  const { return &(*quadT_1D_hadm2.begin()); }
-    inline const double *getDgT1d_hadm2() const { return &(*DgT_hadm2.begin()); }
+    inline const double *getQT1d_hadm2()  const { if (!m_isValid) throw "Invalid!"; return &(*quadT_1D_hadm2.begin()); }
+    inline const double *getDgT1d_hadm2() const { if (!m_isValid) throw "Invalid!"; return &(*DgT_hadm2.begin()); }
 
-    inline double *getImVec1() const { return (double *) &(*(im_vec1.begin())); }
-    inline double *getImVec2() const { return (double *) &(*(im_vec2.begin())); }
+    inline double *getImVec1() const { if (!m_isValid) throw "Invalid!"; return (double *) &(*(im_vec1.begin())); }
+    inline double *getImVec2() const { if (!m_isValid) throw "Invalid!"; return (double *) &(*(im_vec2.begin())); }
 
-    inline const double *getWgq() const { return &(*(w.begin())); }
-    inline const double *getWgll() const { return &(*(wgll.begin())); }
+    inline const double *getWgq() const { if (!m_isValid) throw "Invalid!"; return &(*(w.begin())); }
+    inline const double *getWgll() const { if (!m_isValid) throw "Invalid!"; return &(*(wgll.begin())); }
 
-    inline const double getElementSz() const { return (u.back() - u.front()); }
+    inline const double getElementSz() const { if (!m_isValid) throw "Invalid!"; return (u.back() - u.front()); }
 
      /**
      * @param[in] in: input function values.
@@ -228,6 +245,9 @@ class RefElement
     template <unsigned int dim>
     inline void IKD_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
       assert((childNum < (1u<<dim)));
 
       // Double buffering.
@@ -265,6 +285,9 @@ class RefElement
     template <unsigned int dim>
     inline void IKD_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
       assert((childNum < (1u<<dim)));
 
       // Double buffering.
@@ -291,6 +314,9 @@ class RefElement
 
     inline void I4D_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
       IKD_Parent2Child<4>(in, out, ndofs, childNum);
     }
 
@@ -305,6 +331,9 @@ class RefElement
      */
     inline void I3D_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
         IKD_Parent2Child<3>(in, out, ndofs, childNum);
 
         /// double *im1 = (double *)&(*(im_vec1.begin()));
@@ -363,6 +392,9 @@ class RefElement
 
     inline void I4D_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
       IKD_Child2Parent<4>(in, out, ndofs, childNum);
     }
 
@@ -380,6 +412,9 @@ class RefElement
 
     inline void I3D_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
         IKD_Child2Parent<3>(in, out, ndofs, childNum);
 
         /// double *im1 = (double *)&(*(im_vec1.begin()));
@@ -447,6 +482,9 @@ class RefElement
 
     inline void I2D_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
         IKD_Parent2Child<2>(in, out, ndofs, childNum);
 
         /// double *im1 = (double *)&(*(im_vec1.begin()));
@@ -487,6 +525,9 @@ class RefElement
 
     inline void I2D_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
         IKD_Child2Parent<2>(in, out, ndofs, childNum);
 
         /// double *im1 = (double *)&(*(im_vec1.begin()));
@@ -532,6 +573,9 @@ class RefElement
 
     inline void I1D_Parent2Child(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
         IKD_Parent2Child<1>(in, out, ndofs, childNum);
 
         /// switch (childNum)
@@ -571,6 +615,9 @@ class RefElement
 
     inline void I1D_Child2Parent(const double *in, double *out, unsigned int ndofs, unsigned int childNum) const
     {
+      if (!m_isValid)
+        throw "RefElement constructed or copied incorrectly!";
+
         IKD_Child2Parent<1>(in, out, ndofs, childNum);
 
         /// switch (childNum)

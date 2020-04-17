@@ -15,7 +15,7 @@
 
 RefElement::RefElement()// default constructor
 {
-
+  m_isValid = false;
 }
 
 RefElement::RefElement(unsigned int dim, unsigned int order)
@@ -226,6 +226,8 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
     printArray_2D(&(*(quadT_1D.begin())),m_uiNrp,m_uiNrp);*/
     //std::cout<<" wg: ";printArray_1D((&(*(w.begin()))),m_uiNrp);
 
+    m_isValid = true;
+
 #else
 
     if(m_uiDimension==3 && m_uiOrder==1)
@@ -279,13 +281,64 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
         std::cout<<"RefEl: Error invalid dimension and order specified"<<std::endl;
     }
 
-
-
+    m_isValid = false;
 
 #endif
 
 
 }
+
+
+RefElement::RefElement(RefElement &&other)
+{
+  this->operator=(std::forward<RefElement>(other));
+}
+
+
+RefElement & RefElement::operator= (RefElement &&other)
+{
+  // Swap all resources and properties.
+  // All our previously owned resources should be auto destructable,
+  // so don't need to delete them explicitly.
+
+  std::swap(m_isValid, other.m_isValid);
+
+  std::swap(m_uiDimension, other.m_uiDimension);
+  std::swap(m_uiOrder,     other.m_uiOrder);
+  std::swap(m_uiNp,        other.m_uiNp);
+  std::swap(m_uiNrp,       other.m_uiNrp);
+  std::swap(m_uiVol,       other.m_uiVol);
+
+  std::swap(u,              other.u);
+  std::swap(r,              other.r);
+  std::swap(u_0,            other.u_0);
+  std::swap(u_1,            other.u_1);
+  std::swap(g,              other.g);
+  std::swap(w,              other.w);
+  std::swap(wgll,           other.wgll);
+  std::swap(ip_1D_0,        other.ip_1D_0);
+  std::swap(ip_1D_1,        other.ip_1D_1);
+  std::swap(ipT_1D_0,       other.ipT_1D_0);
+  std::swap(ipT_1D_1,       other.ipT_1D_1);
+  std::swap(Vr,             other.Vr);
+  std::swap(Vu,             other.Vu);
+  std::swap(Vg,             other.Vg);
+  std::swap(gradVu,         other.gradVu);
+  std::swap(gradVr,         other.gradVr);
+  std::swap(gradVg,         other.gradVg);
+  std::swap(Dr,             other.Dr);
+  std::swap(Dg,             other.Dg);
+  std::swap(DgT,            other.DgT);
+  std::swap(quad_1D,        other.quad_1D);
+  std::swap(quadT_1D,       other.quadT_1D);
+  std::swap(quadT_1D_hadm2, other.quadT_1D_hadm2);
+  std::swap(DgT_hadm2,      other.DgT_hadm2);
+  std::swap(Vu_0,           other.Vu_0);
+  std::swap(Vu_1,           other.Vu_1);
+  std::swap(im_vec1,        other.im_vec1);
+  std::swap(im_vec2,        other.im_vec2);
+}
+
 
 RefElement::~RefElement() {
 

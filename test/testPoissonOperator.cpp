@@ -26,6 +26,8 @@ int main(int argc, char * argv[])
   const unsigned int eleOrder = 2;
   const unsigned int nPe=intPow(eleOrder+1, dim);
 
+
+
   using TNT = unsigned int;
   using TN = ot::TreeNode<TNT, dim>;
 
@@ -40,6 +42,49 @@ int main(int argc, char * argv[])
   std::cout << "(1u<<dim) == " << (1u<<dim) << "\n";
   std::cout << "daRoot.getLocalNodalSz() == " << daRoot.getLocalNodalSz() << "\n";
   const size_t numNodes = daRoot.getLocalNodalSz();
+
+
+  const RefElement refel(dim, eleOrder);
+  const RefElement &daRefel = *daRoot.getReferenceElement();
+  std::cout << "refel.getOrder(),  getDim() == " << refel.getOrder() << "  " << refel.getDim() << "\n";
+  std::cout << "daRefel.getOrder(),  getDim() == " << daRefel.getOrder() << "  " << daRefel.getDim() << "\n";
+  std::cout << "Reference element stored data:\n";
+  std::cout << "----DgT1d_hadm2[]\n";
+  for (int na = 0; na <= eleOrder; na++)
+  {
+    for (int nb = 0; nb <= eleOrder; nb++)
+    {
+      std::cout << "  " << std::setw(12) << std::setprecision(3)
+                << refel.getDgT1d_hadm2()[na*(eleOrder+1) + nb];
+    }
+    std::cout << "\n";
+    for (int nb = 0; nb <= eleOrder; nb++)
+    {
+      std::cout << " _" << std::setw(12) << std::setprecision(3)
+                << daRefel.getDgT1d_hadm2()[na*(eleOrder+1) + nb];
+    }
+    std::cout << "\n";
+  }
+  std::cout << "----QT1d_hadm2[]\n";
+  for (int na = 0; na <= eleOrder; na++)
+  {
+    for (int nb = 0; nb <= eleOrder; nb++)
+    {
+      std::cout << "  " << std::setw(12) << std::setprecision(3)
+                << refel.getQT1d_hadm2()[na*(eleOrder+1) + nb];
+    }
+    std::cout << "\n";
+    for (int nb = 0; nb <= eleOrder; nb++)
+    {
+      std::cout << " _" << std::setw(12) << std::setprecision(3)
+                << daRefel.getQT1d_hadm2()[na*(eleOrder+1) + nb];
+    }
+    std::cout << "\n";
+  }
+
+
+
+
 
   PoissonEq::PoissonMat<dim> pmat(&daRoot, 1);
 
