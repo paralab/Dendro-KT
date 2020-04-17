@@ -268,25 +268,25 @@ public:
       R_h.resize(m_ndofs * localFineSz);
       E_h.resize(m_ndofs * localFineSz);
 
-      if (DEBUG)
-      {
-        std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====Before presmooth====\n";
-        ot::printNodes(fineDA, u, true, std::cout) << "\n";
-      }
-
-      smooth(fs, u, rhs, smoothSteps, omega);
-
-      if (fineStratum == 0)
-        ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES0);
-
-      if (DEBUG)
-      {
-        std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====After presmooth====\n";
-        ot::printNodes(fineDA, u, true, std::cout) << "\n";
-      }
-
       if (fs < m_numStrata-1)
       {
+        if (DEBUG)
+        {
+          std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====Before presmooth====\n";
+          ot::printNodes(fineDA, u, true, std::cout) << "\n";
+        }
+
+        smooth(fs, u, rhs, smoothSteps, omega);
+
+        if (fineStratum == 0)
+          ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES0);
+
+        if (DEBUG)
+        {
+          std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====After presmooth====\n";
+          ot::printNodes(fineDA, u, true, std::cout) << "\n";
+        }
+
         this->residual(fs, R_h.data(), u, rhs, scale);
 
         ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES1);
@@ -330,17 +330,22 @@ public:
           std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====Corrected before postsmooth====\n";
           ot::printNodes(fineDA, u, true, std::cout) << "\n";
         }
+
+        smooth(fs, u, rhs, smoothSteps, omega);
+
+        if (fineStratum == 0)
+          ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES2);
+
+        if (DEBUG)
+        {
+          std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====After postsmooth====\n";
+          ot::printNodes(fineDA, u, true, std::cout) << "\n";
+        }
       }
-
-      smooth(fs, u, rhs, smoothSteps, omega);
-
-      if (fineStratum == 0)
-        ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES2);
-
-      if (DEBUG)
+      else
       {
-        std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====After postsmooth====\n";
-        ot::printNodes(fineDA, u, true, std::cout) << "\n";
+        // The coarsest level must be an exact solve.
+        smooth(fs, u, rhs, 2000, 1.0);
       }
     }
 
