@@ -147,6 +147,8 @@ int main_ (Parameters &pm, MPI_Comm comm)
     const double partition_tol = pm.partitionTol;
     const unsigned int eOrder = pm.eleOrder;
 
+    std::cout << "sizeof(VECType)==" << sizeof(VECType) << "\n";
+
     if (!(pm.nGrids <= pm.maxDepth + 1 && (1u << (pm.maxDepth+1 - pm.nGrids)) >= eOrder))
     {
       throw "Given maxDepth is too shallow to support given number of grids.";
@@ -232,7 +234,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     if (!rProc && outputStatus)
     {
-      std::cout << "Refined DA has " << fineDA.getTotalNodalSz() << " total nodes.\n" << std::flush;
+      std::cout << "Refined DA has " << fineDA.getGlobalNodeSz() << " global nodes.\n" << std::flush;
       std::cout << "Creating poissonGMG wrapper.\n" << std::flush;
     }
 
@@ -282,7 +284,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       /// double tol=1e-6;
       double reltol=1e-3;
-      unsigned int max_iter=30;
+      unsigned int max_iter=3;
 
       if (!rProc && outputStatus)
       {

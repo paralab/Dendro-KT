@@ -160,16 +160,16 @@ bool testUniform2(int argc, char * argv[])
     std::cout << "Generating coarseTree.\n" << std::flush;
   const int nGrids = 2;
   const unsigned int coarseDepth = fineDepth - (nGrids-1);
-  /// std::vector<ot::TreeNode<unsigned int, dim>> coarseTree;
-  /// ot::createRegularOctree(coarseTree, coarseDepth, comm);
+  std::vector<ot::TreeNode<unsigned int, dim>> coarseTree;
+  ot::createRegularOctree(coarseTree, coarseDepth, comm);
 
-  ot::DistTree<unsigned int, dim> dtree =
-      ot::DistTree<unsigned int, dim>::constructSubdomainDistTree(coarseDepth, comm, partition_tol);
+  /// ot::DistTree<unsigned int, dim> dtree =
+  ///     ot::DistTree<unsigned int, dim>::constructSubdomainDistTree(coarseDepth, comm, partition_tol);
 
   // Create two-level grid.
   if (!rProc && outputStatus)
     std::cout << "Creating grid hierarchy.\n" << std::flush;
-  /// ot::DistTree<unsigned int, dim> dtree(coarseTree);
+  ot::DistTree<unsigned int, dim> dtree(coarseTree);
   ot::DistTree<unsigned int, dim> surrDTree
     = dtree.generateGridHierarchyDown(nGrids, partition_tol, comm);
 
@@ -189,8 +189,8 @@ bool testUniform2(int argc, char * argv[])
   coarseDA.createVector(coarseVec, false, false, singleDof);
   if (!rProc && outputStatus)
   {
-    std::cout << "Coarse DA has " << coarseDA.getTotalNodalSz() << " total nodes.\n" << std::flush;
-    std::cout << "Refined DA has " << fineDA.getTotalNodalSz() << " total nodes.\n" << std::flush;
+    std::cout << "Coarse DA has " << coarseDA.getGlobalNodeSz() << " global nodes.\n" << std::flush;
+    std::cout << "Refined DA has " << fineDA.getGlobalNodeSz() << " global nodes.\n" << std::flush;
   }
 
   // Create gmgMatObj

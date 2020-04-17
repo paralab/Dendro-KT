@@ -708,6 +708,22 @@ class DA
         #endif
 };
 
+template <unsigned int dim, typename NodeT>
+std::ostream & printNodes(const DA<dim> &da,
+                          const NodeT *valBegin,
+                          bool isLocal = true,
+                          std::ostream & out = std::cout)
+{
+  if (isLocal)
+    return printNodes(da.getTNCoords() + da.getLocalNodeBegin(),
+                      da.getTNCoords() + da.getLocalNodeBegin() + da.getLocalNodalSz(),
+                      valBegin, da.getElementOrder(), out);
+  else
+    return printNodes(da.getTNCoords(), da.getTNCoords() + da.getTotalNodalSz(),
+                      valBegin, da.getElementOrder(), out);
+}
+
+
 
 } // end of namespace ot.
 

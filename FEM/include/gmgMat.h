@@ -246,32 +246,77 @@ public:
       if (fs >= m_numStrata)
         throw "Cannot start vcycle coarser than coarsest grid.";
 
-      const size_t localFineSz = (*m_multiDA)[fs].getLocalNodalSz();
-      m_stratumWork_R_h[fs].resize(m_ndofs * localFineSz);
-      m_stratumWork_E_h[fs].resize(m_ndofs * localFineSz);
+      constexpr bool DEBUG = true;
 
-      smooth(fs, u, rhs, smoothSteps, omega);
+      ot::DA<dim> &fineDA = (*m_multiDA)[fs];
+      ot::DA<dim> &coarseDA = (*m_multiDA)[fs+1];
+      std::vector<VECType> &R_h = m_stratumWork_R_h[fs];
+      std::vector<VECType> &E_h = m_stratumWork_E_h[fs];
+      std::vector<VECType> &R_2h = m_stratumWork_R_2h[fs];
+      std::vector<VECType> &E_2h = m_stratumWork_E_2h[fs];
 
-      if (fs < m_numStrata-1)
+      const size_t localFineSz = fineDA.getLocalNodalSz();
+      R_h.resize(m_ndofs * localFineSz);
+      E_h.resize(m_ndofs * localFineSz);
+
+      if (DEBUG)
       {
-        this->residual(fs, m_stratumWork_R_h[fs].data(), u, rhs, scale);
-
-        const size_t localCoarseSz = (*m_multiDA)[fs+1].getLocalNodalSz();
-        m_stratumWork_R_2h[fs].resize(m_ndofs * localCoarseSz);
-        m_stratumWork_E_2h[fs].resize(m_ndofs * localCoarseSz);
-
-        this->restriction(m_stratumWork_R_h[fs].data(), m_stratumWork_R_2h[fs].data(), fs);
-
-        std::fill(m_stratumWork_E_2h[fs].begin(), m_stratumWork_E_2h[fs].end(), 0.0f);
-        this->vcycle(fineStratum+1, m_stratumWork_E_2h[fs].data(), m_stratumWork_R_2h[fs].data(), smoothSteps, omega);
-
-        this->prolongation(m_stratumWork_E_2h[fs].data(), m_stratumWork_E_h[fs].data(), fs);
-
-        for (size_t i = 0; i < m_ndofs * localFineSz; i++)
-          u[i] += m_stratumWork_E_h[fs][i];
+        std::cout << "[strat=" << fs << "] ====Before presmooth====\n";
+        ot::printNodes(fineDA, u, true, std::cout) << "\n";
       }
 
       smooth(fs, u, rhs, smoothSteps, omega);
+
+      if (DEBUG)
+      {
+        std::cout << "[strat=" << fs << "] ====After presmooth====\n";
+        ot::printNodes(fineDA, u, true, std::cout) << "\n";
+      }
+
+      if (fs < m_numStrata-1)
+      {
+        this->residual(fs, R_h.data(), u, rhs, scale);
+
+        if (DEBUG)
+        {
+          std::cout << "[strat=" << fs << "] ====Fine residual====\n";
+          ot::printNodes(fineDA, &(*R_h.cbegin()), true, std::cout) << "\n";
+        }
+
+        const size_t localCoarseSz = (*m_multiDA)[fs+1].getLocalNodalSz();
+        R_2h.resize(m_ndofs * localCoarseSz);
+        E_2h.resize(m_ndofs * localCoarseSz);
+
+        this->restriction(R_h.data(), R_2h.data(), fs);
+
+        if (DEBUG)
+        {
+          std::cout << "[strat=" << fs << "] ====Restriction to coarse====\n";
+          ot::printNodes(coarseDA, &(*R_2h.cbegin()), true, std::cout) << "\n";
+        }
+
+        std::fill(E_2h.begin(), E_2h.end(), 0.0f);
+        this->vcycle(fineStratum+1, E_2h.data(), R_2h.data(), smoothSteps, omega);
+
+        this->prolongation(E_2h.data(), E_h.data(), fs);
+
+        if (DEBUG)
+        {
+          std::cout << "[strat=" << fs << "] ====Prolongation to fine====\n";
+          ot::printNodes(fineDA, &(*E_h.cbegin()), true, std::cout) << "\n";
+        }
+
+        for (size_t i = 0; i < m_ndofs * localFineSz; i++)
+          u[i] += E_h[i];
+      }
+
+      smooth(fs, u, rhs, smoothSteps, omega);
+
+      if (DEBUG)
+      {
+        std::cout << "[strat=" << fs << "] ====After postsmooth====\n";
+        ot::printNodes(fineDA, u, true, std::cout) << "\n";
+      }
     }
 
     // smooth()
