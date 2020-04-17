@@ -45,12 +45,16 @@ public:
       * @note Does not own da.
     **/
     feMat(ot::DA<dim>* da)
+      : m_uiOctDA(da)
     {
-        m_uiOctDA=da;
+      std::array<double, dim> lo, hi;
+      std::fill(lo.begin(), lo.end(), -1);
+      std::fill(hi.begin(), hi.end(), 1);
+      this->setProblemDimensions(Point<dim>(lo), Point<dim>(hi));
     }
 
     feMat(feMat &&other)
-      : m_uiOctDA{other.m_uiOctDA}
+      : feMat(m_uiOctDA)
     { }
 
     /**@brief deconstructor*/
