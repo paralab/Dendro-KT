@@ -105,6 +105,9 @@ bool testUniform2(int argc, char * argv[])
 template <int dim>
 bool testUniform2(int argc, char * argv[])
 {
+  _DestroyHcurve();
+  _InitializeHcurve(dim);
+
   MPI_Comm comm = MPI_COMM_WORLD;
 
   int rProc, nProc;
@@ -156,16 +159,17 @@ bool testUniform2(int argc, char * argv[])
   if (!rProc && outputStatus)
     std::cout << "Generating coarseTree.\n" << std::flush;
   const int nGrids = 2;
-  std::vector<ot::TreeNode<unsigned int, dim>> coarseTree;
-  {
-    unsigned int coarseDepth = fineDepth - (nGrids-1);
-    ot::createRegularOctree(coarseTree, coarseDepth, comm);
-  }
+  const unsigned int coarseDepth = fineDepth - (nGrids-1);
+  /// std::vector<ot::TreeNode<unsigned int, dim>> coarseTree;
+  /// ot::createRegularOctree(coarseTree, coarseDepth, comm);
+
+  ot::DistTree<unsigned int, dim> dtree =
+      ot::DistTree<unsigned int, dim>::constructSubdomainDistTree(coarseDepth, comm, partition_tol);
 
   // Create two-level grid.
   if (!rProc && outputStatus)
     std::cout << "Creating grid hierarchy.\n" << std::flush;
-  ot::DistTree<unsigned int, dim> dtree(coarseTree);
+  /// ot::DistTree<unsigned int, dim> dtree(coarseTree);
   ot::DistTree<unsigned int, dim> surrDTree
     = dtree.generateGridHierarchyDown(nGrids, partition_tol, comm);
 
