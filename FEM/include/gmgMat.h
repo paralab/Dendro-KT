@@ -22,6 +22,12 @@
 #endif
 
 extern int DBG_COUNT;
+extern std::ostream * DBG_FINE_RES0;
+extern std::ostream * DBG_FINE_RES1;
+extern std::ostream * DBG_FINE_RES2;
+extern std::ostream * DBG_FINE_RES3;
+extern std::ostream * DBG_COARSE_RES0;
+extern std::ostream * DBG_COARSE_RES3;
 
 
 // =================================
@@ -248,7 +254,8 @@ public:
       if (fs >= m_numStrata)
         throw "Cannot start vcycle coarser than coarsest grid.";
 
-      const bool DEBUG = !(DBG_COUNT & 7); // Every 8th
+      /// const bool DEBUG = !(DBG_COUNT & 0); // Every 
+      const bool DEBUG = false;
 
       ot::DA<dim> &fineDA = (*m_multiDA)[fs];
       ot::DA<dim> &coarseDA = (*m_multiDA)[fs+1];
@@ -269,6 +276,9 @@ public:
 
       smooth(fs, u, rhs, smoothSteps, omega);
 
+      if (fineStratum == 0)
+        ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES0);
+
       if (DEBUG)
       {
         std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====After presmooth====\n";
@@ -278,6 +288,8 @@ public:
       if (fs < m_numStrata-1)
       {
         this->residual(fs, R_h.data(), u, rhs, scale);
+
+        ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES1);
 
         if (DEBUG)
         {
@@ -290,6 +302,8 @@ public:
         E_2h.resize(m_ndofs * localCoarseSz);
 
         this->restriction(R_h.data(), R_2h.data(), fs);
+
+        ot::printNodes(coarseDA, R_2h.data(), true, *DBG_COARSE_RES0);
 
         if (DEBUG)
         {
@@ -319,6 +333,9 @@ public:
       }
 
       smooth(fs, u, rhs, smoothSteps, omega);
+
+      if (fineStratum == 0)
+        ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES2);
 
       if (DEBUG)
       {

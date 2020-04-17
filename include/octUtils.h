@@ -896,7 +896,7 @@ std::ostream & printNodesRaw(const ot::TreeNode<T, dim> *coordBegin,
   for (auto &yxv : zipped)
     unzipped.push_back(yxv.second);
 
-  out.write(unzipped.data(), unzipped.size());
+  out.write(unzipped.data(), sizeof(NodeT) * unzipped.size());
 }
 
 

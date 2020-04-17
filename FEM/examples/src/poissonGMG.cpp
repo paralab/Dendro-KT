@@ -21,6 +21,10 @@
   #include <petscksp.h>
 #endif
 
+#include <iostream>
+#include <fstream>
+#include <sstream>
+
 // =======================================================
 // Parameters: Change these and the options in get_args().
 // =======================================================
@@ -36,6 +40,12 @@ struct Parameters
 // =======================================================
 
 int DBG_COUNT;
+std::ostream * DBG_FINE_RES0;
+std::ostream * DBG_FINE_RES1;
+std::ostream * DBG_FINE_RES2;
+std::ostream * DBG_FINE_RES3;
+std::ostream * DBG_COARSE_RES0;
+std::ostream * DBG_COARSE_RES3;
 
 namespace PoissonEq
 {
@@ -306,6 +316,27 @@ int main_ (Parameters &pm, MPI_Comm comm)
       {
         DBG_COUNT = countIter;
 
+        std::string zero, one, two, three;
+        std::stringstream timeStr;
+        zero  = ((timeStr.str(""), timeStr << 4*countIter + 0), timeStr.str());
+        one   = ((timeStr.str(""), timeStr << 4*countIter + 1), timeStr.str());
+        two   = ((timeStr.str(""), timeStr << 4*countIter + 2), timeStr.str());
+        three = ((timeStr.str(""), timeStr << 4*countIter + 3), timeStr.str());
+
+        std::ofstream fineResOut0("_output/fineRes.raw." + zero, std::ios::binary);
+        std::ofstream fineResOut1("_output/fineRes.raw." + one, std::ios::binary);
+        std::ofstream fineResOut2("_output/fineRes.raw." + two, std::ios::binary);
+        std::ofstream fineResOut3("_output/fineRes.raw." + three, std::ios::binary);
+        std::ofstream coarseResOut0("_output/coarseRes.raw." + zero, std::ios::binary);
+        std::ofstream coarseResOut3("_output/coarseRes.raw." + three, std::ios::binary);
+
+        DBG_FINE_RES0 = &fineResOut0;
+        DBG_FINE_RES1 = &fineResOut1;
+        DBG_FINE_RES2 = &fineResOut2;
+        DBG_FINE_RES3 = &fineResOut3;
+        DBG_COARSE_RES0 = &coarseResOut0;
+        DBG_COARSE_RES3 = &coarseResOut3;
+
         poissonGMG.vcycle(0, ux, Mfrhs, smoothStepsPerCycle, relaxationFactor);
         res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
 
@@ -313,6 +344,13 @@ int main_ (Parameters &pm, MPI_Comm comm)
         if (!rProc && !(countIter & 0))  // Every iteration
           std::cout << "After iteration " << countIter
                     << ", residual == " << std::scientific << res << "\n";
+
+        fineResOut0.close();
+        fineResOut1.close();
+        fineResOut2.close();
+        fineResOut3.close();
+        coarseResOut0.close();
+        coarseResOut3.close();
       }
 
       if (!rProc)
