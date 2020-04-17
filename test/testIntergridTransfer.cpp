@@ -217,7 +217,7 @@ bool testUniform2(int argc, char * argv[])
 
   bounds = getBounds(coarseVec);
   (checks.emplace_back(), checks[checkIdx++] = lastCheck = 
-          mpiAllTrue(bounds.lo == 1.0 && bounds.hi == 1.0, comm));
+          mpiAllTrue(1.0 <= bounds.lo && bounds.hi <= (1u << dim), comm));
   if (!rProc && outputStatus)
   {
     if (lastCheck)
@@ -254,7 +254,7 @@ bool testUniform2(int argc, char * argv[])
   }
 
 
-  bool countPassed = 0;
+  int countPassed = 0;
   for (auto c : checks)
     countPassed += c;
   if (!rProc)
