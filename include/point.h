@@ -44,6 +44,7 @@ class Point{
     Point();
     // virtual ~Point();
 
+    Point(double scale);
     Point(const std::array<double, dim> &newCoords);
     Point(const double * newCoords);
     Point(double newx, double newy, double newz);
@@ -138,6 +139,12 @@ template <unsigned int dim>
 Point<dim>::Point()
 {
   _coords.fill(0.0);
+}
+
+template <unsigned int dim>
+Point<dim>::Point(double scale)
+{
+  _coords.fill(scale);
 }
 
 template <unsigned int dim>

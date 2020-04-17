@@ -79,7 +79,11 @@ public:
       * @note Does not own da.
     **/
     gmgMat(ot::MultiDA<dim>* mda, ot::MultiDA<dim> *smda, unsigned int ndofs)
-      : m_multiDA(mda), m_surrogateMultiDA(smda), m_ndofs(ndofs)
+      : m_multiDA(mda),
+        m_surrogateMultiDA(smda),
+        m_ndofs(ndofs),
+        m_uiPtMin(-1.0),
+        m_uiPtMax(1.0)
     {
       assert(mda != nullptr);
       assert(smda != nullptr);
@@ -128,6 +132,12 @@ public:
       return static_cast<LeafClass &>(*this);
     }
 
+    /**@brief set the problem dimension*/
+    inline void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max)
+    {
+      m_uiPtMin=pt_min;
+      m_uiPtMax=pt_max;
+    }
 
     // Design note (static polymorphism)
     //   The gmgMat does not impose a mass matrix or smoothing operator.
@@ -159,15 +169,6 @@ public:
     void applySmoother(const VECType * res, VECType * resLeft, unsigned int stratum)
     {
       asConcreteType().leafApplySmoother(res, resLeft, stratum);
-    }
-
-
-
-    /**@brief set the problem dimension*/
-    inline void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max)
-    {
-      m_uiPtMin=pt_min;
-      m_uiPtMax=pt_max;
     }
 
 
