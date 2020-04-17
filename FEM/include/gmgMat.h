@@ -44,10 +44,31 @@ struct gmgMatStratumWrapper
 };
 
 
+
+// ===========================
+// EmptyGMGLeafClass
+// ===========================
+template <unsigned int dim>
+struct EmptyGMGMatLeafClass
+{
+  // The purpose of this class is to instantiate gmgMat<> without
+  // using matvec() or applySmoother(). That also implies
+  // that vcycle(), smooth(), and residual() cannot be used.
+  // However, restriction() and prolongation() should be ok.
+
+  // If you try to use matvec() or applySmoother(), you should get a linker
+  // error saying EmptyGMGMatLeafClass has not implemented the leaf methods.
+  // You need to define your own leaf class in that case.
+  void leafMatVec(const VECType *, VECType *, unsigned int, double);
+  void leafApplySmoother(const VECType *, VECType *, unsigned int);
+};
+
+
+
 // =================================
 // gmgMat
 // =================================
-template <unsigned int dim, class LeafClass>
+template <unsigned int dim, class LeafClass=EmptyGMGMatLeafClass<dim>>
 class gmgMat {
 
 protected:
@@ -77,6 +98,11 @@ protected:
     Vec * m_stratumWorkRhs;
     Vec * m_stratumWorkX;
     Vec * m_stratumWorkR;
+
+    bool m_petscStateInitd;
+
+    bool checkPetsc() { return m_petscStateInitd; }
+    void errNoPetsc() { if (!m_petscStateInitd) throw "You must call petscCreateGMG() first."; }
 #endif
 
 public:
@@ -106,17 +132,7 @@ public:
       m_stratumWork_E_2h.resize(m_numStrata);
 
 #ifdef BUILD_WITH_PETSC
-      m_stratumWorkRhs = new Vec[m_numStrata];
-      m_stratumWorkX = new Vec[m_numStrata];
-      m_stratumWorkR = new Vec[m_numStrata];
-
-      (*m_multiDA)[0].petscCreateVector(m_stratumWorkR[0], false, false, m_ndofs);
-      for (int ii = 1; ii < m_numStrata; ++ii)
-      {
-        (*m_multiDA)[ii].petscCreateVector(m_stratumWorkRhs[ii], false, false, m_ndofs);
-        (*m_multiDA)[ii].petscCreateVector(m_stratumWorkX[ii], false, false, m_ndofs);
-        (*m_multiDA)[ii].petscCreateVector(m_stratumWorkR[ii], false, false, m_ndofs);
-      }
+      m_petscStateInitd = false;
 #endif
     }
 
@@ -124,17 +140,20 @@ public:
     virtual ~gmgMat()
     {
 #ifdef BUILD_WITH_PETSC
-      (*m_multiDA)[0].petscDestroyVec(m_stratumWorkR[0]);
-      for (int ii = 1; ii < m_numStrata; ++ii)
+      if (m_petscStateInitd)
       {
-        (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkRhs[ii]);
-        (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkX[ii]);
-        (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkR[ii]);
-      }
+        (*m_multiDA)[0].petscDestroyVec(m_stratumWorkR[0]);
+        for (int ii = 1; ii < m_numStrata; ++ii)
+        {
+          (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkRhs[ii]);
+          (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkX[ii]);
+          (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkR[ii]);
+        }
 
-      delete [] m_stratumWorkRhs;
-      delete [] m_stratumWorkX;
-      delete [] m_stratumWorkR;
+        delete [] m_stratumWorkRhs;
+        delete [] m_stratumWorkX;
+        delete [] m_stratumWorkR;
+      }
 #endif
     }
 
@@ -613,6 +632,23 @@ void gmgMat<dim, LeafClass>::prolongation(const Vec &coarseCrx, Vec &fineCrx, un
 template <unsigned int dim, class LeafClass>
 KSP gmgMat<dim, LeafClass>::petscCreateGMG(MPI_Comm comm)
 {
+  if (!this->checkPetsc())
+  {
+    m_stratumWorkRhs = new Vec[m_numStrata];
+    m_stratumWorkX = new Vec[m_numStrata];
+    m_stratumWorkR = new Vec[m_numStrata];
+
+    (*m_multiDA)[0].petscCreateVector(m_stratumWorkR[0], false, false, m_ndofs);
+    for (int ii = 1; ii < m_numStrata; ++ii)
+    {
+      (*m_multiDA)[ii].petscCreateVector(m_stratumWorkRhs[ii], false, false, m_ndofs);
+      (*m_multiDA)[ii].petscCreateVector(m_stratumWorkX[ii], false, false, m_ndofs);
+      (*m_multiDA)[ii].petscCreateVector(m_stratumWorkR[ii], false, false, m_ndofs);
+    }
+
+    m_petscStateInitd = true;
+  }
+
   KSP gmgKSP;
   PC  gmgPC;
 
