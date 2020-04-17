@@ -147,9 +147,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
     const double partition_tol = pm.partitionTol;
     const unsigned int eOrder = pm.eleOrder;
 
-    if (!(pm.nGrids <= pm.maxDepth + 1))
+    if (!(pm.nGrids <= pm.maxDepth + 1 && (1u << (pm.maxDepth+1 - pm.nGrids)) >= eOrder))
     {
-      assert(!"Given maxDepth is too shallow to support given number of grids.");
+      throw "Given maxDepth is too shallow to support given number of grids.";
     }
 
     double tBegin = 0, tEnd = 10, th = 0.01;
@@ -166,17 +166,24 @@ int main_ (Parameters &pm, MPI_Comm comm)
     const Point<dim> domain_min(d_min, d_min, d_min);
     const Point<dim> domain_max(d_max, d_max, d_max);
 
+    // sin()
+    //
+    /// std::function<void(const double *, double*)> f_rhs = [d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
+    /// {
+    ///   var[0] = -dim*4*M_PI*M_PI;
+    ///   for (unsigned int d = 0; d < dim; d++)
+    ///     var[0] *= sin(2*M_PI*(((x[d]-g_min)/Rg)*Rd+d_min));
+    /// };
+
+    // 1
+    //
     std::function<void(const double *, double*)> f_rhs = [d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
     {
-      var[0] = -dim*4*M_PI*M_PI;
-      for (unsigned int d = 0; d < dim; d++)
-        var[0] *= sin(2*M_PI*(((x[d]-g_min)/Rg)*Rd+d_min));
+      var[0] = 1.0;
     };
 
-    std::function<void(const double *, double*)> f_init =[/*d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z*/](const double *x, double *var){
-        var[0]=0;//(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
-        //var[1]=0;
-        //var[2]=0;
+    std::function<void(const double *, double*)> f_init =[](const double *x, double *var){
+        var[0]=0;
     };
 
     if (!rProc && outputStatus)
@@ -184,19 +191,27 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     std::vector<ot::TreeNode<unsigned int, dim>> coarseTree;
     {
-      // Create a tree to estimate required depth.
-      coarseTree = ot::function2BalancedOctree<double, unsigned int, dim>(
-            f_rhs, 1, m_uiMaxDepth, wavelet_tol, partition_tol, eOrder, comm);
+      /// // Create a tree to estimate required depth.
+      /// coarseTree = ot::function2BalancedOctree<double, unsigned int, dim>(
+      ///       f_rhs, 1, m_uiMaxDepth, wavelet_tol, partition_tol, eOrder, comm);
 
-      // Find deepest treeNode.
-      unsigned int effectiveDepth = 0;
-      for (const ot::TreeNode<unsigned int, dim> &tn : coarseTree)
-        if (effectiveDepth < tn.getLevel())
-          effectiveDepth = tn.getLevel();
+      /// // Find deepest treeNode.
+      /// unsigned int effectiveDepth = 0;
+      /// for (const ot::TreeNode<unsigned int, dim> &tn : coarseTree)
+      ///   if (effectiveDepth < tn.getLevel())
+      ///     effectiveDepth = tn.getLevel();
 
-      // Create the actual coarse tree.
-      coarseTree = ot::function2BalancedOctree<double, unsigned int, dim>(
-            f_rhs, 1, effectiveDepth - (nGrids-1), wavelet_tol, partition_tol, eOrder, comm);
+      unsigned int effectiveDepth = m_uiMaxDepth;
+      while ((1u << (m_uiMaxDepth - effectiveDepth)) < eOrder)
+        effectiveDepth--;
+
+      unsigned int coarseDepth = effectiveDepth - (nGrids-1);
+
+      /// // Create the actual coarse tree.
+      /// coarseTree = ot::function2BalancedOctree<double, unsigned int, dim>(
+      ///       f_rhs, 1, coarseDepth, wavelet_tol, partition_tol, eOrder, comm);
+
+      ot::createRegularOctree(coarseTree, coarseDepth, comm);
     }
 
     if (!rProc && outputStatus)
@@ -265,7 +280,8 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       // - - - - - - - - - - -
 
-      double tol=1e-6;
+      /// double tol=1e-6;
+      double reltol=1e-3;
       unsigned int max_iter=30;
 
       if (!rProc && outputStatus)
@@ -279,7 +295,11 @@ int main_ (Parameters &pm, MPI_Comm comm)
       unsigned int countIter = 0;
       double res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
 
-      while (countIter < max_iter && res > tol)
+      if (!rProc && !(countIter & 0))  // Every iteration
+        std::cout << "After iteration " << countIter
+                  << ", residual == " << std::scientific << res << "\n";
+
+      while (countIter < max_iter && res/normb > reltol)
       {
         poissonGMG.vcycle(0, ux, Mfrhs, smoothStepsPerCycle, relaxationFactor);
         res = poissonGMG.residual(0, ux, Mfrhs, 1.0);

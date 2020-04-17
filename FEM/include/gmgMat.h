@@ -97,7 +97,7 @@ public:
 
       m_numStrata = mda->size();
       for (int ii = 0; ii < m_numStrata; ++ii)
-        m_stratumWrappers.emplace_back(gmgMatStratumWrapper<dim, LeafClass>{this, ii});
+        m_stratumWrappers.emplace_back(gmgMatStratumWrapper<dim, LeafClass>{this, (unsigned) ii});
 
       m_stratumWork_R_h.resize(m_numStrata);
       m_stratumWork_R_h_prime.resize(m_numStrata);
