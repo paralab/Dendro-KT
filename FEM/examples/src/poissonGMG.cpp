@@ -72,7 +72,9 @@ namespace PoissonEq
           m_gridOperators[s]->setDiag(m_rcp_diags[s].data(), scale);
 
           for (auto &a : m_rcp_diags[s])
+          {
             a = 1.0f / a;
+          }
         }
       }
 
@@ -214,7 +216,10 @@ int main_ (Parameters &pm, MPI_Comm comm)
     ot::DA<dim> & fineDA = multiDA[0];
 
     if (!rProc && outputStatus)
+    {
+      std::cout << "Refined DA has " << fineDA.getTotalNodalSz() << " total nodes.\n" << std::flush;
       std::cout << "Creating poissonGMG wrapper.\n" << std::flush;
+    }
 
     PoissonEq::PoissonGMGMat<dim> poissonGMG(&multiDA, &surrMultiDA, 1);
 
@@ -261,7 +266,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
       // - - - - - - - - - - -
 
       double tol=1e-6;
-      unsigned int max_iter=1000;
+      unsigned int max_iter=30;
 
       if (!rProc && outputStatus)
       {
@@ -273,13 +278,16 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       unsigned int countIter = 0;
       double res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
+
       while (countIter < max_iter && res > tol)
       {
         poissonGMG.vcycle(0, ux, Mfrhs, smoothStepsPerCycle, relaxationFactor);
+        res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
+
         countIter++;
-        /// if (!rProc && !(countIter & 15)) // Every 16th iteration
         if (!rProc && !(countIter & 0))  // Every iteration
-          std::cout << "After iteration " << countIter << ", residual == " << res << "\n";
+          std::cout << "After iteration " << countIter
+                    << ", residual == " << std::scientific << res << "\n";
       }
 
       if (!rProc)
