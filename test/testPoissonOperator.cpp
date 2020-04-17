@@ -154,7 +154,7 @@ int main(int argc, char * argv[])
 
         npeBufferIn[i] = 1.0;
 
-        pmat.elementalMatVec(npeBufferIn.data(), npeBufferOut.data(), 1, flatcoords.data(), 1.0);
+        pmat.elementalMatVec(npeBufferIn.data(), npeBufferOut.data(), 1, nodeCoordsFlat, 1.0);
         diag1[i] = npeBufferOut[i];
       }
       std::cout << "diag1: Many elementalMatVec()...\n";
@@ -165,7 +165,7 @@ int main(int argc, char * argv[])
       // ---------------------------------------------
 
       // diag2: elementalSetDiag()
-      pmat.elementalSetDiag(diag2.data(), 1, flatcoords.data(), 1.0);
+      pmat.elementalSetDiag(diag2.data(), 1, nodeCoordsFlat, 1.0);
       std::cout << "diag2: Single elementalSetDiag()...\n";
       for (double x : diag2)
         std::cout << "  " << x;
