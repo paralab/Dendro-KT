@@ -35,6 +35,7 @@ struct Parameters
 };
 // =======================================================
 
+int DBG_COUNT;
 
 namespace PoissonEq
 {
@@ -284,7 +285,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       /// double tol=1e-6;
       double reltol=1e-3;
-      unsigned int max_iter=3;
+      unsigned int max_iter=30;
 
       if (!rProc && outputStatus)
       {
@@ -303,6 +304,8 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       while (countIter < max_iter && res/normb > reltol)
       {
+        DBG_COUNT = countIter;
+
         poissonGMG.vcycle(0, ux, Mfrhs, smoothStepsPerCycle, relaxationFactor);
         res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
 

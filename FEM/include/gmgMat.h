@@ -21,6 +21,8 @@
 #include "petscdmda.h"
 #endif
 
+extern int DBG_COUNT;
+
 
 // =================================
 // Class forward declarations
@@ -246,7 +248,7 @@ public:
       if (fs >= m_numStrata)
         throw "Cannot start vcycle coarser than coarsest grid.";
 
-      constexpr bool DEBUG = true;
+      const bool DEBUG = !(DBG_COUNT & 7); // Every 8th
 
       ot::DA<dim> &fineDA = (*m_multiDA)[fs];
       ot::DA<dim> &coarseDA = (*m_multiDA)[fs+1];
@@ -261,7 +263,7 @@ public:
 
       if (DEBUG)
       {
-        std::cout << "[strat=" << fs << "] ====Before presmooth====\n";
+        std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====Before presmooth====\n";
         ot::printNodes(fineDA, u, true, std::cout) << "\n";
       }
 
@@ -269,7 +271,7 @@ public:
 
       if (DEBUG)
       {
-        std::cout << "[strat=" << fs << "] ====After presmooth====\n";
+        std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====After presmooth====\n";
         ot::printNodes(fineDA, u, true, std::cout) << "\n";
       }
 
@@ -279,7 +281,7 @@ public:
 
         if (DEBUG)
         {
-          std::cout << "[strat=" << fs << "] ====Fine residual====\n";
+          std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====Fine residual====\n";
           ot::printNodes(fineDA, &(*R_h.cbegin()), true, std::cout) << "\n";
         }
 
@@ -291,7 +293,7 @@ public:
 
         if (DEBUG)
         {
-          std::cout << "[strat=" << fs << "] ====Restriction to coarse====\n";
+          std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====Restriction to coarse====\n";
           ot::printNodes(coarseDA, &(*R_2h.cbegin()), true, std::cout) << "\n";
         }
 
@@ -302,19 +304,25 @@ public:
 
         if (DEBUG)
         {
-          std::cout << "[strat=" << fs << "] ====Prolongation to fine====\n";
+          std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====Prolongation to fine====\n";
           ot::printNodes(fineDA, &(*E_h.cbegin()), true, std::cout) << "\n";
         }
 
         for (size_t i = 0; i < m_ndofs * localFineSz; i++)
           u[i] += E_h[i];
+
+        if (DEBUG)
+        {
+          std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====Corrected before postsmooth====\n";
+          ot::printNodes(fineDA, u, true, std::cout) << "\n";
+        }
       }
 
       smooth(fs, u, rhs, smoothSteps, omega);
 
       if (DEBUG)
       {
-        std::cout << "[strat=" << fs << "] ====After postsmooth====\n";
+        std::cout << "[i=" << DBG_COUNT << ":strat=" << fs << "] ====After postsmooth====\n";
         ot::printNodes(fineDA, u, true, std::cout) << "\n";
       }
     }
