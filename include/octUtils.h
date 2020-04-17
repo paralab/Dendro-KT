@@ -764,9 +764,6 @@ std::ostream & printNodeCoords(const ot::TreeNode<T, dim> *coordBegin,
 }
 
 
-
-
-  // TODO add parameter for ndofs
 template <typename T, unsigned int dim, typename NodeT>
 std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
                           const ot::TreeNode<T, dim> *coordEnd,
@@ -851,6 +848,55 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
   out << charBuffer.data();
 
   return out;
+}
+
+
+
+
+  // TODO add parameter for ndofs
+template <typename T, unsigned int dim, typename NodeT>
+std::ostream & printNodesRaw(const ot::TreeNode<T, dim> *coordBegin,
+                          const ot::TreeNode<T, dim> *coordEnd,
+                          const NodeT *valBegin,
+                          unsigned int order = 1,
+                          std::ostream & out = std::cout)
+{
+  ot::TreeNode<T, dim> subdomain;
+  unsigned int deepestLev = 0;
+  const unsigned int numNodes = coordEnd - coordBegin;
+  using YXV = std::pair<std::pair<T,T>, NodeT>;
+  const T top = 1u << m_uiMaxDepth;
+  std::vector<YXV> zipped;
+  /// if (numNodes)
+  ///   subdomain = *coordBegin;
+  for (unsigned int ii = 0; ii < numNodes; ii++)
+  {
+    /// while (!(Element<T,dim>(subdomain).isIncident(coordBegin[ii])))
+    ///   subdomain = subdomain.getParent();
+
+    if (coordBegin[ii].getLevel() > deepestLev)
+      deepestLev = coordBegin[ii].getLevel();
+
+    zipped.push_back(YXV{{top - coordBegin[ii].getX(1), coordBegin[ii].getX(0)}, valBegin[ii]});
+  }
+  subdomain = ot::TreeNode<T, dim>();
+  const T origin[2] = {subdomain.getX(0), top - subdomain.getX(1)};
+
+  // Increase resolution for order.
+  order--;
+  while (order)
+  {
+    deepestLev++;
+    order >>= 1;
+  }
+
+  std::sort(zipped.begin(), zipped.end());
+
+  std::vector<NodeT> unzipped;
+  for (auto &yxv : zipped)
+    unzipped.push_back(yxv.second);
+
+  out.write(unzipped.data(), unzipped.size());
 }
 
 

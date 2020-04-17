@@ -723,6 +723,21 @@ std::ostream & printNodes(const DA<dim> &da,
                       valBegin, da.getElementOrder(), out);
 }
 
+template <unsigned int dim, typename NodeT>
+std::ostream & printNodesRaw(const DA<dim> &da,
+                          const NodeT *valBegin,
+                          bool isLocal = true,
+                          std::ostream & out = std::cout)
+{
+  if (isLocal)
+    return printNodesRaw(da.getTNCoords() + da.getLocalNodeBegin(),
+                      da.getTNCoords() + da.getLocalNodeBegin() + da.getLocalNodalSz(),
+                      valBegin, da.getElementOrder(), out);
+  else
+    return printNodesRaw(da.getTNCoords(), da.getTNCoords() + da.getTotalNodalSz(),
+                      valBegin, da.getElementOrder(), out);
+}
+
 
 
 } // end of namespace ot.
