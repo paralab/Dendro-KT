@@ -68,6 +68,7 @@ protected:
     std::vector<gmgMatStratumWrapper<dim, LeafClass>> m_stratumWrappers;
 
     std::vector<std::vector<VECType>> m_stratumWork_R_h;
+    std::vector<std::vector<VECType>> m_stratumWork_R_h_prime;
     std::vector<std::vector<VECType>> m_stratumWork_E_h;
     std::vector<std::vector<VECType>> m_stratumWork_R_2h;
     std::vector<std::vector<VECType>> m_stratumWork_E_2h;
@@ -99,6 +100,7 @@ public:
         m_stratumWrappers.emplace_back(gmgMatStratumWrapper<dim, LeafClass>{this, ii});
 
       m_stratumWork_R_h.resize(m_numStrata);
+      m_stratumWork_R_h_prime.resize(m_numStrata);
       m_stratumWork_E_h.resize(m_numStrata);
       m_stratumWork_R_2h.resize(m_numStrata);
       m_stratumWork_E_2h.resize(m_numStrata);
@@ -259,12 +261,16 @@ public:
       const double scale = 1.0;//TODO
       const size_t localSz = (*m_multiDA)[stratum].getLocalNodalSz();
       m_stratumWork_R_h[stratum].resize(m_ndofs * localSz);
+      m_stratumWork_R_h_prime[stratum].resize(m_ndofs * localSz);
 
       for (int step = 0; step < smoothSteps; step++)
       {
         this->residual(stratum, m_stratumWork_R_h[stratum].data(), u, rhs, scale);
+        this->applySmoother(&(*m_stratumWork_R_h[stratum].cbegin()),
+                            &(*m_stratumWork_R_h_prime[stratum].begin()),
+                            stratum);
         for (size_t i = 0; i < m_ndofs * localSz; i++)
-          u[i] += omega * m_stratumWork_R_h[stratum][i];
+          u[i] += omega * m_stratumWork_R_h_prime[stratum][i];
       }
     }
 
