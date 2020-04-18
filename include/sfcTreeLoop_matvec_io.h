@@ -1181,7 +1181,7 @@ namespace ot
           // Nodal values.
           for (int dof = 0; dof < m_ndofs; dof++)
           {
-            myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank];
+            myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
           }
 
           // Zero out the values after they are transferred.
