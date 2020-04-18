@@ -244,18 +244,18 @@ namespace ot
   };
 
 
-  template <unsigned int dim, typename NodeT>
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
   class MatvecBaseOut : public SFC_TreeLoop<dim,
                                          Inputs<TreeNode<unsigned int, dim>, bool>,  // bool for is nonhanging, almost always true
                                          Outputs<NodeT>,
                                          MatvecBaseSummary<dim>,
-                                         MatvecBaseOut<dim, NodeT>>
+                                         MatvecBaseOut<dim, NodeT, UseAccumulation>>
   {
     using BaseT = SFC_TreeLoop<dim,
                                Inputs<TreeNode<unsigned int, dim>, bool>,
                                Outputs<NodeT>,
                                MatvecBaseSummary<dim>,
-                               MatvecBaseOut<dim, NodeT>>;
+                               MatvecBaseOut<dim, NodeT, UseAccumulation>>;
     friend BaseT;
 
     public:
@@ -470,8 +470,8 @@ namespace ot
   //
   // MatvecBaseOut()
   //
-  template <unsigned int dim, typename NodeT>
-  MatvecBaseOut<dim, NodeT>::MatvecBaseOut( size_t numNodes,
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  MatvecBaseOut<dim, NodeT, UseAccumulation>::MatvecBaseOut( size_t numNodes,
                                       unsigned int ndofs,
                                       unsigned int eleOrder,
                                       bool visitEmpty,
@@ -524,8 +524,8 @@ namespace ot
 
   // Returns the number of nodes copied.
   // This represents in total (m_ndofs * return_value) data items.
-  template <unsigned int dim, typename NodeT>
-  size_t MatvecBaseOut<dim, NodeT>::finalize(NodeT * outputNodeVals) const
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  size_t MatvecBaseOut<dim, NodeT, UseAccumulation>::finalize(NodeT * outputNodeVals) const
   {
     const typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
 
@@ -851,8 +851,8 @@ namespace ot
   //
   // MavtecBaseOut topDown
   //
-  template <unsigned int dim, typename NodeT>
-  void MatvecBaseOut<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  void MatvecBaseOut<dim, NodeT, UseAccumulation>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1069,8 +1069,8 @@ namespace ot
   }
 
 
-  template <unsigned int dim, typename NodeT>
-  void MatvecBaseOut<dim, NodeT>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren)
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  void MatvecBaseOut<dim, NodeT, UseAccumulation>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1181,7 +1181,10 @@ namespace ot
           // Nodal values.
           for (int dof = 0; dof < m_ndofs; dof++)
           {
-            myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
+            if (UseAccumulation)
+              myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
+            else
+              myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
           }
 
           // Zero out the values after they are transferred.
@@ -1259,8 +1262,8 @@ namespace ot
   //   both MatvecBaseIn and MatvecBaseOut.
 
   // fillAccessNodeCoordsFlat()
-  template <unsigned int dim, typename NodeT>
-  void MatvecBaseOut<dim, NodeT>::fillAccessNodeCoordsFlat()
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  void MatvecBaseOut<dim, NodeT, UseAccumulation>::fillAccessNodeCoordsFlat()
   {
     const FrameT &frame = BaseT::getCurrentFrame();
     /// const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;

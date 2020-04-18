@@ -70,7 +70,7 @@ namespace fem
     const bool visitEmpty = true;
     const unsigned int padlevel = 1;
     ot::MatvecBaseIn<dim, DofT> treeLoopIn(in.sz, ndofs, eleOrder, visitEmpty, padlevel, in.coords, in.vecIn, in.partFront, in.partBack);
-    ot::MatvecBaseOut<dim, DofT> treeLoopOut(out.sz, ndofs, eleOrder, visitEmpty, padlevel, out.coords, out.partFront, out.partBack);
+    ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(out.sz, ndofs, eleOrder, visitEmpty, padlevel, out.coords, out.partFront, out.partBack);
 
     while (!treeLoopOut.isFinished())
     {

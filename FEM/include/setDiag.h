@@ -27,7 +27,7 @@ namespace fem
     std::vector<DofT> leafResult(ndofs*npe, 0.0);
 
     constexpr bool noVisitEmpty = false;
-    ot::MatvecBaseOut<dim, DofT> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, partFront, partBack);
+    ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, partFront, partBack);
 
     while (!treeLoopOut.isFinished())
     {
