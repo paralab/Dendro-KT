@@ -47,7 +47,7 @@ std::ostream * DBG_FINE_RES3;
 std::ostream * DBG_COARSE_COR2;
 std::ostream * DBG_COARSE_RES0;
 std::ostream * DBG_COARSE_RES3;
-bool DBG_WRITE_NODES = true;
+bool DBG_WRITE_NODES = false;
 
 
 struct MatlabDataSink
@@ -307,6 +307,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
     ot::DA<dim>::multiLevelDA(surrMultiDA, surrDTree, comm, eOrder, 100, partition_tol);
 
     ot::DA<dim> & fineDA = multiDA[0];
+    ot::DA<dim> & coarseDA = multiDA[1];
 
     if (!rProc && outputStatus)
     {
@@ -356,6 +357,38 @@ int main_ (Parameters &pm, MPI_Comm comm)
       const VECType *Mfrhs = &(*_Mfrhs.cbegin());
       VECType *ux = &(*_ux.begin());
 
+
+
+      // Want to solve the coarse and fine problems independently.
+      std::vector<VECType> _ux_2h, _frhs_2h, _Mfrhs_2h;
+      fineDA.createVector(_ux_2h, false, false, 1);
+      coarseDA.createVector(_frhs_2h, false, false, 1);
+      coarseDA.createVector(_Mfrhs_2h, false, false, 1);
+
+      PoissonEq::PoissonVec<dim> poissonVec_2h(&coarseDA,1);
+      poissonVec_2h.setProblemDimensions(domain_min,domain_max);
+
+      coarseDA.setVectorByFunction(_ux_2h.data(),    f_init, false, false, 1);
+      coarseDA.setVectorByFunction(_Mfrhs_2h.data(), f_init, false, false, 1);
+      coarseDA.setVectorByFunction(_frhs_2h.data(),  f_rhs, false, false, 1);
+
+      if (!rProc && outputStatus)
+        std::cout << "Computing RHS on coarse grid.\n" << std::flush;
+
+      poissonVec_2h.computeVec(&(*_frhs_2h.cbegin()), &(*_Mfrhs_2h.begin()), 1.0);
+      double normb_2h = 0.0;
+      for (VECType b : _Mfrhs_2h)
+        normb_2h = fmax(fabs(b), normb_2h);
+      if (!rProc)
+        std::cout << "normb_2h==" << normb_2h << "\n";
+
+      const VECType *frhs_2h = &(*_frhs_2h.cbegin());
+      const VECType *Mfrhs_2h = &(*_Mfrhs_2h.cbegin());
+      VECType *ux_2h = &(*_ux_2h.begin());
+
+
+
+
       // - - - - - - - - - - -
 
       /// double tol=1e-6;
@@ -365,72 +398,64 @@ int main_ (Parameters &pm, MPI_Comm comm)
       if (!rProc && outputStatus)
       {
         std::cout << "Solving system.\n" << std::flush;
-        std::cout << "    numStrata ==           " << poissonGMG.getNumStrata() << "\n";
-        std::cout << "    smoothStepsPerCycle == " << smoothStepsPerCycle << "\n";
-        std::cout << "    relaxationFactor ==    " << relaxationFactor << "\n";
+        std::cout << "    Coarse system will be solved first\n";
+        std::cout << "    And then the fine system\n";
       }
 
-      unsigned int countIter = 0;
-      double res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
+      double res;
 
-      if (!rProc && !(countIter & 0))  // Every iteration
-        std::cout << "After iteration " << countIter
+      //
+      // Coarse solve
+      //
+      if (!rProc && outputStatus)
+        std::cout << "\nSolving coarse system.\n";
+
+      unsigned int coarseCountIter = 0;
+      res = poissonGMG.residual(1, ux_2h, Mfrhs_2h, 1.0);
+      if (!rProc && !(coarseCountIter & 3)) // Every 4th iteration
+        std::cout << "After Jacobi iteration " << coarseCountIter
                   << ", residual == " << std::scientific << res << "\n";
 
-      MatlabDataRoot fineResRoot;
-      MatlabDataRoot coarseResRoot;
-
-      while (countIter < max_iter && res/normb > reltol)
+      /// MatlabDataRoot coarseResRoot;
+      for (coarseCountIter = 0; coarseCountIter < 100; coarseCountIter++)
       {
-        DBG_COUNT = countIter;
+        DBG_COUNT = coarseCountIter;
+        poissonGMG.smooth(1, ux_2h, Mfrhs_2h, 1, 1.0);
 
-        std::string zero, one, two, three;
-        std::stringstream timeStr;
-        zero  = ((timeStr.str(""), timeStr << 4*countIter + 0), timeStr.str());
-        one   = ((timeStr.str(""), timeStr << 4*countIter + 1), timeStr.str());
-        two   = ((timeStr.str(""), timeStr << 4*countIter + 2), timeStr.str());
-        three = ((timeStr.str(""), timeStr << 4*countIter + 3), timeStr.str());
-
-        MatlabDataSink fineResOut0("_output/", "fineRes_data" + zero);
-        MatlabDataSink fineResOut1("_output/", "fineRes_data" + one);
-        MatlabDataSink fineResOut2("_output/", "fineRes_data" + two);
-        /// MatlabDataSink fineResOut3("_output/", "fineRes_data" + three);
-        MatlabDataSink coarseResOut0("_output/", "coarseRes_data" + zero);
-        MatlabDataSink coarseCorOut2("_output/", "coarseCor_data" + two);
-        /// MatlabDataSink coarseResOut3("_output/", "coarseRes_data" + three);
-
-        fineResRoot.addSlice("fineRes_data" + zero, 4*countIter + 0);
-        fineResRoot.addSlice("fineRes_data" + one, 4*countIter + 1);
-        fineResRoot.addSlice("fineRes_data" + two, 4*countIter + 2);
-        /// fineResRoot.addSlice("fineRes_data" + three, 4*countIter + 3);
-        coarseResRoot.addSlice("coarseRes_data" + zero, 4*countIter + 0);
-        coarseResRoot.addSlice("coarseCor_data" + two, 4*countIter + 2);
-        /// coarseResRoot.addSlice("coarseRes_data" + three, 4*countIter + 3);
-
-        DBG_FINE_RES0 = &(std::ofstream&)fineResOut0;
-        DBG_FINE_RES1 = &(std::ofstream&)fineResOut1;
-        DBG_FINE_RES2 = &(std::ofstream&)fineResOut2;
-        /// DBG_FINE_RES3 = &(std::ofstream&)fineResOut3;
-        DBG_COARSE_RES0 = &(std::ofstream&)coarseResOut0;
-        DBG_COARSE_COR2 = &(std::ofstream&)coarseCorOut2;
-        /// DBG_COARSE_RES3 = &(std::ofstream&)coarseResOut3;
-
-        poissonGMG.vcycle(0, ux, Mfrhs, smoothStepsPerCycle, relaxationFactor);
-        res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
-
-        countIter++;
-        if (!rProc && !(countIter & 0))  // Every iteration
-          std::cout << "After iteration " << countIter
+        res = poissonGMG.residual(1, ux_2h, Mfrhs_2h, 1.0);
+        if (!rProc && !(coarseCountIter & 3)) // Every 4th iteration
+          std::cout << "After Jacobi iteration " << coarseCountIter
                     << ", residual == " << std::scientific << res << "\n";
       }
-
-      fineResRoot.finalize("_output/", "fineRes_root");
-      coarseResRoot.finalize("_output/", "coarseRes_root");
-
+      /// coarseResRoot.finalize("_output/", "coarseRes_root");
       if (!rProc)
-        std::cout << " finished at iteration " << countIter << " ...\n";
+        std::cout << "Final relative residual error == " << res / normb_2h << ".\n";
 
-      // Now that we have an approximate solution, test convergence by evaluating the residual.
+
+      //
+      // Fine solve
+      //
+      if (!rProc && outputStatus)
+        std::cout << "\nSolving fine system.\n";
+
+      unsigned int fineCountIter = 0;
+      res = poissonGMG.residual(0, ux_2h, Mfrhs_2h, 1.0);
+      if (!rProc && !(fineCountIter & 3)) // Every 4th iteration
+        std::cout << "After Jacobi iteration " << fineCountIter
+                  << ", residual == " << std::scientific << res << "\n";
+
+      /// MatlabDataRoot fineResRoot;
+      for (fineCountIter = 0; fineCountIter < 400; fineCountIter++)
+      {
+        DBG_COUNT = fineCountIter;
+        poissonGMG.smooth(0, ux, Mfrhs, 1, 1.0);
+
+        res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
+        if (!rProc && !(fineCountIter & 3)) // Every 4th iteration
+          std::cout << "After Jacobi iteration " << fineCountIter
+                    << ", residual == " << std::scientific << res << "\n";
+      }
+      /// fineResRoot.finalize("_output/", "fineRes_root");
       if (!rProc)
         std::cout << "Final relative residual error == " << res / normb << ".\n";
     }
@@ -438,85 +463,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
     else
     {
 
-#ifndef BUILD_WITH_PETSC
-      throw "Petsc version requested but not built! (BUILD_WITH_PETSC)";
-#else
-      //
-      // PETSc version.
-      //
-
-      Vec ux, frhs, Mfrhs;
-      fineDA.petscCreateVector(ux, false, false, 1);
-      fineDA.petscCreateVector(frhs, false, false, 1);
-      fineDA.petscCreateVector(Mfrhs, false, false, 1);
-
-      /// PoissonEq::PoissonMat<dim> poissonMat(octDA,1);
-      /// poissonMat.setProblemDimensions(domain_min,domain_max);
-
-      PoissonEq::PoissonVec<dim> poissonVec(&fineDA,1);
-      poissonVec.setProblemDimensions(domain_min,domain_max);
-
-      fineDA.petscSetVectorByFunction(ux, f_init, false, false, 1);
-      fineDA.petscSetVectorByFunction(Mfrhs, f_init, false, false, 1);
-      fineDA.petscSetVectorByFunction(frhs, f_rhs, false, false, 1);
-
-      if (!rProc && outputStatus)
-        std::cout << "Computing RHS.\n" << std::flush;
-
-      poissonVec.computeVec(frhs, Mfrhs, 1.0);
-
-      double tol=1e-6;
-      unsigned int max_iter=1000;
-
-      /// Mat matrixFreeMat;
-      /// poissonMat.petscMatCreateShell(matrixFreeMat);
-
-      if (!rProc && outputStatus)
-        std::cout << "Creating Petsc multigrid shells.\n" << std::flush;
-
-      // PETSc solver context.
-      KSP ksp = poissonGMG.petscCreateGMG(comm);
-
-      /// KSPCreate(comm, &ksp);
-      /// KSPSetOperators(ksp, matrixFreeMat, matrixFreeMat);
-
-      KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter);
-
-      if (!rProc && outputStatus)
-        std::cout << "Solving system.\n" << std::flush;
-
-      KSPSolve(ksp, Mfrhs, ux);
-
-      PetscInt numIterations;
-      KSPGetIterationNumber(ksp, &numIterations);
-
-      if (!rProc)
-        std::cout << " finished at iteration " << numIterations << " ...\n";
-
-      KSPDestroy(&ksp);
-
-      // Now that we have an approximate solution, test convergence by evaluating the residual.
-      Vec residual;
-      fineDA.petscCreateVector(residual, false, false, 1);
-      poissonGMG.matVec(ux, residual);
-      VecAXPY(residual, -1.0, Mfrhs);
-      PetscScalar normr, normb;
-      VecNorm(Mfrhs, NORM_INFINITY, &normb);
-      VecNorm(residual, NORM_INFINITY, &normr);
-      PetscScalar rel_resid_err = normr / normb;
-
-      if (!rProc)
-        std::cout << "Final relative residual error == " << rel_resid_err << ".\n";
-
-      // TODO
-      // octDA->vecTopvtu(...);
-
-      fineDA.petscDestroyVec(ux);
-      fineDA.petscDestroyVec(frhs);
-      fineDA.petscDestroyVec(Mfrhs);
-      fineDA.petscDestroyVec(residual);
-
-#endif
+      throw "Petsc version requested but ignored!";
     }
 
     if(!rProc)

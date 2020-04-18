@@ -30,6 +30,8 @@ extern std::ostream * DBG_COARSE_RES0;
 extern std::ostream * DBG_COARSE_COR2;
 extern std::ostream * DBG_COARSE_RES3;
 
+extern bool DBG_WRITE_NODES;
+
 
 // =================================
 // Class forward declarations
@@ -281,7 +283,7 @@ public:
         smooth(fs, u, rhs, smoothSteps, omega);
 
         if (fineStratum == 0)
-          ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES0);
+          if (DBG_WRITE_NODES) ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES0);
 
         if (DEBUG)
         {
@@ -292,7 +294,7 @@ public:
         // Residual before restriction.
         this->residual(fs, R_h.data(), u, rhs, scale);
 
-        ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES1);
+        if (DBG_WRITE_NODES) ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES1);
 
         if (DEBUG)
         {
@@ -307,7 +309,7 @@ public:
         // Restriction
         this->restriction(R_h.data(), R_2h.data(), fs);
 
-        ot::printNodes(coarseDA, R_2h.data(), true, *DBG_COARSE_RES0);
+        if (DBG_WRITE_NODES) ot::printNodes(coarseDA, R_2h.data(), true, *DBG_COARSE_RES0);
 
         if (DEBUG)
         {
@@ -328,7 +330,7 @@ public:
           std::cout << "[i=]" << DBG_COUNT << ":strat=" << fs
                     << "]   (Coarse residual==" << coarseSolveRes << ")    ";
 
-        ot::printNodes(coarseDA, E_2h.data(), true, *DBG_COARSE_COR2);
+        if (DBG_WRITE_NODES) ot::printNodes(coarseDA, E_2h.data(), true, *DBG_COARSE_COR2);
 
         // Prolongation of the correction.
         this->prolongation(E_2h.data(), E_h.data(), fs);
@@ -353,7 +355,7 @@ public:
         smooth(fs, u, rhs, smoothSteps, omega);
 
         if (fineStratum == 0)
-          ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES2);
+          if (DBG_WRITE_NODES) ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES2);
 
         if (DEBUG)
         {
