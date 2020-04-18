@@ -742,7 +742,7 @@ namespace ot
         // Nodal values.
         for (int dof = 0; dof < m_ndofs; dof++)
           myOutNodeValues[m_ndofs * nIdx + dof]
-            += parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank];
+            += parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank + dof];
 
         // Zero out the values after they are transferred.
         // This is necessary so that later linear transforms are not contaminated.
