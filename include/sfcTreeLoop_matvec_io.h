@@ -678,9 +678,6 @@ namespace ot
     }
     //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary
 
-    if (m_visitEmpty)
-      thereAreHangingNodes = true;
-
     //
     // Resize child input buffers in the parent frame.
     //
@@ -713,7 +710,7 @@ namespace ot
     //
     // Perform any needed interpolations.
     //
-    if (thereAreHangingNodes)
+    if (thereAreHangingNodes || (m_visitEmpty && !*extantChildren))
     {
       // Pointer to the parent's node values.
       // If the parent is above leaf level, need to sort them lexicographically.
@@ -1089,6 +1086,7 @@ namespace ot
     // Retrieve child summaries.
     //
     bool thereAreHangingNodes = false;
+    bool childrenHaveNodes = false;
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
@@ -1097,10 +1095,9 @@ namespace ot
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         thereAreHangingNodes = true;
+      if (childNodeCounts[child_sfc] > 0)
+        childrenHaveNodes = true;
     }
-
-    if (m_visitEmpty)
-      thereAreHangingNodes = true;
 
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     /// const size_t numParentNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount; // Assumes parent is never leaf.
@@ -1163,7 +1160,7 @@ namespace ot
     //
     // Perform any needed transpose-interpolations.
     //
-    if (thereAreHangingNodes)
+    if (thereAreHangingNodes || (m_visitEmpty && !childrenHaveNodes))
     {
       NodeT * parentNodeVals;
 
