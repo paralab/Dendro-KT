@@ -65,6 +65,8 @@ namespace fem
     const unsigned int eleOrder = refElement->getOrder();
     const unsigned int npe = intPow(eleOrder+1, dim);
 
+    std::vector<DofT> leafResult(ndofs*npe, 0.0);
+
     const bool visitEmpty = true;
     const unsigned int padlevel = 1;
     ot::MatvecBaseIn<dim, DofT> treeLoopIn(in.sz, ndofs, eleOrder, visitEmpty, padlevel, in.coords, in.vecIn, in.partFront, in.partBack);
@@ -72,7 +74,10 @@ namespace fem
 
     while (!treeLoopOut.isFinished())
     {
-      if (!(treeLoopIn.getCurrentSubtree() == treeLoopOut.getCurrentSubtree()))
+      const TN subtreeIn = treeLoopIn.getCurrentSubtree();
+      const TN subtreeOut = treeLoopOut.getCurrentSubtree();
+
+      if (!(subtreeIn == subtreeOut))
       {
         assert(!"MatvecBaseIn/Out subtree mismatch!");
       }
@@ -96,7 +101,30 @@ namespace fem
         // Both leafs, can directly transfer.
         else
         {
-          treeLoopOut.subtreeInfo().overwriteNodeValsOut( treeLoopIn.subtreeInfo().readNodeValsIn() );
+          // Intermediate buffer, in case we need to clear out some nodes.
+          std::copy_n( treeLoopIn.subtreeInfo().readNodeValsIn(),  ndofs * npe,
+                       leafResult.begin() );
+
+          /// // Only count nonhanging nodes once, and don't count hanging nodes at all.
+          /// // (Hanging/nonhanging with respect to finer grid)
+          /// for (int nIdx = 0; nIdx < npe; nIdx++)
+          /// {
+          ///   const bool nonhangingIn = treeLoopIn.subtreeInfo().readNodeNonhangingIn()[nIdx];
+          ///   const bool nonhangingOut = treeLoopOut.subtreeInfo().readNodeNonhangingIn()[nIdx];
+          ///   const TN &ncoordIn = treeLoopIn.subtreeInfo().readNodeCoordsIn()[nIdx];
+          ///   const TN &ncoordOut = treeLoopOut.subtreeInfo().readNodeCoordsIn()[nIdx];
+
+          ///   if ( (!nonhangingIn && !nonhangingOut)  ||
+          ///        (nonhangingIn && subtreeIn != ot::SFC_NodeSort<C, dim>::getFirstExtantNeighbour(ncoordIn)) ||
+          ///        (!nonhangingIn && nonhangingOut && subtreeOut != ot::SFC_NodeSort<C, dim>::getFirstExtantNeighbour(ncoordOut)) )
+          ///   {
+          ///     for (int dof = 0; dof < ndofs; dof++)
+          ///       leafResult[nIdx * ndofs + dof] = 0.0;
+          ///   }
+          /// }
+
+          treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*leafResult.cbegin()));
+
           treeLoopIn.next();
           treeLoopOut.next();
         }

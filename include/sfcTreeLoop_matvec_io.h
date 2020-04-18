@@ -89,20 +89,20 @@ namespace ot
 
   template <unsigned int dim, typename NodeT>
   class MatvecBaseIn : public SFC_TreeLoop<dim,
-                                         Inputs<TreeNode<unsigned int, dim>, NodeT>,
+                                         Inputs<TreeNode<unsigned int, dim>, NodeT, bool>,  // input bool tells nonhanging, which is almost always true
                                          Outputs<>,
                                          MatvecBaseSummary<dim>,
                                          MatvecBaseIn<dim, NodeT>>
   {
     using BaseT = SFC_TreeLoop<dim,
-                               Inputs<TreeNode<unsigned int, dim>, NodeT>,
+                               Inputs<TreeNode<unsigned int, dim>, NodeT, bool>,
                                Outputs<>,
                                MatvecBaseSummary<dim>,
                                MatvecBaseIn<dim, NodeT>>;
     friend BaseT;
 
     public:
-      using FrameT = Frame<dim, Inputs<TreeNode<unsigned int, dim>, NodeT>, Outputs<>, MatvecBaseSummary<dim>, MatvecBaseIn>;
+      using FrameT = Frame<dim, Inputs<TreeNode<unsigned int, dim>, NodeT, bool>, Outputs<>, MatvecBaseSummary<dim>, MatvecBaseIn>;
 
       static constexpr unsigned int NumChildren = 1u << dim;
 
@@ -159,6 +159,11 @@ namespace ot
         /** readNodeValsIn() */
         const NodeT * readNodeValsIn() const {
           return &(*treeloop.getCurrentFrame().template getMyInputHandle<1>().cbegin());
+        }
+
+        /** readNodeNonhangingIn() */
+        const std::vector<bool> & readNodeNonhangingIn() const {
+          return treeloop.getCurrentFrame().template getMyInputHandle<2>();
         }
 
         /** overwriteNodeValsIn() */
@@ -241,20 +246,20 @@ namespace ot
 
   template <unsigned int dim, typename NodeT>
   class MatvecBaseOut : public SFC_TreeLoop<dim,
-                                         Inputs<TreeNode<unsigned int, dim>>,
+                                         Inputs<TreeNode<unsigned int, dim>, bool>,  // bool for is nonhanging, almost always true
                                          Outputs<NodeT>,
                                          MatvecBaseSummary<dim>,
                                          MatvecBaseOut<dim, NodeT>>
   {
     using BaseT = SFC_TreeLoop<dim,
-                               Inputs<TreeNode<unsigned int, dim>>,
+                               Inputs<TreeNode<unsigned int, dim>, bool>,
                                Outputs<NodeT>,
                                MatvecBaseSummary<dim>,
                                MatvecBaseOut<dim, NodeT>>;
     friend BaseT;
 
     public:
-      using FrameT = Frame<dim, Inputs<TreeNode<unsigned int, dim>>, Outputs<NodeT>, MatvecBaseSummary<dim>, MatvecBaseOut>;
+      using FrameT = Frame<dim, Inputs<TreeNode<unsigned int, dim>, bool>, Outputs<NodeT>, MatvecBaseSummary<dim>, MatvecBaseOut>;
 
       static constexpr unsigned int NumChildren = 1u << dim;
 
@@ -307,6 +312,11 @@ namespace ot
         /** readNodeCoordsIn() */
         const TreeNode<unsigned int, dim> * readNodeCoordsIn() const {
           return &(*treeloop.getCurrentFrame().template getMyInputHandle<0>().cbegin());
+        }
+
+        /** readNodeNonhangingIn() */
+        const std::vector<bool> & readNodeNonhangingIn() const {
+          return treeloop.getCurrentFrame().template getMyInputHandle<1>();
         }
 
         /** getNumNodesOut() */
@@ -444,6 +454,10 @@ namespace ot
     rootInputNodeVals.resize(ndofs * numNodes);
     std::copy_n(inputNodeVals, ndofs * numNodes, rootInputNodeVals.begin());
 
+    std::vector<bool> &rootIsNonhanging
+        = rootFrame.template getMyInputHandle<2u>();
+    rootIsNonhanging.resize(numNodes, true);
+
     rootFrame.mySummaryHandle.m_initializedIn = true;
     rootFrame.mySummaryHandle.m_initializedOut = false;
 
@@ -494,6 +508,10 @@ namespace ot
 
     // m_rootOutputData: Will be resized by output traversal methods.
     //   After traversal, user can copy out the values with finalize().
+
+    std::vector<bool> &rootIsNonhanging
+        = rootFrame.template getMyInputHandle<1u>();
+    rootIsNonhanging.resize(numNodes, true);
 
     rootFrame.mySummaryHandle.m_initializedIn = true;
     rootFrame.mySummaryHandle.m_initializedOut = false;
@@ -696,7 +714,12 @@ namespace ot
       //   This should be refactored as a separate attribute.
 
       if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1)
+      {
         parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
+
+        parentFrame.template getChildInput<2>(child_sfc).clear();
+        parentFrame.template getChildInput<2>(child_sfc).resize(allocNodes, false);
+      }
       else
       {
         /// std::vector<TreeNode<unsigned int, dim>> &childNodeCoords =
@@ -707,6 +730,9 @@ namespace ot
 
         // Cannot use Element::appendNodes() because the node may be parent level.
         parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
+
+        parentFrame.template getChildInput<2>(child_sfc).clear();
+        parentFrame.template getChildInput<2>(child_sfc).resize(allocNodes, false);
       }
     }
 
@@ -789,6 +815,7 @@ namespace ot
       {
         // Node coordinates.
         parentFrame.template getChildInput<0>(child_sfc)[childOffset] = myNodes[nIdx];
+        parentFrame.template getChildInput<2>(child_sfc)[childOffset] = true;//nonhanging
 
         // Nodal values.
         std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
@@ -808,7 +835,9 @@ namespace ot
         // Cannot use Element::appendNodes() because the node may be parent level.
         // So, must add the node here.
         parentFrame.template getChildInput<0>(child_sfc)[nodeRank] = myNodes[nIdx];
+        parentFrame.template getChildInput<2>(child_sfc)[nodeRank] = true;//nonhanging
         // Note this will miss hanging nodes.
+        // Use the isHanging buffer to figure out if the coordinate is valid.
 
         // Nodal values.
         std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
@@ -992,6 +1021,9 @@ namespace ot
       //   This should be refactored as a separate attribute.
 
       parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
+
+      parentFrame.template getChildInput<1>(child_sfc).clear();
+      parentFrame.template getChildInput<1>(child_sfc).resize(allocNodes, false);//don't assume nonhanging until we fill
     }
 
     childNodeCounts.fill(0);
@@ -1014,6 +1046,7 @@ namespace ot
       {
         // Node coordinates.
         parentFrame.template getChildInput<0>(child_sfc)[childOffset] = myNodes[nIdx];
+        parentFrame.template getChildInput<1>(child_sfc)[childOffset] = true; // nonhanging
 
         childNodeCounts[child_sfc]++;
       }
@@ -1029,6 +1062,7 @@ namespace ot
         // Cannot use Element::appendNodes() because the node may be parent level.
         // So, must add the node here.
         parentFrame.template getChildInput<0>(child_sfc)[nodeRank] = myNodes[nIdx];
+        parentFrame.template getChildInput<1>(child_sfc)[nodeRank] = true; // nonhanging
         // Note this will miss hanging nodes.
       }
     }

@@ -363,6 +363,8 @@ namespace ot {
 
     static void markExtantCellFlags(std::vector<TNPoint<T,dim>> &points, const DomainDeciderT_TN &domainDecider);
 
+    static TreeNode<T, dim> getFirstExtantNeighbour(const TreeNode<T, dim> &pt);
+
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain.
      * @param classify If true, perform node classification and mark them appropriately. If false,

@@ -1000,6 +1000,34 @@ namespace ot {
     }
   }
 
+  //
+  // getFirstExtantNeighbour()
+  //
+  template <typename T, unsigned int dim>
+  TreeNode<T, dim> SFC_NodeSort<T, dim>::getFirstExtantNeighbour(const TreeNode<T, dim> &pt)
+  {
+    std::array<T, dim> pta;
+    const ot::TNPoint<T, dim> node(1, (pt.getAnchor(pta), pta), pt.getLevel());
+
+    const T elemSz = 1u << (m_uiMaxDepth - pt.getLevel());
+    const ExtantCellFlagT extantNeighbours = pt.getExtantCellFlag();
+    const unsigned int nbrId = binOp::lowestOnePos(extantNeighbours);
+
+    using FType = typename ot::CellType<dim>::FlagType;
+    const CellType<dim> nodeCT = node.get_cellType();
+    const FType neighbourhoodDim = dim - nodeCT.get_dim_flag();
+    const FType neighbourhoodSpace = (1u << dim) - 1 - nodeCT.get_orient_flag();
+
+    TreeNode<T, dim> nbrTN = node.getCell();
+    for (int d = 0; d < dim; d++)
+      // 0 bit in nbrId means go negative, 1 bit means go positive.
+      // But if the node is interior on this axis, then adopt the coord of the cell.
+      if ((nbrId ^ neighbourhoodSpace) & (1u << d))
+        nbrTN.setX(d, nbrTN.getX(d) - elemSz);
+
+    return nbrTN;
+  }
+
 
 
   //

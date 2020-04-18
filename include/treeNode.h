@@ -138,6 +138,9 @@ namespace ot {
        * @param[out]: coppied coordinates*/
       int getAnchor(std::array<T,dim> &xyz) const;
 
+      // These methods don't tell you which element is which neighbor,
+      //  look in nsort.h / nsort.tcc for that.
+
       /**@brief Get the bitfield of extant neighbor regions surrounding the point.
        * @note Empty unless previously set (or copied after setting) setExtantCellFlag(). */
       inline ExtantCellFlagT getExtantCellFlag() const;
