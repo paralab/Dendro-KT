@@ -27,6 +27,7 @@ extern std::ostream * DBG_FINE_RES1;
 extern std::ostream * DBG_FINE_RES2;
 extern std::ostream * DBG_FINE_RES3;
 extern std::ostream * DBG_COARSE_RES0;
+extern std::ostream * DBG_COARSE_COR2;
 extern std::ostream * DBG_COARSE_RES3;
 
 
@@ -326,6 +327,8 @@ public:
         if (fs == m_numStrata - 2)
           std::cout << "[i=]" << DBG_COUNT << ":strat=" << fs
                     << "]   (Coarse residual==" << coarseSolveRes << ")    ";
+
+        ot::printNodes(coarseDA, E_2h.data(), true, *DBG_COARSE_COR2);
 
         // Prolongation of the correction.
         this->prolongation(E_2h.data(), E_h.data(), fs);

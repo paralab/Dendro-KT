@@ -44,6 +44,7 @@ std::ostream * DBG_FINE_RES0;
 std::ostream * DBG_FINE_RES1;
 std::ostream * DBG_FINE_RES2;
 std::ostream * DBG_FINE_RES3;
+std::ostream * DBG_COARSE_COR2;
 std::ostream * DBG_COARSE_RES0;
 std::ostream * DBG_COARSE_RES3;
 
@@ -394,6 +395,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
         MatlabDataSink fineResOut2("_output/", "fineRes_data" + two);
         /// MatlabDataSink fineResOut3("_output/", "fineRes_data" + three);
         MatlabDataSink coarseResOut0("_output/", "coarseRes_data" + zero);
+        MatlabDataSink coarseCorOut2("_output/", "coarseCor_data" + two);
         /// MatlabDataSink coarseResOut3("_output/", "coarseRes_data" + three);
 
         fineResRoot.addSlice("fineRes_data" + zero, 4*countIter + 0);
@@ -401,6 +403,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
         fineResRoot.addSlice("fineRes_data" + two, 4*countIter + 2);
         /// fineResRoot.addSlice("fineRes_data" + three, 4*countIter + 3);
         coarseResRoot.addSlice("coarseRes_data" + zero, 4*countIter + 0);
+        coarseResRoot.addSlice("coarseCor_data" + two, 4*countIter + 2);
         /// coarseResRoot.addSlice("coarseRes_data" + three, 4*countIter + 3);
 
         DBG_FINE_RES0 = &(std::ofstream&)fineResOut0;
@@ -408,6 +411,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
         DBG_FINE_RES2 = &(std::ofstream&)fineResOut2;
         /// DBG_FINE_RES3 = &(std::ofstream&)fineResOut3;
         DBG_COARSE_RES0 = &(std::ofstream&)coarseResOut0;
+        DBG_COARSE_COR2 = &(std::ofstream&)coarseCorOut2;
         /// DBG_COARSE_RES3 = &(std::ofstream&)coarseResOut3;
 
         poissonGMG.vcycle(0, ux, Mfrhs, smoothStepsPerCycle, relaxationFactor);
@@ -417,13 +421,6 @@ int main_ (Parameters &pm, MPI_Comm comm)
         if (!rProc && !(countIter & 0))  // Every iteration
           std::cout << "After iteration " << countIter
                     << ", residual == " << std::scientific << res << "\n";
-
-        fineResOut0.close();
-        fineResOut1.close();
-        fineResOut2.close();
-        /// fineResOut3.close();
-        coarseResOut0.close();
-        /// coarseResOut3.close();
       }
 
       fineResRoot.finalize("_output/", "fineRes_root");
