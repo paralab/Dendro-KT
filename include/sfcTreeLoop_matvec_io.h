@@ -1034,7 +1034,6 @@ namespace ot
       *extantChildren = segmentChildren;
   }
 
-
   template <unsigned int dim, typename NodeT>
   void MatvecBaseOut<dim, NodeT>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren)
   {
@@ -1147,7 +1146,8 @@ namespace ot
           // Nodal values.
           for (int dof = 0; dof < m_ndofs; dof++)
           {
-            myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
+            /// myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];   // Matvec way
+            myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];    // But if just interpolating...?
           }
 
           // Zero out the values after they are transferred.
