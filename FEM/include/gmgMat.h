@@ -549,7 +549,7 @@ void gmgMat<dim, LeafClass>::restriction(const VECType *fineRes, VECType *coarse
 #endif
 
   // 5. Copy output data from ghosted buffer.
-  ot::distShiftNodes(surrDA,    surrGhostedPtr + surrDA.getLocalNodeBegin(),
+  ot::distShiftNodes(surrDA,    surrGhostedPtr + m_ndofs * surrDA.getLocalNodeBegin(),
                      coarseDA,  coarseRes,
                      m_ndofs);
 
@@ -579,7 +579,7 @@ void gmgMat<dim, LeafClass>::prolongation(const VECType *coarseCrx, VECType *fin
 
   // 1. Copy input data to ghosted buffer.
   ot::distShiftNodes(coarseDA,   coarseCrx,
-                     surrDA,     surrGhostedPtr + surrDA.getLocalNodeBegin(),
+                     surrDA,     surrGhostedPtr + m_ndofs * surrDA.getLocalNodeBegin(),
                      m_ndofs);
 
   // code import note: There was prematvec here.
