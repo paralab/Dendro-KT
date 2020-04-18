@@ -47,6 +47,69 @@ std::ostream * DBG_FINE_RES3;
 std::ostream * DBG_COARSE_RES0;
 std::ostream * DBG_COARSE_RES3;
 
+
+struct MatlabDataSink
+{
+  std::ofstream m_out;
+
+  MatlabDataSink() {}
+  MatlabDataSink(const MatlabDataSink &other) = delete;
+
+  MatlabDataSink(const std::string &pathPrefixAndSlash,
+                 const std::string &baseName)
+  {
+    this->open(pathPrefixAndSlash, baseName);
+  }
+
+  ~MatlabDataSink()
+  {
+    this->close();
+  }
+
+  void open(const std::string &pathPrefixAndSlash,
+            const std::string &baseName)
+  {
+    m_out.open(pathPrefixAndSlash + baseName + ".m", std::ios::out);
+    m_out << "function data = " << baseName << "()\n"
+          << "  data = [\n";
+  }
+
+  void close()
+  {
+    m_out << "  ];\nend\n";
+    m_out.close();
+  }
+
+  operator std::ofstream&() { return m_out; }
+};
+
+
+struct MatlabDataRoot
+{
+  std::vector<std::string> m_sliceNames;
+  std::vector<int> m_sliceTimes;
+
+  void addSlice(const std::string &name, int time)
+  {
+    m_sliceNames.push_back(name);
+    m_sliceTimes.push_back(time);
+  }
+
+  void finalize(const std::string &pathPrefixAndSlash,
+                const std::string &baseName)
+  {
+    std::ofstream out(pathPrefixAndSlash + baseName + ".m", std::ios::out);
+    out << "function data = " << baseName << "()\n";
+    for (int i = 0; i < m_sliceNames.size(); i++)
+      out << "  data(:,:," << m_sliceTimes[i]+1 << ") = "
+          << m_sliceNames[i] << "();\n";
+    out << "end\n";
+    out.close();
+  }
+};
+
+
+
 namespace PoissonEq
 {
 
@@ -312,6 +375,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
         std::cout << "After iteration " << countIter
                   << ", residual == " << std::scientific << res << "\n";
 
+      MatlabDataRoot fineResRoot;
+      MatlabDataRoot coarseResRoot;
+
       while (countIter < max_iter && res/normb > reltol)
       {
         DBG_COUNT = countIter;
@@ -323,19 +389,26 @@ int main_ (Parameters &pm, MPI_Comm comm)
         two   = ((timeStr.str(""), timeStr << 4*countIter + 2), timeStr.str());
         three = ((timeStr.str(""), timeStr << 4*countIter + 3), timeStr.str());
 
-        std::ofstream fineResOut0("_output/fineRes.raw." + zero, std::ios::binary);
-        std::ofstream fineResOut1("_output/fineRes.raw." + one, std::ios::binary);
-        std::ofstream fineResOut2("_output/fineRes.raw." + two, std::ios::binary);
-        std::ofstream fineResOut3("_output/fineRes.raw." + three, std::ios::binary);
-        std::ofstream coarseResOut0("_output/coarseRes.raw." + zero, std::ios::binary);
-        std::ofstream coarseResOut3("_output/coarseRes.raw." + three, std::ios::binary);
+        MatlabDataSink fineResOut0("_output/", "fineRes_data" + zero);
+        MatlabDataSink fineResOut1("_output/", "fineRes_data" + one);
+        MatlabDataSink fineResOut2("_output/", "fineRes_data" + two);
+        /// MatlabDataSink fineResOut3("_output/", "fineRes_data" + three);
+        MatlabDataSink coarseResOut0("_output/", "coarseRes_data" + zero);
+        /// MatlabDataSink coarseResOut3("_output/", "coarseRes_data" + three);
 
-        DBG_FINE_RES0 = &fineResOut0;
-        DBG_FINE_RES1 = &fineResOut1;
-        DBG_FINE_RES2 = &fineResOut2;
-        DBG_FINE_RES3 = &fineResOut3;
-        DBG_COARSE_RES0 = &coarseResOut0;
-        DBG_COARSE_RES3 = &coarseResOut3;
+        fineResRoot.addSlice("fineRes_data" + zero, 4*countIter + 0);
+        fineResRoot.addSlice("fineRes_data" + one, 4*countIter + 1);
+        fineResRoot.addSlice("fineRes_data" + two, 4*countIter + 2);
+        /// fineResRoot.addSlice("fineRes_data" + three, 4*countIter + 3);
+        coarseResRoot.addSlice("fineRes_data" + zero, 4*countIter + 0);
+        /// coarseResRoot.addSlice("fineRes_data" + three, 4*countIter + 3);
+
+        DBG_FINE_RES0 = &(std::ofstream&)fineResOut0;
+        DBG_FINE_RES1 = &(std::ofstream&)fineResOut1;
+        DBG_FINE_RES2 = &(std::ofstream&)fineResOut2;
+        /// DBG_FINE_RES3 = &(std::ofstream&)fineResOut3;
+        DBG_COARSE_RES0 = &(std::ofstream&)coarseResOut0;
+        /// DBG_COARSE_RES3 = &(std::ofstream&)coarseResOut3;
 
         poissonGMG.vcycle(0, ux, Mfrhs, smoothStepsPerCycle, relaxationFactor);
         res = poissonGMG.residual(0, ux, Mfrhs, 1.0);
@@ -348,10 +421,13 @@ int main_ (Parameters &pm, MPI_Comm comm)
         fineResOut0.close();
         fineResOut1.close();
         fineResOut2.close();
-        fineResOut3.close();
+        /// fineResOut3.close();
         coarseResOut0.close();
-        coarseResOut3.close();
+        /// coarseResOut3.close();
       }
+
+      fineResRoot.finalize("_output/", "fineRes_root");
+      coarseResRoot.finalize("_output/", "coarseRes_root");
 
       if (!rProc)
         std::cout << " finished at iteration " << countIter << " ...\n";
