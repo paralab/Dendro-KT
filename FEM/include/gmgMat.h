@@ -276,6 +276,7 @@ public:
           ot::printNodes(fineDA, u, true, std::cout) << "\n";
         }
 
+        // Pre smoothing
         smooth(fs, u, rhs, smoothSteps, omega);
 
         if (fineStratum == 0)
@@ -287,6 +288,7 @@ public:
           ot::printNodes(fineDA, u, true, std::cout) << "\n";
         }
 
+        // Residual before restriction.
         this->residual(fs, R_h.data(), u, rhs, scale);
 
         ot::printNodes(fineDA, R_h.data(), true, *DBG_FINE_RES1);
@@ -301,6 +303,7 @@ public:
         R_2h.resize(m_ndofs * localCoarseSz);
         E_2h.resize(m_ndofs * localCoarseSz);
 
+        // Restriction
         this->restriction(R_h.data(), R_2h.data(), fs);
 
         ot::printNodes(coarseDA, R_2h.data(), true, *DBG_COARSE_RES0);
@@ -311,9 +314,20 @@ public:
           ot::printNodes(coarseDA, &(*R_2h.cbegin()), true, std::cout) << "\n";
         }
 
+        // Recursive VCycle to solve the error equation.
         std::fill(E_2h.begin(), E_2h.end(), 0.0f);
         this->vcycle(fineStratum+1, E_2h.data(), R_2h.data(), smoothSteps, omega);
 
+        // DEBUG
+        VECType coarseSolveRes = std::max( *std::max_element( m_stratumWork_R_h[fs+1].begin(),
+                                                              m_stratumWork_R_h[fs+1].end() ),
+                                          -*std::min_element( m_stratumWork_R_h[fs+1].begin(),
+                                                              m_stratumWork_R_h[fs+1].end() ) );
+        if (fs == m_numStrata - 2)
+          std::cout << "[i=]" << DBG_COUNT << ":strat=" << fs
+                    << "]   (Coarse residual==" << coarseSolveRes << ")    ";
+
+        // Prolongation of the correction.
         this->prolongation(E_2h.data(), E_h.data(), fs);
 
         if (DEBUG)
@@ -322,6 +336,7 @@ public:
           ot::printNodes(fineDA, &(*E_h.cbegin()), true, std::cout) << "\n";
         }
 
+        // Apply the correction.
         for (size_t i = 0; i < m_ndofs * localFineSz; i++)
           u[i] += E_h[i];
 
@@ -331,6 +346,7 @@ public:
           ot::printNodes(fineDA, u, true, std::cout) << "\n";
         }
 
+        // Post smoothing
         smooth(fs, u, rhs, smoothSteps, omega);
 
         if (fineStratum == 0)

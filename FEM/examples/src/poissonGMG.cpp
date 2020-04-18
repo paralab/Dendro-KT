@@ -400,8 +400,8 @@ int main_ (Parameters &pm, MPI_Comm comm)
         fineResRoot.addSlice("fineRes_data" + one, 4*countIter + 1);
         fineResRoot.addSlice("fineRes_data" + two, 4*countIter + 2);
         /// fineResRoot.addSlice("fineRes_data" + three, 4*countIter + 3);
-        coarseResRoot.addSlice("fineRes_data" + zero, 4*countIter + 0);
-        /// coarseResRoot.addSlice("fineRes_data" + three, 4*countIter + 3);
+        coarseResRoot.addSlice("coarseRes_data" + zero, 4*countIter + 0);
+        /// coarseResRoot.addSlice("coarseRes_data" + three, 4*countIter + 3);
 
         DBG_FINE_RES0 = &(std::ofstream&)fineResOut0;
         DBG_FINE_RES1 = &(std::ofstream&)fineResOut1;
