@@ -250,10 +250,10 @@ public:
       m_stratumWork_R_h[fs].resize(m_ndofs * localFineSz);
       m_stratumWork_E_h[fs].resize(m_ndofs * localFineSz);
 
-      smooth(fs, u, rhs, smoothSteps, omega);
-
       if (fs < m_numStrata-1)
       {
+        smooth(fs, u, rhs, smoothSteps, omega);
+
         this->residual(fs, m_stratumWork_R_h[fs].data(), u, rhs, scale);
 
         const size_t localCoarseSz = (*m_multiDA)[fs+1].getLocalNodalSz();
@@ -269,9 +269,13 @@ public:
 
         for (size_t i = 0; i < m_ndofs * localFineSz; i++)
           u[i] += m_stratumWork_E_h[fs][i];
-      }
 
-      smooth(fs, u, rhs, smoothSteps, omega);
+        smooth(fs, u, rhs, smoothSteps, omega);
+      }
+      else
+      {
+        const int numSteps = smoothToTol(fs, u, rhs, 1e-10, 1.0);
+      }
     }
 
     // smooth()
@@ -291,6 +295,36 @@ public:
         for (size_t i = 0; i < m_ndofs * localSz; i++)
           u[i] += omega * m_stratumWork_R_h_prime[stratum][i];
       }
+    }
+
+    // smooth()
+    int smoothToTol(unsigned int stratum, VECType * u, const VECType * rhs, double relResErr, double omega = 0.67)
+    {
+      const double scale = 1.0;//TODO
+      const size_t localSz = (*m_multiDA)[stratum].getLocalNodalSz();
+      m_stratumWork_R_h[stratum].resize(m_ndofs * localSz);
+      m_stratumWork_R_h_prime[stratum].resize(m_ndofs * localSz);
+
+      double normb = 0.0;
+      for (int nidx = 0; nidx < localSz; nidx++)
+        normb = fmax(normb, fabs(rhs[nidx]));
+
+      relResErr = fabs(relResErr);
+      double res = normb * (1 + relResErr);
+      int step = 0;
+      while (res > relResErr * normb)
+      {
+        res = this->residual(stratum, m_stratumWork_R_h[stratum].data(), u, rhs, scale);
+        this->applySmoother(&(*m_stratumWork_R_h[stratum].cbegin()),
+                            &(*m_stratumWork_R_h_prime[stratum].begin()),
+                            stratum);
+        for (size_t i = 0; i < m_ndofs * localSz; i++)
+          u[i] += omega * m_stratumWork_R_h_prime[stratum][i];
+
+        step++;
+      }
+
+      return step;
     }
 
     // --------------------------------
