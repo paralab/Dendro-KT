@@ -220,17 +220,16 @@ bool testUniform2(int argc, char * argv[])
   gmgMatObj.restriction(&(*fineVec.cbegin()), &(*coarseVec.begin()), 0);
 
   bounds = getBounds(coarseVec);
-  (checks.emplace_back(), checks[checkIdx++] = lastCheck = 
-          mpiAllTrue(1.0 <= bounds.lo && bounds.hi <= (1u << dim), comm));
+  (checks.emplace_back(), checks[checkIdx++] = lastCheck =
+          mpiAllTrue(1.0 <= bounds.lo && bounds.hi == 1.0, comm));
   if (!rProc && outputStatus)
   {
     if (lastCheck)
       std::cout << "Check passed. " << GRN << UCHK << NRM << "\n" << std::flush;
     else
-    {
       std::cout << "Check failed. " << RED << UXXX << NRM << "\n" << std::flush;
-      std::cout << "  Detail: bounds=={" << bounds.lo << ", " << bounds.hi << "}\n";
-    }
+
+    std::cout << "  Detail: bounds=={" << bounds.lo << ", " << bounds.hi << "}\n";
   }
 
 
@@ -244,18 +243,83 @@ bool testUniform2(int argc, char * argv[])
   gmgMatObj.prolongation(&(*coarseVec.cbegin()), &(*fineVec.begin()), 0);
 
   bounds = getBounds(coarseVec);
-  (checks.emplace_back(), checks[checkIdx++] = lastCheck = 
+  (checks.emplace_back(), checks[checkIdx++] = lastCheck =
           mpiAllTrue(bounds.lo == 1.0 && bounds.hi == 1.0, comm));
   if (!rProc && outputStatus)
   {
     if (lastCheck)
       std::cout << "Check passed. " << GRN << UCHK << NRM << "\n" << std::flush;
     else
-    {
       std::cout << "Check failed. " << RED << UXXX << NRM << "\n" << std::flush;
-      std::cout << "  Detail: bounds=={" << bounds.lo << ", " << bounds.hi << "}\n";
-    }
+
+    std::cout << "  Detail: bounds=={" << bounds.lo << ", " << bounds.hi << "}\n";
   }
+
+
+  // linear()
+  std::function<void(const VECType *, VECType *)> linear
+    = [](const VECType *xyz, VECType *v) {
+      *v = 0;
+      for (int d = 0; d < dim; d++)
+        *v += xyz[d];
+    };
+
+
+  // Fill fine with x+y and test intergrid fine2coarse
+  if (!rProc && outputStatus)
+  {
+    std::cout << "Check " << checkIdx << ": Testing restriction (fine2coarse) using x + y field.\n" << std::flush;
+  }
+  fineDA.setVectorByFunction(fineVec.data(), linear, false, false, 1);
+  std::fill(coarseVec.begin(), coarseVec.end(), 0.0);
+  gmgMatObj.restriction(&(*fineVec.cbegin()), &(*coarseVec.begin()), 0);
+  {
+    std::vector<VECType> difference(coarseVec.size(), 0.0);
+    coarseDA.setVectorByFunction(difference.data(), linear, false, false, 1);
+    for (int i = 0; i < coarseVec.size(); i++)
+      difference[i] -= coarseVec[i];
+    bounds = getBounds(difference);
+  }
+  (checks.emplace_back(), checks[checkIdx++] = lastCheck =
+          mpiAllTrue(-1e-6 <= bounds.lo && bounds.hi <= 1e-6, comm));
+  if (!rProc && outputStatus)
+  {
+    if (lastCheck)
+      std::cout << "Check passed. " << GRN << UCHK << NRM << "\n" << std::flush;
+    else
+      std::cout << "Check failed. " << RED << UXXX << NRM << "\n" << std::flush;
+
+    std::cout << "  Detail: difference bounds=={" << bounds.lo << ", " << bounds.hi << "}\n";
+  }
+
+
+  // Fill coarse with x+y and test intergrid coarse2fine
+  if (!rProc && outputStatus)
+  {
+    std::cout << "Check " << checkIdx << ": Testing prolongation (coarse2fine) using x + y field.\n" << std::flush;
+  }
+  coarseDA.setVectorByFunction(coarseVec.data(), linear, false, false, 1);
+  std::fill(fineVec.begin(), fineVec.end(), 0.0);
+  gmgMatObj.prolongation(&(*coarseVec.cbegin()), &(*fineVec.begin()), 0);
+  {
+    std::vector<VECType> difference(fineVec.size(), 0.0);
+    fineDA.setVectorByFunction(difference.data(), linear, false, false, 1);
+    for (int i = 0; i < fineVec.size(); i++)
+      difference[i] -= fineVec[i];
+    bounds = getBounds(difference);
+  }
+  (checks.emplace_back(), checks[checkIdx++] = lastCheck =
+          mpiAllTrue(-1e-6 <= bounds.lo && bounds.hi <= 1e-6, comm));
+  if (!rProc && outputStatus)
+  {
+    if (lastCheck)
+      std::cout << "Check passed. " << GRN << UCHK << NRM << "\n" << std::flush;
+    else
+      std::cout << "Check failed. " << RED << UXXX << NRM << "\n" << std::flush;
+
+    std::cout << "  Detail: difference bounds=={" << bounds.lo << ", " << bounds.hi << "}\n";
+  }
+
 
 
   int countPassed = 0;
