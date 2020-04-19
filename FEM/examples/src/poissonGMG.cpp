@@ -172,6 +172,10 @@ int main_ (Parameters &pm, MPI_Comm comm)
       for (unsigned int d = 0; d < dim; d++)
         var[0] *= sin(2*M_PI*(((x[d]-g_min)/Rg)*Rd+d_min));
     };
+    /// std::function<void(const double *, double*)> f_rhs = [d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
+    /// {
+    ///   var[0] = 1;
+    /// };
 
     std::function<void(const double *, double*)> f_init =[/*d_min,d_max,g_min,g_max,Rg_x,Rg_y,Rg_z,Rd_x,Rd_y,Rd_z*/](const double *x, double *var){
         var[0]=0;//(-12*M_PI*M_PI*sin(2*M_PI*(((x[0]-g_min.x())/(Rg_x))*(Rd_x)+d_min.x()))*sin(2*M_PI*(((x[1]-g_min.y())/(Rg_y))*(Rd_y)+d_min.y()))*sin(2*M_PI*(((x[2]-g_min.z())/(Rg_z))*(Rd_z)+d_min.z())));
@@ -198,6 +202,16 @@ int main_ (Parameters &pm, MPI_Comm comm)
       coarseTree = ot::function2BalancedOctree<double, unsigned int, dim>(
             f_rhs, 1, effectiveDepth - (nGrids-1), wavelet_tol, partition_tol, eOrder, comm);
     }
+
+    /// {
+    ///   unsigned int effectiveDepth = m_uiMaxDepth;
+    ///   while ((1u << (m_uiMaxDepth - effectiveDepth)) < eOrder)
+    ///     effectiveDepth--;
+
+    ///   unsigned int coarseDepth = effectiveDepth - (nGrids-1);
+
+    ///   ot::createRegularOctree(coarseTree, coarseDepth, comm);
+    /// }
 
     if (!rProc && outputStatus)
       std::cout << "Creating grid hierarchy.\n" << std::flush;
