@@ -1167,7 +1167,10 @@ namespace ot
         {
           // Nodal values.
           for (int dof = 0; dof < m_ndofs; dof++)
-            myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * childOffset + dof];
+            if (UseAccumulation)
+              myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * childOffset + dof];
+            else
+              myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * childOffset + dof];
 
           childNodeOffsets[child_sfc]++;
         }
