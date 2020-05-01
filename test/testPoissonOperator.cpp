@@ -120,7 +120,7 @@ int main(int argc, char * argv[])
 
 
   constexpr bool noVisitEmpty = false;
-  ot::MatvecBaseOut<dim, double> treeLoopOut(numNodes, 1, eleOrder, noVisitEmpty, 0, coords, *daRoot.getTreePartFront(), *daRoot.getTreePartBack());
+  ot::MatvecBaseOut<dim, double, true> treeLoopOut(numNodes, 1, eleOrder, noVisitEmpty, 0, coords, *daRoot.getTreePartFront(), *daRoot.getTreePartBack());
 
   int eidx = 0;
 
