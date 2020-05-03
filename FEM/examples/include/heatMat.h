@@ -35,7 +35,7 @@ namespace HeatEq
         ~HeatMat();
 
         /**@biref elemental matvec*/
-        virtual void elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords=NULL,double scale=1.0);
+        virtual void elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords=NULL,double scale=1.0) const;
 
         /**@brief things need to be performed before matvec (i.e. coords transform)*/
         bool preMatVec(const VECType* in,VECType* out,double scale=1.0);
@@ -44,11 +44,11 @@ namespace HeatEq
         bool postMatVec(const VECType* in,VECType* out,double scale=1.0);
 
         /**@brief octree grid x to domin x*/
-        double gridX_to_X(double x);
+        double gridX_to_X(double x) const;
         /**@brief octree grid y to domin y*/
-        double gridY_to_Y(double y);
+        double gridY_to_Y(double y) const;
         /**@brief octree grid z to domin z*/
-        double gridZ_to_Z(double z);
+        double gridZ_to_Z(double z) const;
 
         int cgSolve(double * x ,double * b,int max_iter, double& tol,unsigned int var=0);
 

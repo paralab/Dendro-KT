@@ -164,7 +164,7 @@ int main(int argc, char * argv[])
     using T = myConcreteFeMatrix;
     public:
       using feMatrix<T,dim>::feMatrix;
-      virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) override
+      virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) const override
       {
         const int nPe = intPow(order + 1, dim);
         for (int ii = 0; ii < ndofs; ++ii)
