@@ -43,7 +43,7 @@ HeatMat<dim>::~HeatMat()
 }
 
 template <unsigned int dim>
-void HeatMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale) const
+void HeatMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale)
 {
   //TODO use ndofs
 

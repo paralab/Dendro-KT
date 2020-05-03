@@ -61,7 +61,7 @@ protected:
           * @param [out] out output vector Ku
           * @param [in] scale vector by scale*Ku
         **/
-        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) const = 0;
+        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) = 0;
 
         /**@brief Sets the diagonal of the elemental matrix.
          * @param [out] out output vector diag(K)
@@ -88,7 +88,7 @@ protected:
          * 
          * If you need to do a few rows at a time, use this method as a pattern.
          */
-        ot::MatCompactRows collectMatrixEntries() const;
+        ot::MatCompactRows collectMatrixEntries();
 
 
 #ifdef BUILD_WITH_PETSC
@@ -193,7 +193,7 @@ protected:
          * @param[in] coords : elemental coordinates
          * @param[out] records: records corresponding to the elemental matrix.
          * */
-        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds) const
+        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds)
         {
           // If this IS asLeaf().getElementalMatrix(), i.e. there is not an override, don't recurse.
           static bool entered = false;
@@ -375,7 +375,7 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
 
 
 template <typename LeafT, unsigned int dim>
-ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries() const
+ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
 {
   const ot::DA<dim> &m_oda = *feMat<dim>::m_uiOctDA;
   const unsigned int eleOrder = m_oda.getElementOrder();

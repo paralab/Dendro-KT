@@ -198,12 +198,12 @@ class myConcreteFeMatrix : public feMatrix<myConcreteFeMatrix<dim>, dim>
   using T = myConcreteFeMatrix;
   public:
     using feMatrix<T,dim>::feMatrix;
-    virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) const override;
+    virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) override;
     /// virtual void preMatVec
 };
 
 template <unsigned int dim>
-void myConcreteFeMatrix<dim>::elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) const
+void myConcreteFeMatrix<dim>::elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale)
 {
   const RefElement* refEl=feMat<dim>::m_uiOctDA->getReferenceElement();
 

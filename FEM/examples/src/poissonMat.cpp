@@ -45,7 +45,7 @@ PoissonMat<dim>::~PoissonMat()
 }
 
 template <unsigned int dim>
-void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale) const
+void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale)
 {
     if (ndofs != 1)
       throw "PoissonMat elementalMatVec() assumes scalar data, but called on non-scalar data.";
@@ -290,7 +290,7 @@ void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const d
 
 
 template <unsigned int dim>
-void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds) const
+void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds)
 {
   const RefElement* refEl=m_uiOctDA->getReferenceElement();
   const unsigned int eleOrder=refEl->getOrder();
