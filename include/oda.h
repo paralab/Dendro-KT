@@ -331,7 +331,7 @@ class DA
         /**@brief returns the rank of the begining of local segment among all processors. */
         inline RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
 
-        inline const std::vector<RankI> getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
+        inline const std::vector<RankI> & getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
 
         /**@brief see if the current DA is active*/
         inline bool isActive() const { return m_uiIsActive; }

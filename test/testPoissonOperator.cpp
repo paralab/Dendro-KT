@@ -5,6 +5,7 @@
 #include "poissonMat.h"
 #include "hcurvedata.h"
 
+#include <map>
 
 
 template <typename UICoordT, typename FCoordT, unsigned int dim>
@@ -36,6 +37,7 @@ int main(int argc, char * argv[])
   /// treeNodes.push_back(treeRoot);
   for (int c = 0; c < (1u << dim); c++)
     treeNodes.push_back(treeRoot.getChildMorton(c));
+  const unsigned int numElements = treeNodes.size();
   ot::DA<dim> daRoot(treeNodes, comm, eleOrder, 1, 0);
   // treeNodes is emptied.
 
@@ -199,6 +201,46 @@ int main(int argc, char * argv[])
 
 
 
+  std::cout << "\n\n-------------Assembled Matrix-------------\n";
+  std::cout << "    (dim==" << dim << ",  numElements==" << numElements << ",  eleOrder==" << eleOrder << ")\n";
+  std::cout << "\n";
+
+  using ScalarT = typename ot::MatCompactRows::ScalarT;
+  using IndexT = typename ot::MatCompactRows::IndexT;
+  std::map<IndexT, std::map<IndexT, ScalarT>> mapMat;
+
+  const ot::MatCompactRows rowChunks = pmat.collectMatrixEntries();
+  const size_t numChunks = rowChunks.getNumRows();
+  const size_t chunkSz = rowChunks.getChunkSize();
+  const std::vector<IndexT> & rowIdxs = rowChunks.getRowIdxs();
+  const std::vector<IndexT> & colIdxs = rowChunks.getColIdxs();
+  const std::vector<ScalarT> & colVals = rowChunks.getColVals();
+
+  for (int r = 0; r < numChunks; r++)
+  {
+    for (int c = 0; c < chunkSz; c++)
+    {
+      mapMat[rowIdxs[r]][colIdxs[r*chunkSz + c]] += colVals[r*chunkSz + c];
+    }
+  }
+
+  int row = 0;
+  for (auto rowIter : mapMat)
+  {
+    while (row++ < rowIter.first)
+      printf("\n\n");
+    int col = 0;
+    for (auto colIter : rowIter.second)
+    {
+      while (col++ < colIter.first)
+        printf("%8s", "");
+      if (rowIter.first != colIter.first)
+        printf("%8.2f", colIter.second);
+      else
+        printf(YLW "%8.2f" NRM, colIter.second);
+    }
+    printf("\n\n");
+  }
 
 
   _DestroyHcurve();

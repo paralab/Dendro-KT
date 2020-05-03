@@ -12,6 +12,9 @@
 #include "matvec.h"
 #include "refel.h"
 #include "setDiag.h"
+#include "matRecord.h"
+
+#include <exception>
 
 template <typename LeafT, unsigned int dim>
 class feMatrix : public feMat<dim> {
@@ -58,7 +61,7 @@ protected:
           * @param [out] out output vector Ku
           * @param [in] scale vector by scale*Ku
         **/
-        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) = 0;
+        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) const = 0;
 
         /**@brief Sets the diagonal of the elemental matrix.
          * @param [out] out output vector diag(K)
@@ -78,6 +81,14 @@ protected:
           reentrant = false;
         }
 
+
+
+        /**
+         * @brief Collect all matrix entries relative to current rank.
+         * 
+         * If you need to do a few rows at a time, use this method as a pattern.
+         */
+        ot::MatCompactRows collectMatrixEntries() const;
 
 
 #ifdef BUILD_WITH_PETSC
@@ -103,8 +114,10 @@ protected:
 
 #endif
 
+
         /**@brief static cast to the leaf node of the inheritance*/
         LeafT& asLeaf() { return static_cast<LeafT&>(*this);}
+        const LeafT& asLeaf() const { return static_cast<const LeafT&>(*this);}
 
 
         /**
@@ -175,15 +188,24 @@ protected:
             return ret;
         }
 
-        /// /**
-        ///  * @brief Compute the elemental Matrix.
-        ///  * @param[in] eleID: element ID
-        ///  * @param[out] records: records corresponding to the elemental matrix.
-        ///  * */
-        /// void getElementalMatrix(unsigned int eleID, std::vector<ot::MatRecord>& records)
-        /// {
-        ///     return asLeaf().getElementalMatrix(eleID,records);
-        /// }
+        /**
+         * @brief Call application method to build the elemental matrix.
+         * @param[in] coords : elemental coordinates
+         * @param[out] records: records corresponding to the elemental matrix.
+         * */
+        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds) const
+        {
+          // If this IS asLeaf().getElementalMatrix(), i.e. there is not an override, don't recurse.
+          static bool entered = false;
+          if (!entered)
+          {
+            entered = true;
+            asLeaf().getElementalMatrix(records, coords, globNodeIds);
+            entered = false;
+          }
+          else
+            throw std::logic_error("Application didn't override feMatrix::getElementalMatrix().");
+        }
 
 
 };
@@ -349,6 +371,112 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
   // 5. Copy output data from ghosted buffer.
   m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, m_uiDof);
 }
+
+
+
+template <typename LeafT, unsigned int dim>
+ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries() const
+{
+  const ot::DA<dim> &m_oda = *feMat<dim>::m_uiOctDA;
+  const unsigned int eleOrder = m_oda.getElementOrder();
+  const unsigned int nPe = m_oda.getNumNodesPerElement();
+  ot::MatCompactRows matRowChunks(nPe, m_uiDof);
+
+  // Loop over all elements, adding row chunks from elemental matrices.
+  // Get the node indices on an element using MatvecBaseIn<dim, unsigned int, false>.
+
+  if (m_oda.isActive())
+  {
+    using CoordT = typename ot::DA<dim>::C;
+    using ot::RankI;
+    using ScalarT = typename ot::MatCompactRows::ScalarT;
+    using IndexT = typename ot::MatCompactRows::IndexT;
+
+    const size_t ghostedNodalSz = m_oda.getTotalNodalSz();
+    const ot::TreeNode<CoordT, dim> *odaCoords = m_oda.getTNCoords();
+    const std::vector<RankI> &ghostedGlobalNodeId = m_oda.getNodeLocalToGlobalMap();
+
+    std::vector<ot::MatRecord> elemRecords;
+    std::vector<IndexT> rowIdxBuffer;
+    std::vector<IndexT> colIdxBuffer;
+    std::vector<ScalarT> colValBuffer;
+
+    const bool visitEmpty = false;
+    const unsigned int padLevel = 0;
+    ot::MatvecBaseIn<dim, RankI, false> treeLoopIn(ghostedNodalSz,
+                                                   m_uiDof,
+                                                   eleOrder,
+                                                   visitEmpty,
+                                                   padLevel,
+                                                   odaCoords,
+                                                   &(*ghostedGlobalNodeId.cbegin()),
+                                                   *m_oda.getTreePartFront(),
+                                                   *m_oda.getTreePartBack());
+
+    // Iterate over all leafs of the local part of the tree.
+    while (!treeLoopIn.isFinished())
+    {
+      const ot::TreeNode<CoordT, dim> subtree = treeLoopIn.getCurrentSubtree();
+      const auto subtreeInfo = treeLoopIn.subtreeInfo();
+
+      if (treeLoopIn.isPre() && subtreeInfo.isLeaf())
+      {
+        const double * nodeCoordsFlat = subtreeInfo.getNodeCoords();
+        const RankI * nodeIdsFlat = subtreeInfo.readNodeValsIn();
+
+        // Get elemental matrix for the current leaf element.
+        elemRecords.clear();
+        this->getElementalMatrix(elemRecords, nodeCoordsFlat, nodeIdsFlat);
+        std::sort(elemRecords.begin(), elemRecords.end());
+
+#ifdef __DEBUG__
+        if (!elemRecords.size())
+          fprintf(stderr, "getElementalMatrix() did not return any rows! (%s:%lu)\n", __FILE__, __LINE__);
+#endif// __DEBUG__
+
+        rowIdxBuffer.clear();
+        colIdxBuffer.clear();
+        colValBuffer.clear();
+
+        // Copy elemental matrix to sorted order.
+        size_t countEntries = 0;
+        for (const ot::MatRecord &rec : elemRecords)
+        {
+          const IndexT rowIdx = rec.getRowID() * m_uiDof + rec.getRowDim();
+          if (rowIdxBuffer.size() == 0 || rowIdx != rowIdxBuffer.back())
+          {
+#ifdef __DEBUG__
+            if (countEntries != 0 && countEntries != nPe * m_uiDof)
+              fprintf(stderr, "Unexpected #entries in row of elemental matrix, "
+                              "RowId==%lu RowDim==%lu. Expected %u, got %u.\n",
+                              rec.getRowID(), rec.getRowDim(), nPe*m_uiDof, countEntries);
+#endif// __DEBUG__
+            countEntries = 0;
+            rowIdxBuffer.push_back(rowIdx);
+          }
+          colIdxBuffer.push_back(rec.getColID() * m_uiDof + rec.getColDim());
+          colValBuffer.push_back(rec.getMatVal());
+        }
+
+        // TODO p2c and c2p matrix multiplications if element has hanging nodes.
+#warning TODO use p2c and c2p to support hanging nodes in feMatrix::collectMatrixEntries().
+
+        // Collect the rows of the elemental matrix into matRowChunks.
+        for (unsigned int r = 0; r < rowIdxBuffer.size(); r++)
+        {
+          matRowChunks.appendChunk(rowIdxBuffer[r],
+                                   &colIdxBuffer[r * nPe * m_uiDof],
+                                   &colValBuffer[r * nPe * m_uiDof]);
+        }
+      }
+      treeLoopIn.step();
+    }
+  }
+
+  return matRowChunks;
+}
+
+
 
 
 

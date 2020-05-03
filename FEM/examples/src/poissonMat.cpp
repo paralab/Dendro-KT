@@ -18,6 +18,8 @@ PoissonMat<dim>::PoissonMat(ot::DA<dim>* da,unsigned int dof) : feMatrix<Poisson
     for (unsigned int d = 0; d < dim; d++)
       Qx[d] = new double[dof*nPe];
 
+    phi_i = new double[(dof*nPe)];
+    ematBuf = new double[(dof*nPe) * (dof*nPe)];
 }
 
 template <unsigned int dim>
@@ -34,10 +36,16 @@ PoissonMat<dim>::~PoissonMat()
       delete [] Qx[d];
       Qx[d] = nullptr;
     }
+
+    delete [] phi_i;
+    phi_i = nullptr;
+
+    delete [] ematBuf;
+    ematBuf = nullptr;
 }
 
 template <unsigned int dim>
-void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale)
+void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale) const
 {
     if (ndofs != 1)
       throw "PoissonMat elementalMatVec() assumes scalar data, but called on non-scalar data.";
@@ -281,6 +289,47 @@ void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const d
 }
 
 
+template <unsigned int dim>
+void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds) const
+{
+  const RefElement* refEl=m_uiOctDA->getReferenceElement();
+  const unsigned int eleOrder=refEl->getOrder();
+  const unsigned int nPe=intPow(eleOrder+1, dim);
+  const unsigned int nrp=eleOrder+1;
+  const unsigned int ndofs = 1;
+
+  // Populate workspace ematBuf by doing (ndofs*nPe) matvecs.
+
+  // Zero the buffer.
+  for (int ij = 0; ij < (ndofs*nPe)*(ndofs*nPe); ij++)
+    ematBuf[ij] = 0;
+
+  // Zero phi_i.
+  for (int i = 0; i < (ndofs*nPe); i++)
+    phi_i[i] = 0;
+
+  // To populate using matvec, need to assume column-major ordering.
+  for (int j = 0; j < (ndofs*nPe); j++)
+  {
+    phi_i[j] = 1;  // jth basis vector.
+    this->elementalMatVec(phi_i, &ematBuf[j*(ndofs*nPe)], ndofs, coords);
+    phi_i[j] = 0; // back to zero.
+  }
+
+  // But actually we want to store row-major, so transpose.
+  for (int i = 0; i < (ndofs*nPe); i++)
+    for (int j = i+1; j < (ndofs*nPe); j++)
+      std::swap(ematBuf[i*(ndofs*nPe)+j], ematBuf[j*(ndofs*nPe)+i]);
+
+  // Copy the matrix into MatRecord vector.
+  for (int i = 0; i < (ndofs*nPe); i++)
+    for (int j = 0; j < (ndofs*nPe); j++)
+    {
+      const ot::RankI node_i = globNodeIds[i];
+      const ot::RankI node_j = globNodeIds[j];
+      records.emplace_back(node_i, node_j, 0, 0, ematBuf[i*(ndofs*nPe)+j]);
+    }
+}
 
 
 template <unsigned int dim>

@@ -87,18 +87,18 @@ namespace ot
   //      }
   //    }
 
-  template <unsigned int dim, typename NodeT>
+  template <unsigned int dim, typename NodeT, bool p2c = true>
   class MatvecBaseIn : public SFC_TreeLoop<dim,
                                          Inputs<TreeNode<unsigned int, dim>, NodeT, bool>,  // input bool tells nonhanging, which is almost always true
                                          Outputs<>,
                                          MatvecBaseSummary<dim>,
-                                         MatvecBaseIn<dim, NodeT>>
+                                         MatvecBaseIn<dim, NodeT, p2c>>
   {
     using BaseT = SFC_TreeLoop<dim,
                                Inputs<TreeNode<unsigned int, dim>, NodeT, bool>,
                                Outputs<>,
                                MatvecBaseSummary<dim>,
-                               MatvecBaseIn<dim, NodeT>>;
+                               MatvecBaseIn<dim, NodeT, p2c>>;
     friend BaseT;
 
     public:
@@ -122,7 +122,7 @@ namespace ot
         MatvecBaseIn &treeloop;
 
         /** getNodeCoords() */
-        const double * getNodeCoords() {
+        const double * getNodeCoords() const {
           treeloop.fillAccessNodeCoordsFlat();
           return &(*treeloop.m_accessNodeCoordsFlat.cbegin());
         }
@@ -412,8 +412,8 @@ namespace ot
   //
   // MatvecBaseIn()
   //
-  template <unsigned int dim, typename NodeT>
-  MatvecBaseIn<dim, NodeT>::MatvecBaseIn( size_t numNodes,
+  template <unsigned int dim, typename NodeT, bool p2c>
+  MatvecBaseIn<dim, NodeT, p2c>::MatvecBaseIn( size_t numNodes,
                                       unsigned int ndofs,
                                       unsigned int eleOrder,
                                       bool visitEmpty,
@@ -546,8 +546,8 @@ namespace ot
   //
   // MatvecBaseIn topDown
   //
-  template <unsigned int dim, typename NodeT>
-  void MatvecBaseIn<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
+  template <unsigned int dim, typename NodeT, bool p2c>
+  void MatvecBaseIn<dim, NodeT, p2c>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -776,16 +776,28 @@ namespace ot
       for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
       {
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        if (m_visitEmpty || childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+        if (p2c)
         {
-          // Has hanging nodes. Interpolate.
-          // Non-hanging node values will be overwritten later, not to worry.
-          constexpr bool transposeFalse = false;
-          m_interp_matrices.template IKD_ParentChildInterpolation<transposeFalse>(
-              parentNodeVals,
-              &(*parentFrame.template getChildInput<1>(child_sfc).begin()),
-              m_ndofs,
-              child_m);
+          if (m_visitEmpty || childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+          {
+            // Has hanging nodes. Interpolate.
+            // Non-hanging node values will be overwritten later, not to worry.
+            constexpr bool transposeFalse = false;
+            m_interp_matrices.template IKD_ParentChildInterpolation<transposeFalse>(
+                parentNodeVals,
+                &(*parentFrame.template getChildInput<1>(child_sfc).begin()),
+                m_ndofs,
+                child_m);
+          }
+        }
+        else
+        {
+          if (m_visitEmpty || childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+          {
+            // If not p2c, just copy the parent node values into child.
+            // Again, note that non-hanging node values will be overwritten later.
+            std::copy_n(parentNodeVals, m_ndofs * npe, &(*parentFrame.template getChildInput<1>(child_sfc).begin()));
+          }
         }
       }
     }
@@ -1263,6 +1275,40 @@ namespace ot
 
   // The definitions are here if you need them, just copy for
   //   both MatvecBaseIn and MatvecBaseOut.
+
+  // fillAccessNodeCoordsFlat()
+  template <unsigned int dim, typename NodeT, bool p2c>
+  void MatvecBaseIn<dim, NodeT, p2c>::fillAccessNodeCoordsFlat()
+  {
+    const FrameT &frame = BaseT::getCurrentFrame();
+    /// const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
+    const size_t numNodes = frame.template getMyInputHandle<0>().size();
+    const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
+    const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
+    const unsigned int curLev = subtree.getLevel();
+
+    const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
+    const double elemSz = double(1u << m_uiMaxDepth - curLev) / double(1u << m_uiMaxDepth);
+    double translate[dim];
+    for (int d = 0; d < dim; d++)
+      translate[d] = domainScale * subtree.getX(d);
+
+    std::array<unsigned int, dim> numerators;
+    unsigned int denominator;
+
+    m_accessNodeCoordsFlat.resize(dim * numNodes);
+
+    for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
+    {
+      TNPoint<unsigned int, dim>::get_relNodeCoords(
+          subtree, nodeCoords[nIdx], m_eleOrder,
+          numerators, denominator);
+
+      for (int d = 0; d < dim; ++d)
+        m_accessNodeCoordsFlat[nIdx * dim + d] =
+            translate[d] + elemSz * numerators[d] / denominator;
+    }
+  }
 
   // fillAccessNodeCoordsFlat()
   template <unsigned int dim, typename NodeT, bool UseAccumulation>

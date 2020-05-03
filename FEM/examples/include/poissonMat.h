@@ -18,6 +18,9 @@ namespace PoissonEq
         double * imV[dim-1];
         double * Qx[dim];
 
+        mutable double * phi_i;   //
+        mutable double * ematBuf; // Needed for assembly.
+
         // References for convenient access to base class members.
         ot::DA<dim> * &m_uiOctDA = feMat<dim>::m_uiOctDA;
         Point<dim> &m_uiPtMin = feMat<dim>::m_uiPtMin;
@@ -44,9 +47,11 @@ namespace PoissonEq
         ~PoissonMat();
 
         /**@brief elemental matvec*/
-        virtual void elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords=NULL,double scale=1.0);
+        virtual void elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords=NULL,double scale=1.0) const;
 
         void elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale = 1.0);
+
+        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds) const;
 
         /**@brief things need to be performed before matvec (i.e. coords transform)*/
         bool preMatVec(const VECType* in,VECType* out,double scale=1.0);
