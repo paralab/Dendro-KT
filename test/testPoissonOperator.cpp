@@ -5,6 +5,8 @@
 #include "poissonMat.h"
 #include "hcurvedata.h"
 
+#include "testAdaptiveExamples.h"
+
 #include <map>
 
 
@@ -24,7 +26,7 @@ int main(int argc, char * argv[])
   constexpr unsigned int dim = 2;
   _InitializeHcurve(dim);
 
-  const unsigned int eleOrder = 2;
+  const unsigned int eleOrder = 1;
   const unsigned int nPe=intPow(eleOrder+1, dim);
 
 
@@ -34,9 +36,17 @@ int main(int argc, char * argv[])
 
   TN treeRoot;
   std::vector<TN> treeNodes;
+
+  // Just root.
   /// treeNodes.push_back(treeRoot);
-  for (int c = 0; c < (1u << dim); c++)
-    treeNodes.push_back(treeRoot.getChildMorton(c));
+
+  // 2^dim level one elements.
+  /// for (int c = 0; c < (1u << dim); c++)
+  ///   treeNodes.push_back(treeRoot.getChildMorton(c));
+
+  // Minimal symmetrical adaptive example.
+  Example1<dim>::fill_tree(3, treeNodes);
+
   const unsigned int numElements = treeNodes.size();
   ot::DA<dim> daRoot(treeNodes, comm, eleOrder, 1, 0);
   // treeNodes is emptied.

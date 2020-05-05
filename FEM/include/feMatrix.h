@@ -373,6 +373,152 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
 }
 
 
+// SliceIter
+class SliceIter
+{
+  protected:
+    const std::vector<bool> &m_slice_ref;
+    size_t m_slice_idx;
+    size_t m_idx;
+  public:
+    SliceIter(const std::vector<bool> &slice_ref)
+      : m_slice_ref(slice_ref), m_slice_idx(0), m_idx(0)
+    {
+      while (m_idx < m_slice_ref.size() && !m_slice_ref[m_idx])
+        ++m_idx;
+    }
+
+    static SliceIter end(const std::vector<bool> &slice_ref)
+    {
+      SliceIter iter(slice_ref);
+      while (iter.get_idx() < slice_ref.size())
+        ++iter;
+      return iter;
+    }
+
+    const SliceIter & operator*() const
+    {
+      return *this;
+    }
+
+    size_t get_idx()    const { return m_idx; }
+    size_t get_slice_idx() const { return m_slice_idx; }
+
+    SliceIter & operator++()
+    {
+      while (m_idx < m_slice_ref.size() && !m_slice_ref[m_idx])
+        ++m_idx;
+      ++m_slice_idx;
+      return *this;
+    }
+
+    bool operator==(const SliceIter &other) const
+    {
+      return (&m_slice_ref == &other.m_slice_ref) && (m_slice_idx == other.m_slice_idx);
+    }
+
+    bool operator!=(const SliceIter &other) const
+    {
+      return !operator==(other);
+    }
+};
+
+// SliceIterRange
+//
+// Usage:
+//     for (const SliceIter &slice_iter : slice_iter_range)
+//     {
+//       slice_iter.get_idx();
+//       slice_iter.get_slice_idx();
+//     }
+struct SliceIterRange
+{
+  const std::vector<bool> &m_slice_ref;
+  SliceIter begin() const { return SliceIter(m_slice_ref); }
+  SliceIter end()   const { return SliceIter::end(m_slice_ref); }
+};
+
+// SubMatView
+template <typename T>
+class SubMatView
+{
+  protected:
+    T *m_base_ptr;
+    size_t m_slice_r_sz;
+    size_t m_slice_c_sz;
+    bool m_row_major;
+
+    std::vector<bool> m_slice_r;
+    std::vector<bool> m_slice_c;
+
+  public:
+    constexpr static bool ROW_MAJOR = true;
+    constexpr static bool COL_MAJOR = false;
+
+    SubMatView() = delete;
+
+    SubMatView(T *base_ptr, const std::vector<bool> &slice_r, const std::vector<bool> &slice_c, bool row_major = true)
+      : m_base_ptr(base_ptr),
+        m_slice_r(slice_r),
+        m_slice_c(slice_c),
+        m_slice_r_sz(std::count(slice_r.begin(), slice_r.end(), true)),
+        m_slice_c_sz(std::count(slice_c.begin(), slice_c.end(), true)),
+        m_row_major(row_major)
+    {}
+
+    SubMatView(T *base_ptr, size_t slice_r_sz, size_t slice_c_sz, bool row_major = true)
+      : m_base_ptr(base_ptr),
+        m_slice_r(std::vector<bool>(slice_r_sz, true)),
+        m_slice_c(std::vector<bool>(slice_c_sz, true)),
+        m_slice_r_sz(slice_r_sz),
+        m_slice_c_sz(slice_c_sz),
+        m_row_major(row_major)
+    {}
+
+    SubMatView(const SubMatView &other)
+      : SubMatView(other.m_base_ptr, other.m_slice_r_sz, other.m_slice_c_sz, other.m_row_major)
+    {}
+
+    bool is_row_major() const { return m_row_major; }
+    bool is_col_major() const { return !m_row_major; }
+
+    SliceIterRange slice_r_range() const { return SliceIterRange{m_slice_r}; }
+    SliceIterRange slice_c_range() const { return SliceIterRange{m_slice_c}; }
+
+    T & operator()(const SliceIter &si, const SliceIter &sj)
+    {
+      const size_t nr = m_slice_r.size();
+      const size_t nc = m_slice_c.size();
+
+      return m_base_ptr[si.get_idx()*(m_row_major ? nr : 1) +
+                        sj.get_idx()*(!m_row_major ? nc : 1)];
+    }
+
+    SubMatView transpose_view()
+    {
+      return SubMatView(m_base_ptr, m_slice_c_sz, m_slice_r_sz, !m_row_major);
+    }
+
+    void copy_from(const SubMatView &src)
+    {
+      if (!(src.m_slice_r_sz == m_slice_r_sz && src.m_slice_c_sz == m_slice_c_sz))
+        throw std::invalid_argument("Source row and column sizes do not match destination.");
+      const SliceIterRange src_slice_r_range = src.slice_r_range();
+      const SliceIterRange src_slice_c_range = src.slice_c_range();
+      const SliceIterRange dst_slice_r_range = this->slice_r_range();
+      const SliceIterRange dst_slice_c_range = this->slice_c_range();
+      for (SliceIter src_si = src_slice_r_range.begin(), dst_si = dst_slice_r_range.begin();
+           src_si != src_slice_r_range.end() && dst_si != dst_slice_r_range.end();
+           (++src_si, ++dst_si))
+        for (SliceIter src_sj = src_slice_c_range.begin(), dst_sj = dst_slice_c_range.begin();
+             src_sj != src_slice_c_range.end() && dst_sj != dst_slice_c_range.end();
+             (++src_sj, ++dst_sj))
+          (*this)(dst_si, dst_sj) = src(src_si, src_sj);
+    }
+
+};
+
+
 
 template <typename LeafT, unsigned int dim>
 ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
@@ -400,6 +546,10 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
     std::vector<IndexT> rowIdxBuffer;
     std::vector<IndexT> colIdxBuffer;
     std::vector<ScalarT> colValBuffer;
+
+    InterpMatrices<dim, ScalarT> interp_matrices(eleOrder);
+    std::vector<ScalarT> wksp_col(nPe*m_uiDof);
+    std::vector<ScalarT> wksp_mat((nPe*m_uiDof) * (nPe*m_uiDof));
 
     const bool visitEmpty = false;
     const unsigned int padLevel = 0;
@@ -458,8 +608,118 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
           colValBuffer.push_back(rec.getMatVal());
         }
 
-        // TODO p2c and c2p matrix multiplications if element has hanging nodes.
-#warning TODO use p2c and c2p to support hanging nodes in feMatrix::collectMatrixEntries().
+        // Multiply p2c and c2p.
+        if (subtreeInfo.getNumNonhangingNodes() != nPe)
+        {
+          // ------------------------------------------------------------------------
+          //     ^[subset of rows] _[subset of columns]
+          //
+          // Block A: Ke'^[nh]_[nh]  =  Ke^[nh]_[nh]
+          //
+          // Block B: Ke'^[nh]_[p]   =  ( (Q^[h]_[p])^T (Ke^[nh]_[h])^T )^T
+          //
+          // Block C: Ke'^[p]_[nh]   =  (Q^[h]_[p])^T (Ke^[h]_[nh])
+          //
+          // Block D: Ke'^[p]_[p]    =  (Q^[h]_[p])^T ( (Q^[h]_[p])^T (Ke^[h]_[h])^T )^T
+          // ------------------------------------------------------------------------
+
+          const unsigned char child_m = subtree.getMortonIndex();
+
+          const std::vector<bool> nodeNonhangingIn = subtreeInfo.readNodeNonhangingIn();
+          std::vector<bool> slice_nh, slice_h;
+          for (unsigned nIdx = 0; nIdx < nodeNonhangingIn.size(); ++nIdx)
+            for (int dofIdx = 0; dofIdx < m_uiDof; ++dofIdx)
+            {
+              slice_nh.push_back(nodeNonhangingIn[nIdx]);
+              slice_h.push_back(!nodeNonhangingIn[nIdx]);
+            }
+          const std::vector<bool> &slice_p = slice_h;
+
+          SubMatView<ScalarT> Ke_nh_h(&colValBuffer[0], slice_nh, slice_h,  SubMatView<ScalarT>::ROW_MAJOR);
+          SubMatView<ScalarT> Ke_h_nh(&colValBuffer[0], slice_h,  slice_nh, SubMatView<ScalarT>::ROW_MAJOR);
+          SubMatView<ScalarT> Ke_h_h( &colValBuffer[0], slice_h,  slice_h,  SubMatView<ScalarT>::ROW_MAJOR);
+          SubMatView<ScalarT> KeT_h_nh = Ke_nh_h.transpose_view();
+          SubMatView<ScalarT> KeT_h_h = Ke_h_h.transpose_view();
+
+          // Destination is same memory space, but trying to make naming clearer.
+          SubMatView<ScalarT> &Ke_nh_p  = Ke_nh_h;
+          SubMatView<ScalarT> &Ke_p_nh  = Ke_h_nh;
+          SubMatView<ScalarT> &Ke_p_p   = Ke_h_h;
+          SubMatView<ScalarT> &KeT_p_nh = KeT_h_nh;
+          SubMatView<ScalarT> &KeT_p_p  = KeT_h_h;
+
+          constexpr bool C2P = InterpMatrices<dim, ScalarT>::C2P;
+
+          // A: Needs no update.
+
+          // B: Get Ke transpose view (KeT) and Ke' transpose view (KeT').
+          //    For each c in [nh] transpose columns,
+          //      |copy KeT [h] rows, set0 KeT [nh] rows| -> |Lmult by c2p| -> |copy to KeT' col c, sel [p] rows|
+          for (const SliceIter &c : KeT_h_nh.slice_c_range())
+          {
+            std::fill(wksp_col.begin(), wksp_col.end(), 0);
+            for (const SliceIter &r : KeT_h_nh.slice_r_range())
+              wksp_col[r.get_idx()] = KeT_h_nh(r, c);
+
+            // Multiply.
+            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
+                &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
+
+            for (const SliceIter &r : KeT_p_nh.slice_r_range())
+              KeT_p_nh(r, c) = wksp_col[r.get_idx()];
+          }
+
+          // C: For each c in [nh] columns,
+          //      |copy Ke [h] rows, set0 Ke [nh] rows| -> |Lmult by c2p| -> |copy to Ke' col c, sel [p] rows|
+          for (const SliceIter &c : Ke_h_nh.slice_c_range())
+          {
+            std::fill(wksp_col.begin(), wksp_col.end(), 0);
+            for (const SliceIter &r : Ke_h_nh.slice_r_range())
+              wksp_col[r.get_idx()] = Ke_h_nh(r, c);
+
+            // Multiply.
+            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
+                &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
+
+            for (const SliceIter &r : Ke_p_nh.slice_r_range())
+              Ke_p_nh(r, c) = wksp_col[r.get_idx()];
+          }
+
+          // D: Get Ke transpose view (KeT)
+          //    Create full matrix buffer b, 0 initialized.
+          //    For each c in [h] transpose columns,
+          //      |copy KeT [h] rows, set0 KeT [nh] rows| -> |Lmult by c2p| -> |copy to column c of buffer b|
+          //    Get transpose view of buffer (bT)
+          //    For each c in [p] transpose columns,
+          //      {use bT [h] rows, and [nh] is already set to 0} -> |Lmult by c2p| -> |copy to Ke' col c, sel [p] rows|
+          std::fill(wksp_mat.begin(), wksp_mat.end(), 0);
+          SubMatView<ScalarT> wksp_mat_p_h(&wksp_mat[0], slice_p, slice_h, SubMatView<ScalarT>::ROW_MAJOR);
+          SubMatView<ScalarT> wksp_mat_T_h_p = wksp_mat_p_h.transpose_view();
+          for (const SliceIter &c : KeT_h_h.slice_c_range())
+          {
+            std::fill(wksp_col.begin(), wksp_col.end(), 0);
+            for (const SliceIter &r : KeT_h_h.slice_r_range())
+              wksp_col[r.get_idx()] = KeT_h_h(r, c);
+
+            // Multiply.
+            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
+                &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
+
+            for (const SliceIter &r : wksp_mat_p_h.slice_r_range())
+              wksp_mat_p_h(r, c) = wksp_col[r.get_idx()];
+          }
+          assert(wksp_mat_T_h_p.is_col_major());
+          for (const SliceIter &c : wksp_mat_T_h_p.slice_c_range())
+          {
+            // Multiply.
+            ScalarT *colPtr = &wksp_mat[c.get_idx() * (nPe*m_uiDof)];
+            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
+                colPtr, colPtr, m_uiDof, child_m);
+
+            for (const SliceIter &r : Ke_p_p.slice_r_range())
+              Ke_p_p(r, c) = wksp_mat_T_h_p(r, c);
+          }
+        }//end mult p2c c2p
 
         // Collect the rows of the elemental matrix into matRowChunks.
         for (unsigned int r = 0; r < rowIdxBuffer.size(); r++)

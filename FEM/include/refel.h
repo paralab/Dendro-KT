@@ -689,6 +689,9 @@ struct InterpMatrices
       }
   }
 
+  static constexpr bool P2C = false;
+  static constexpr bool C2P = true;
+
   template <bool useTranspose>
   inline void IKD_ParentChildInterpolation(const NodeT *in,
                                            NodeT *out,
