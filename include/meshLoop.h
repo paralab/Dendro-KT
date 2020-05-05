@@ -44,6 +44,10 @@ class MeshLoopInterface : public MeshLoopImpl<T, dim>
 {
   using BaseT = MeshLoopImpl<T,dim>;
   public:
+    MeshLoopInterface(const std::vector<TreeNode<T, dim>> &tnlist)//FIXME shouldn't change a const ptr
+      : MeshLoopInterface((TreeNode<T, dim>*) tnlist.data(), tnlist.size())
+    { }
+
     MeshLoopInterface(std::vector<TreeNode<T, dim>> &tnlist)
       : MeshLoopInterface(tnlist.data(), tnlist.size())
     { }
