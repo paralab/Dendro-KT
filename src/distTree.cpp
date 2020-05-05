@@ -140,8 +140,7 @@ namespace ot
   template <typename T, unsigned int dim>
   void DistTree<T, dim>::generateGridHierarchyUp(bool isFixedNumStrata,
                                                unsigned int lev,
-                                               double loadFlexibility,
-                                               MPI_Comm comm)
+                                               double loadFlexibility)
   {
     /**
      * @author Masado Ishii
@@ -258,10 +257,10 @@ namespace ot
 
 
     int nProc, rProc;
-    MPI_Comm_size(comm, &nProc);
-    MPI_Comm_rank(comm, &rProc);
+    MPI_Comm_size(m_comm, &nProc);
+    MPI_Comm_rank(m_comm, &rProc);
 
-    MPI_Comm activeComm = comm;
+    MPI_Comm activeComm = m_comm;
     int nProcActive = nProc;
     int rProcActive = rProc;
 
@@ -275,7 +274,7 @@ namespace ot
         if (observedMaxDepth_loc < tn.getLevel())
           observedMaxDepth_loc = tn.getLevel();
 
-      par::Mpi_Allreduce<LevI>(&observedMaxDepth_loc, &observedMaxDepth_glob, 1, MPI_MAX, comm);
+      par::Mpi_Allreduce<LevI>(&observedMaxDepth_loc, &observedMaxDepth_glob, 1, MPI_MAX, m_comm);
 
       m_numStrata = 1 + (observedMaxDepth_glob - lev);
     }
@@ -591,12 +590,11 @@ namespace ot
   // generateGridHierarchyDown()
   template <typename T, unsigned int dim>
   DistTree<T, dim>  DistTree<T, dim>::generateGridHierarchyDown(unsigned int numStrata,
-                                                                double loadFlexibility,
-                                                                MPI_Comm comm)
+                                                                double loadFlexibility)
   {
     int nProc, rProc;
-    MPI_Comm_size(comm, &nProc);
-    MPI_Comm_rank(comm, &rProc);
+    MPI_Comm_size(m_comm, &nProc);
+    MPI_Comm_rank(m_comm, &rProc);
 
     // Determine the number of grids in the grid hierarchy. (m_numStrata)
     {
@@ -605,7 +603,7 @@ namespace ot
         if (observedMaxDepth_loc < tn.getLevel())
           observedMaxDepth_loc = tn.getLevel();
 
-      par::Mpi_Allreduce<LevI>(&observedMaxDepth_loc, &observedMaxDepth_glob, 1, MPI_MAX, comm);
+      par::Mpi_Allreduce<LevI>(&observedMaxDepth_loc, &observedMaxDepth_glob, 1, MPI_MAX, m_comm);
 
       const unsigned int strataLimit = 1 + m_uiMaxDepth - observedMaxDepth_glob;
 
@@ -679,10 +677,10 @@ namespace ot
       }
 
       // Re partition and sort the fine grid.
-      SFC_Tree<T, dim>::distTreeSort(fineGrid, loadFlexibility, comm);
+      SFC_Tree<T, dim>::distTreeSort(fineGrid, loadFlexibility, m_comm);
 
       // Enforce intergrid criterion, distCoalesceSiblings().
-      SFC_Tree<T, dim>::distCoalesceSiblings(fineGrid, comm);
+      SFC_Tree<T, dim>::distCoalesceSiblings(fineGrid, m_comm);
 
       // Initialize fine grid meta data.
       if (!m_hasBeenFiltered)
@@ -700,14 +698,14 @@ namespace ot
       // make it more convenient to construct surrogate grid.
       const bool isFineGridActive = fineGrid.size() > 0;
       MPI_Comm fgActiveComm;
-      MPI_Comm_split(comm, (isFineGridActive ? 1 : MPI_UNDEFINED), rProc, &fgActiveComm);
+      MPI_Comm_split(m_comm, (isFineGridActive ? 1 : MPI_UNDEFINED), rProc, &fgActiveComm);
 
 
       std::vector<int> fgActiveList;
       std::vector<TreeNode<T, dim>> fineFrontSplitters;
       fineFrontSplitters = SFC_Tree<T, dim>::dist_bcastSplitters(
           &m_tpFrontStrata[fineStratum],
-          comm,
+          m_comm,
           fgActiveComm,
           isFineGridActive,
           fgActiveList);
@@ -719,7 +717,7 @@ namespace ot
 
       std::vector<int> surrogateRecvCounts(nProc, 0);
 
-      par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, comm);
+      par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, m_comm);
 
       std::vector<int> surrogateSendDispls(1, 0);
       surrogateSendDispls.reserve(nProc + 1);
@@ -741,7 +739,7 @@ namespace ot
                                 surrogateCoarseGrid.data(),
                                 surrogateRecvCounts.data(),
                                 surrogateRecvDispls.data(),
-                                comm);
+                                m_comm);
 
       if (!surrogateDT.m_hasBeenFiltered)
         surrogateDT.m_originalTreePartSz[coarseStratum] = surrogateCoarseGrid.size();
@@ -810,7 +808,7 @@ namespace ot
       level = nextLevel;
     }
 
-    DistTree<T, dim> dtree(treePart);
+    DistTree<T, dim> dtree(treePart, comm);
     return dtree;
   }
 
@@ -856,7 +854,7 @@ namespace ot
       level = nextLevel;
     }
 
-    DistTree<T, dim> dtree(treePart);
+    DistTree<T, dim> dtree(treePart, comm);
     dtree.filterTree(domainDecider);  // Associate decider with dtree.
 
     return dtree;
@@ -908,7 +906,7 @@ namespace ot
       level = nextLevel;
     }
 
-    DistTree<T, dim> dtree(treePart);
+    DistTree<T, dim> dtree(treePart, comm);
     dtree.filterTree(domainDecider);  // Associate decider with dtree.
 
     return dtree;

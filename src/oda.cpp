@@ -49,7 +49,7 @@ namespace ot
     DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
-        ot::DistTree<C, dim> distTree(inTree);   // Uses default domain decider.
+        ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
         construct(distTree, comm, order, grainSz, sfc_tol);
     }
 

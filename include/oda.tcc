@@ -884,7 +884,7 @@ namespace ot
       std::vector<ot::TreeNode<C,dim>> balancedTree;
       ot::SFC_Tree<C,dim>::distTreeBalancing(completeTree, balancedTree, 1, sfc_tol, comm);
 
-      ot::DistTree<C,dim> distTree(balancedTree);   // Uses default domain decider.
+      ot::DistTree<C,dim> distTree(balancedTree, comm);   // Uses default domain decider.
 
       // Create ODA based on balancedTree.
       construct(distTree, comm, order, grainSz, sfc_tol);
@@ -898,7 +898,7 @@ namespace ot
         std::vector<ot::TreeNode<C,dim>> tree;
         util::constructRegularGrid<C,dim>(comm, grainSz, sfc_tol, tree);
 
-        ot::DistTree<C,dim> distTree(tree);   // Uses default domain decider.
+        ot::DistTree<C,dim> distTree(tree, comm);   // Uses default domain decider.
 
         construct(distTree, comm, order, grainSz, sfc_tol);
     }
