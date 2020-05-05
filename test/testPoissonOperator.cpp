@@ -119,6 +119,8 @@ int main(int argc, char * argv[])
   std::vector<double> npeBufferIn(nPe, 0.0);
   std::vector<double> npeBufferOut(nPe, 0.0);
 
+  std::vector<double> dummyBuffer(nPe, 0.0);
+
   // Two ways to get the diagonal.
   //   diag1 : Use elementalMatVec() with each standard basis vector
   //           and get the ith component of the result.
@@ -140,19 +142,19 @@ int main(int argc, char * argv[])
   {
     if (treeLoopOut.isPre() && treeLoopOut.subtreeInfo().isLeaf())
     {
-      std::cout << "\n\n";
-      std::cout << "Element " << eidx++ << "\n";
+      /// std::cout << "\n\n";
+      /// std::cout << "Element " << eidx++ << "\n";
 
       const double * nodeCoordsFlat = treeLoopOut.subtreeInfo().getNodeCoords();
-      const TN *hereCoords = treeLoopOut.subtreeInfo().readNodeCoordsIn();
-      for (int nIdx = 0; nIdx < nPe; nIdx++)
-      {
-        ot::printtn(hereCoords[nIdx], 2, std::cout);
-        std::cout << "    \t(";
-        for (int d = 0; d < dim; d++)
-          std::cout << nodeCoordsFlat[nIdx * dim + d] << ",\t";
-        std::cout << ")\n";
-      }
+      /// const TN *hereCoords = treeLoopOut.subtreeInfo().readNodeCoordsIn();
+      /// for (int nIdx = 0; nIdx < nPe; nIdx++)
+      /// {
+      ///   ot::printtn(hereCoords[nIdx], 2, std::cout);
+      ///   std::cout << "    \t(";
+      ///   for (int d = 0; d < dim; d++)
+      ///     std::cout << nodeCoordsFlat[nIdx * dim + d] << ",\t";
+      ///   std::cout << ")\n";
+      /// }
 
       // ---------------------------------------------
 
@@ -200,8 +202,7 @@ int main(int argc, char * argv[])
       std::cout << "Linf difference is " << absdiff << "\n";
 
 
-      /// eleSet(&(*leafResult.begin()), ndofs, nodeCoordsFlat, scale);
-      /// treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
+      treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*dummyBuffer.begin()));
 
       treeLoopOut.next();
     }
