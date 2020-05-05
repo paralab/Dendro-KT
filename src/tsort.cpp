@@ -12,6 +12,8 @@
 #include "tsort.h"
 #include "octUtils.h"
 
+#include "meshLoop.h"
+
 
 namespace ot
 {
@@ -882,6 +884,205 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
     par::Mpi_Allreduce(&locDone, &globDone, 1, MPI_LAND, comm);
   }
 
+}
+
+
+template <typename T, unsigned int D>
+std::vector<TreeNode<T, D>>
+SFC_Tree<T, D>::locRemesh( const std::vector<TreeNode<T, D>> &inTree,
+                           const std::vector<OCT_FLAGS::Refine> &refnFlags )
+{
+  constexpr ChildI NumChildren = 1u << D;
+  std::vector<TreeNode<T, D>> outTree;
+  std::vector<TreeNode<T, D>> seed;
+  for (size_t i = 0; i < inTree.size(); ++i)
+  {
+    switch(refnFlags[i])
+    {
+      case OCT_FLAGS::OCT_NO_CHANGE:
+        seed.push_back(inTree[i]);
+        break;
+
+      case OCT_FLAGS::OCT_COARSEN:
+        seed.push_back(inTree[i].getParent());
+        break;
+
+      case OCT_FLAGS::OCT_REFINE:
+        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
+          seed.push_back(inTree[i].getChildMorton(child_m));
+        break;
+
+      default:
+        throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
+    }
+  }
+
+  SFC_Tree<T, D>::locTreeSort(seed);
+  SFC_Tree<T, D>::locRemoveDuplicates(seed);
+  SFC_Tree<T, D>::locTreeBalancing(seed, outTree, 1);
+
+  return outTree;
+}
+
+template <typename T, unsigned int D>
+void
+SFC_Tree<T, D>::distRemesh( const std::vector<TreeNode<T, D>> &inTree,
+                            const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                            std::vector<TreeNode<T, D>> &outTree,
+                            std::vector<TreeNode<T, D>> &surrogateTree,
+                            double loadFlexibility,
+                            MPI_Comm comm )
+{
+  constexpr ChildI NumChildren = 1u << D;
+
+  outTree.clear();
+  surrogateTree.clear();
+
+  std::vector<TreeNode<T, D>> seed;
+  for (size_t i = 0; i < inTree.size(); ++i)
+  {
+    switch(refnFlags[i])
+    {
+      case OCT_FLAGS::OCT_NO_CHANGE:
+        seed.push_back(inTree[i]);
+        break;
+
+      case OCT_FLAGS::OCT_COARSEN:
+        seed.push_back(inTree[i].getParent());
+        break;
+
+      case OCT_FLAGS::OCT_REFINE:
+        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
+          seed.push_back(inTree[i].getChildMorton(child_m));
+        break;
+
+      default:
+        throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
+    }
+  }
+
+  SFC_Tree<T, D>::distTreeSort(seed, loadFlexibility, comm);
+  SFC_Tree<T, D>::distRemoveDuplicates(seed, loadFlexibility, RM_DUPS_AND_ANC, comm);
+  SFC_Tree<T, D>::distTreeBalancing(seed, outTree, 1, loadFlexibility, comm);
+  SFC_Tree<T, D>::distCoalesceSiblings(outTree, comm);
+
+  // Create a surrogate tree, which is identical to the inTree,
+  // but partitioned to match the outTree.
+  surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(inTree, outTree, comm);
+}
+
+
+template <typename T, unsigned int dim>
+std::vector<int> getSendcounts(const std::vector<TreeNode<T, dim>> &items,
+                               const std::vector<TreeNode<T, dim>> &frontSplitters)
+{
+  int numSplittersSeen = 0;
+  int ancCarry = 0;
+  std::vector<int> scounts(frontSplitters.size(), 0);
+
+  MeshLoopInterface<T, dim, true, true, false> itemLoop(items);
+  MeshLoopInterface<T, dim, true, true, false> splitterLoop(frontSplitters);
+  while (!itemLoop.isFinished())
+  {
+    const MeshLoopFrame<T, dim> &itemSubtree = itemLoop.getTopConst();
+    const MeshLoopFrame<T, dim> &splitterSubtree = splitterLoop.getTopConst();
+
+    if (splitterSubtree.isEmpty())
+    {
+      scounts[numSplittersSeen-1] += itemSubtree.getTotalCount();
+      scounts[numSplittersSeen-1] += ancCarry;
+      ancCarry = 0;
+
+      itemLoop.next();
+      splitterLoop.next();
+    }
+    else if (itemSubtree.isEmpty() && ancCarry == 0)
+    {
+      numSplittersSeen += splitterSubtree.getTotalCount();
+
+      itemLoop.next();
+      splitterLoop.next();
+    }
+    else
+    {
+      ancCarry += itemSubtree.getAncCount();
+
+      if (splitterSubtree.isLeaf())
+      {
+        numSplittersSeen++;
+
+        scounts[numSplittersSeen-1] += ancCarry;
+        ancCarry = 0;
+      }
+
+      itemLoop.step();
+      splitterLoop.step();
+    }
+  }
+
+  return scounts;
+}
+
+
+template <typename T, unsigned int dim>
+std::vector<TreeNode<T, dim>>
+SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replicateGrid,
+                                    const std::vector<TreeNode<T, dim>> &splittersFromGrid,
+                                    MPI_Comm comm )
+{
+  std::vector<TreeNode<T, dim>> surrogateGrid;
+
+  int nProc, rProc;
+  MPI_Comm_size(comm, &nProc);
+  MPI_Comm_rank(comm, &rProc);
+
+  // Temporary activeComm, in case splittersFromGrid has holes, this
+  // make it more convenient to construct surrogate grid.
+  const bool isSplitterGridActive = splittersFromGrid.size() > 0;
+  MPI_Comm sgActiveComm;
+  MPI_Comm_split(comm, (isSplitterGridActive ? 1 : MPI_UNDEFINED), rProc, &sgActiveComm);
+
+  std::vector<int> sgActiveList;
+  std::vector<TreeNode<T, dim>> splitters;
+  splitters = SFC_Tree<T, dim>::dist_bcastSplitters(
+      &splittersFromGrid.front(),
+      comm,
+      sgActiveComm,
+      isSplitterGridActive,
+      sgActiveList);
+
+  std::vector<int> surrogateSendCountsCompact = getSendcounts<T, dim>(replicateGrid, splitters);
+  std::vector<int> surrogateSendCounts(nProc, 0);
+  for (int i = 0; i < sgActiveList.size(); ++i)
+    surrogateSendCounts[sgActiveList[i]] = surrogateSendCountsCompact[i];
+
+  std::vector<int> surrogateRecvCounts(nProc, 0);
+
+  par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, comm);
+
+  std::vector<int> surrogateSendDispls(1, 0);
+  surrogateSendDispls.reserve(nProc + 1);
+  for (int c : surrogateSendCounts)
+    surrogateSendDispls.push_back(surrogateSendDispls.back() + c);
+  surrogateSendDispls.pop_back();
+
+  std::vector<int> surrogateRecvDispls(1, 0);
+  surrogateRecvDispls.reserve(nProc + 1);
+  for (int c : surrogateRecvCounts)
+    surrogateRecvDispls.push_back(surrogateRecvDispls.back() + c);
+
+  surrogateGrid.resize(surrogateRecvDispls.back());
+
+  // Copy replicateGrid grid to surrogate grid.
+  par::Mpi_Alltoallv_sparse(replicateGrid.data(),
+                            surrogateSendCounts.data(),
+                            surrogateSendDispls.data(),
+                            surrogateGrid.data(),
+                            surrogateRecvCounts.data(),
+                            surrogateRecvDispls.data(),
+                            comm);
+
+  return surrogateGrid;
 }
 
 

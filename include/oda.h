@@ -65,7 +65,9 @@ namespace DA_FLAGS
    * DA_REFINE : refine the octant
    * DA_COARSEN: coarsen the octant.
    * **/
-  enum Refine {DA_NO_CHANGE,DA_REFINE,DA_COARSEN};
+  enum Refine { DA_NO_CHANGE = OCT_FLAGS::OCT_NO_CHANGE,
+                DA_REFINE    = OCT_FLAGS::OCT_REFINE,
+                DA_COARSEN   = OCT_FLAGS::OCT_COARSEN };
 }
 
 template <unsigned int dim>

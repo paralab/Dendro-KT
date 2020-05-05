@@ -80,59 +80,6 @@ namespace ot
   };
 
 
-  template <typename T, unsigned int dim>
-  std::vector<int> getSendcounts(std::vector<TreeNode<T, dim>> &items,
-                                 std::vector<TreeNode<T, dim>> &frontSplitters)
-  {
-    int numSplittersSeen = 0;
-    int ancCarry = 0;
-    std::vector<int> scounts(frontSplitters.size(), 0);
-
-    MeshLoopInterface<T, dim, true, true, false> itemLoop(items);
-    MeshLoopInterface<T, dim, true, true, false> splitterLoop(frontSplitters);
-    while (!itemLoop.isFinished())
-    {
-      const MeshLoopFrame<T, dim> &itemSubtree = itemLoop.getTopConst();
-      const MeshLoopFrame<T, dim> &splitterSubtree = splitterLoop.getTopConst();
-
-      if (splitterSubtree.isEmpty())
-      {
-        scounts[numSplittersSeen-1] += itemSubtree.getTotalCount();
-        scounts[numSplittersSeen-1] += ancCarry;
-        ancCarry = 0;
-
-        itemLoop.next();
-        splitterLoop.next();
-      }
-      else if (itemSubtree.isEmpty() && ancCarry == 0)
-      {
-        numSplittersSeen += splitterSubtree.getTotalCount();
-
-        itemLoop.next();
-        splitterLoop.next();
-      }
-      else
-      {
-        ancCarry += itemSubtree.getAncCount();
-
-        if (splitterSubtree.isLeaf())
-        {
-          numSplittersSeen++;
-
-          scounts[numSplittersSeen-1] += ancCarry;
-          ancCarry = 0;
-        }
-
-        itemLoop.step();
-        splitterLoop.step();
-      }
-    }
-
-    return scounts;
-  }
-
-
-
 
   //
   // generateGridHierarchyUp()
@@ -690,56 +637,9 @@ namespace ot
       m_tpFrontStrata[fineStratum] = (fineGrid.size() ? fineGrid.front() : TreeNode<T, dim>{});
       m_tpBackStrata[fineStratum] = (fineGrid.size() ? fineGrid.back() : TreeNode<T, dim>{});
 
-
       // Create the surrogate coarse grid by duplicating the
       // coarse grid but partitioning it by the fine grid splitters.
-
-      // Temporary activeComm, in case fineGrid has holes, this
-      // make it more convenient to construct surrogate grid.
-      const bool isFineGridActive = fineGrid.size() > 0;
-      MPI_Comm fgActiveComm;
-      MPI_Comm_split(m_comm, (isFineGridActive ? 1 : MPI_UNDEFINED), rProc, &fgActiveComm);
-
-
-      std::vector<int> fgActiveList;
-      std::vector<TreeNode<T, dim>> fineFrontSplitters;
-      fineFrontSplitters = SFC_Tree<T, dim>::dist_bcastSplitters(
-          &m_tpFrontStrata[fineStratum],
-          m_comm,
-          fgActiveComm,
-          isFineGridActive,
-          fgActiveList);
-
-      std::vector<int> surrogateSendCountsCompact = getSendcounts(coarseGrid, fineFrontSplitters);
-      std::vector<int> surrogateSendCounts(nProc, 0);
-      for (int i = 0; i < fgActiveList.size(); ++i)
-        surrogateSendCounts[fgActiveList[i]] = surrogateSendCountsCompact[i];
-
-      std::vector<int> surrogateRecvCounts(nProc, 0);
-
-      par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, m_comm);
-
-      std::vector<int> surrogateSendDispls(1, 0);
-      surrogateSendDispls.reserve(nProc + 1);
-      for (int c : surrogateSendCounts)
-        surrogateSendDispls.push_back(surrogateSendDispls.back() + c);
-      surrogateSendDispls.pop_back();
-
-      std::vector<int> surrogateRecvDispls(1, 0);
-      surrogateRecvDispls.reserve(nProc + 1);
-      for (int c : surrogateRecvCounts)
-        surrogateRecvDispls.push_back(surrogateRecvDispls.back() + c);
-
-      surrogateCoarseGrid.resize(surrogateRecvDispls.back());
-
-      // Copy coarse grid to surrogate grid.
-      par::Mpi_Alltoallv_sparse(coarseGrid.data(),
-                                surrogateSendCounts.data(),
-                                surrogateSendDispls.data(),
-                                surrogateCoarseGrid.data(),
-                                surrogateRecvCounts.data(),
-                                surrogateRecvDispls.data(),
-                                m_comm);
+      surrogateCoarseGrid = SFC_Tree<T, dim>::getSurrogateGrid(coarseGrid, fineGrid, m_comm);
 
       if (!surrogateDT.m_hasBeenFiltered)
         surrogateDT.m_originalTreePartSz[coarseStratum] = surrogateCoarseGrid.size();
