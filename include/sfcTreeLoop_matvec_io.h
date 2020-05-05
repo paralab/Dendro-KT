@@ -1198,6 +1198,7 @@ namespace ot
 
       auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
       if (childOutput.size() > 0)
+      {
         if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
         {
           // Nodal values.
@@ -1231,6 +1232,12 @@ namespace ot
                        m_ndofs, zero );
         }
       }
+      else
+      {
+        // TODO emit warning to log
+        // Warning: Did you forget to overwriteNodeValsOut() ?
+      }
+    }
 
     //
     // Perform any needed transpose-interpolations.
@@ -1257,14 +1264,16 @@ namespace ot
       // Use transpose of interpolation operator on each hanging child.
       for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
       {
+        auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+        if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe
+            && childOutput.size() > 0)
         {
           // Has hanging nodes. Interpolation-transpose.
           constexpr bool transposeTrue = true;
           m_interp_matrices.template IKD_ParentChildInterpolation<transposeTrue>(
-              &(*parentFrame.template getChildOutput<0>(child_sfc).begin()),
-              &(*parentFrame.template getChildOutput<0>(child_sfc).begin()),
+              &(*childOutput.begin()),
+              &(*childOutput.begin()),
               m_ndofs,
               child_m);
 
@@ -1291,6 +1300,9 @@ namespace ot
           }
         }
       }
+
+      for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+        parentFrame.template getChildOutput<0>(child_sfc).resize(0);
     }
 
   }

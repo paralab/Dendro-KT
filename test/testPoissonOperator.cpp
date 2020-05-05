@@ -202,7 +202,7 @@ int main(int argc, char * argv[])
       std::cout << "Linf difference is " << absdiff << "\n";
 
 
-      treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*dummyBuffer.begin()));
+      /// treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*dummyBuffer.begin()));
 
       treeLoopOut.next();
     }
