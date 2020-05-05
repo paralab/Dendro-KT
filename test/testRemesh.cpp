@@ -37,22 +37,33 @@ int main(int argc, char * argv[])
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  constexpr int dim = 2;
+  constexpr bool printEachRound = true;
+  constexpr bool printRunSummary = true;
+
+  constexpr int dim = 3;
   using T = unsigned int;
 
   _InitializeHcurve(dim);
 
-  ot::DistTree<T, dim> origDTree = ot::DistTree<T, dim>::constructSubdomainDistTree(2, comm);
+  ot::DistTree<T, dim> origDTree = ot::DistTree<T, dim>::constructSubdomainDistTree(3, comm);
   std::vector<ot::TreeNode<T, dim>> srcTree = origDTree.getTreePartFiltered();
   std::vector<ot::TreeNode<T, dim>> newTree;
   std::vector<ot::TreeNode<T, dim>> surrTree;
 
   std::random_device rd;
   /// const unsigned int seed = rd();
-  const unsigned int seed = 1210946325;
+  const unsigned int seed = (rProc == 0? 4059248431 : 1888354574);
+  if (printRunSummary)
+  {
+    std::stringstream ss;
+    ss << "Rank[" << rProc << "/" << nProc << "] Note: seed==" << seed << "\n";
+    std::cerr << ss.str();
+  }
   std::mt19937_64 gen(seed);
   std::uniform_real_distribution<> uniform_unit(0.0, 1.0);
-  std::discrete_distribution<> refn_choice({0.1, 0.1, 0.8});
+  double chance_refine = 0.9 / (dim * (1u << dim) + 1);
+  std::cout << "chance_refine==" << chance_refine << "\n";
+  std::discrete_distribution<> refn_choice({0.1, chance_refine, 1.0 - 0.1 - chance_refine});
   const ot::OCT_FLAGS::Refine flags[3] = {ot::OCT_FLAGS::OCT_NO_CHANGE,
                                           ot::OCT_FLAGS::OCT_REFINE,
                                           ot::OCT_FLAGS::OCT_COARSEN};
@@ -61,6 +72,7 @@ int main(int argc, char * argv[])
 
   std::vector<ot::OCT_FLAGS::Refine> octFlags;
 
+  int verifiedCount = 0;
   int numRounds = 10;
   for (int round = 0; srcTree.size() > 0 && round < numRounds; round++)
   {
@@ -69,7 +81,8 @@ int main(int argc, char * argv[])
     octFlags.clear();
 
     // Generate flags.
-    std::cout << "Round " << round << ": srcTree.size()==" << srcTree.size() << "\n";
+    if (printEachRound)
+      std::cout << "Round " << round << ": srcTree.size()==" << srcTree.size() << "\n";
     size_t pos = 0;
     while (pos < srcTree.size())
     {
@@ -84,9 +97,12 @@ int main(int argc, char * argv[])
     }
 
     // Generate new tree.
+        /// newTree = ot::SFC_Tree<T, dim>::locRemesh(srcTree, octFlags);
+        /// surrTree = srcTree;
     ot::SFC_Tree<T, dim>::distRemesh(srcTree, octFlags, newTree, surrTree, 0.3, comm);
-    std::cout << "srcTree.size()==" << srcTree.size()
-              << "    newTree.size()==" << newTree.size() << "  -->  ";
+    if (printEachRound)
+      std::cout << "srcTree.size()==" << srcTree.size()
+                << "    newTree.size()==" << newTree.size() << "  -->  ";
 
     // Check levels are within +/- 1.
     ot::MeshLoopInterface<T, dim, true, true, false> surrLoop(surrTree);
@@ -109,7 +125,8 @@ int main(int argc, char * argv[])
       }
       else if (surrSubtree.isEmpty() && newSubtree.isEmpty())
       {
-        throw std::logic_error("Unexpected, both subtrees empty.");
+        surrLoop.next();
+        newLoop.next();
       }
       else if (surrSubtree.isEmpty() && newSubtree.isLeaf() ||
                newSubtree.isEmpty() && surrSubtree.isLeaf())
@@ -117,19 +134,28 @@ int main(int argc, char * argv[])
         surrLoop.next();
         newLoop.next();
       }
-      if (surrSubtree.isEmpty() && !newSubtree.isLeaf() ||
-          newSubtree.isEmpty() && !surrSubtree.isLeaf())
+      else if (surrSubtree.isEmpty() && !newSubtree.isLeaf() ||
+               newSubtree.isEmpty() && !surrSubtree.isLeaf())
       {
         std::stringstream ss;
         ss << "(seed==" << seed << ") Level violation";
         throw std::logic_error(ss.str());
       }
     }
-    std::cout << GRN "Verified" NRM "\n\n";
+    if (printEachRound)
+      std::cout << GRN "Verified" NRM "\n\n";
+    verifiedCount++;
 
     std::swap(srcTree, newTree);
   }
 
+  if (printRunSummary)
+  {
+    std::stringstream ss;
+    ss << "Rank[" << rProc << "/" << nProc << "] "
+       << (verifiedCount == numRounds ? GRN "Verified" NRM : RED "Error" NRM) << "\n";
+    std::cerr << ss.str();
+  }
 
   _DestroyHcurve();
 
