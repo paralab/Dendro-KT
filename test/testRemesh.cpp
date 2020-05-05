@@ -37,7 +37,7 @@ int main(int argc, char * argv[])
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  constexpr bool printEachRound = true;
+  constexpr bool printEachRound = false;
   constexpr bool printRunSummary = true;
 
   constexpr int dim = 3;
@@ -51,8 +51,7 @@ int main(int argc, char * argv[])
   std::vector<ot::TreeNode<T, dim>> surrTree;
 
   std::random_device rd;
-  /// const unsigned int seed = rd();
-  const unsigned int seed = (rProc == 0? 4059248431 : 1888354574);
+  const unsigned int seed = rd();
   if (printRunSummary)
   {
     std::stringstream ss;
@@ -73,7 +72,7 @@ int main(int argc, char * argv[])
   std::vector<ot::OCT_FLAGS::Refine> octFlags;
 
   int verifiedCount = 0;
-  int numRounds = 15;
+  int numRounds = 10;
   for (int round = 0; round < numRounds; round++)
   {
     newTree.clear();
