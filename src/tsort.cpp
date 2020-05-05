@@ -892,6 +892,11 @@ std::vector<TreeNode<T, D>>
 SFC_Tree<T, D>::locRemesh( const std::vector<TreeNode<T, D>> &inTree,
                            const std::vector<OCT_FLAGS::Refine> &refnFlags )
 {
+  // TODO need to finally make a seperate minimal balancing tree routine
+  // that remembers the level of the seeds.
+  // For now, this hack should work because we remove duplicates.
+  // With a proper level-respecting treeBalancing() routine, don't need to
+  // make all siblings of all treeNodes for OCT_NO_CHANGE and OCT_COARSEN.
   constexpr ChildI NumChildren = 1u << D;
   std::vector<TreeNode<T, D>> outTree;
   std::vector<TreeNode<T, D>> seed;
@@ -900,11 +905,13 @@ SFC_Tree<T, D>::locRemesh( const std::vector<TreeNode<T, D>> &inTree,
     switch(refnFlags[i])
     {
       case OCT_FLAGS::OCT_NO_CHANGE:
-        seed.push_back(inTree[i]);
+        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
+          seed.push_back(inTree[i].getParent().getChildMorton(child_m));
         break;
 
       case OCT_FLAGS::OCT_COARSEN:
-        seed.push_back(inTree[i].getParent());
+        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
+          seed.push_back(inTree[i].getParent().getParent().getChildMorton(child_m));
         break;
 
       case OCT_FLAGS::OCT_REFINE:
@@ -938,17 +945,24 @@ SFC_Tree<T, D>::distRemesh( const std::vector<TreeNode<T, D>> &inTree,
   outTree.clear();
   surrogateTree.clear();
 
+  // TODO need to finally make a seperate minimal balancing tree routine
+  // that remembers the level of the seeds.
+  // For now, this hack should work because we remove duplicates.
+  // With a proper level-respecting treeBalancing() routine, don't need to
+  // make all siblings of all treeNodes for OCT_NO_CHANGE and OCT_COARSEN.
   std::vector<TreeNode<T, D>> seed;
   for (size_t i = 0; i < inTree.size(); ++i)
   {
     switch(refnFlags[i])
     {
       case OCT_FLAGS::OCT_NO_CHANGE:
-        seed.push_back(inTree[i]);
+        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
+          seed.push_back(inTree[i].getParent().getChildMorton(child_m));
         break;
 
       case OCT_FLAGS::OCT_COARSEN:
-        seed.push_back(inTree[i].getParent());
+        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
+          seed.push_back(inTree[i].getParent().getParent().getChildMorton(child_m));
         break;
 
       case OCT_FLAGS::OCT_REFINE:
