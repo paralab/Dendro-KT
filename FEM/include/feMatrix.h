@@ -406,8 +406,7 @@ class SliceIter
 
     SliceIter & operator++()
     {
-      while (m_idx < m_slice_ref.size() && !m_slice_ref[m_idx])
-        ++m_idx;
+      while (m_idx < m_slice_ref.size() && !m_slice_ref[m_idx++]);
       ++m_slice_idx;
       return *this;
     }
