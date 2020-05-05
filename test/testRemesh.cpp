@@ -73,8 +73,8 @@ int main(int argc, char * argv[])
   std::vector<ot::OCT_FLAGS::Refine> octFlags;
 
   int verifiedCount = 0;
-  int numRounds = 10;
-  for (int round = 0; srcTree.size() > 0 && round < numRounds; round++)
+  int numRounds = 15;
+  for (int round = 0; round < numRounds; round++)
   {
     newTree.clear();
     surrTree.clear();
