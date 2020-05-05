@@ -10,7 +10,7 @@
 #define DENDRO_KT_SFC_TREE_LOOP_MATVEC_IO_H
 
 #include "sfcTreeLoop.h"
-#include "sfcTreeLoop_matvec.h"  // MatvecBaseSummary
+#include "sfcTreeLoop_matvec.h"  // MatvecBaseSummary, fillAccessNodeCoordsFlat
 
 #include "nsort.h"
 #include "tsort.h"
@@ -28,7 +28,6 @@
 
 namespace ot
 {
-
 
 
   // MatvecBaseIn has topDown for nodes + values, no bottomUp
@@ -134,11 +133,12 @@ namespace ot
 
         /** isLeaf() */
         bool isLeaf() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel == getCurrentSubtree().getLevel();
+          return treeloop.isLeaf();
         }
 
+        /** isLeafOrLower() */
         bool isLeafOrLower() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel <= getCurrentSubtree().getLevel();
+          return treeloop.isLeafOrLower();
         }
 
         /** getNumNodesIn() */
@@ -205,6 +205,17 @@ namespace ot
       //   bool isPre();
       //   bool isFinished();
       //   const TreeNode<C,dim> & getCurrentSubtree();
+
+      bool isLeaf() const
+      {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel
+              == BaseT::getCurrentSubtree().getLevel();
+      }
+      bool isLeafOrLower() const
+      {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel
+              <= BaseT::getCurrentSubtree().getLevel();
+      }
 
     protected:
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
@@ -292,11 +303,12 @@ namespace ot
 
         /** isLeaf() */
         bool isLeaf() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel == getCurrentSubtree().getLevel();
+          return treeloop.isLeaf();
         }
 
+        /** isLeafOrLower() */
         bool isLeafOrLower() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel <= getCurrentSubtree().getLevel();
+          return treeloop.isLeafOrLower();
         }
 
         /** getNumNodesIn() */
@@ -369,6 +381,17 @@ namespace ot
       //   bool isPre();
       //   bool isFinished();
       //   const TreeNode<C,dim> & getCurrentSubtree();
+
+      bool isLeaf() const
+      {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel
+              == BaseT::getCurrentSubtree().getLevel();
+      }
+      bool isLeafOrLower() const
+      {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel
+              <= BaseT::getCurrentSubtree().getLevel();
+      }
 
     protected:
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
@@ -1273,76 +1296,32 @@ namespace ot
   }
 
 
-  // The definitions are here if you need them, just copy for
-  //   both MatvecBaseIn and MatvecBaseOut.
 
   // fillAccessNodeCoordsFlat()
   template <unsigned int dim, typename NodeT, bool p2c>
   void MatvecBaseIn<dim, NodeT, p2c>::fillAccessNodeCoordsFlat()
   {
-    const FrameT &frame = BaseT::getCurrentFrame();
-    /// const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
-    const size_t numNodes = frame.template getMyInputHandle<0>().size();
-    const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
-    const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
-    const unsigned int curLev = subtree.getLevel();
-
-    const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
-    const double elemSz = double(1u << m_uiMaxDepth - curLev) / double(1u << m_uiMaxDepth);
-    double translate[dim];
-    for (int d = 0; d < dim; d++)
-      translate[d] = domainScale * subtree.getX(d);
-
-    std::array<unsigned int, dim> numerators;
-    unsigned int denominator;
-
-    m_accessNodeCoordsFlat.resize(dim * numNodes);
-
-    for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
-    {
-      TNPoint<unsigned int, dim>::get_relNodeCoords(
-          subtree, nodeCoords[nIdx], m_eleOrder,
-          numerators, denominator);
-
-      for (int d = 0; d < dim; ++d)
-        m_accessNodeCoordsFlat[nIdx * dim + d] =
-            translate[d] + elemSz * numerators[d] / denominator;
-    }
+    ::ot::fillAccessNodeCoordsFlat(!isLeafOrLower(),
+                             BaseT::getCurrentFrame().template getMyInputHandle<0>(),
+                             BaseT::getCurrentSubtree(),
+                             m_eleOrder,
+                             m_accessNodeCoordsFlat);
   }
 
   // fillAccessNodeCoordsFlat()
   template <unsigned int dim, typename NodeT, bool UseAccumulation>
   void MatvecBaseOut<dim, NodeT, UseAccumulation>::fillAccessNodeCoordsFlat()
   {
-    const FrameT &frame = BaseT::getCurrentFrame();
-    /// const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
-    const size_t numNodes = frame.template getMyInputHandle<0>().size();
-    const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
-    const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
-    const unsigned int curLev = subtree.getLevel();
-
-    const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
-    const double elemSz = double(1u << m_uiMaxDepth - curLev) / double(1u << m_uiMaxDepth);
-    double translate[dim];
-    for (int d = 0; d < dim; d++)
-      translate[d] = domainScale * subtree.getX(d);
-
-    std::array<unsigned int, dim> numerators;
-    unsigned int denominator;
-
-    m_accessNodeCoordsFlat.resize(dim * numNodes);
-
-    for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
-    {
-      TNPoint<unsigned int, dim>::get_relNodeCoords(
-          subtree, nodeCoords[nIdx], m_eleOrder,
-          numerators, denominator);
-
-      for (int d = 0; d < dim; ++d)
-        m_accessNodeCoordsFlat[nIdx * dim + d] =
-            translate[d] + elemSz * numerators[d] / denominator;
-    }
+    ::ot::fillAccessNodeCoordsFlat(!isLeafOrLower(),
+                             BaseT::getCurrentFrame().template getMyInputHandle<0>(),
+                             BaseT::getCurrentSubtree(),
+                             m_eleOrder,
+                             m_accessNodeCoordsFlat);
   }
+
+
+  // The definitions are here if you need them, just copy for
+  //   both MatvecBaseIn and MatvecBaseOut.
 
 
   /// // fillLeafNodeBdry()

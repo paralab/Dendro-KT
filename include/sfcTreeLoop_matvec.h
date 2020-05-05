@@ -140,7 +140,12 @@ namespace ot
 
         /** isLeaf() */
         bool isLeaf() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel == getCurrentSubtree().getLevel();
+          return treeloop.isLeaf();
+        }
+
+        /** isLeafOrLower() */
+        bool isLeafOrLower() const {
+          return treeloop.isLeafOrLower();
         }
 
         /** getNumNodesIn() */
@@ -219,6 +224,17 @@ namespace ot
       //   bool isPre();
       //   bool isFinished();
       //   const TreeNode<C,dim> & getCurrentSubtree();
+
+      bool isLeaf() const
+      {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel
+              == BaseT::getCurrentSubtree().getLevel();
+      }
+      bool isLeafOrLower() const
+      {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel
+              <= BaseT::getCurrentSubtree().getLevel();
+      }
 
       static MatvecBaseSummary<dim> generate_node_summary(
           const TreeNode<unsigned int, dim> *begin,
@@ -798,15 +814,14 @@ namespace ot
   }
 
 
-  // fillAccessNodeCoordsFlat()
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::fillAccessNodeCoordsFlat()
+
+  template <typename T, unsigned int dim>
+  void fillAccessNodeCoordsFlat(bool useTNCoords,
+                                const std::vector<TreeNode<T, dim>> &nodeCoords,
+                                const TreeNode<T, dim> &subtree,
+                                unsigned int eleOrder,
+                                std::vector<double> &floatCoords)
   {
-    const FrameT &frame = BaseT::getCurrentFrame();
-    /// const size_t numNodes = frame.mySummaryHandle.m_subtreeNodeCount;
-    const size_t numNodes = frame.template getMyInputHandle<0>().size();
-    const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
-    const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
     const unsigned int curLev = subtree.getLevel();
 
     const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
@@ -818,18 +833,47 @@ namespace ot
     std::array<unsigned int, dim> numerators;
     unsigned int denominator;
 
-    m_accessNodeCoordsFlat.resize(dim * numNodes);
+    const size_t numNodes = (useTNCoords ? nodeCoords.size() : intPow(eleOrder+1, dim));
+    floatCoords.resize(dim * numNodes);
 
-    for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
+    if (useTNCoords)
     {
-      TNPoint<unsigned int, dim>::get_relNodeCoords(
-          subtree, nodeCoords[nIdx], m_eleOrder,
-          numerators, denominator);
+      for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
+      {
+        TNPoint<unsigned int, dim>::get_relNodeCoords(
+            subtree, nodeCoords[nIdx], eleOrder,
+            numerators, denominator);
 
-      for (int d = 0; d < dim; ++d)
-        m_accessNodeCoordsFlat[nIdx * dim + d] =
-            translate[d] + elemSz * numerators[d] / denominator;
+        for (int d = 0; d < dim; ++d)
+          floatCoords[nIdx * dim + d] =
+              translate[d] + elemSz * numerators[d] / denominator;
+      }
     }
+    else
+    {
+      denominator = eleOrder;
+      numerators.fill(0);
+      for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
+      {
+        for (int d = 0; d < dim; ++d)
+          floatCoords[nIdx * dim + d] =
+              translate[d] + elemSz * numerators[d] / denominator;
+        incrementBaseB<unsigned int, dim>(numerators, eleOrder+1);
+      }
+    }
+  }
+
+
+
+  // fillAccessNodeCoordsFlat()
+  template <unsigned int dim, typename NodeT>
+  void MatvecBase<dim, NodeT>::fillAccessNodeCoordsFlat()
+  {
+    ::ot::fillAccessNodeCoordsFlat(!isLeafOrLower(),
+                             BaseT::getCurrentFrame().template getMyInputHandle<0>(),
+                             BaseT::getCurrentSubtree(),
+                             m_eleOrder,
+                             m_accessNodeCoordsFlat);
   }
 
 
