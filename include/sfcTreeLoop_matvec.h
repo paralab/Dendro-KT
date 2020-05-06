@@ -739,31 +739,40 @@ namespace ot
       const size_t nIdx = nodeInstance.getPNodeIdx();
       const size_t childOffset = childNodeOffsets[child_sfc];
 
-      if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
+      auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
+      if (childOutput.size() > 0)
       {
-        // Nodal values.
-        for (int dof = 0; dof < m_ndofs; dof++)
-          myOutNodeValues[m_ndofs * nIdx + dof]
-            += parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * childOffset + dof];
+        if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
+        {
+          // Nodal values.
+          for (int dof = 0; dof < m_ndofs; dof++)
+            myOutNodeValues[m_ndofs * nIdx + dof]
+              += childOutput[m_ndofs * childOffset + dof];
 
-        childNodeOffsets[child_sfc]++;
+          childNodeOffsets[child_sfc]++;
+        }
+        else   // Leaf
+        {
+          const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
+                  childSubtreesSFC[child_sfc],
+                  myNodes[nIdx],
+                  m_eleOrder );
+
+          // Nodal values.
+          for (int dof = 0; dof < m_ndofs; dof++)
+            myOutNodeValues[m_ndofs * nIdx + dof]
+              += childOutput[m_ndofs * nodeRank + dof];
+
+          // Zero out the values after they are transferred.
+          // This is necessary so that later linear transforms are not contaminated.
+          std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
+                       m_ndofs, zero );
+        }
       }
-      else   // Leaf
+      else
       {
-        const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
-                childSubtreesSFC[child_sfc],
-                myNodes[nIdx],
-                m_eleOrder );
-
-        // Nodal values.
-        for (int dof = 0; dof < m_ndofs; dof++)
-          myOutNodeValues[m_ndofs * nIdx + dof]
-            += parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank + dof];
-
-        // Zero out the values after they are transferred.
-        // This is necessary so that later linear transforms are not contaminated.
-        std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
-                     m_ndofs, zero );
+        // TODO emit warning to log
+        // Warning: Did you forget to overwriteNodeValsOut() ?
       }
     }
 
@@ -778,14 +787,16 @@ namespace ot
       // Use transpose of interpolation operator on each hanging child.
       for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
       {
+        auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+        if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe
+            && childOutput.size() > 0)
         {
           // Has hanging nodes. Interpolation-transpose.
           constexpr bool transposeTrue = true;
           m_interp_matrices.template IKD_ParentChildInterpolation<transposeTrue>(
-              &(*parentFrame.template getChildOutput<0>(child_sfc).begin()),
-              &(*parentFrame.template getChildOutput<0>(child_sfc).begin()),
+              &(*childOutput.begin()),
+              &(*childOutput.begin()),
               m_ndofs,
               child_m);
 
@@ -811,6 +822,9 @@ namespace ot
       }
     }
 
+    // Clean slate for next iteration, and detect nothing written by overwriteNodeValsOut.
+    for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+      parentFrame.template getChildOutput<0>(child_sfc).resize(0);
   }
 
 

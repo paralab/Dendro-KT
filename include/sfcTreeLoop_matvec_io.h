@@ -1300,11 +1300,11 @@ namespace ot
           }
         }
       }
-
-      for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
-        parentFrame.template getChildOutput<0>(child_sfc).resize(0);
     }
 
+    // Clean slate for next iteration, and detect nothing written by overwriteNodeValsOut.
+    for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+      parentFrame.template getChildOutput<0>(child_sfc).resize(0);
   }
 
 
