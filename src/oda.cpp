@@ -72,7 +72,7 @@ namespace ot
     /**@brief: Constructor for the DA data structures
       * @param [in] inDistTree : input octree that is already filtered,
       *                          need to be 2:1 balanced unique sorted octree.
-      *                          Will be emptied during construction of DA.
+      *                          Will NOT be automatically emptied during construction of DA.
       * @param [in] comm: MPI global communicator for mesh generation.
       * @param [in] order: order of the element.
       * @note If you have a custom domain decider function, use this overload.
@@ -82,7 +82,7 @@ namespace ot
     DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : DA(inDistTree, 0, comm, order, grainSz, sfc_tol)
     {
-      inDistTree.destroyTree();
+      // Do NOT destroyTree. Let user decide.
     }
 
     // Construct multiple DA for multigrid.
@@ -95,7 +95,7 @@ namespace ot
       for (int l = 0; l < numStrata; ++l)
         daPerStratum[l].construct(inDistTree, l, comm, order, grainSz, sfc_tol);
       std::swap(outDAPerStratum, daPerStratum);
-      inDistTree.destroyTree();
+      // Do NOT destroyTree. Let user decide.
     }
 
 
