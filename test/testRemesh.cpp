@@ -104,8 +104,8 @@ int main(int argc, char * argv[])
                 << "    newTree.size()==" << newTree.size() << "  -->  ";
 
     // Check levels are within +/- 1.
-    ot::MeshLoopInterface<T, dim, true, true, false> surrLoop(surrTree);
-    ot::MeshLoopInterface<T, dim, true, true, false> newLoop(newTree);
+    ot::MeshLoopInterface_Sorted<T, dim, true, true, false> surrLoop(surrTree);
+    ot::MeshLoopInterface_Sorted<T, dim, true, true, false> newLoop(newTree);
     while (!newLoop.isFinished())
     {
       const ot::MeshLoopFrame<T, dim> &surrSubtree = surrLoop.getTopConst();

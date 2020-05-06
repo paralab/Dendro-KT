@@ -336,9 +336,9 @@ namespace ot
 
       // Tree Traversal
       {
-        MeshLoopInterface<T, dim, true, true, false> lpSplitters(fsplitters);
-        MeshLoopInterface<T, dim, true, true, false> lpCandidates(candidates);
-        MeshLoopInterface<T, dim, true, true, false> lpDisqualifiers(disqualifiers);
+        MeshLoopInterface_Unsorted<T, dim, true, true, false> lpSplitters(fsplitters);
+        MeshLoopInterface_Unsorted<T, dim, true, true, false> lpCandidates(candidates);
+        MeshLoopInterface_Unsorted<T, dim, true, true, false> lpDisqualifiers(disqualifiers);
         int splitterCount = 0;
         while (!lpSplitters.isFinished())
         {
@@ -469,9 +469,9 @@ namespace ot
 
       // Tree Traversal
       {
-        MeshLoopInterface<T, dim, true, true, false> lpFineGrid(fineGrid);
-        MeshLoopInterface<T, dim, true, true, false> lpCandidates(candidates);
-        MeshLoopInterface<T, dim, true, true, false> lpDisqualifiers(disqualifiers);
+        MeshLoopInterface_Unsorted<T, dim, true, true, false> lpFineGrid(fineGrid);
+        MeshLoopInterface_Unsorted<T, dim, true, true, false> lpCandidates(candidates);
+        MeshLoopInterface_Unsorted<T, dim, true, true, false> lpDisqualifiers(disqualifiers);
         int splitterCount = 0;
         while (!lpCandidates.isFinished())
         {
@@ -604,7 +604,7 @@ namespace ot
 
       // Generate fine grid elements.
       // For each element in the coarse grid, add all children to fine grid.
-      MeshLoopInterface<T, dim, false, true, false> lpCoarse(coarseGrid);
+      MeshLoopInterface_Sorted<T, dim, false, true, false> lpCoarse(coarseGrid);
       while (!lpCoarse.isFinished())
       {
         const MeshLoopFrame<T, dim> &subtreeCoarse = lpCoarse.getTopConst();

@@ -224,13 +224,13 @@ struct SFC_Tree
   // Notes:
   //   - Same parameters as SFC_bucketing, except does not move points.
   //   - This method is read only.
-  //   TODO insert this method in both versions of SFC_bucketing to remove duplicate code.
-  //   TODO get rid of old code
   static void SFC_locateBuckets(const TreeNode<T,D> *points,
-                          RankI begin, RankI end,
-                          LevI lev,
-                          RotI pRot,
-                          std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters);
+                                RankI begin, RankI end,
+                                LevI lev,
+                                RotI pRot,
+                                std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                                RankI &outAncStart,
+                                RankI &outAncEnd);
 
 
   // Notes:

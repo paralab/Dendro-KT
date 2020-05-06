@@ -139,63 +139,22 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
 ///   // ancestors preceeding descendants.
 }
 
+
 template<typename T, unsigned int D>
 void
-SFC_Tree<T,D>:: SFC_locateBuckets(const TreeNode<T,D> *points,
-                          RankI begin, RankI end,
-                          LevI lev,
-                          RotI pRot,
-                          std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters)
+SFC_Tree<T,D>::SFC_locateBuckets(const TreeNode<T,D> *points,
+                                 RankI begin, RankI end,
+                                 LevI lev,
+                                 RotI pRot,
+                                 std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                                 RankI &outAncStart,
+                                 RankI &outAncEnd)
 {
-  // ==
-  // Reorder the points by child number at level `lev', in the order
-  // of the SFC, and yield the positions of the splitters.
-  // ==
-
-  using TreeNode = TreeNode<T,D>;
-  constexpr char numChildren = TreeNode::numChildren;
-  constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
-
-  //
-  // Count the number of points in each bucket,
-  // indexed by (Morton) child number.
-  std::array<int, numChildren> counts;
-  counts.fill(0);
-  int countAncestors = 0;   // Special bucket to ensure ancestors precede descendants.
-  /// for (const TreeNode &tn : inp)
-  for (const TreeNode *tn = points + begin; tn < points + end; tn++)
-  {
-    if (tn->getLevel() < lev)
-      countAncestors++;
-    else
-      counts[tn->getMortonIndex(lev)]++;
-  }
-
-  //
-  // Compute offsets of buckets in permuted SFC order.
-  // Conceptually:
-  //   1. Permute counts;  2. offsets=scan(counts);  3. Un-permute offsets.
-  //
-  // The `outSplitters' array is indexed in SFC order (to match final output).
-  //
-  // Note that outSplitters indexing is additionally offset by 1 so that
-  // the ancestor bucket is first, between [0th and 1st) markers.
-  //
-  RankI accum = begin + countAncestors;                  // Ancestors belong in front.
-
-  // Logically permute: Scan the bucket-counts in the order of the SFC.
-  // Since we want to map [SFC_rank]-->Morton_rank,
-  // use the "left" columns of rotations[], aka `rot_perm'.
-  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  ChildI child_sfc = 0;
-  for ( ; child_sfc < numChildren; child_sfc++)
-  {
-    ChildI child = rot_perm[child_sfc];
-    outSplitters[child_sfc+1] = accum;
-    accum += counts[child];
-  }
-  outSplitters[child_sfc+1] = accum;  // Should be the end.
-  outSplitters[0] = begin;          // Bucket for 0th child (SFC order) is at index 1, this index 0 contains only ancestors.
+  SFC_locateBuckets_impl<KeyFunIdentity_TN<T,D>, TreeNode<T,D>, TreeNode<T,D>>(
+      points, begin, end, lev, pRot,
+      KeyFunIdentity_TN<T,D>(), true, true,
+      outSplitters,
+      outAncStart, outAncEnd);
 }
 
 
@@ -994,8 +953,8 @@ std::vector<int> getSendcounts(const std::vector<TreeNode<T, dim>> &items,
   int ancCarry = 0;
   std::vector<int> scounts(frontSplitters.size(), 0);
 
-  MeshLoopInterface<T, dim, true, true, false> itemLoop(items);
-  MeshLoopInterface<T, dim, true, true, false> splitterLoop(frontSplitters);
+  MeshLoopInterface_Sorted<T, dim, true, true, false> itemLoop(items);
+  MeshLoopInterface_Sorted<T, dim, true, true, false> splitterLoop(frontSplitters);
   while (!itemLoop.isFinished())
   {
     const MeshLoopFrame<T, dim> &itemSubtree = itemLoop.getTopConst();
