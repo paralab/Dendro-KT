@@ -30,7 +30,7 @@ namespace ot
      * @brief: generate random set of treeNodes for a specified dimension
      * @param[in] numPoints: number of treeNodes need to be generated.
      * */
-    template <typename T, unsigned int dim>
+    template <typename T, unsigned int dim, bool useRandom=true>
     inline std::vector<ot::TreeNode<T,dim>> getPts(unsigned int numPoints, unsigned int sLev = m_uiMaxDepth, unsigned int eLev = m_uiMaxDepth)
     {
         std::vector<ot::TreeNode<T,dim>> points;
@@ -42,8 +42,12 @@ namespace ot
 
         // Set up random number generator.
         std::random_device rd;
-        std::mt19937_64 gen(rd());    // 1. Use this for random/pseudorandom testing.
-        /// std::mt19937_64 gen(1331);    // 2. Use this for deterministic testing.
+        std::mt19937_64 gen;
+        if (useRandom)
+          gen.seed(rd());    // 1. Use this for random/pseudorandom testing.
+        else
+          gen.seed(1331);    // 2. Use this for deterministic testing.
+
         /// std::uniform_int_distribution<T> distCoord(0, maxCoord);
         std::normal_distribution<double> distCoord((1u << m_uiMaxDepth) / 2, (1u << m_uiMaxDepth) / 25);
         std::uniform_int_distribution<T> distLevel(sLev, eLev);
