@@ -406,7 +406,7 @@ class SliceIter
 
     SliceIter & operator++()
     {
-      while (m_idx < m_slice_ref.size() && !m_slice_ref[m_idx++]);
+      while (m_idx < m_slice_ref.size() && !m_slice_ref[++m_idx]);
       ++m_slice_idx;
       return *this;
     }
@@ -495,7 +495,7 @@ class SubMatView
 
     SubMatView transpose_view()
     {
-      return SubMatView(m_base_ptr, m_slice_c_sz, m_slice_r_sz, !m_row_major);
+      return SubMatView(m_base_ptr, m_slice_c, m_slice_r, !m_row_major);
     }
 
     void copy_from(const SubMatView &src)
