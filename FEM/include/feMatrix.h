@@ -634,8 +634,8 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
         // Multiply p2c and c2p.
         if (subtreeInfo.getNumNonhangingNodes() != nPe)
         {
-          //DEBUG
-          std::cout << "leafCounter==" << leafCounter << "\n";
+          /// //DEBUG
+          /// std::cout << "leafCounter==" << leafCounter << "\n";
 
           // ------------------------------------------------------------------------
           //     ^[subset of rows] _[subset of columns]
@@ -671,7 +671,6 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
           constexpr auto ROW_MAJOR = SubMatView<ScalarT>::ROW_MAJOR;
           constexpr auto COL_MAJOR = SubMatView<ScalarT>::COL_MAJOR;
 
-          /*
           // Since the pieces overlap, need to move blocks out and
           // replace them by zero, do the multiplication, and then
           // ADD the result back to the matrix.
@@ -743,9 +742,9 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
           for (const SliceIter &r : BD_Q.slice_r_range())
             for (const SliceIter &c : BD_Q.slice_c_range())
               colValBufView(r, c) += BD_Q(r, c);
-          */
 
 
+          /*
           const std::vector<bool> &slice_p = slice_h;
           SubMatView<ScalarT> Ke_nh_h(&colValBuffer[0], slice_nh, slice_h,  SubMatView<ScalarT>::ROW_MAJOR);
           SubMatView<ScalarT> Ke_h_nh(&colValBuffer[0], slice_h,  slice_nh, SubMatView<ScalarT>::ROW_MAJOR);
@@ -829,23 +828,27 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
             for (const SliceIter &r : Ke_p_p.slice_r_range())
               Ke_p_p(r, c) = wksp_mat_T_h_p(r, c);
           }
+          */
 
           //DEBUG BEGIN---
-          for (unsigned int c = 0; c < nPe; c++)
-            fprintf(stdout, "%6d ", nodeIdsFlat[c]);
-          fprintf(stdout, "\n");
-          for (unsigned int r = 0; r < nPe; r++)
+          if (asLeaf().wasActive())
           {
             for (unsigned int c = 0; c < nPe; c++)
-            {
-              const ScalarT v = colValBuffer[r*nPe + c];
-              const char * CLR = (nodeNonhangingIn[r] && nodeNonhangingIn[c] ? BLU
-                                 : (fabs(v*16 - ScalarT(int(0.5+v*16))) > 1e-4) ? RED : NRM);
-              fprintf(stdout, "%s%.4f%s ", CLR, v, NRM);
-            }
+              fprintf(stdout, "%6d ", nodeIdsFlat[c]);
             fprintf(stdout, "\n");
+            for (unsigned int r = 0; r < nPe; r++)
+            {
+              for (unsigned int c = 0; c < nPe; c++)
+              {
+                const ScalarT v = colValBuffer[r*nPe + c];
+                const char * CLR = (nodeNonhangingIn[r] && nodeNonhangingIn[c] ? BLU
+                                   : (fabs(v*16 - ScalarT(int(0.5+v*16))) > 1e-4) ? RED : NRM);
+                fprintf(stdout, "%s%.4f%s ", CLR, v, NRM);
+              }
+              fprintf(stdout, "\n");
+            }
+            fprintf(stdout, "------------------\n");
           }
-          fprintf(stdout, "------------------\n");
           //DEBUG ---END
         }//end mult p2c c2p
 
@@ -863,8 +866,8 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
       treeLoopIn.step();
     }
 
-    //DEBUG
-    std::cout << "leafCounter counted " << leafCounter << " leafs\n";
+    /// //DEBUG
+    /// std::cout << "leafCounter counted " << leafCounter << " leafs\n";
   }
 
   return matRowChunks;
