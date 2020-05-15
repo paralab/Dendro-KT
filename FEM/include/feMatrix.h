@@ -799,41 +799,24 @@ void feMatrix<LeafT, dim>::setDiag(Vec& out, double scale)
 template <typename LeafT, unsigned int dim>
 bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {
-  assert(!"Not implemented!");
-
-    // todo we can skip this part for sc. 
-    // Octree part ...
-    /*char matType[30];
-    PetscBool typeFound;
-    PetscOptionsGetString(PETSC_NULL, PETSC_NULL, "-fullJacMatType", matType, 30, &typeFound);
-    if(!typeFound) {
-        std::cout<<"[Error]"<<__func__<<" I need a MatType for the full Jacobian matrix!"<<std::endl;
-        MPI_Finalize();
-        exit(0);
+  preMat();
+  ot::MatCompactRows matCompactRows = collectMatrixEntries();
+  postMat();
+  for (int r = 0; r < matCompactRows.getNumRows(); r++) {
+    for (int c = 0; c < matCompactRows.getChunkSize(); c++) {
+      MatSetValue(*J,
+                  matCompactRows.getRowIdxs()[r],
+                  matCompactRows.getColIdxs()[r * matCompactRows.getChunkSize() + c],
+                  matCompactRows.getColVals()[r * matCompactRows.getChunkSize() + c],
+                  ADD_VALUES);
     }
+  }
 
-    m_uiOctDA->createMatrix(*J, matType, 1);
-    MatZeroEntries(*J);
-    std::vector<ot::MatRecord> records;
-
-    preMat();
-
-    for(m_uiOctDA->init<ot::DA_FLAGS::WRITABLE>(); m_uiOctDA->curr() < m_uiOctDA->end<ot::DA_FLAGS::WRITABLE>();m_uiOctDA->next<ot::DA_FLAGS::WRITABLE>()) {
-        getElementalMatrix(m_uiOctDA->curr(), records);
-        if(records.size() > 500) {
-            m_uiOctDA->petscSetValuesInMatrix(*J, records, 1, ADD_VALUES);
-        }
-    }//end writable
-    m_uiOctDA->petscSetValuesInMatrix(*J, records, 1, ADD_VALUES);
-
-    postMat();
-
-    MatAssemblyBegin(*J, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(*J, MAT_FINAL_ASSEMBLY);
-
-    PetscFunctionReturn(0);*/
+  // TODO is there any finalization step needed for petsc?
+  // E.g. MatAssemblyBegin(*J, MAT_FINAL_ASSEMBLY);
+  //      MatAssemblyEnd(*J, MAT_FINAL_ASSEMBLY);
+  //
 }
-
 
 #endif
 
