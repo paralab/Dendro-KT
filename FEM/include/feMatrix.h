@@ -842,12 +842,25 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
               {
                 const ScalarT v = colValBuffer[r*nPe + c];
                 const char * CLR = (nodeNonhangingIn[r] && nodeNonhangingIn[c] ? BLU
-                                   : (fabs(v*16 - ScalarT(int(0.5+v*16))) > 1e-4) ? RED : NRM);
+                                   : !nodeNonhangingIn[r] && !nodeNonhangingIn[c] ? RED
+                                   : NRM);
                 fprintf(stdout, "%s%.4f%s ", CLR, v, NRM);
               }
               fprintf(stdout, "\n");
             }
             fprintf(stdout, "------------------\n");
+          }
+          else
+          {
+            int countNonzero = 0;
+            for (unsigned int r = 0; r < nPe; r++)
+              for (unsigned int c = 0; c < nPe; c++)
+              {
+                if (colValBuffer[r*nPe + c] != 0)
+                  countNonzero++;
+              }
+            if (countNonzero != 0)
+              fprintf(stdout, RED "!!\n---------Num nonzeros: %d\n!!\n", countNonzero);
           }
           //DEBUG ---END
         }//end mult p2c c2p
