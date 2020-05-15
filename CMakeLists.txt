@@ -436,6 +436,17 @@ if(BUILD_EXAMPLES)
   target_include_directories(tstPoissonOperator PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
   target_link_libraries(tstPoissonOperator dendroKT ${MPI_LIBRARIES} m)
 
+  ## Compare the mat and matVec
+  set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/testMat.h
+          ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/testVec.h
+          ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/testEq.cpp
+          )
+  add_executable(tstMat ${SRC_FILES})
+  set_property(TARGET tstMat PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+  target_include_directories(tstMat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+  target_link_libraries(tstMat dendroKT ${MPI_LIBRARIES} m)
+
+
 endif(BUILD_EXAMPLES)
 
 
