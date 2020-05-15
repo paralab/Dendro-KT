@@ -34,9 +34,6 @@ class testMat : public feMatrix<testMat<dim>, dim> {
   ~testMat(){
   }
 
-
-  bool wasActive() const;
-
   /**@biref elemental matvec*/
   virtual void elementalMatVec(const VECType *in,
                                VECType *out,
@@ -71,12 +68,6 @@ testMat<dim>::testMat(ot::DA<dim> *da, unsigned int dof, AssemblyCheck checkType
   elemCheck = elemID;
 }
 
-
-template<unsigned int dim>
-bool testMat<dim>::wasActive() const
-{
-  return ((assemblyCheck_ == AssemblyCheck::Overall) or (elemCheck == counterElemID-1));
-}
 
 template<unsigned int dim>
 void testMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records,

@@ -584,9 +584,6 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
                                                    *m_oda.getTreePartFront(),
                                                    *m_oda.getTreePartBack());
 
-    //DEBUG
-    unsigned int leafCounter = 0;
-
     // Iterate over all leafs of the local part of the tree.
     while (!treeLoopIn.isFinished())
     {
@@ -641,9 +638,6 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
         // Multiply p2c and c2p.
         if (subtreeInfo.getNumNonhangingNodes() != nPe)
         {
-          /// //DEBUG
-          /// std::cout << "leafCounter==" << leafCounter << "\n";
-
           // ------------------------------------------------------------------------
           //     ^[subset of rows] _[subset of columns]
           //
@@ -750,126 +744,6 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
             for (const SliceIter &c : BD_Q.slice_c_range())
               colValBufView(r, c) += BD_Q(r, c);
 
-
-          /*
-          const std::vector<bool> &slice_p = slice_h;
-          SubMatView<ScalarT> Ke_nh_h(&colValBuffer[0], slice_nh, slice_h,  SubMatView<ScalarT>::ROW_MAJOR);
-          SubMatView<ScalarT> Ke_h_nh(&colValBuffer[0], slice_h,  slice_nh, SubMatView<ScalarT>::ROW_MAJOR);
-          SubMatView<ScalarT> Ke_h_h( &colValBuffer[0], slice_h,  slice_h,  SubMatView<ScalarT>::ROW_MAJOR);
-          SubMatView<ScalarT> KeT_h_nh = Ke_nh_h.transpose_view();
-          SubMatView<ScalarT> KeT_h_h = Ke_h_h.transpose_view();
-
-          // Destination is same memory space, but trying to make naming clearer.
-          SubMatView<ScalarT> &Ke_nh_p  = Ke_nh_h;
-          SubMatView<ScalarT> &Ke_p_nh  = Ke_h_nh;
-          SubMatView<ScalarT> &Ke_p_p   = Ke_h_h;
-          SubMatView<ScalarT> &KeT_p_nh = KeT_h_nh;
-          SubMatView<ScalarT> &KeT_p_p  = KeT_h_h;
-
-          // A: Needs no update.
-
-          // B: Get Ke transpose view (KeT) and Ke' transpose view (KeT').
-          //    For each c in [nh] transpose columns,
-          //      |copy KeT [h] rows, set0 KeT [nh] rows| -> |Lmult by c2p| -> |copy to KeT' col c, sel [p] rows|
-          for (const SliceIter &c : KeT_h_nh.slice_c_range())
-          {
-            std::fill(wksp_col.begin(), wksp_col.end(), 0);
-            for (const SliceIter &r : KeT_h_nh.slice_r_range())
-              wksp_col[r.get_idx()] = KeT_h_nh(r, c);
-
-            // Multiply.
-            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
-                &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
-
-            for (const SliceIter &r : KeT_p_nh.slice_r_range())
-              KeT_p_nh(r, c) = wksp_col[r.get_idx()];
-          }
-
-          // C: For each c in [nh] columns,
-          //      |copy Ke [h] rows, set0 Ke [nh] rows| -> |Lmult by c2p| -> |copy to Ke' col c, sel [p] rows|
-          for (const SliceIter &c : Ke_h_nh.slice_c_range())
-          {
-            std::fill(wksp_col.begin(), wksp_col.end(), 0);
-            for (const SliceIter &r : Ke_h_nh.slice_r_range())
-              wksp_col[r.get_idx()] = Ke_h_nh(r, c);
-
-            // Multiply.
-            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
-                &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
-
-            for (const SliceIter &r : Ke_p_nh.slice_r_range())
-              Ke_p_nh(r, c) = wksp_col[r.get_idx()];
-          }
-
-          // D: Get Ke transpose view (KeT)
-          //    Create full matrix buffer b, 0 initialized.
-          //    For each c in [h] transpose columns,
-          //      |copy KeT [h] rows, set0 KeT [nh] rows| -> |Lmult by c2p| -> |copy to column c of buffer b|
-          //    Get transpose view of buffer (bT)
-          //    For each c in [p] transpose columns,
-          //      {use bT [h] rows, and [nh] is already set to 0} -> |Lmult by c2p| -> |copy to Ke' col c, sel [p] rows|
-          std::fill(wksp_mat.begin(), wksp_mat.end(), 0);
-          SubMatView<ScalarT> wksp_mat_p_h(&wksp_mat[0], slice_p, slice_h, SubMatView<ScalarT>::ROW_MAJOR);
-          SubMatView<ScalarT> wksp_mat_T_h_p = wksp_mat_p_h.transpose_view();
-          for (const SliceIter &c : KeT_h_h.slice_c_range())
-          {
-            std::fill(wksp_col.begin(), wksp_col.end(), 0);
-            for (const SliceIter &r : KeT_h_h.slice_r_range())
-              wksp_col[r.get_idx()] = KeT_h_h(r, c);
-
-            // Multiply.
-            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
-                &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
-
-            for (const SliceIter &r : wksp_mat_p_h.slice_r_range())
-              wksp_mat_p_h(r, c) = wksp_col[r.get_idx()];
-          }
-          assert(wksp_mat_T_h_p.is_col_major());
-          for (const SliceIter &c : wksp_mat_T_h_p.slice_c_range())
-          {
-            // Multiply.
-            ScalarT *colPtr = &wksp_mat[c.get_idx() * (nPe*m_uiDof)];
-            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
-                colPtr, colPtr, m_uiDof, child_m);
-
-            for (const SliceIter &r : Ke_p_p.slice_r_range())
-              Ke_p_p(r, c) = wksp_mat_T_h_p(r, c);
-          }
-          */
-
-          //DEBUG BEGIN---
-          if (asLeaf().wasActive())
-          {
-            for (unsigned int c = 0; c < nPe; c++)
-              fprintf(stdout, "%6d ", nodeIdsFlat[c]);
-            fprintf(stdout, "\n");
-            for (unsigned int r = 0; r < nPe; r++)
-            {
-              for (unsigned int c = 0; c < nPe; c++)
-              {
-                const ScalarT v = colValBuffer[r*nPe + c];
-                const char * CLR = (nodeNonhangingIn[r] && nodeNonhangingIn[c] ? BLU
-                                   : !nodeNonhangingIn[r] && !nodeNonhangingIn[c] ? RED
-                                   : NRM);
-                fprintf(stdout, "%s%.4f%s ", CLR, v, NRM);
-              }
-              fprintf(stdout, "\n");
-            }
-            fprintf(stdout, "------------------\n");
-          }
-          else
-          {
-            int countNonzero = 0;
-            for (unsigned int r = 0; r < nPe; r++)
-              for (unsigned int c = 0; c < nPe; c++)
-              {
-                if (colValBuffer[r*nPe + c] != 0)
-                  countNonzero++;
-              }
-            if (countNonzero != 0)
-              fprintf(stdout, RED "!!\n---------Num nonzeros: %d\n!!\n", countNonzero);
-          }
-          //DEBUG ---END
         }//end mult p2c c2p
 
         // Collect the rows of the elemental matrix into matRowChunks.
@@ -879,15 +753,9 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
                                    &colIdxBuffer[r * nPe * m_uiDof],
                                    &colValBuffer[r * nPe * m_uiDof]);
         }
-
-        //DEBUG
-        leafCounter++;
       }
       treeLoopIn.step();
     }
-
-    /// //DEBUG
-    /// std::cout << "leafCounter counted " << leafCounter << " leafs\n";
   }
 
   return matRowChunks;

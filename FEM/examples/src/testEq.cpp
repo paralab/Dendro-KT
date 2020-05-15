@@ -50,25 +50,6 @@ int main(int argc, char * argv[])
   const ot::RankI numNodes = octDA->getGlobalNodeSz();
   std::cout << "Number of elements in DA = " << numElement << "\n";
   std::cout << "Number of nodes in DA = " << numNodes << "\n";
-  std::cout << "Local to global:\n";
-  const std::vector<ot::RankI> &ghostedGlobalNodeId = octDA->getNodeLocalToGlobalMap();
-  assert(octDA->getGlobalNodeSz() == octDA->getTotalNodalSz());
-  for (ot::RankI nIdx = 0; nIdx < numNodes; ++nIdx)
-  {
-    fprintf(stdout, "[%2lu]->%2lu  ", nIdx, ghostedGlobalNodeId[nIdx]);
-    if ((5*(nIdx+1))%numNodes < (5*nIdx)%numNodes)
-      fprintf(stdout, "\n");
-  }
-  std::cout << "Coordinates:\n";
-  for (ot::RankI gnIdx = 0; gnIdx < numNodes; ++gnIdx)
-  {
-    std::cout << "id_" << std::setw(2) << gnIdx << "   ";
-    ot::printtn(octDA->getTNCoords()[gnIdx], 2, std::cout);
-    std::cout << "\n";
-  }
-
-  std::cout << "\n\nPrint nonhanging for all elements.\n";
-
 
   std::cout << "----------------------------------------------Checking overall assembly---------------------------------\n";
   /** Overall Assembly **/
