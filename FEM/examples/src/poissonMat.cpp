@@ -290,7 +290,7 @@ void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const d
 
 
 template <unsigned int dim>
-void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds)
+void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords)
 {
   const RefElement* refEl=m_uiOctDA->getReferenceElement();
   const unsigned int eleOrder=refEl->getOrder();
@@ -325,9 +325,7 @@ void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, co
   for (int i = 0; i < (ndofs*nPe); i++)
     for (int j = 0; j < (ndofs*nPe); j++)
     {
-      const ot::RankI node_i = globNodeIds[i];
-      const ot::RankI node_j = globNodeIds[j];
-      records.emplace_back(node_i, node_j, 0, 0, ematBuf[i*(ndofs*nPe)+j]);
+      records.emplace_back(i, j, 0, 0, ematBuf[i*(ndofs*nPe)+j]);
     }
 }
 

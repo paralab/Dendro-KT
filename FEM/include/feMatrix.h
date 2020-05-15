@@ -192,15 +192,16 @@ protected:
          * @brief Call application method to build the elemental matrix.
          * @param[in] coords : elemental coordinates
          * @param[out] records: records corresponding to the elemental matrix.
+         * @note You should set the row/col ids using the LOCAL elemental lexicographic ordering.
          * */
-        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds)
+        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords)
         {
           // If this IS asLeaf().getElementalMatrix(), i.e. there is not an override, don't recurse.
           static bool entered = false;
           if (!entered)
           {
             entered = true;
-            asLeaf().getElementalMatrix(records, coords, globNodeIds);
+            asLeaf().getElementalMatrix(records, coords);
             entered = false;
           }
           else
@@ -599,8 +600,14 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
 
         // Get elemental matrix for the current leaf element.
         elemRecords.clear();
-        this->getElementalMatrix(elemRecords, nodeCoordsFlat, nodeIdsFlat);
+        this->getElementalMatrix(elemRecords, nodeCoordsFlat);
+        // Sort using local (lexicographic) node ordering, BEFORE map to global.
         std::sort(elemRecords.begin(), elemRecords.end());
+        for (ot::MatRecord &mr : elemRecords)
+        {
+          mr.setRowID(nodeIdsFlat[mr.getRowID()]);
+          mr.setColID(nodeIdsFlat[mr.getColID()]);
+        }
 
 #ifdef __DEBUG__
         if (!elemRecords.size())

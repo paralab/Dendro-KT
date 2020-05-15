@@ -51,7 +51,7 @@ namespace PoissonEq
 
         void elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale = 1.0);
 
-        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, const ot::RankI *globNodeIds);
+        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords);
 
         /**@brief things need to be performed before matvec (i.e. coords transform)*/
         bool preMatVec(const VECType* in,VECType* out,double scale=1.0);

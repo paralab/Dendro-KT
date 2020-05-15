@@ -61,8 +61,7 @@ class testMat : public feMatrix<testMat<dim>, dim> {
   }
 
   virtual void getElementalMatrix(std::vector<ot::MatRecord> &records,
-                                  const double *coords,
-                                  const ot::RankI *globNodeIds);
+                                  const double *coords);
 };
 
 template<unsigned int dim>
@@ -81,8 +80,7 @@ bool testMat<dim>::wasActive() const
 
 template<unsigned int dim>
 void testMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records,
-                                      const double *coords,
-                                      const ot::RankI *globNodeIds) {
+                                      const double *coords) {
 
   ot::MatRecord mat;
   if((assemblyCheck_ == AssemblyCheck::Overall) or (elemCheck == counterElemID)) {
@@ -93,8 +91,8 @@ void testMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records,
         mat.setMatValue(1.0);
         mat.setColDim(0);
         mat.setRowDim(0);
-        mat.setColID(globNodeIds[i]);
-        mat.setRowID(globNodeIds[j]);
+        mat.setColID(i);
+        mat.setRowID(j);
         records.push_back(mat);
       }
     }
@@ -105,8 +103,8 @@ void testMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records,
         mat.setMatValue(0.0);
         mat.setColDim(0);
         mat.setRowDim(0);
-        mat.setColID(globNodeIds[i]);
-        mat.setRowID(globNodeIds[j]);
+        mat.setColID(i);
+        mat.setRowID(j);
         records.push_back(mat);
       }
     }
