@@ -58,7 +58,7 @@ int main(int argc, char * argv[])
   constexpr bool visitPre = true;
   constexpr bool visitPost = false;
 
-  using MeshLoopI = ot::MeshLoopInterface<T, dim, visitEmpty, visitPre, visitPost>;
+  using MeshLoopI = ot::MeshLoopInterface_Unsorted<T, dim, visitEmpty, visitPre, visitPost>;
 
   MeshLoopI loop(tnlist_ptr, tnlist_sz);
 

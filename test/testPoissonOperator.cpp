@@ -5,6 +5,9 @@
 #include "poissonMat.h"
 #include "hcurvedata.h"
 
+#include "testAdaptiveExamples.h"
+
+#include <map>
 
 
 template <typename UICoordT, typename FCoordT, unsigned int dim>
@@ -23,7 +26,7 @@ int main(int argc, char * argv[])
   constexpr unsigned int dim = 2;
   _InitializeHcurve(dim);
 
-  const unsigned int eleOrder = 2;
+  const unsigned int eleOrder = 1;
   const unsigned int nPe=intPow(eleOrder+1, dim);
 
 
@@ -33,9 +36,18 @@ int main(int argc, char * argv[])
 
   TN treeRoot;
   std::vector<TN> treeNodes;
+
+  // Just root.
   /// treeNodes.push_back(treeRoot);
-  for (int c = 0; c < (1u << dim); c++)
-    treeNodes.push_back(treeRoot.getChildMorton(c));
+
+  // 2^dim level one elements.
+  /// for (int c = 0; c < (1u << dim); c++)
+  ///   treeNodes.push_back(treeRoot.getChildMorton(c));
+
+  // Minimal symmetrical adaptive example.
+  Example1<dim>::fill_tree(3, treeNodes);
+
+  const unsigned int numElements = treeNodes.size();
   ot::DA<dim> daRoot(treeNodes, comm, eleOrder, 1, 0);
   // treeNodes is emptied.
 
@@ -107,6 +119,8 @@ int main(int argc, char * argv[])
   std::vector<double> npeBufferIn(nPe, 0.0);
   std::vector<double> npeBufferOut(nPe, 0.0);
 
+  std::vector<double> dummyBuffer(nPe, 0.0);
+
   // Two ways to get the diagonal.
   //   diag1 : Use elementalMatVec() with each standard basis vector
   //           and get the ith component of the result.
@@ -128,19 +142,19 @@ int main(int argc, char * argv[])
   {
     if (treeLoopOut.isPre() && treeLoopOut.subtreeInfo().isLeaf())
     {
-      std::cout << "\n\n";
-      std::cout << "Element " << eidx++ << "\n";
+      /// std::cout << "\n\n";
+      /// std::cout << "Element " << eidx++ << "\n";
 
       const double * nodeCoordsFlat = treeLoopOut.subtreeInfo().getNodeCoords();
-      const TN *hereCoords = treeLoopOut.subtreeInfo().readNodeCoordsIn();
-      for (int nIdx = 0; nIdx < nPe; nIdx++)
-      {
-        ot::printtn(hereCoords[nIdx], 2, std::cout);
-        std::cout << "    \t(";
-        for (int d = 0; d < dim; d++)
-          std::cout << nodeCoordsFlat[nIdx * dim + d] << ",\t";
-        std::cout << ")\n";
-      }
+      /// const TN *hereCoords = treeLoopOut.subtreeInfo().readNodeCoordsIn();
+      /// for (int nIdx = 0; nIdx < nPe; nIdx++)
+      /// {
+      ///   ot::printtn(hereCoords[nIdx], 2, std::cout);
+      ///   std::cout << "    \t(";
+      ///   for (int d = 0; d < dim; d++)
+      ///     std::cout << nodeCoordsFlat[nIdx * dim + d] << ",\t";
+      ///   std::cout << ")\n";
+      /// }
 
       // ---------------------------------------------
 
@@ -188,8 +202,7 @@ int main(int argc, char * argv[])
       std::cout << "Linf difference is " << absdiff << "\n";
 
 
-      /// eleSet(&(*leafResult.begin()), ndofs, nodeCoordsFlat, scale);
-      /// treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
+      /// treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*dummyBuffer.begin()));
 
       treeLoopOut.next();
     }
@@ -199,6 +212,46 @@ int main(int argc, char * argv[])
 
 
 
+  std::cout << "\n\n-------------Assembled Matrix-------------\n";
+  std::cout << "    (dim==" << dim << ",  numElements==" << numElements << ",  eleOrder==" << eleOrder << ")\n";
+  std::cout << "\n";
+
+  using ScalarT = typename ot::MatCompactRows::ScalarT;
+  using IndexT = typename ot::MatCompactRows::IndexT;
+  std::map<IndexT, std::map<IndexT, ScalarT>> mapMat;
+
+  const ot::MatCompactRows rowChunks = pmat.collectMatrixEntries();
+  const size_t numChunks = rowChunks.getNumRows();
+  const size_t chunkSz = rowChunks.getChunkSize();
+  const std::vector<IndexT> & rowIdxs = rowChunks.getRowIdxs();
+  const std::vector<IndexT> & colIdxs = rowChunks.getColIdxs();
+  const std::vector<ScalarT> & colVals = rowChunks.getColVals();
+
+  for (int r = 0; r < numChunks; r++)
+  {
+    for (int c = 0; c < chunkSz; c++)
+    {
+      mapMat[rowIdxs[r]][colIdxs[r*chunkSz + c]] += colVals[r*chunkSz + c];
+    }
+  }
+
+  int row = 0;
+  for (auto rowIter : mapMat)
+  {
+    while (row++ < rowIter.first)
+      printf("\n\n");
+    int col = 0;
+    for (auto colIter : rowIter.second)
+    {
+      while (col++ < colIter.first)
+        printf("%8s", "");
+      if (rowIter.first != colIter.first)
+        printf("%8.2f", colIter.second);
+      else
+        printf(YLW "%8.2f" NRM, colIter.second);
+    }
+    printf("\n\n");
+  }
 
 
   _DestroyHcurve();

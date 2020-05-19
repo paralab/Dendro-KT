@@ -141,14 +141,14 @@ bool HeatMat<dim>::postMatVec(const VECType* in,VECType* out,double scale) {
 
 
 template <unsigned int dim>
-double HeatMat<dim>::gridX_to_X(double x)
+double HeatMat<dim>::gridX_to_X(double x) const
 {
     double Rg_x=1.0;
     return (((x)/(Rg_x))*((m_uiPtMax.x()-m_uiPtMin.x()))+m_uiPtMin.x());
 }
 
 template <unsigned int dim>
-double HeatMat<dim>::gridY_to_Y(double y)
+double HeatMat<dim>::gridY_to_Y(double y) const
 {
     double Rg_y=1.0;
     return (((y)/(Rg_y))*((m_uiPtMax.y()-m_uiPtMin.y()))+m_uiPtMin.y());
@@ -156,7 +156,7 @@ double HeatMat<dim>::gridY_to_Y(double y)
 
 
 template <unsigned int dim>
-double HeatMat<dim>::gridZ_to_Z(double z)
+double HeatMat<dim>::gridZ_to_Z(double z) const
 {
     double Rg_z=1.0;
     return (((z)/(Rg_z))*((m_uiPtMax.z()-m_uiPtMin.z()))+m_uiPtMin.z());

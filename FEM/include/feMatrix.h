@@ -12,6 +12,9 @@
 #include "matvec.h"
 #include "refel.h"
 #include "setDiag.h"
+#include "matRecord.h"
+
+#include <exception>
 
 template <typename LeafT, unsigned int dim>
 class feMatrix : public feMat<dim> {
@@ -80,6 +83,14 @@ protected:
 
 
 
+        /**
+         * @brief Collect all matrix entries relative to current rank.
+         * 
+         * If you need to do a few rows at a time, use this method as a pattern.
+         */
+        ot::MatCompactRows collectMatrixEntries();
+
+
 #ifdef BUILD_WITH_PETSC
 
         /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
@@ -103,8 +114,10 @@ protected:
 
 #endif
 
+
         /**@brief static cast to the leaf node of the inheritance*/
         LeafT& asLeaf() { return static_cast<LeafT&>(*this);}
+        const LeafT& asLeaf() const { return static_cast<const LeafT&>(*this);}
 
 
         /**
@@ -175,15 +188,25 @@ protected:
             return ret;
         }
 
-        /// /**
-        ///  * @brief Compute the elemental Matrix.
-        ///  * @param[in] eleID: element ID
-        ///  * @param[out] records: records corresponding to the elemental matrix.
-        ///  * */
-        /// void getElementalMatrix(unsigned int eleID, std::vector<ot::MatRecord>& records)
-        /// {
-        ///     return asLeaf().getElementalMatrix(eleID,records);
-        /// }
+        /**
+         * @brief Call application method to build the elemental matrix.
+         * @param[in] coords : elemental coordinates
+         * @param[out] records: records corresponding to the elemental matrix.
+         * @note You should set the row/col ids using the LOCAL elemental lexicographic ordering.
+         * */
+        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords)
+        {
+          // If this IS asLeaf().getElementalMatrix(), i.e. there is not an override, don't recurse.
+          static bool entered = false;
+          if (!entered)
+          {
+            entered = true;
+            asLeaf().getElementalMatrix(records, coords);
+            entered = false;
+          }
+          else
+            throw std::logic_error("Application didn't override feMatrix::getElementalMatrix().");
+        }
 
 
 };
@@ -351,6 +374,396 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
 }
 
 
+// SliceIter
+class SliceIter
+{
+  protected:
+    const std::vector<bool> &m_slice_ref;
+    size_t m_slice_idx;
+    size_t m_idx;
+  public:
+    SliceIter(const std::vector<bool> &slice_ref)
+      : m_slice_ref(slice_ref), m_slice_idx(0), m_idx(0)
+    {
+      while (m_idx < m_slice_ref.size() && !m_slice_ref[m_idx])
+        ++m_idx;
+    }
+
+    static SliceIter end(const std::vector<bool> &slice_ref)
+    {
+      SliceIter iter(slice_ref);
+      while (iter.get_idx() < slice_ref.size())
+        ++iter;
+      return iter;
+    }
+
+    const SliceIter & operator*() const
+    {
+      return *this;
+    }
+
+    size_t get_idx()    const { return m_idx; }
+    size_t get_slice_idx() const { return m_slice_idx; }
+
+    SliceIter & operator++()
+    {
+      while (m_idx < m_slice_ref.size() && !m_slice_ref[++m_idx]);
+      ++m_slice_idx;
+      return *this;
+    }
+
+    bool operator==(const SliceIter &other) const
+    {
+      return (&m_slice_ref == &other.m_slice_ref) && (m_slice_idx == other.m_slice_idx);
+    }
+
+    bool operator!=(const SliceIter &other) const
+    {
+      return !operator==(other);
+    }
+};
+
+// SliceIterRange
+//
+// Usage:
+//     for (const SliceIter &slice_iter : slice_iter_range)
+//     {
+//       slice_iter.get_idx();
+//       slice_iter.get_slice_idx();
+//     }
+struct SliceIterRange
+{
+  const std::vector<bool> &m_slice_ref;
+  SliceIter begin() const { return SliceIter(m_slice_ref); }
+  SliceIter end()   const { return SliceIter::end(m_slice_ref); }
+};
+
+// SubMatView
+template <typename T>
+class SubMatView
+{
+  protected:
+    T *m_base_ptr;
+    size_t m_slice_r_sz;
+    size_t m_slice_c_sz;
+    bool m_row_major;
+
+    std::vector<bool> m_slice_r;
+    std::vector<bool> m_slice_c;
+
+  public:
+    constexpr static bool ROW_MAJOR = true;
+    constexpr static bool COL_MAJOR = false;
+
+    SubMatView() = delete;
+
+    SubMatView(T *base_ptr, const std::vector<bool> &slice_r, const std::vector<bool> &slice_c, bool row_major = true)
+      : m_base_ptr(base_ptr),
+        m_slice_r(slice_r),
+        m_slice_c(slice_c),
+        m_slice_r_sz(std::count(slice_r.begin(), slice_r.end(), true)),
+        m_slice_c_sz(std::count(slice_c.begin(), slice_c.end(), true)),
+        m_row_major(row_major)
+    {}
+
+    SubMatView(T *base_ptr, size_t slice_r_sz, size_t slice_c_sz, bool row_major = true)
+      : m_base_ptr(base_ptr),
+        m_slice_r(std::vector<bool>(slice_r_sz, true)),
+        m_slice_c(std::vector<bool>(slice_c_sz, true)),
+        m_slice_r_sz(slice_r_sz),
+        m_slice_c_sz(slice_c_sz),
+        m_row_major(row_major)
+    {}
+
+    SubMatView(const SubMatView &other)
+      : SubMatView(other.m_base_ptr, other.m_slice_r_sz, other.m_slice_c_sz, other.m_row_major)
+    {}
+
+    bool is_row_major() const { return m_row_major; }
+    bool is_col_major() const { return !m_row_major; }
+
+    SliceIterRange slice_r_range() const { return SliceIterRange{m_slice_r}; }
+    SliceIterRange slice_c_range() const { return SliceIterRange{m_slice_c}; }
+
+    T & operator()(const SliceIter &si, const SliceIter &sj)
+    {
+      const size_t nr = m_slice_r.size();
+      const size_t nc = m_slice_c.size();
+
+      return m_base_ptr[si.get_idx()*(m_row_major ? nr : 1) +
+                        sj.get_idx()*(!m_row_major ? nc : 1)];
+    }
+
+    SubMatView transpose_view()
+    {
+      return SubMatView(m_base_ptr, m_slice_c, m_slice_r, !m_row_major);
+    }
+
+    void swap(SubMatView &src)
+    {
+      if (!(src.m_slice_r_sz == m_slice_r_sz && src.m_slice_c_sz == m_slice_c_sz))
+        throw std::invalid_argument("Source row and column sizes do not match destination.");
+      const SliceIterRange src_slice_r_range = src.slice_r_range();
+      const SliceIterRange src_slice_c_range = src.slice_c_range();
+      const SliceIterRange dst_slice_r_range = this->slice_r_range();
+      const SliceIterRange dst_slice_c_range = this->slice_c_range();
+      for (SliceIter src_si = src_slice_r_range.begin(), dst_si = dst_slice_r_range.begin();
+           src_si != src_slice_r_range.end() && dst_si != dst_slice_r_range.end();
+           (++src_si, ++dst_si))
+        for (SliceIter src_sj = src_slice_c_range.begin(), dst_sj = dst_slice_c_range.begin();
+             src_sj != src_slice_c_range.end() && dst_sj != dst_slice_c_range.end();
+             (++src_sj, ++dst_sj))
+        {
+          T tmp = src(src_si, src_sj);
+          src(src_si, src_sj) = (*this)(dst_si, dst_sj);
+          (*this)(dst_si, dst_sj) = tmp;
+        }
+    }
+
+    void copy_from(const SubMatView &src)
+    {
+      if (!(src.m_slice_r_sz == m_slice_r_sz && src.m_slice_c_sz == m_slice_c_sz))
+        throw std::invalid_argument("Source row and column sizes do not match destination.");
+      const SliceIterRange src_slice_r_range = src.slice_r_range();
+      const SliceIterRange src_slice_c_range = src.slice_c_range();
+      const SliceIterRange dst_slice_r_range = this->slice_r_range();
+      const SliceIterRange dst_slice_c_range = this->slice_c_range();
+      for (SliceIter src_si = src_slice_r_range.begin(), dst_si = dst_slice_r_range.begin();
+           src_si != src_slice_r_range.end() && dst_si != dst_slice_r_range.end();
+           (++src_si, ++dst_si))
+        for (SliceIter src_sj = src_slice_c_range.begin(), dst_sj = dst_slice_c_range.begin();
+             src_sj != src_slice_c_range.end() && dst_sj != dst_slice_c_range.end();
+             (++src_sj, ++dst_sj))
+          (*this)(dst_si, dst_sj) = src(src_si, src_sj);
+    }
+
+};
+
+
+
+template <typename LeafT, unsigned int dim>
+ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
+{
+  const ot::DA<dim> &m_oda = *feMat<dim>::m_uiOctDA;
+  const unsigned int eleOrder = m_oda.getElementOrder();
+  const unsigned int nPe = m_oda.getNumNodesPerElement();
+  ot::MatCompactRows matRowChunks(nPe, m_uiDof);
+
+  // Loop over all elements, adding row chunks from elemental matrices.
+  // Get the node indices on an element using MatvecBaseIn<dim, unsigned int, false>.
+
+  if (m_oda.isActive())
+  {
+    using CoordT = typename ot::DA<dim>::C;
+    using ot::RankI;
+    using ScalarT = typename ot::MatCompactRows::ScalarT;
+    using IndexT = typename ot::MatCompactRows::IndexT;
+
+    const size_t ghostedNodalSz = m_oda.getTotalNodalSz();
+    const ot::TreeNode<CoordT, dim> *odaCoords = m_oda.getTNCoords();
+    const std::vector<RankI> &ghostedGlobalNodeId = m_oda.getNodeLocalToGlobalMap();
+
+    std::vector<ot::MatRecord> elemRecords;
+    std::vector<IndexT> rowIdxBuffer;
+    std::vector<IndexT> colIdxBuffer;
+    std::vector<ScalarT> colValBuffer;
+
+    InterpMatrices<dim, ScalarT> interp_matrices(eleOrder);
+    std::vector<ScalarT> wksp_col(nPe*m_uiDof);
+    std::vector<ScalarT> wksp_mat((nPe*m_uiDof) * (nPe*m_uiDof));
+
+    const bool visitEmpty = false;
+    const unsigned int padLevel = 0;
+    ot::MatvecBaseIn<dim, RankI, false> treeLoopIn(ghostedNodalSz,
+                                                   m_uiDof,
+                                                   eleOrder,
+                                                   visitEmpty,
+                                                   padLevel,
+                                                   odaCoords,
+                                                   &(*ghostedGlobalNodeId.cbegin()),
+                                                   *m_oda.getTreePartFront(),
+                                                   *m_oda.getTreePartBack());
+
+    // Iterate over all leafs of the local part of the tree.
+    while (!treeLoopIn.isFinished())
+    {
+      const ot::TreeNode<CoordT, dim> subtree = treeLoopIn.getCurrentSubtree();
+      const auto subtreeInfo = treeLoopIn.subtreeInfo();
+
+      if (treeLoopIn.isPre() && subtreeInfo.isLeaf())
+      {
+        const double * nodeCoordsFlat = subtreeInfo.getNodeCoords();
+        const RankI * nodeIdsFlat = subtreeInfo.readNodeValsIn();
+
+        // Get elemental matrix for the current leaf element.
+        elemRecords.clear();
+        this->getElementalMatrix(elemRecords, nodeCoordsFlat);
+        // Sort using local (lexicographic) node ordering, BEFORE map to global.
+        std::sort(elemRecords.begin(), elemRecords.end());
+        for (ot::MatRecord &mr : elemRecords)
+        {
+          mr.setRowID(nodeIdsFlat[mr.getRowID()]);
+          mr.setColID(nodeIdsFlat[mr.getColID()]);
+        }
+
+#ifdef __DEBUG__
+        if (!elemRecords.size())
+          fprintf(stderr, "getElementalMatrix() did not return any rows! (%s:%lu)\n", __FILE__, __LINE__);
+#endif// __DEBUG__
+
+        rowIdxBuffer.clear();
+        colIdxBuffer.clear();
+        colValBuffer.clear();
+
+        // Copy elemental matrix to sorted order.
+        size_t countEntries = 0;
+        for (const ot::MatRecord &rec : elemRecords)
+        {
+          const IndexT rowIdx = rec.getRowID() * m_uiDof + rec.getRowDim();
+          if (rowIdxBuffer.size() == 0 || rowIdx != rowIdxBuffer.back())
+          {
+#ifdef __DEBUG__
+            if (countEntries != 0 && countEntries != nPe * m_uiDof)
+              fprintf(stderr, "Unexpected #entries in row of elemental matrix, "
+                              "RowId==%lu RowDim==%lu. Expected %u, got %u.\n",
+                              rec.getRowID(), rec.getRowDim(), nPe*m_uiDof, countEntries);
+#endif// __DEBUG__
+            countEntries = 0;
+            rowIdxBuffer.push_back(rowIdx);
+          }
+          colIdxBuffer.push_back(rec.getColID() * m_uiDof + rec.getColDim());
+          colValBuffer.push_back(rec.getMatVal());
+        }
+
+        // Multiply p2c and c2p.
+        if (subtreeInfo.getNumNonhangingNodes() != nPe)
+        {
+          // ------------------------------------------------------------------------
+          //     ^[subset of rows] _[subset of columns]
+          //
+          // Not decomposable into blocks,
+          //   but each block of Ke is multiplied differently.
+          //
+          //   A: Ke^[nh]_[nh]
+          //   
+          //   B: ( (Q^[h])^T (Ke^[nh]_[h])^T )^T
+          //   
+          //   C: (Q^[h])^T (Ke^[h]_[nh])
+          //   
+          //   D: (Q^[h])^T ( (Q^[h])^T (Ke^[h]_[h])^T )^T
+          //
+          // Ke' = A + B + C + D
+          // ------------------------------------------------------------------------
+
+          const unsigned char child_m = subtree.getMortonIndex();
+
+          const std::vector<bool> nodeNonhangingIn = subtreeInfo.readNodeNonhangingIn();
+          std::vector<bool> slice_nh, slice_h, slice_all;
+          for (unsigned nIdx = 0; nIdx < nodeNonhangingIn.size(); ++nIdx)
+            for (int dofIdx = 0; dofIdx < m_uiDof; ++dofIdx)
+            {
+              slice_nh.push_back(nodeNonhangingIn[nIdx]);
+              slice_h.push_back(!nodeNonhangingIn[nIdx]);
+              slice_all.push_back(true);
+            }
+
+          constexpr bool C2P = InterpMatrices<dim, ScalarT>::C2P;
+
+          constexpr auto ROW_MAJOR = SubMatView<ScalarT>::ROW_MAJOR;
+          constexpr auto COL_MAJOR = SubMatView<ScalarT>::COL_MAJOR;
+
+          // Since the pieces overlap, need to move blocks out and
+          // replace them by zero, do the multiplication, and then
+          // ADD the result back to the matrix.
+          //
+          // Have to be careful what order these additions happen
+          // to not corrupt the rest of the matrix.
+
+          // A: No change.
+
+          // B & D (part I): Move B & D ([h] columns) to the mat buffer.
+          SubMatView<ScalarT> Ke_all_h(&colValBuffer[0], slice_all, slice_h, ROW_MAJOR);
+          SubMatView<ScalarT> KeT_h_all = Ke_all_h.transpose_view();
+          SubMatView<ScalarT> wksp_mat_view(&wksp_mat[0], slice_h, slice_all, COL_MAJOR);
+          std::fill(wksp_mat.begin(), wksp_mat.end(), 0);
+          wksp_mat_view.swap(KeT_h_all);  // Data 'moved' rather than 'copied'.
+
+          // C: Left-multiply C [h] rows by Q^T.
+          SubMatView<ScalarT> Ke_h_nh(&colValBuffer[0], slice_h, slice_nh, ROW_MAJOR);
+          for (const SliceIter &c : Ke_h_nh.slice_c_range())
+          {
+            std::fill(wksp_col.begin(), wksp_col.end(), 0);
+            for (const SliceIter &r : Ke_h_nh.slice_r_range())
+            {
+              wksp_col[r.get_idx()] = Ke_h_nh(r, c);
+              Ke_h_nh(r, c) = 0;  // Data 'moved' rather than 'copied'.
+            }
+
+            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
+                &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
+
+            // When we add back, it is the all the rows.
+            for (const SliceIter &r : SliceIterRange{slice_all})
+              Ke_h_nh(r, c) += wksp_col[r.get_idx()];
+          }
+
+          // B & D (part II): Right-multiply both by Q^T ...
+          assert(wksp_mat_view.is_col_major());
+          for (int c = 0; c < nPe*m_uiDof; ++c)
+          {
+            ScalarT *colPtr = &wksp_mat[c * (nPe*m_uiDof)];
+            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
+                colPtr, colPtr, m_uiDof, child_m);
+          }
+          SubMatView<ScalarT> QT_BTDT(&wksp_mat[0], slice_all, slice_all, COL_MAJOR);
+          SubMatView<ScalarT> QT_DT(&wksp_mat[0], slice_all, slice_h, COL_MAJOR);
+          SubMatView<ScalarT> BD_Q = QT_BTDT.transpose_view();
+          SubMatView<ScalarT> D_Q = QT_DT.transpose_view();
+          //
+          //                  ... then left-multiply [h] rows by Q^T ...
+          for (const SliceIter &c : D_Q.slice_c_range())
+          {
+            std::fill(wksp_col.begin(), wksp_col.end(), 0);
+            for (const SliceIter &r : D_Q.slice_r_range())
+            {
+              wksp_col[r.get_idx()] = D_Q(r, c);
+              D_Q(r, c) = 0;  // Data 'moved' rather than 'copied'.
+            }
+
+            interp_matrices.template IKD_ParentChildInterpolation<C2P>(
+                &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
+
+            // When we add back, it is the all the rows.
+            for (const SliceIter &r : SliceIterRange{slice_all})
+              D_Q(r, c) += wksp_col[r.get_idx()];
+          }
+          //
+          //                  ... and add back to the elemental matrix.
+          SubMatView<ScalarT> colValBufView(&colValBuffer[0], slice_all, slice_all, ROW_MAJOR);
+          for (const SliceIter &r : BD_Q.slice_r_range())
+            for (const SliceIter &c : BD_Q.slice_c_range())
+              colValBufView(r, c) += BD_Q(r, c);
+
+        }//end mult p2c c2p
+
+        // Collect the rows of the elemental matrix into matRowChunks.
+        for (unsigned int r = 0; r < rowIdxBuffer.size(); r++)
+        {
+          matRowChunks.appendChunk(rowIdxBuffer[r],
+                                   &colIdxBuffer[r * nPe * m_uiDof],
+                                   &colValBuffer[r * nPe * m_uiDof]);
+        }
+      }
+      treeLoopIn.step();
+    }
+  }
+
+  return matRowChunks;
+}
+
+
+
+
 
 #ifdef BUILD_WITH_PETSC
 
@@ -383,44 +796,29 @@ void feMatrix<LeafT, dim>::setDiag(Vec& out, double scale)
 }
 
 
+/**
+ * @brief Collect elemental matrices and feed them to Petsc MatSetValue().
+ * @note The user is responsible to call MatAssemblyBegin()/MatAssemblyEnd()
+ *       if needed. Not called at the end of getAssembledMatrix(),
+ *       in case getAssembledMatrix() needs to be called multiple times
+ *       before the final Petsc assembly.
+ */
 template <typename LeafT, unsigned int dim>
 bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {
-  assert(!"Not implemented!");
-
-    // todo we can skip this part for sc. 
-    // Octree part ...
-    /*char matType[30];
-    PetscBool typeFound;
-    PetscOptionsGetString(PETSC_NULL, PETSC_NULL, "-fullJacMatType", matType, 30, &typeFound);
-    if(!typeFound) {
-        std::cout<<"[Error]"<<__func__<<" I need a MatType for the full Jacobian matrix!"<<std::endl;
-        MPI_Finalize();
-        exit(0);
+  preMat();
+  ot::MatCompactRows matCompactRows = collectMatrixEntries();
+  postMat();
+  for (int r = 0; r < matCompactRows.getNumRows(); r++) {
+    for (int c = 0; c < matCompactRows.getChunkSize(); c++) {
+      MatSetValue(*J,
+                  matCompactRows.getRowIdxs()[r],
+                  matCompactRows.getColIdxs()[r * matCompactRows.getChunkSize() + c],
+                  matCompactRows.getColVals()[r * matCompactRows.getChunkSize() + c],
+                  ADD_VALUES);
     }
-
-    m_uiOctDA->createMatrix(*J, matType, 1);
-    MatZeroEntries(*J);
-    std::vector<ot::MatRecord> records;
-
-    preMat();
-
-    for(m_uiOctDA->init<ot::DA_FLAGS::WRITABLE>(); m_uiOctDA->curr() < m_uiOctDA->end<ot::DA_FLAGS::WRITABLE>();m_uiOctDA->next<ot::DA_FLAGS::WRITABLE>()) {
-        getElementalMatrix(m_uiOctDA->curr(), records);
-        if(records.size() > 500) {
-            m_uiOctDA->petscSetValuesInMatrix(*J, records, 1, ADD_VALUES);
-        }
-    }//end writable
-    m_uiOctDA->petscSetValuesInMatrix(*J, records, 1, ADD_VALUES);
-
-    postMat();
-
-    MatAssemblyBegin(*J, MAT_FINAL_ASSEMBLY);
-    MatAssemblyEnd(*J, MAT_FINAL_ASSEMBLY);
-
-    PetscFunctionReturn(0);*/
+  }
 }
-
 
 #endif
 

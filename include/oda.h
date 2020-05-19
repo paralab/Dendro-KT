@@ -65,7 +65,9 @@ namespace DA_FLAGS
    * DA_REFINE : refine the octant
    * DA_COARSEN: coarsen the octant.
    * **/
-  enum Refine {DA_NO_CHANGE,DA_REFINE,DA_COARSEN};
+  enum Refine { DA_NO_CHANGE = OCT_FLAGS::OCT_NO_CHANGE,
+                DA_REFINE    = OCT_FLAGS::OCT_REFINE,
+                DA_COARSEN   = OCT_FLAGS::OCT_COARSEN };
 }
 
 template <unsigned int dim>
@@ -331,7 +333,7 @@ class DA
         /**@brief returns the rank of the begining of local segment among all processors. */
         inline RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
 
-        inline const std::vector<RankI> getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
+        inline const std::vector<RankI> & getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
 
         /**@brief see if the current DA is active*/
         inline bool isActive() const { return m_uiIsActive; }

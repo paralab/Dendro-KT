@@ -27,6 +27,10 @@ using RankI  = DendroIntL;
 using RotI   = int;
 using ChildI = char;
 
+namespace OCT_FLAGS
+{
+  enum Refine {OCT_NO_CHANGE = 0, OCT_REFINE = 1, OCT_COARSEN = 2};
+}
 
 //
 // BucketInfo{}
@@ -108,6 +112,12 @@ struct KeyFunIdentity_Pt
 template <typename T, unsigned int D>
 struct SFC_Tree
 {
+
+  template <class PointType>
+  static void locTreeSort(std::vector<PointType> &points)
+  {
+    SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 1, m_uiMaxDepth, 0);
+  }
 
   // Notes:
   //   - This method operates in-place.
@@ -214,13 +224,13 @@ struct SFC_Tree
   // Notes:
   //   - Same parameters as SFC_bucketing, except does not move points.
   //   - This method is read only.
-  //   TODO insert this method in both versions of SFC_bucketing to remove duplicate code.
-  //   TODO get rid of old code
   static void SFC_locateBuckets(const TreeNode<T,D> *points,
-                          RankI begin, RankI end,
-                          LevI lev,
-                          RotI pRot,
-                          std::array<RankI, 2+TreeNode<T,D>::numChildren> &outSplitters);
+                                RankI begin, RankI end,
+                                LevI lev,
+                                RotI pRot,
+                                std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                                RankI &outAncStart,
+                                RankI &outAncEnd);
 
 
   // Notes:
@@ -295,6 +305,9 @@ struct SFC_Tree
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
+  static constexpr bool RM_DUPS_AND_ANC = false;
+  static constexpr bool RM_DUPS_ONLY = true;
+
   static void distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree,
                                    double loadFlexibility,
                                    bool strict,
@@ -321,6 +334,22 @@ struct SFC_Tree
   static void distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
                                     MPI_Comm comm );
 
+
+  // -------------------------------------------------------------
+
+  static std::vector<TreeNode<T, D>> locRemesh( const std::vector<TreeNode<T, D>> &inTree,
+                                                const std::vector<OCT_FLAGS::Refine> &refnFlags );
+
+  static void distRemesh( const std::vector<TreeNode<T, D>> &inTree,
+                          const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                          std::vector<TreeNode<T, D>> &outTree,
+                          std::vector<TreeNode<T, D>> &surrogateTree,
+                          double loadFlexibility,
+                          MPI_Comm comm );
+
+  static std::vector<TreeNode<T, D>> getSurrogateGrid( const std::vector<TreeNode<T, D>> &replicateGrid,
+                                                       const std::vector<TreeNode<T, D>> &splittersFromGrid,
+                                                       MPI_Comm comm );
 
   // -------------------------------------------------------------
 

@@ -44,7 +44,7 @@ namespace ot
       // Member functions.
       //
       DistTree();
-      DistTree(std::vector<TreeNode<T, dim>> &treePart);
+      DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm);
       DistTree(const DistTree &other) { this->operator=(other); }
       DistTree & operator=(const DistTree &other);
 
@@ -69,15 +69,14 @@ namespace ot
       //   TODO should return surrogate DistTree
       void generateGridHierarchyUp(bool isFixedNumStrata,
                                  unsigned int lev,
-                                 double loadFlexibility,
-                                 MPI_Comm comm);
+                                 double loadFlexibility);
 
       // generateGridHierarchyDown()
       //
       //   Replaces internal single grid with internal list of grids.
       //   Returns a DistTree with the surrogate grid at same level as each
       //     coarse grid (the finest grid has no surrogate).
-      DistTree generateGridHierarchyDown(unsigned int numStrata, double loadFlexibility, MPI_Comm comm);
+      DistTree generateGridHierarchyDown(unsigned int numStrata, double loadFlexibility);
 
       // filterTree() has 2 overloads, depending on the type of your decider.
       void filterTree(
@@ -139,6 +138,7 @@ namespace ot
     protected:
       // Member variables.
       //
+      MPI_Comm m_comm;
       std::function<bool(const TreeNode<T, dim> &treeNodeElem)> m_domainDeciderTN;
       std::function<bool(const double *elemPhysCoords, double elemPhysSize)> m_domainDeciderPh;
 
@@ -192,7 +192,8 @@ namespace ot
   //
   template <typename T, unsigned int dim>
   DistTree<T, dim>::DistTree()
-  : m_gridStrata(m_uiMaxDepth+1),
+  : m_comm(MPI_COMM_NULL),
+    m_gridStrata(m_uiMaxDepth+1),
     m_tpFrontStrata(m_uiMaxDepth+1),
     m_tpBackStrata(m_uiMaxDepth+1),
     m_originalTreePartSz(m_uiMaxDepth+1, 0),
@@ -212,8 +213,9 @@ namespace ot
   // DistTree() - constructor
   //
   template <typename T, unsigned int dim>
-  DistTree<T, dim>::DistTree(std::vector<TreeNode<T, dim>> &treePart)
-  : m_gridStrata(m_uiMaxDepth+1),
+  DistTree<T, dim>::DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm)
+  : m_comm(comm),
+    m_gridStrata(m_uiMaxDepth+1),
     m_tpFrontStrata(m_uiMaxDepth+1),
     m_tpBackStrata(m_uiMaxDepth+1),
     m_originalTreePartSz(m_uiMaxDepth+1, 0),
@@ -221,6 +223,9 @@ namespace ot
     m_numStrata(1)
   {
     m_usePhysCoordsDecider = false;
+
+    if (comm != MPI_COMM_NULL)
+      SFC_Tree<T, dim>::distCoalesceSiblings(treePart, comm);
 
     m_domainDeciderTN = DistTree::defaultDomainDeciderTN;
     m_domainDeciderPh = DistTree::defaultDomainDeciderPh;
@@ -246,6 +251,7 @@ namespace ot
   template <typename T, unsigned int dim>
   DistTree<T, dim> &  DistTree<T, dim>::operator=(const DistTree &other)
   {
+    m_comm =                  other.m_comm;
     m_domainDeciderTN =       other.m_domainDeciderTN;
     m_domainDeciderPh =       other.m_domainDeciderPh;
     m_usePhysCoordsDecider =  other.m_usePhysCoordsDecider;

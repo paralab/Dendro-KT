@@ -216,9 +216,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
     if (!rProc && outputStatus)
       std::cout << "Creating grid hierarchy.\n" << std::flush;
 
-    ot::DistTree<unsigned int, dim> dtree(coarseTree);
+    ot::DistTree<unsigned int, dim> dtree(coarseTree, comm);
     ot::DistTree<unsigned int, dim> surrDTree
-      = dtree.generateGridHierarchyDown(nGrids, partition_tol, comm);
+      = dtree.generateGridHierarchyDown(nGrids, partition_tol);
     ot::MultiDA<dim> multiDA, surrMultiDA;
 
     if (!rProc && outputStatus)

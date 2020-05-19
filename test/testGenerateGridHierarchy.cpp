@@ -43,12 +43,12 @@ int main(int argc, char * argv[])
 
 
   // Give DistTree ownership of the octree.
-  ot::DistTree<T,dim> dtree(tnlist);
+  ot::DistTree<T,dim> dtree(tnlist, comm);
 
   const std::vector<ot::TreeNode<T, dim>> &stratum0 = dtree.getTreePartFiltered(0);
 
   /// dtree.generateGridHierarchyUp(true, 3, 0.1, comm);
-  ot::DistTree<T, dim> surrogateDTree = dtree.generateGridHierarchyDown(2, 0.1, comm);
+  ot::DistTree<T, dim> surrogateDTree = dtree.generateGridHierarchyDown(2, 0.1);
 
   const std::vector<ot::TreeNode<T, dim>> &stratum1 = dtree.getTreePartFiltered(1);
 

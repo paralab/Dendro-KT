@@ -323,18 +323,18 @@ namespace ot
       }
 
       // isPre()
-      bool isPre()
+      bool isPre() const
       {
         return m_stack.back().m_isPre;
       }
 
       // isFinished()
-      bool isFinished()
+      bool isFinished() const
       {
         return (m_stack.size() == 1 && !m_stack.back().m_isPre);
       }
 
-      const TreeNode<C,dim> & getCurrentSubtree()
+      const TreeNode<C,dim> & getCurrentSubtree() const
       {
         assert (m_stack.size() > 0);
         return m_stack.back().m_currentSubtree;

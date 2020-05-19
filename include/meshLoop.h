@@ -6,50 +6,63 @@
 #include "tsort.h"
 
 #include <vector>
+#include <type_traits>
 
 
 namespace ot
 {
 
-    //TODO a const mesh loop
-
-template <typename T, unsigned int dim>
+template <typename T, unsigned int dim, bool TreatSorted>
 class MeshLoopImpl;
-
-// Note: Do NOT set (visitEmpty=true) and (visitPre=false) in the same loop,
-// or you will descend to m_uiMaxDepth regardless of the contents of tnlist.
-template <typename T, unsigned int dim, bool visitEmpty, bool visitPre, bool visitPost>
-class MeshLoopInterface;
-
-template <typename T, unsigned int dim>
-using MeshLoopPreSkipEmpty = MeshLoopInterface<T, dim, false, true, false>;
-
-template <typename T, unsigned int dim>
-using MeshLoopPostSkipEmpty = MeshLoopInterface<T, dim, false, false, true>;
-
 template <typename T, unsigned int dim>
 class MeshLoopFrame;
 
 
+// -------------------------------------------------------------------------------
+// Note: Do NOT set (visitEmpty=true) and (visitPre=false) in the same loop,
+// or you will descend to m_uiMaxDepth regardless of the contents of tnlist.
+template <typename T, unsigned int dim, bool TreatSorted, bool visitEmpty, bool visitPre, bool visitPost>
+class MeshLoopInterface_S_NS;
+
+// MeshLoopInterface_Sorted
+template <typename T, unsigned int dim, bool visitEmpty, bool visitPre, bool visitPost>
+using MeshLoopInterface_Sorted = MeshLoopInterface_S_NS<T, dim, true, visitEmpty, visitPre, visitPost>;
+
+// MeshLoopInterface_Unsorted
+template <typename T, unsigned int dim, bool visitEmpty, bool visitPre, bool visitPost>
+using MeshLoopInterface_Unsorted = MeshLoopInterface_S_NS<T, dim, false, visitEmpty, visitPre, visitPost>;
+
+
+template <typename T, unsigned int dim>
+using MeshLoopPreSkipEmpty = MeshLoopInterface_Unsorted<T, dim, false, true, false>;
+
+template <typename T, unsigned int dim>
+using MeshLoopPostSkipEmpty = MeshLoopInterface_Unsorted<T, dim, false, false, true>;
+
 // If (visitPre=false), this means skip the leading side of every subtree.
 // If (visitPost=false), this means skip the following side of every subtree.
 // If (visitEmpty=true), this means descend down empty subtrees. It is up to the user to define a leaf by calling next().
+// -------------------------------------------------------------------------------
 
 
 /**
  * @brief Interface for MeshLoop templated on the type of iteration.
  */
-template <typename T, unsigned int dim, bool visitEmpty, bool visitPre, bool visitPost>
-class MeshLoopInterface : public MeshLoopImpl<T, dim>
+template <typename T, unsigned int dim, bool TreatSorted, bool visitEmpty, bool visitPre, bool visitPost>
+class MeshLoopInterface_S_NS : public MeshLoopImpl<T, dim, TreatSorted>
 {
-  using BaseT = MeshLoopImpl<T,dim>;
+  using BaseT = MeshLoopImpl<T, dim, TreatSorted>;
+  using TN = typename std::conditional<TreatSorted, const TreeNode<T, dim>, TreeNode<T, dim>>::type;
+  using vec_type = typename std::conditional<TreatSorted,
+                                             const std::vector<TreeNode<T, dim>>,
+                                             std::vector<TreeNode<T, dim>>>::type;
   public:
-    MeshLoopInterface(std::vector<TreeNode<T, dim>> &tnlist)
-      : MeshLoopInterface(tnlist.data(), tnlist.size())
+    MeshLoopInterface_S_NS(vec_type &tnlist)
+      : MeshLoopInterface_S_NS(tnlist.data(), tnlist.size())
     { }
 
-    MeshLoopInterface(TreeNode<T, dim> *tnlist, size_t sz)
-      : MeshLoopImpl<T,dim>(tnlist, sz, visitEmpty, visitPre, visitPost)
+    MeshLoopInterface_S_NS(TN *tnlist, size_t sz)
+      : MeshLoopImpl<T, dim, TreatSorted>(tnlist, sz, visitEmpty, visitPre, visitPost)
     {
       if (!visitPre)
         while (!BaseT::isFinished() && BaseT::isPre())
@@ -58,7 +71,7 @@ class MeshLoopInterface : public MeshLoopImpl<T, dim>
 
     bool step()
     {
-      assert((visitPre || visitPost));
+      static_assert((visitPre || visitPost), "Must specify at least one of visitPre or visitPost.");
 
       BaseT::step(visitEmpty, visitPre, visitPost);
 
@@ -72,7 +85,7 @@ class MeshLoopInterface : public MeshLoopImpl<T, dim>
 
     bool next()
     {
-      assert((visitPre || visitPost));
+      static_assert((visitPre || visitPost), "Must specify at least one of visitPre or visitPost.");
 
       BaseT::next(visitEmpty, visitPre, visitPost);
 
@@ -86,7 +99,7 @@ class MeshLoopInterface : public MeshLoopImpl<T, dim>
 
     struct Iterator
     {
-      MeshLoopInterface &m_ref;
+      MeshLoopInterface_S_NS &m_ref;
       bool m_markEnd;
 
       Iterator & operator++() { m_ref.step(); return *this; }
@@ -125,12 +138,17 @@ class MeshLoopInterface : public MeshLoopImpl<T, dim>
 
 /**
  * @brief Iterator over TreeNodes (cells in the mesh) with in-place bucketing.
+ * @tparam TreatSorted if true, uses SFC_locateBuckets(const *ptr)
+ *         instead of SFC_bucketing(non-const *ptr).
  */
-template <typename T, unsigned int dim>
+template <typename T, unsigned int dim, bool TreatSorted>
 class MeshLoopImpl
 {
   public:
-    MeshLoopImpl(TreeNode<T, dim> *tnlist, size_t sz, bool vEmpty, bool vPre, bool vPost);
+    using TN = typename std::conditional<TreatSorted, const TreeNode<T, dim>, TreeNode<T, dim>>::type;
+
+    // Public member functions.
+    MeshLoopImpl(TN *tnlist, size_t sz, bool vEmpty, bool vPre, bool vPost);
     MeshLoopImpl() = delete;
     bool isPre();
     bool isFinished();
@@ -140,20 +158,26 @@ class MeshLoopImpl
     const MeshLoopFrame<T, dim> & getTopConst() const { return m_stack.back(); }
 
   protected:
-    using TN = TreeNode<T, dim>;
     static constexpr unsigned int NumChildren = 1u << dim;
 
+    // Protected member functions.
     MeshLoopFrame<T, dim> & getTop() { return m_stack.back(); }
     void bucketAndPush(RankI begin, RankI end, LevI lev, RotI pRot);
 
+    // Member variables.
     std::vector<MeshLoopFrame<T, dim>> m_stack;
-    TreeNode<T, dim> *m_ptr;
+    TN *m_ptr;
     size_t m_sz;
+
+  private:
+    // Private member functions.
+    void bucketAndPush(TreeNode<T, dim> * ptr, RankI begin, RankI end, LevI lev, RotI pRot);
+    void bucketAndPush(const TreeNode<T, dim> * cptr, RankI begin, RankI end, LevI lev, RotI pRot);
 };
 
 
-template <typename T, unsigned int dim>
-MeshLoopImpl<T, dim>::MeshLoopImpl(TreeNode<T, dim> *tnlist, size_t sz, bool vEmpty, bool vPre, bool vPost)
+template <typename T, unsigned int dim, bool TreatSorted>
+MeshLoopImpl<T, dim, TreatSorted>::MeshLoopImpl(TN *tnlist, size_t sz, bool vEmpty, bool vPre, bool vPost)
   :
     m_ptr(tnlist),
     m_sz(sz)
@@ -168,39 +192,63 @@ MeshLoopImpl<T, dim>::MeshLoopImpl(TreeNode<T, dim> *tnlist, size_t sz, bool vEm
 }
 
 
-template <typename T, unsigned int dim>
-void MeshLoopImpl<T, dim>::bucketAndPush(RankI begin, RankI end, LevI lev, RotI pRot)
+// bucketAndPush()
+template <typename T, unsigned int dim, bool TreatSorted>
+void MeshLoopImpl<T, dim, TreatSorted>::bucketAndPush(RankI begin, RankI end, LevI lev, RotI pRot)
+{
+  // Choose the correct overload depending on the actual type of m_ptr.
+  this->bucketAndPush(m_ptr, begin, end, lev, pRot);
+}
+
+// Const ptr overload uses SFC_locateBuckets.
+template <typename T, unsigned int dim, bool TreatSorted>
+void MeshLoopImpl<T, dim, TreatSorted>::bucketAndPush(
+    const TreeNode<T, dim> * cptr, RankI begin, RankI end, LevI lev, RotI pRot)
 {
   std::array<RankI, NumChildren+1> childSplitters;
   RankI ancStart, ancEnd;
 
-  SFC_Tree<T, dim>::SFC_bucketing(m_ptr, begin, end, lev+1, pRot, childSplitters, ancStart, ancEnd); 
+  SFC_Tree<T, dim>::SFC_locateBuckets(cptr, begin, end, lev+1, pRot, childSplitters, ancStart, ancEnd); 
+
+  m_stack.emplace_back(true, begin, end, lev, pRot, std::move(childSplitters), ancStart, ancEnd);
+
+}
+
+// Non-const ptr overload uses SFC_bucketing.
+template <typename T, unsigned int dim, bool TreatSorted>
+void MeshLoopImpl<T, dim, TreatSorted>::bucketAndPush(
+    TreeNode<T, dim> * ptr, RankI begin, RankI end, LevI lev, RotI pRot)
+{
+  std::array<RankI, NumChildren+1> childSplitters;
+  RankI ancStart, ancEnd;
+
+  SFC_Tree<T, dim>::SFC_bucketing(ptr, begin, end, lev+1, pRot, childSplitters, ancStart, ancEnd); 
 
   m_stack.emplace_back(true, begin, end, lev, pRot, std::move(childSplitters), ancStart, ancEnd);
 }
 
 
 
-template <typename T, unsigned int dim>
-bool MeshLoopImpl<T, dim>::isPre()
+template <typename T, unsigned int dim, bool TreatSorted>
+bool MeshLoopImpl<T, dim, TreatSorted>::isPre()
 {
   return (m_stack.size() > 0 && m_stack.back().m_is_pre);
 }
 
 
-template <typename T, unsigned int dim>
-bool MeshLoopImpl<T, dim>::isFinished()
+template <typename T, unsigned int dim, bool TreatSorted>
+bool MeshLoopImpl<T, dim, TreatSorted>::isFinished()
 {
   return (m_stack.size() == 0);
 }
 
 
 
-template <typename T, unsigned int dim>
-bool MeshLoopImpl<T, dim>::step(bool vEmpty, bool vPre, bool vPost)
+template <typename T, unsigned int dim, bool TreatSorted>
+bool MeshLoopImpl<T, dim, TreatSorted>::step(bool vEmpty, bool vPre, bool vPost)
 {
   if (m_stack.size() == 0)
-    throw;  //TODO more specific exception about past the end.
+    throw std::out_of_range("Exited from root subtree. No more elements");
   if (!isPre())
     return next(vEmpty, vPre, vPost);
 
@@ -232,8 +280,8 @@ bool MeshLoopImpl<T, dim>::step(bool vEmpty, bool vPre, bool vPost)
   return isPre();
 }
 
-template <typename T, unsigned int dim>
-bool MeshLoopImpl<T, dim>::next(bool vEmpty, bool vPre, bool vPost)
+template <typename T, unsigned int dim, bool TreatSorted>
+bool MeshLoopImpl<T, dim, TreatSorted>::next(bool vEmpty, bool vPre, bool vPost)
 {
   m_stack.pop_back();
   return isPre();
@@ -243,7 +291,8 @@ bool MeshLoopImpl<T, dim>::next(bool vEmpty, bool vPre, bool vPost)
 template <typename T, unsigned int dim>
 class MeshLoopFrame
 {
-  friend MeshLoopImpl<T, dim>;
+  friend MeshLoopImpl<T, dim, true>;
+  friend MeshLoopImpl<T, dim, false>;
   using SplitterT = std::array<RankI, (1u<<dim)+1>;
 
   public:

@@ -171,7 +171,7 @@ bool testUniform2(int argc, char * argv[])
     std::cout << "Creating grid hierarchy.\n" << std::flush;
   /// ot::DistTree<unsigned int, dim> dtree(coarseTree);
   ot::DistTree<unsigned int, dim> surrDTree
-    = dtree.generateGridHierarchyDown(nGrids, partition_tol, comm);
+    = dtree.generateGridHierarchyDown(nGrids, partition_tol);
 
   // Create DAs
   if (!rProc && outputStatus)
@@ -366,7 +366,7 @@ bool testMultiDA(int argc, char * argv[])
   ot::createRegularOctree(tnlist, eLev, comm);
 
   // Give DistTree ownership of the octree.
-  ot::DistTree<C,dim> dtree(tnlist);
+  ot::DistTree<C,dim> dtree(tnlist, comm);
 
   /// for (int turn = 0; turn < nProc; ++turn)
   /// {
@@ -376,7 +376,7 @@ bool testMultiDA(int argc, char * argv[])
   /// }
 
   // Create grid hierarchy.
-  ot::DistTree<C, dim> surrogateDTree = dtree.generateGridHierarchyDown(2, 0.1, comm);
+  ot::DistTree<C, dim> surrogateDTree = dtree.generateGridHierarchyDown(2, 0.1);
 
   if (reportSize)
   {
