@@ -460,7 +460,7 @@ ElementLoop<T,dim,NodeT>::ElementLoop( unsigned long numNodes,
       m_siblingNodeCoords[L0 - L0].push_back(allNodeCoords[nIdx]);
       numIncidentNodes++;
 
-      if (allNodeCoords[nIdx].isBoundaryNodeExtantCellFlag())
+      if (allNodeCoords[nIdx].getIsOnTreeBdry())
         numBdryNodes++;
     }
   }
@@ -617,7 +617,7 @@ bool ElementLoop<T, dim, NodeT>::topDownNodes()
   // Count the number of nodes contained by or incident on each child.
   for (ot::RankI nIdx = curBegin; nIdx < curEnd; nIdx++)
   {
-    const bool isBoundaryNode = sibNodeCoords[nIdx].isBoundaryNodeExtantCellFlag();
+    const bool isBoundaryNode = sibNodeCoords[nIdx].getIsOnTreeBdry();
 
     ot::ExtantCellFlagT incidentChildren = curSubtree.incidentChildren( sibNodeCoords[nIdx],
                                                                 firstIncidentChild_m,
@@ -971,7 +971,7 @@ ElementNodeBuffer<T,dim,NodeT> ElementLoop<T, dim, NodeT>::requestLeafBuffer()
     for (int dof = 0; dof < m_ndofs; dof++)
       m_leafNodeVals[m_ndofs*nodeRank + dof] = sibNodeValsIn[m_ndofs*nIdx + dof];
 
-    m_leafNodeBdry[nodeRank] = sibNodeCoords[nIdx].isBoundaryNodeExtantCellFlag();
+    m_leafNodeBdry[nodeRank] = sibNodeCoords[nIdx].getIsOnTreeBdry();
   }
 
   const bool leafHasAllNodes = (fillCheck == npe*(npe+1)/2);

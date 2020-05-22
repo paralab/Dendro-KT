@@ -283,7 +283,7 @@ namespace ot
 
     for ( ; begin < end; ++begin)
     {
-      if (begin->isBoundaryNodeExtantCellFlag())
+      if (begin->getIsOnTreeBdry())
         summary.m_numBdryNodes++;
 
       if (summary.m_subtreeFinestLevel < begin->getLevel())
@@ -487,7 +487,7 @@ namespace ot
       const ChildI child_sfc = nodeInstance.getChild_sfc();
 
       const LevI nodeLevel = myNodes[nodeInstance.getPNodeIdx()].getLevel();
-      if (myNodes[nodeInstance.getPNodeIdx()].isBoundaryNodeExtantCellFlag())
+      if (myNodes[nodeInstance.getPNodeIdx()].getIsOnTreeBdry())
         childBdryCounts[child_sfc]++;
       if (childFinestLevel[child_sfc] < nodeLevel)
         childFinestLevel[child_sfc] = nodeLevel;
@@ -904,7 +904,7 @@ namespace ot
     m_leafNodeBdry.resize(dim * numNodes);
 
     for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
-      m_leafNodeBdry[nIdx] = nodeCoords[nIdx].isBoundaryNodeExtantCellFlag();
+      m_leafNodeBdry[nIdx] = nodeCoords[nIdx].getIsOnTreeBdry();
   }
 
 

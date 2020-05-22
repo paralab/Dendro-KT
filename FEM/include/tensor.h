@@ -294,6 +294,15 @@ void KroneckerProduct(unsigned M, const da **A, const da **in, da **out, unsigne
     case 3:
       KroneckerProductFixedDof<dim, da, forward, 3>(M, A, in, out);
       break;
+    case 4:
+      KroneckerProductFixedDof<dim, da, forward, 4>(M, A, in, out);
+      break;
+    case 5:
+      KroneckerProductFixedDof<dim, da, forward, 5>(M, A, in, out);
+      break;
+    case 6:
+      KroneckerProductFixedDof<dim, da, forward, 6>(M, A, in, out);
+      break;
     default:
       const bool isNumberOfDegreesOfFreedomSupported = false;
       assert(isNumberOfDegreesOfFreedomSupported);  // Need to add more cases.
