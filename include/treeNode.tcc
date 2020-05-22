@@ -333,14 +333,6 @@ inline void TreeNode<T, dim>::setIsOnTreeBdry(bool isOnTreeBdry)
 }
 
 
-template <typename T, unsigned int dim>
-inline bool TreeNode<T, dim>::isBoundaryNodeExtantCellFlag() const
-{
-  const ExtantCellFlagT mask = (1u << (1u << dim)) - 1;
-  return bool((~m_extantCellFlag) & mask);
-}
-
-
 
 
 template <typename T, unsigned int dim>

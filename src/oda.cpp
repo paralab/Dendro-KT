@@ -292,7 +292,7 @@ namespace ot
         m_uiBdyNodeIds.clear();
         for (size_t ii = 0; ii < m_uiLocalNodalSz; ii++)
         {
-          if (m_tnCoords[ii + m_uiLocalNodeBegin].isBoundaryNodeExtantCellFlag())
+          if (m_tnCoords[ii + m_uiLocalNodeBegin].getIsOnTreeBdry())
             m_uiBdyNodeIds.push_back(ii);
         }
       }

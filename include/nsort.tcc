@@ -985,6 +985,7 @@ namespace ot {
       {
         const unsigned int nbrId = bitExpander.expandBitstring(ii);
 
+        // Compute candidate neighbor coordinates based on point type.
         TreeNode<C, dim> nbrTN = node.getCell();
         for (int d = 0; d < dim; d++)
           // 0 bit in nbrId means go negative, 1 bit means go positive.
@@ -992,11 +993,14 @@ namespace ot {
           if ((nbrId ^ neighbourhoodSpace) & (1u << d))
             nbrTN.setX(d, nbrTN.getX(d) - elemSz);
 
+        // Test if candidate neighbor exists.
         if (domainDecider(nbrTN))
           node.addNeighbourExtantCellFlag(nbrId);
+        else
+          node.setIsOnTreeBdry(true);
       }
 
-      // Now we have set the neighour flag of the node.
+      // Now we have set the neighour flag and boundary flag of the node.
     }
   }
 
