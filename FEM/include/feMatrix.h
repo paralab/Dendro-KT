@@ -575,7 +575,7 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
     const bool visitEmpty = false;
     const unsigned int padLevel = 0;
     ot::MatvecBaseIn<dim, RankI, false> treeLoopIn(ghostedNodalSz,
-                                                   m_uiDof,
+                                                   1,                // node id is scalar
                                                    eleOrder,
                                                    visitEmpty,
                                                    padLevel,
