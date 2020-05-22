@@ -370,16 +370,16 @@ namespace ot
     const typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
 
     size_t numInputNodes = rootFrame.mySummaryHandle.m_subtreeNodeCount;
-    size_t numActualNodes = rootFrame.template getMyOutputHandle<0>().size();
+    size_t actualSize = rootFrame.template getMyOutputHandle<0>().size();
 
-    if (numInputNodes != numActualNodes)
-      std::cerr << "Warning: number of nodes returned by MatvecBase::finalize() ("
-                << numActualNodes << ") differs from number of nodes in input ("
-                << numInputNodes << ").\n";
+    if (numInputNodes * m_ndofs != actualSize)
+      std::cerr << "Warning: nodes*dofs returned by MatvecBase::finalize() ("
+                << actualSize << ") does not match number of nodes in input ("
+                << numInputNodes << " * " << m_ndofs << ").\n";
 
-    std::copy_n(rootFrame.template getMyOutputHandle<0>().begin(), m_ndofs * numActualNodes, outputNodeVals);
+    std::copy_n(rootFrame.template getMyOutputHandle<0>().begin(), actualSize, outputNodeVals);
 
-    return numActualNodes;
+    return actualSize / m_ndofs;
   }
 
 

@@ -796,6 +796,13 @@ void feMatrix<LeafT, dim>::setDiag(Vec& out, double scale)
 }
 
 
+/**
+ * @brief Collect elemental matrices and feed them to Petsc MatSetValue().
+ * @note The user is responsible to call MatAssemblyBegin()/MatAssemblyEnd()
+ *       if needed. Not called at the end of getAssembledMatrix(),
+ *       in case getAssembledMatrix() needs to be called multiple times
+ *       before the final Petsc assembly.
+ */
 template <typename LeafT, unsigned int dim>
 bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {
@@ -811,11 +818,6 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
                   ADD_VALUES);
     }
   }
-
-  // TODO is there any finalization step needed for petsc?
-  // E.g. MatAssemblyBegin(*J, MAT_FINAL_ASSEMBLY);
-  //      MatAssemblyEnd(*J, MAT_FINAL_ASSEMBLY);
-  //
 }
 
 #endif

@@ -63,18 +63,23 @@ void test_distOutputTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   }
   unsigned int timeStep = 1u << (m_uiMaxDepth - treeDepth);
   const char dimNames[] = "XYZT";
-  std::cout << "Output files will be placed in the directory 'output'.\n";
+  std::cout << "Output files will be placed in the directory '_output'.\n";
   for (unsigned int d = 0; d < dim; d++)
   {
     // Many slices, like a time series.
     for (unsigned int tIdx = 0, t = 0; t < (1u << m_uiMaxDepth); tIdx++, t += timeStep)
     {
+      constexpr bool RM_DUPS_AND_ANC = false;
+      constexpr bool RM_DUPS_ONLY = true;
+
       std::vector<ot::TreeNode<T,3>> slice3D;
       projectSliceKTree(&(*treePart.begin()), slice3D, (unsigned int) treePart.size(), d, (T) t);
+      ot::SFC_Tree<T,3>::distRemoveDuplicates(slice3D, loadFlexibility, RM_DUPS_AND_ANC, comm);
+      // Note that the partitioning of the slice is not related to partition of original tree.
 
       // Output to file with oct2vtu().
       char fPrefix[] =  "                                           ";  // beware buffer overflow.
-      sprintf(fPrefix,  "output/testSlice-%c-t%u", dimNames[d], tIdx);
+      sprintf(fPrefix,  "_output/testSlice-%c-t%u", dimNames[d], tIdx);
       io::vtk::oct2vtu(&(*slice3D.begin()), (unsigned int) slice3D.size(), fPrefix, comm);
     }
   }

@@ -1243,26 +1243,21 @@ namespace ot
     template <typename T>
     void DA<dim>::setVectorByFunction(T* local,std::function<void(const T *, T*)>func,bool isElemental, bool isGhosted, unsigned int dof) const
     {
-        // todo @massado can you please write this part.
-
-        // TODO allow multiple dimensionality of input function. Until then, workaround:
-        constexpr unsigned int edim = (dim < 3 ? dim : 3);
-        T fCoords[3] = {0, 0, 0};
+        constexpr int MAX_DIM = 4;  //TODO move to dendro.h
+        T fCoords[MAX_DIM] = {0, 0, 0, 0};  // Supports funcs of 3D/4D even when run in 2D.
         std::array<C,dim> tnCoords;
 
-        const T scale = 1.0 / (1u << m_uiMaxDepth);
-
-        //TODO initialize the ghost segments too? I will for now...
+        const T scale = 1.0 / (1u << m_uiMaxDepth);  // Root domain is unit cube.
 
         if (!isElemental)
         {
+            const size_t nBegin = (isGhosted ? 0 : m_uiLocalNodeBegin);
             const size_t nodalSz = (isGhosted ? m_uiTotalNodalSz : m_uiLocalNodalSz);
             // Assumes interleaved variables, [abc][abc].
             for (size_t k = 0; k < nodalSz; k++)
             {
-                m_tnCoords[k].getAnchor(tnCoords);
-                #pragma unroll(edim)
-                for (int d = 0; d < edim; d++)
+                m_tnCoords[nBegin + k].getAnchor(tnCoords);
+                for (int d = 0; d < dim; d++)
                   fCoords[d] = scale * tnCoords[d];
 
                 func(fCoords, &local[dof*k]);
@@ -1270,7 +1265,7 @@ namespace ot
         }
         else
         {
-          //TODO
+          throw std::logic_error("Elemental version not implemented!");
         }
     }
 
@@ -1297,6 +1292,7 @@ namespace ot
 
         }else{
             // TODO, haven't considered elemental case.
+            throw std::logic_error("Elemental version not implemented!");
 
             if(isGhosted) {
                 arrSz = m_uiTotalElementSz;
@@ -1354,6 +1350,7 @@ namespace ot
     {
       //TODO
 
+      throw std::logic_error("Not implemented!");
     }
 
 
