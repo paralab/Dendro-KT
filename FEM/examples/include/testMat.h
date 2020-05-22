@@ -19,6 +19,7 @@ class testMat : public feMatrix<testMat<dim>, dim> {
   ot::DA<dim> *&m_uiOctDA = feMat<dim>::m_uiOctDA;
   Point<dim> &m_uiPtMin = feMat<dim>::m_uiPtMin;
   Point<dim> &m_uiPtMax = feMat<dim>::m_uiPtMax;
+
   unsigned int nPe;
   int elemCheck = 0;
   static constexpr unsigned int m_uiDim = dim;
@@ -27,6 +28,7 @@ class testMat : public feMatrix<testMat<dim>, dim> {
   int counterElemID = 0;
 
  public:
+  using feMatrix<testMat<dim>, dim>::m_uiDof;
   /**@brief: constructor*/
   testMat(ot::DA<dim> *da, unsigned int dof = 1, AssemblyCheck checkType = AssemblyCheck::Overall, int elemID = 0);
 
@@ -75,18 +77,21 @@ void testMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records,
 
   ot::MatRecord mat;
   if((assemblyCheck_ == AssemblyCheck::Overall) or (elemCheck == counterElemID)) {
-
-    for (int j = 0; j < nPe; j++) {
-      for (int i = 0; i < nPe; i++) {
-
-        mat.setMatValue(1.0);
-        mat.setColDim(0);
-        mat.setRowDim(0);
-        mat.setColID(i);
-        mat.setRowID(j);
-        records.push_back(mat);
+    for(int dofi = 0; dofi < m_uiDof; dofi++){
+      for(int dofj = 0; dofj <m_uiDof; dofj++){
+        for (int j = 0; j < nPe; j++) {
+          for (int i = 0; i < nPe; i++) {
+            mat.setMatValue(1.0);
+            mat.setColDim(dofi);
+            mat.setRowDim(dofj);
+            mat.setColID(i);
+            mat.setRowID(j);
+            records.push_back(mat);
+          }
+        }
       }
     }
+
   }
   else{
     for (int j = 0; j < nPe; j++) {
@@ -108,32 +113,19 @@ void testMat<dim>::elementalMatVec(const VECType *in,
                                    unsigned int ndofs,
                                    const double *coords,
                                    double scale) {
-  memset(out, 0, sizeof(VecType) * nPe);
+  memset(out, 0, sizeof(VecType) * nPe*m_uiDof);
   if((assemblyCheck_ == AssemblyCheck::Overall) or (elemCheck == counterElemID)) {
 
-    /// double mat[nPe][nPe];
-    /// for (int i = 0; i < nPe; i++) {
-    ///   for (int j = 0; j < nPe; j++) {
-    ///     mat[i][j] = 1.0;
-    ///   }
-    /// }
-
-    /// for (int i = 0; i < nPe; i++) {
-    ///   for (int j = 0; j < nPe; j++) {
-    ///     out[i] += in[j] * mat[i][j];
-    ///   }
-    /// }
-
-    double *mat = new double[nPe * nPe];
-    for (int i = 0; i < nPe; i++) {
-      for (int j = 0; j < nPe; j++) {
-        mat[i*nPe + j] = 1.0;
+    double *mat = new double[nPe*m_uiDof * nPe*m_uiDof];
+    for (int i = 0; i < nPe*m_uiDof; i++) {
+      for (int j = 0; j < nPe*m_uiDof; j++) {
+        mat[i*nPe*m_uiDof + j] = 1.0;
       }
     }
 
-    for (int i = 0; i < nPe; i++) {
-      for (int j = 0; j < nPe; j++) {
-        out[i] += in[j] * mat[i*nPe + j];
+    for (int i = 0; i < nPe*m_uiDof; i++) {
+      for (int j = 0; j < nPe*m_uiDof; j++) {
+        out[i] += in[j] * mat[i*nPe*m_uiDof + j];
       }
     }
 

@@ -27,6 +27,7 @@ int main(int argc, char * argv[])
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
   int eleOrder = 1;
+  int ndof = 2;
   typedef  unsigned int UINT;
   const int DIM = 3;
   _InitializeHcurve(DIM);
@@ -55,14 +56,14 @@ int main(int argc, char * argv[])
   /** Overall Assembly **/
 
   {
-    testEq::testMat<DIM> matrix(octDA, 1, testEq::AssemblyCheck::Overall);
+    testEq::testMat<DIM> matrix(octDA, ndof, testEq::AssemblyCheck::Overall);
 
     Vec in;
     Vec out;
 
-    octDA->petscCreateVector(in, false, false, 1);
+    octDA->petscCreateVector(in, false, false, ndof);
     VecSet(in, 1.0);
-    octDA->petscCreateVector(out, false, false, 1);
+    octDA->petscCreateVector(out, false, false, ndof);
 
     /** Perform MatVec **/
     matrix.matVec(in, out, 1.0);
@@ -70,7 +71,7 @@ int main(int argc, char * argv[])
 
     /** Perform Matrix Assembly **/
     Mat J;
-    octDA->createMatrix(J, MATAIJ, 1);
+    octDA->createMatrix(J, MATAIJ, ndof);
     MatZeroEntries(J);
     ot::MatCompactRows matCompactRows = matrix.collectMatrixEntries();
 
@@ -87,7 +88,7 @@ int main(int argc, char * argv[])
     MatAssemblyEnd(J, MAT_FINAL_ASSEMBLY);
 
     Vec matTimesVec;
-    octDA->petscCreateVector(matTimesVec, false, false, 1);
+    octDA->petscCreateVector(matTimesVec, false, false, ndof);
     MatMult(J, in, matTimesVec);
 
     const double *arrayOut, *arrayMatTimesVec;
@@ -114,16 +115,17 @@ int main(int argc, char * argv[])
     MatDestroy(&J);
     VecDestroy(&matTimesVec);
   }
+  return 0;
   std::cout << "--------------------------------Checking each element assembly-------------------------------------------\n";
   {
     for(int elemID = 0; elemID < numElement; elemID++){
-      testEq::testMat<DIM> matrix(octDA, 1, testEq::AssemblyCheck::ElementByElement,elemID);
+      testEq::testMat<DIM> matrix(octDA, ndof, testEq::AssemblyCheck::ElementByElement,elemID);
       std::cout << "Testing for elemID = " << elemID << "\n";
       Vec in;
       Vec out;
-      octDA->petscCreateVector(in, false, false, 1);
+      octDA->petscCreateVector(in, false, false, ndof);
       VecSet(in, 1.0);
-      octDA->petscCreateVector(out, false, false, 1);
+      octDA->petscCreateVector(out, false, false, ndof);
 
       /** Perform MatVec **/
       matrix.matVec(in, out, 1.0);
@@ -131,7 +133,7 @@ int main(int argc, char * argv[])
 
       /** Perform Matrix Assembly **/
       Mat J;
-      octDA->createMatrix(J, MATAIJ, 1);
+      octDA->createMatrix(J, MATAIJ, ndof);
       MatZeroEntries(J);
       matrix.preMat();
       ot::MatCompactRows matCompactRows = matrix.collectMatrixEntries();
@@ -149,7 +151,7 @@ int main(int argc, char * argv[])
       MatAssemblyEnd(J, MAT_FINAL_ASSEMBLY);
 
       Vec matTimesVec;
-      octDA->petscCreateVector(matTimesVec, false, false, 1);
+      octDA->petscCreateVector(matTimesVec, false, false, ndof);
       MatMult(J, in, matTimesVec);
 
       const double *arrayOut, *arrayMatTimesVec;
