@@ -82,10 +82,10 @@ void testMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records,
         for (int j = 0; j < nPe; j++) {
           for (int i = 0; i < nPe; i++) {
             mat.setMatValue(1.0);
-            mat.setColDim(dofi);
-            mat.setRowDim(dofj);
-            mat.setColID(i);
-            mat.setRowID(j);
+            mat.setRowDim(dofi);
+            mat.setColDim(dofj);
+            mat.setRowID(i);
+            mat.setColID(j);
             records.push_back(mat);
           }
         }
@@ -97,10 +97,10 @@ void testMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records,
     for (int j = 0; j < nPe; j++) {
       for (int i = 0; i < nPe; i++) {
         mat.setMatValue(0.0);
-        mat.setColDim(0);
         mat.setRowDim(0);
-        mat.setColID(i);
-        mat.setRowID(j);
+        mat.setColDim(0);
+        mat.setRowID(i);
+        mat.setColID(j);
         records.push_back(mat);
       }
     }
