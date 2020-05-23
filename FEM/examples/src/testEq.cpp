@@ -26,8 +26,8 @@ int main(int argc, char * argv[])
   int rProc, nProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
-  int eleOrder = 1;
-  int ndof = 2;
+  int eleOrder = 2;
+  int ndof = 1;
   typedef  unsigned int UINT;
   const int DIM = 3;
   _InitializeHcurve(DIM);
@@ -115,7 +115,8 @@ int main(int argc, char * argv[])
     MatDestroy(&J);
     VecDestroy(&matTimesVec);
   }
-  return 0;
+
+#if 0
   std::cout << "--------------------------------Checking each element assembly-------------------------------------------\n";
   {
     for(int elemID = 0; elemID < numElement; elemID++){
@@ -182,6 +183,7 @@ int main(int argc, char * argv[])
       VecDestroy(&matTimesVec);
     }
   }
+#endif
 
 
 
