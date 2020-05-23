@@ -482,8 +482,11 @@ namespace ot
 
             const unsigned int npesAll=m_uiGlobalNpes;
             const unsigned int eleOrder=m_uiElementOrder;
-            // in linear cases, 53 can be generated with 27 + 27 -1(self) node.
-            const unsigned int preAllocFactor=dof*(53*(eleOrder+1));
+
+            // intPow(2*eleOrder+1, dim): # nodes in 2^dim neighbor elems.
+            // *2: parent or child
+            // *dof: all dofs may interact
+            const unsigned int preAllocFactor=dof*2*intPow(2*eleOrder+1, dim);
 
             // first determine the size ...
             size_t lSz = dof*(m_uiLocalNodalSz);
