@@ -160,6 +160,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/sfcTreeLoop_matvec_io.h
                   include/meshLoop.h
                   IO/vtk/include/oct2vtk.h
+                  IO/vtk/include/checkPoint.h
                   array/include/arraySlice.h
                   FEM/include/matvec.h
                   FEM/include/tensor.h
@@ -189,6 +190,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/tsearchCmpx.cpp
                   src/treeNode.cpp
                   IO/vtk/src/oct2vtk.cpp
+                  IO/vtk/src/checkPoint.cpp
                   src/oda.cpp
                   FEM/src/tensor.cpp
                   FEM/src/refel.cpp
@@ -352,6 +354,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRemesh.cpp)
 add_executable(tstRemesh ${SRC_FILES})
 target_include_directories(tstRemesh PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstRemesh dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testCheckpoint.cpp)
+add_executable(tstCheckpoint ${SRC_FILES})
+target_include_directories(tstCheckpoint PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstCheckpoint dendroKT ${MPI_LIBRARIES} m)
 
 ## tsort_bench (./tsortBench)
 ## -----------
