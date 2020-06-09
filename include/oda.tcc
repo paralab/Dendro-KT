@@ -447,11 +447,13 @@ namespace ot
                 if (node.getX(d) == subdomainBBMins[d])
                 {
                   node.excludeSideExtantCellFlag(d, 0);
+                  node.setIsOnTreeBdry(true);
                   isBoundaryOnAxis = true;
                 }
                 else if (node.getX(d) == subdomainBBMaxs[d])
                 {
                   node.excludeSideExtantCellFlag(d, 1);
+                  node.setIsOnTreeBdry(true);
                   isBoundaryOnAxis = true;
                 }
 
@@ -462,7 +464,9 @@ namespace ot
                 // Check for interiorness.
                 else if (element.minX(d) < node.getX(d)
                                         && node.getX(d) < element.maxX(d))
-                  node.excludeSideExtantCellFlag(d, 1);
+                {
+                  node.excludeSideExtantCellFlag(d, 1); //???
+                }
               }
 
               if (!excludeNode)
