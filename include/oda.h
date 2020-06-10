@@ -92,6 +92,16 @@ DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
                                  MPI_Comm comm,
                                  double sfc_tol = 0.3);
 
+template <unsigned int dim>
+DendroIntL constructRegularSubdomainDA(DA<dim> &newSubDA,
+                                 std::vector<TreeNode<unsigned int, dim>> &newTreePart,
+                                 unsigned int level,
+                                 std::array<unsigned int, dim> extentPowers,
+                                 unsigned int eleOrder,
+                                 MPI_Comm comm,
+                                 double sfc_tol = 0.3);
+
+
 /**
  * @brief Creates a uniform coarse grid at level coarsestLevel,
  *        having the extents determined by extentPowers,
@@ -109,7 +119,6 @@ void constructRegularSubdomainDAHierarchy(
                                  MPI_Comm comm,
                                  size_t grainSz = 100,
                                  double sfc_tol = 0.3);
-
 
 /**
  * @brief Transfer data to an identically-structured but differently-partitioned grid, e.g. surrogate.
@@ -142,12 +151,16 @@ class DA
     using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
     using DomainDeciderT_TN = std::function<bool(const TreeNode<C, dim> &elemTreeNode)>;
 
-    friend DendroIntL constructRegularSubdomainDA<dim>(DA<dim> &newSubDA,
-                                                 unsigned int level,
-                                                 std::array<unsigned int, dim> extentPowers,
-                                                 unsigned int eleOrder,
-                                                 MPI_Comm comm,
-                                                 double sfc_tol);
+    friend DendroIntL constructRegularSubdomainDA<dim>(
+        DA<dim> &newSubDA,
+        std::vector<TreeNode<unsigned int, dim>> &newTreePart,
+        unsigned int level,
+        std::array<unsigned int, dim> extentPowers,
+        unsigned int eleOrder,
+        MPI_Comm comm,
+        double sfc_tol);
+
+
 
   private:
 
