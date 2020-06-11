@@ -90,6 +90,17 @@ public:
     **/
     virtual void matVec(const Vec& in, Vec& out,double scale=1.0)=0;
 
+
+    /**
+     * @brief placeholder for non -linear solve
+     * @param v the vector set as placeholder
+     */
+    virtual void setPlaceholder(const Vec & v)
+    {
+        std::cerr << "Need to override this " << __func__ << "\n";
+    }
+
+
     /** @brief The 'user defined' matvec we give to petsc to make a matrix-free matrix. Don't call this directly. */
     static void petscUserMult(Mat mat, Vec x, Vec y)
     {

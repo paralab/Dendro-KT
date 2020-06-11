@@ -89,6 +89,14 @@ public:
      * */
     virtual void computeVec(const Vec& in,Vec& out,double scale=1.0)=0;
 
+    /**
+     * @brief placeholder for non -linear solve
+     * @param v the vector set as placeholder
+     */
+    virtual void setPlaceholder(const Vec & v)
+    {
+        std::cerr << "Need to override this " << __func__ << "\n";
+    }
 #endif
 
 
