@@ -45,7 +45,7 @@ PoissonMat<dim>::~PoissonMat()
 }
 
 template <unsigned int dim>
-void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale)
+void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale, bool isElementBoundary)
 {
     if (ndofs != 1)
       throw "PoissonMat elementalMatVec() assumes scalar data, but called on non-scalar data.";
@@ -290,7 +290,7 @@ void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const d
 
 
 template <unsigned int dim>
-void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords)
+void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, bool isElementBoundary)
 {
   const RefElement* refEl=m_uiOctDA->getReferenceElement();
   const unsigned int eleOrder=refEl->getOrder();
@@ -308,11 +308,14 @@ void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, co
   for (int i = 0; i < (ndofs*nPe); i++)
     phi_i[i] = 0;
 
+  const double scale = 1.0;  // Removed default scale parameter, so make it up here.
+  //TODO this should be set by something.
+
   // To populate using matvec, need to assume column-major ordering.
   for (int j = 0; j < (ndofs*nPe); j++)
   {
     phi_i[j] = 1;  // jth basis vector.
-    this->elementalMatVec(phi_i, &ematBuf[j*(ndofs*nPe)], ndofs, coords);
+    this->elementalMatVec(phi_i, &ematBuf[j*(ndofs*nPe)], ndofs, coords, scale, isElementBoundary );
     phi_i[j] = 0; // back to zero.
   }
 

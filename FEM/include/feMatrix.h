@@ -61,7 +61,7 @@ protected:
           * @param [out] out output vector Ku
           * @param [in] scale vector by scale*Ku
         **/
-        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale) = 0;
+        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale, bool isElementBoundary ) = 0;
 
         /**@brief Sets the diagonal of the elemental matrix.
          * @param [out] out output vector diag(K)
@@ -194,14 +194,14 @@ protected:
          * @param[out] records: records corresponding to the elemental matrix.
          * @note You should set the row/col ids using the LOCAL elemental lexicographic ordering.
          * */
-        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords)
+        void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, bool isElementBoundary)
         {
           // If this IS asLeaf().getElementalMatrix(), i.e. there is not an override, don't recurse.
           static bool entered = false;
           if (!entered)
           {
             entered = true;
-            asLeaf().getElementalMatrix(records, coords);
+            asLeaf().getElementalMatrix(records, coords, isElementBoundary);
             entered = false;
           }
           else
@@ -289,8 +289,8 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
 
   // 3. Local matvec().
   const auto * tnCoords = m_oda->getTNCoords();
-  std::function<void(const VECType *, VECType *, unsigned int, const double *, double)> eleOp =
-      std::bind(&feMatrix<LeafT,dim>::elementalMatVec, this, _1, _2, _3, _4, _5);
+  std::function<void(const VECType *, VECType *, unsigned int, const double *, double, bool)> eleOp =
+      std::bind(&feMatrix<LeafT,dim>::elementalMatVec, this, _1, _2, _3, _4, _5, _6);
 
 #ifdef DENDRO_KT_MATVEC_BENCH_H
   bench::t_matvec.start();
@@ -597,7 +597,7 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
 
         // Get elemental matrix for the current leaf element.
         elemRecords.clear();
-        this->getElementalMatrix(elemRecords, nodeCoordsFlat);
+        this->getElementalMatrix(elemRecords, nodeCoordsFlat, subtreeInfo.isElementBoundary());
         // Sort using local (lexicographic) node ordering, BEFORE map to global.
         std::sort(elemRecords.begin(), elemRecords.end());
         for (ot::MatRecord &mr : elemRecords)

@@ -35,7 +35,7 @@ namespace fem
    */
   template <typename da>
   /// using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, double *coords, double scale)>;
-  using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, const double *coords, double scale)>;
+  using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, const double *coords, double scale, bool isElementBoundary)>;
 
     // Declaring the matvec at the top.
     template<typename T,typename TN, typename RE>
@@ -256,7 +256,7 @@ namespace fem
           const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
           const T * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
 
-          eleOp(nodeValsFlat, &(*leafResult.begin()), ndofs, nodeCoordsFlat, scale);
+          eleOp(nodeValsFlat, &(*leafResult.begin()), ndofs, nodeCoordsFlat, scale, treeloop.subtreeInfo().isElementBoundary());
 
           treeloop.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
 

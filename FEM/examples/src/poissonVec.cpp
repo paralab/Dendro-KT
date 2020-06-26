@@ -25,7 +25,7 @@ PoissonVec<dim>::~PoissonVec()
 }
 
 template <unsigned int dim>
-void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale)
+void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale, bool isElementBoundary)
 {
     const RefElement* refEl=m_uiOctDA->getReferenceElement();
     const double * Q1d=refEl->getQ1d();
