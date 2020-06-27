@@ -230,6 +230,9 @@ class DA
     /**@brief: true if current DA is active, part of the active comm.*/
     bool m_uiIsActive;
 
+    /**@brief Global rank[m_activeRank2globalRank[i]] is active. */
+    std::vector<int> m_activeRank2globalRank;
+
     /**@brief: element order*/  
     unsigned int m_uiElementOrder;
 
@@ -607,6 +610,14 @@ class DA
         /// int getFaceNeighborValues(unsigned int eleID, const T* in, T* out, T* coords, unsigned int * neighID, unsigned int face, NeighbourLevel & level,unsigned int dof) const;
 
 
+
+        /**
+         * @brief Finds the owner rank for each TreeNode, based on the front splitters.
+         * @param[in] pNodes List of TreeNode points. Level will be reassigned as m_uiMaxDepth during search.
+         * @param[in] n Number of TreeNode points to search.
+         * @param[out] ownerRanks List of mpi ranks such that pNodes[i] belongs to ownerRanks[i].
+         */
+        void computeTreeNodeOwnerProc(const TreeNode<C, dim> * pNodes, unsigned int n, int* ownerRanks);
 
 
 

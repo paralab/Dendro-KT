@@ -119,6 +119,22 @@ struct SFC_Tree
     SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 1, m_uiMaxDepth, 0);
   }
 
+
+  template <class PointType, typename CompanionT>
+  static void locTreeSort(std::vector<PointType> &points, std::vector<CompanionT> &companions)
+  {
+    SFC_Tree<T, D>::locTreeSort<KeyFunIdentity_Pt<PointType>,
+                                PointType,
+                                PointType,
+                                CompanionT,
+                                true>
+         (points.data(), companions.data(),
+          0, (RankI) points.size(),
+          1, m_uiMaxDepth, 0,
+          KeyFunIdentity_Pt<PointType>());
+  }
+
+
   // Notes:
   //   - This method operates in-place.
   //   - From sLev to eLev INCLUSIVE
