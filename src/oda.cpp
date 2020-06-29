@@ -51,9 +51,12 @@ namespace ot
         : m_refel{dim, order}
     {
         ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
+        inTree = distTree.getTreePartFiltered();       // Give back a copy of the in tree.
         construct(distTree, comm, order, grainSz, sfc_tol);
-        //TODO if the user doesn't want the tree taken away,
-        //  give them back the DistTree.
+        //TODO (need straightforward interface for tree/DistTree)
+        //     Without a change to the interface, we can avoid copying
+        //     if we give back the DistTree instead, and let the user
+        //     get a const ref to the tree partition.
     }
 
 
