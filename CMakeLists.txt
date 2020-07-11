@@ -369,6 +369,11 @@ add_executable(tstBoundaryIndices ${SRC_FILES})
 target_include_directories(tstBoundaryIndices PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstBoundaryIndices dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeNodeOwner.cpp)
+add_executable(tstTreeNodeOwner ${SRC_FILES})
+target_include_directories(tstTreeNodeOwner PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstTreeNodeOwner dendroKT ${MPI_LIBRARIES} m)
+
 ## tsort_bench (./tsortBench)
 ## -----------
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/tsort_bench.h ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/tsort_bench.cpp)
