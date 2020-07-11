@@ -381,6 +381,8 @@ namespace ot
 
           int splittersInSubtree = subtreeSplitters.getTotalCount();
 
+          // Case 0: The item subtree is empty.
+          //     --> Advance the bucket by the number of contained splitters.
           // Case 1: There are no splitters in the subtree.
           //     --> add all items to current bucket.
           // Case 2: The splitter subtree is a leaf.
@@ -392,16 +394,25 @@ namespace ot
           // Case 3b: The splitter subtree is a nonempty nonleaf, and the item subtree is not a leaf.
           //     --> descend.
 
+          // Case 0
+          if (subtreePoints.isEmpty())
+          {
+            splitterCount += subtreeSplitters.getTotalCount();
+            lpSplitters.next();
+            lpPoints.next();
+          }
+
           // Cases 1 & 2
-          if (subtreeSplitters.isEmpty() || subtreeSplitters.isLeaf() ||
-              (subtreePoints.isEmpty()))
+          else if (subtreeSplitters.isEmpty() || subtreeSplitters.isLeaf())
           {
             if (!subtreeSplitters.isEmpty() && subtreeSplitters.isLeaf())  // Case 2
+            {
               ++splitterCount;
+            }
 
             for (size_t cIdx = subtreePoints.getBeginIdx(); cIdx < subtreePoints.getEndIdx(); ++cIdx)
             {
-              ownerRanks[inpos[cIdx]] = active2global[splitterCount];
+              ownerRanks[inpos[cIdx]] = active2global[splitterCount-1];
             }
 
             lpSplitters.next();
