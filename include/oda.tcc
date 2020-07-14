@@ -815,7 +815,10 @@ namespace ot
             if(isElemental)
             {
                 if(isGhosted)
-                    local=new T[dof*m_uiTotalElementSz];
+                {
+                    throw std::logic_error("Ghosted elemental size not automatically computed.");
+                    /// local=new T[dof*m_uiTotalElementSz];
+                }
                 else
                     local=new T[dof*m_uiLocalElementSz];
 
@@ -846,7 +849,10 @@ namespace ot
             if(isElemental)
             {
                 if(isGhosted)
-                    local.resize(dof*m_uiTotalElementSz);
+                {
+                    throw std::logic_error("Ghosted elemental size not automatically computed.");
+                    /// local.resize(dof*m_uiTotalElementSz);
+                }
                 else
                     local.resize(dof*m_uiLocalElementSz);
 
@@ -1193,7 +1199,8 @@ namespace ot
             throw std::logic_error("Elemental version not implemented!");
 
             if(isGhosted) {
-                arrSz = m_uiTotalElementSz;
+                throw std::logic_error("Ghosted elemental size not automatically computed.");
+                /// arrSz = m_uiTotalElementSz;
             }else{
                 arrSz=m_uiLocalElementSz;
             }
@@ -1273,7 +1280,8 @@ namespace ot
         }else{
 
             if(isGhosted) {
-                arrSz = m_uiTotalElementSz;
+                throw std::logic_error("Ghosted elemental size not automatically computed.");
+                /// arrSz = m_uiTotalElementSz;
             }else{
                 arrSz=m_uiLocalElementSz;
             }
@@ -1306,7 +1314,8 @@ namespace ot
         }else{
 
             if(isGhosted) {
-                arrSz = m_uiTotalElementSz;
+                throw std::logic_error("Ghosted elemental size not automatically computed.");
+                /// arrSz = m_uiTotalElementSz;
             }else{
                 arrSz=m_uiLocalElementSz;
             }

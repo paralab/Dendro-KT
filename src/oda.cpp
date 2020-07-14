@@ -23,7 +23,7 @@ namespace ot
         m_uiTotalNodalSz = 0;
         m_uiLocalNodalSz = 0;
         m_uiLocalElementSz = 0;
-        m_uiTotalElementSz = 0;
+        /// m_uiTotalElementSz = 0;  // Ghosted elements not computed automatically
         m_uiPreNodeBegin = 0;
         m_uiPreNodeEnd = 0;
         m_uiLocalNodeBegin = 0;
@@ -131,6 +131,7 @@ namespace ot
       MPI_Comm_rank(comm, &rProc);
 
       const size_t nActiveEle = distTree.getFilteredTreePartSz(stratum);
+      m_uiLocalElementSz = nActiveEle;
 
       // A processor is 'active' if it has elements, otherwise 'inactive'.
       bool isActive = (nActiveEle > 0);
@@ -575,7 +576,10 @@ namespace ot
             if(isElemental)
             {
                 if(isGhosted)
-                    sz=dof*m_uiTotalElementSz;
+                {
+                    throw std::logic_error("Ghosted elemental size not automatically computed.");
+                    /// sz=dof*m_uiTotalElementSz;
+                }
                 else
                     sz=dof*m_uiLocalElementSz;
 

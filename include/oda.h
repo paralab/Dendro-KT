@@ -180,7 +180,7 @@ class DA
     size_t m_uiLocalElementSz;
 
     /**@brief: number of total element sz (local + ghost elements)*/
-    size_t m_uiTotalElementSz;
+    /// size_t m_uiTotalElementSz;  // Our ghosts are node-based, not element.
 
     /**@brief pre ghost node begin*/
     size_t m_uiPreNodeBegin;
@@ -327,6 +327,9 @@ class DA
                        bool isActive,
                        MPI_Comm globalComm,
                        MPI_Comm activeComm);
+
+        /**@brief returns the local element size*/
+        inline size_t getLocalElementSz() const { return m_uiLocalElementSz; }
 
         /**@brief returns the local nodal size*/
         inline size_t getLocalNodalSz() const { return m_uiLocalNodalSz; }
