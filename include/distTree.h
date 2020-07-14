@@ -65,6 +65,16 @@ namespace ot
           MPI_Comm comm,
           double sfc_tol = 0.3);
 
+
+      /** distRemeshSubdomain
+       *  @brief: Uses DistTree filter function to carve out subdomain from remeshed tree.
+       */
+      static void distRemeshSubdomain( const DistTree &inTree,
+                                       const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                       DistTree &outTree,
+                                       DistTree &surrogateTree,
+                                       double loadFlexibility );
+
       // generateGridHierarchyUp()
       //   TODO should return surrogate DistTree
       void generateGridHierarchyUp(bool isFixedNumStrata,
@@ -134,6 +144,31 @@ namespace ot
 
         return isInside;
       }
+
+
+      // ExtentDecider
+      struct ExtentDecider
+      {
+        ExtentDecider(const std::array<unsigned int, dim> &extentPowers, unsigned int level)
+          : m_extentPowers(extentPowers),
+            m_level(level)
+        {}
+
+        std::array<unsigned int, dim> m_extentPowers;
+        unsigned int m_level;
+
+        bool operator()(const TreeNode<T, dim> &tn) const
+        {
+          bool isInside = true;
+          for (int d = 0; d < dim; ++d)
+          {
+            isInside &= (tn.minX(d) < (1u << (T) (m_uiMaxDepth - m_level + m_extentPowers[d])));
+          }
+
+          return isInside;
+        }
+      };
+
 
     protected:
       // Member variables.

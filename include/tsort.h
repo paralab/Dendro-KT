@@ -356,12 +356,12 @@ struct SFC_Tree
   static std::vector<TreeNode<T, D>> locRemesh( const std::vector<TreeNode<T, D>> &inTree,
                                                 const std::vector<OCT_FLAGS::Refine> &refnFlags );
 
-  static void distRemesh( const std::vector<TreeNode<T, D>> &inTree,
-                          const std::vector<OCT_FLAGS::Refine> &refnFlags,
-                          std::vector<TreeNode<T, D>> &outTree,
-                          std::vector<TreeNode<T, D>> &surrogateTree,
-                          double loadFlexibility,
-                          MPI_Comm comm );
+  static void distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
+                                     const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                     std::vector<TreeNode<T, D>> &outTree,
+                                     std::vector<TreeNode<T, D>> &surrogateTree,
+                                     double loadFlexibility,
+                                     MPI_Comm comm );
 
   static std::vector<TreeNode<T, D>> getSurrogateGrid( const std::vector<TreeNode<T, D>> &replicateGrid,
                                                        const std::vector<TreeNode<T, D>> &splittersFromGrid,

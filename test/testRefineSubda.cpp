@@ -1,4 +1,5 @@
 #include <iostream>
+#include <distTree.h>
 #include <oda.h>
 #include <point.h>
 #include <sfcTreeLoop_matvec_io.h>
@@ -61,31 +62,50 @@ int main(int argc, char * argv[]){
   m_uiMaxDepth = 10;
   int level = 3;
   std::vector<ot::TreeNode<unsigned int, DIM>> treePart;
-  ot::DA<DIM> *octDA = new ot::DA<DIM>();
+
+  constexpr bool printTreeOn = false;  // Can print the contents of the tree vectors.
 
   unsigned int extents[] = {1,2,1};
   std::array<unsigned int,DIM> a;
   for (int d = 0; d < DIM; ++d)
     a[d] = extents[d];
 
-  ot::constructRegularSubdomainDA<DIM>(*octDA,treePart,level,a,eleOrder,MPI_COMM_WORLD);
-  printTree(treePart, level+1);
+  using DTree = ot::DistTree<unsigned int, DIM>;
+  DTree distTree = DTree::constructSubdomainDistTree( level,
+                                                      DTree::ExtentDecider(a, level),
+                                                      MPI_COMM_WORLD);
+
+  treePart = distTree.getTreePartFiltered();
+  ot::DA<DIM> *octDA = new ot::DA<DIM>(distTree, MPI_COMM_WORLD, eleOrder);
+
+  //Old way, doesn't support refining subda.
+  /// ot::DA<DIM> *octDA = new ot::DA<DIM>();
+  /// ot::constructRegularSubdomainDA<DIM>(*octDA,treePart,level,a,eleOrder,MPI_COMM_WORLD);
+
+  if (printTreeOn)
+    printTree(treePart, level+1);
   printMaxCoords(*octDA);
 
   std::vector<ot::OCT_FLAGS::Refine> refineFlags(treePart.size(),ot::OCT_FLAGS::Refine::OCT_REFINE);
 
-  std::vector<ot::TreeNode<DENDRITE_UINT, DIM>>  newTree;
-  std::vector<ot::TreeNode<DENDRITE_UINT, DIM>>  surrTree;
-  ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemesh(treePart, refineFlags, newTree, surrTree, 0.3, MPI_COMM_WORLD);
+  // distRemeshSubdomain()
+  ot::DistTree<unsigned int, DIM> newDistTree, surrDistTree;
+  ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, 0.3);
+  const std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> &newTree = newDistTree.getTreePartFiltered();
+  const std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> &surrTree = surrDistTree.getTreePartFiltered();
+
+  //Old way, returns back the whole domain.
+  /// std::vector<ot::TreeNode<DENDRITE_UINT, DIM>>  newTree;
+  /// std::vector<ot::TreeNode<DENDRITE_UINT, DIM>>  surrTree;
+  /// ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(treePart, refineFlags, newTree, surrTree, 0.3, MPI_COMM_WORLD);
 
   std::cout << "\n-------\n";
 
-  printTree(newTree, level+1);
-        ///DA(DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+  if (printTreeOn)
+    printTree(newTree, level+1);
   ot::DA<DIM> * newDA =new ot::DA<DIM>(newTree,MPI_COMM_WORLD,eleOrder,100,0.3);
   printMaxCoords(*newDA);
 
-  /// How to delete octDa and swap with newDA. Below is not working.
   std::swap(octDA, newDA);
   delete newDA;
   PetscFinalize();

@@ -98,7 +98,7 @@ int main(int argc, char * argv[])
     // Generate new tree.
         /// newTree = ot::SFC_Tree<T, dim>::locRemesh(srcTree, octFlags);
         /// surrTree = srcTree;
-    ot::SFC_Tree<T, dim>::distRemesh(srcTree, octFlags, newTree, surrTree, 0.3, comm);
+    ot::SFC_Tree<T, dim>::distRemeshWholeDomain(srcTree, octFlags, newTree, surrTree, 0.3, comm);
     if (printEachRound)
       std::cout << "srcTree.size()==" << srcTree.size()
                 << "    newTree.size()==" << newTree.size() << "  -->  ";

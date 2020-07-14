@@ -80,6 +80,44 @@ namespace ot
   };
 
 
+  //
+  // distRemeshSubdomain()
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::distRemeshSubdomain( const DistTree &inTree,
+                                              const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                              DistTree &_outTree,
+                                              DistTree &_surrogateTree,
+                                              double loadFlexibility)
+  {
+    MPI_Comm comm = inTree.m_comm;
+
+    const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();
+    std::vector<TreeNode<T, dim>> outTreeVec;
+    std::vector<TreeNode<T, dim>> surrogateTreeVec;
+
+    SFC_Tree<T, dim>::distRemeshWholeDomain(
+        inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, comm);
+
+    DistTree outTree(outTreeVec, comm);
+    DistTree surrogateTree(surrogateTreeVec, comm);
+
+    if (inTree.m_usePhysCoordsDecider)
+    {
+      outTree.filterTree(inTree.getDomainDeciderPh());
+      surrogateTree.filterTree(inTree.getDomainDeciderPh());
+    }
+    else
+    {
+      outTree.filterTree(inTree.getDomainDeciderTN());
+      surrogateTree.filterTree(inTree.getDomainDeciderTN());
+    }
+
+    _outTree = outTree;
+    _surrogateTree = surrogateTree;
+  }
+
+
 
   //
   // generateGridHierarchyUp()

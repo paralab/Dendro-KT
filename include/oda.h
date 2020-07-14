@@ -279,6 +279,7 @@ class DA
         DA(unsigned int order = 1);
 
         DA(std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+        DA(const std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
         DA(DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 

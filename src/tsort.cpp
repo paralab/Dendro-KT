@@ -892,12 +892,12 @@ SFC_Tree<T, D>::locRemesh( const std::vector<TreeNode<T, D>> &inTree,
 
 template <typename T, unsigned int D>
 void
-SFC_Tree<T, D>::distRemesh( const std::vector<TreeNode<T, D>> &inTree,
-                            const std::vector<OCT_FLAGS::Refine> &refnFlags,
-                            std::vector<TreeNode<T, D>> &outTree,
-                            std::vector<TreeNode<T, D>> &surrogateTree,
-                            double loadFlexibility,
-                            MPI_Comm comm )
+SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
+                                       const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                       std::vector<TreeNode<T, D>> &outTree,
+                                       std::vector<TreeNode<T, D>> &surrogateTree,
+                                       double loadFlexibility,
+                                       MPI_Comm comm )
 {
   constexpr ChildI NumChildren = 1u << D;
 
