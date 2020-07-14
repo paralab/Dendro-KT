@@ -617,7 +617,7 @@ class DA
          * @param[in] n Number of TreeNode points to search.
          * @param[out] ownerRanks List of mpi ranks such that pNodes[i] belongs to ownerRanks[i].
          */
-        void computeTreeNodeOwnerProc(const TreeNode<C, dim> * pNodes, unsigned int n, int* ownerRanks);
+        void computeTreeNodeOwnerProc(const TreeNode<C, dim> * pNodes, unsigned int n, int* ownerRanks) const;
 
 
 

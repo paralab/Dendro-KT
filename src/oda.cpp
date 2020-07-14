@@ -339,7 +339,7 @@ namespace ot
 
 
     template <unsigned int dim>
-    void DA<dim>::computeTreeNodeOwnerProc(const TreeNode<C, dim> * pNodes, unsigned int n, int* ownerRanks)
+    void DA<dim>::computeTreeNodeOwnerProc(const TreeNode<C, dim> * pNodes, unsigned int n, int* ownerRanks) const
     {
       std::vector<int> active2global;
 
