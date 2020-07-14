@@ -7,6 +7,7 @@
  **/
 
 #include "oda.h"
+#include "meshLoop.h"
 
 #include <algorithm>
 
@@ -22,7 +23,7 @@ namespace ot
         m_uiTotalNodalSz = 0;
         m_uiLocalNodalSz = 0;
         m_uiLocalElementSz = 0;
-        m_uiTotalElementSz = 0;
+        /// m_uiTotalElementSz = 0;  // Ghosted elements not computed automatically
         m_uiPreNodeBegin = 0;
         m_uiPreNodeEnd = 0;
         m_uiLocalNodeBegin = 0;
@@ -50,9 +51,12 @@ namespace ot
         : m_refel{dim, order}
     {
         ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
+        inTree = distTree.getTreePartFiltered();       // Give back a copy of the in tree.
         construct(distTree, comm, order, grainSz, sfc_tol);
-        //TODO if the user doesn't want the tree taken away,
-        //  give them back the DistTree.
+        //TODO (need straightforward interface for tree/DistTree)
+        //     Without a change to the interface, we can avoid copying
+        //     if we give back the DistTree instead, and let the user
+        //     get a const ref to the tree partition.
     }
 
 
@@ -127,6 +131,7 @@ namespace ot
       MPI_Comm_rank(comm, &rProc);
 
       const size_t nActiveEle = distTree.getFilteredTreePartSz(stratum);
+      m_uiLocalElementSz = nActiveEle;
 
       // A processor is 'active' if it has elements, otherwise 'inactive'.
       bool isActive = (nActiveEle > 0);
@@ -207,6 +212,33 @@ namespace ot
 
       m_uiActiveComm = activeComm;
       m_uiIsActive = isActive;
+
+      // m_activeRank2globalRank
+      {
+        m_activeRank2globalRank.clear();
+
+        std::vector<int> rankIsActive;
+        if (rProc == 0)
+          rankIsActive.resize(nProc);
+        const int locIsActive = isActive;
+        par::Mpi_Gather(&locIsActive, rankIsActive.data(), 1, 0, globalComm);
+
+        int numActiveRanks;
+
+        if (rProc == 0)
+        {
+          for (int r = 0; r < nProc; ++r)
+            if (rankIsActive[r])
+              m_activeRank2globalRank.push_back(r);
+          numActiveRanks = (int) m_activeRank2globalRank.size();
+        }
+
+        par::Mpi_Bcast(&numActiveRanks, 1, 0, globalComm);
+        m_activeRank2globalRank.resize(numActiveRanks);
+
+        par::Mpi_Bcast(m_activeRank2globalRank.data(), numActiveRanks, 0, globalComm);
+      }
+
 
       if (m_uiIsActive)
       {
@@ -303,6 +335,108 @@ namespace ot
     DA<dim>::~DA()
     {
     }
+
+
+
+
+    template <unsigned int dim>
+    void DA<dim>::computeTreeNodeOwnerProc(const TreeNode<C, dim> * pNodes, unsigned int n, int* ownerRanks) const
+    {
+      std::vector<int> active2global;
+
+      std::vector<TreeNode<C, dim>> fsplitters =
+        SFC_Tree<C, dim>::dist_bcastSplitters(
+            (this->isActive() ? this->getTreePartFront() : nullptr),
+            this->m_uiGlobalComm,
+            this->m_uiActiveComm,
+            this->isActive(),
+            active2global);
+
+      // Mutable copy of the TreeNode points, for sorting.
+      std::vector<TreeNode<C, dim>> pNodeVec;
+      pNodeVec.reserve(n);
+      pNodeVec.insert(pNodeVec.end(), pNodes, pNodes + n);
+      for (TreeNode<C, dim> &pNode : pNodeVec)
+        pNode.setLevel(m_uiMaxDepth);  // Enforce they are points.
+
+      // Keep track of positions in input array so we can report ranks.
+      std::vector<size_t> inpos(n);
+      std::iota(inpos.begin(), inpos.end(), 0);
+
+      // Make points sorted. Use companion sort so that positions match.
+      SFC_Tree<C, dim>::locTreeSort(pNodeVec, inpos);
+
+      // Tree Traversal
+      {
+        MeshLoopInterface_Sorted<C, dim, true, true, false> lpSplitters(fsplitters);
+        MeshLoopInterface_Sorted<C, dim, true, true, false> lpPoints(pNodeVec);
+
+        int splitterCount = 0;
+        while (!lpSplitters.isFinished())
+        {
+          const MeshLoopFrame<C, dim> &subtreeSplitters = lpSplitters.getTopConst();
+          const MeshLoopFrame<C, dim> &subtreePoints = lpPoints.getTopConst();
+
+          assert((subtreeSplitters.getLev() == subtreePoints.getLev()));
+          assert((subtreeSplitters.getPRot() == subtreePoints.getPRot()));
+
+          int splittersInSubtree = subtreeSplitters.getTotalCount();
+
+          // Case 0: The item subtree is empty.
+          //     --> Advance the bucket by the number of contained splitters.
+          // Case 1: There are no splitters in the subtree.
+          //     --> add all items to current bucket.
+          // Case 2: The splitter subtree is a leaf.
+          //     --> No items can be deeper than the current subtree.
+          //         Advance the bucket and add the items to it.
+          //         (Since we use front splitters here).
+          // Case 3a: The splitter subtree is a nonempty nonleaf, and the item subtree is a leaf.
+          //     --> add the current item to all buckets split by the splitters.
+          // Case 3b: The splitter subtree is a nonempty nonleaf, and the item subtree is not a leaf.
+          //     --> descend.
+
+          // Case 0
+          if (subtreePoints.isEmpty())
+          {
+            splitterCount += subtreeSplitters.getTotalCount();
+            lpSplitters.next();
+            lpPoints.next();
+          }
+
+          // Cases 1 & 2
+          else if (subtreeSplitters.isEmpty() || subtreeSplitters.isLeaf())
+          {
+            if (!subtreeSplitters.isEmpty() && subtreeSplitters.isLeaf())  // Case 2
+            {
+              ++splitterCount;
+            }
+
+            for (size_t cIdx = subtreePoints.getBeginIdx(); cIdx < subtreePoints.getEndIdx(); ++cIdx)
+            {
+              ownerRanks[inpos[cIdx]] = active2global[splitterCount-1];
+            }
+
+            lpSplitters.next();
+            lpPoints.next();
+          }
+
+          // Case 3
+          else
+          {
+            // Case 3a
+            if (!subtreePoints.isEmpty() && subtreePoints.isLeaf() && splittersInSubtree > 0)
+            {
+              throw std::logic_error("A point spans multiple partitions!");
+            }
+
+            lpSplitters.step();
+            lpPoints.step();
+          }
+
+        }
+      } // end tree traversal
+    }
+
 
 
 
@@ -442,7 +576,10 @@ namespace ot
             if(isElemental)
             {
                 if(isGhosted)
-                    sz=dof*m_uiTotalElementSz;
+                {
+                    throw std::logic_error("Ghosted elemental size not automatically computed.");
+                    /// sz=dof*m_uiTotalElementSz;
+                }
                 else
                     sz=dof*m_uiLocalElementSz;
 

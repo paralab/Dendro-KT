@@ -180,7 +180,7 @@ class DA
     size_t m_uiLocalElementSz;
 
     /**@brief: number of total element sz (local + ghost elements)*/
-    size_t m_uiTotalElementSz;
+    /// size_t m_uiTotalElementSz;  // Our ghosts are node-based, not element.
 
     /**@brief pre ghost node begin*/
     size_t m_uiPreNodeBegin;
@@ -229,6 +229,9 @@ class DA
     
     /**@brief: true if current DA is active, part of the active comm.*/
     bool m_uiIsActive;
+
+    /**@brief Global rank[m_activeRank2globalRank[i]] is active. */
+    std::vector<int> m_activeRank2globalRank;
 
     /**@brief: element order*/  
     unsigned int m_uiElementOrder;
@@ -324,6 +327,9 @@ class DA
                        bool isActive,
                        MPI_Comm globalComm,
                        MPI_Comm activeComm);
+
+        /**@brief returns the local element size*/
+        inline size_t getLocalElementSz() const { return m_uiLocalElementSz; }
 
         /**@brief returns the local nodal size*/
         inline size_t getLocalNodalSz() const { return m_uiLocalNodalSz; }
@@ -607,6 +613,14 @@ class DA
         /// int getFaceNeighborValues(unsigned int eleID, const T* in, T* out, T* coords, unsigned int * neighID, unsigned int face, NeighbourLevel & level,unsigned int dof) const;
 
 
+
+        /**
+         * @brief Finds the owner rank for each TreeNode, based on the front splitters.
+         * @param[in] pNodes List of TreeNode points. Level will be reassigned as m_uiMaxDepth during search.
+         * @param[in] n Number of TreeNode points to search.
+         * @param[out] ownerRanks List of mpi ranks such that pNodes[i] belongs to ownerRanks[i].
+         */
+        void computeTreeNodeOwnerProc(const TreeNode<C, dim> * pNodes, unsigned int n, int* ownerRanks) const;
 
 
 
