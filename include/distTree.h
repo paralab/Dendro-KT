@@ -200,6 +200,14 @@ namespace ot
       const TreeNode<T, dim> &get_m_treePartBack() const { return m_tpBackStrata[0]; }
 
 
+      void assignDomainDeciderTN(
+          const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
+            &domainDecider);
+      void assignDomainDeciderPh(
+          const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
+            &domainDecider);
+
+
       //
       // Intrinsic Deciders (not callable directly).
       //
@@ -287,9 +295,6 @@ namespace ot
   DistTree<T, dim> &  DistTree<T, dim>::operator=(const DistTree &other)
   {
     m_comm =                  other.m_comm;
-    m_domainDeciderTN =       other.m_domainDeciderTN;
-    m_domainDeciderPh =       other.m_domainDeciderPh;
-    m_usePhysCoordsDecider =  other.m_usePhysCoordsDecider;
     m_hasBeenFiltered =       other.m_hasBeenFiltered;
     m_gridStrata =            other.m_gridStrata;
     m_tpFrontStrata =         other.m_tpFrontStrata;
@@ -297,6 +302,12 @@ namespace ot
     m_originalTreePartSz =    other.m_originalTreePartSz;
     m_filteredTreePartSz =    other.m_filteredTreePartSz;
     m_numStrata =             other.m_numStrata;
+
+    m_usePhysCoordsDecider =  other.m_usePhysCoordsDecider;
+    if (m_usePhysCoordsDecider)
+      this->assignDomainDeciderPh(other.m_domainDeciderPh);
+    else
+      this->assignDomainDeciderTN(other.m_domainDeciderTN);
   }
 
 
@@ -314,12 +325,14 @@ namespace ot
   }
 
 
+
   //
-  // filterTree() (treeNode)
+  // assignDomainDeciderTN()  (treeNode)
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::filterTree( const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
-                                       &domainDecider)
+  void DistTree<T, dim>::assignDomainDeciderTN(
+      const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
+      &domainDecider)
   {
     m_usePhysCoordsDecider = false;
     m_domainDeciderTN = domainDecider;
@@ -327,6 +340,35 @@ namespace ot
       using namespace std::placeholders;
       m_domainDeciderPh = std::bind(&DistTree<T,dim>::conversionDomainDeciderPh, this, _1, _2);
     }
+  }
+
+
+  //
+  // assignDomainDeciderPh()  (physical)
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::assignDomainDeciderPh(
+      const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
+      &domainDecider)
+  {
+    m_usePhysCoordsDecider = true;
+    m_domainDeciderPh = domainDecider;
+    {
+      using namespace std::placeholders;
+      m_domainDeciderTN = std::bind(&DistTree<T,dim>::conversionDomainDeciderTN, this, _1);
+    }
+  }
+
+
+
+  //
+  // filterTree() (treeNode)
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::filterTree( const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
+                                       &domainDecider)
+  {
+    this->assignDomainDeciderTN(domainDecider);
 
     for (int l = 0; l < m_numStrata; ++l)
     {
@@ -358,12 +400,7 @@ namespace ot
   void DistTree<T, dim>::filterTree( const std::function<bool(const double *elemPhysCoords,
                                                               double elemPhysSize)>   &domainDecider)
   {
-    m_usePhysCoordsDecider = true;
-    m_domainDeciderPh = domainDecider;
-    {
-      using namespace std::placeholders;
-      m_domainDeciderTN = std::bind(&DistTree<T,dim>::conversionDomainDeciderTN, this, _1);
-    }
+    this->assignDomainDeciderPh(domainDecider);
 
     // Intermediate variables to pass treeNode2Physical()-->domainDecider().
     double physCoords[dim];
