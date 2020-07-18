@@ -146,6 +146,28 @@ namespace ot
       }
 
 
+      // BoxDecider
+      struct BoxDecider
+      {
+        BoxDecider(const std::array<double, dim> &physDims)
+          : m_physDims(physDims)
+        {}
+
+        std::array<double, dim> m_physDims;
+
+        bool operator()(const double * physCoords, double physSize) const
+        {
+          bool isInside = true;
+          for (int d = 0; d < dim; ++d)
+          {
+            isInside &= (physCoords[d] + physSize > 0.0f && physCoords[d] < m_physDims[d]);
+          }
+
+          return isInside;
+        }
+      };
+
+
       // ExtentDecider
       struct ExtentDecider
       {

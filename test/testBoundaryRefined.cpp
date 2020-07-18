@@ -139,13 +139,13 @@ int main(int argc, char * argv[]){
   MPI_Comm comm = MPI_COMM_WORLD;
 
   constexpr bool printTreeOn = false;  // Can print the contents of the tree vectors.
-  unsigned int extents[] = {1,2,1};
-  std::array<unsigned int,DIM> a;
-  for (int d = 0; d < DIM; ++d)
-    a[d] = extents[d];
+
+  std::array<double, DIM> physDims;
+  physDims.fill(1.0);
+  physDims[0] = 0.8;
 
   using DTree = ot::DistTree<unsigned int, DIM>;
-  DTree distTree = DTree::constructSubdomainDistTree( level,DomainDecider,
+  DTree distTree = DTree::constructSubdomainDistTree( level, DTree::BoxDecider(physDims),
                                                       comm);
   ot::DA<DIM> *octDA = new ot::DA<DIM>(distTree, comm, eleOrder);
   /// printMaxCoords(*octDA);
