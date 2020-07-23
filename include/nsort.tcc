@@ -423,13 +423,17 @@ namespace ot {
   }
 
   template <typename T, unsigned int dim>
-  void Element<T,dim>::appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
+  void Element<T,dim>::appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList, const ::ibm::DomainDecider &domainDecider) const
   {
     // Duplicated the appendNodes() function, and then caused every interior node to be thrown away.
     using TreeNode = TreeNode<T,dim>;
     const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
 
     const unsigned int numNodes = intPow(order+1, dim);
+
+    double physElemCoords[dim];
+    double physSize;
+    treeNode2Physical(*this, physElemCoords, physSize);
 
     std::array<unsigned int, dim> nodeIndices;
     nodeIndices.fill(0);
@@ -444,10 +448,17 @@ namespace ot {
       }
 
       std::array<T,dim> nodeCoords;
+      double physNodeCoords[dim];
       #pragma unroll(dim)
       for (int d = 0; d < dim; d++)
+      {
         nodeCoords[d] = len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
+        physNodeCoords[d] = (1.0 * nodeIndices[d] / order * physSize) + physElemCoords[d];
+      }
       nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
+
+      // Only tests domainDecider if this element has been flagged as a boundary element.
+      nodeList.back().setIsOnTreeBdry(this->getIsOnTreeBdry() && domainDecider(physNodeCoords, 0.0) == ibm::IN);
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }

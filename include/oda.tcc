@@ -80,27 +80,13 @@ namespace ot
     {
       using C = typename DA<dim>::C;
 
-      std::array<C, dim> bounds;
+      std::array<double, dim> bounds;
       for (int d = 0; d < dim; ++d)
-        bounds[d] = 1u << (m_uiMaxDepth - (coarsestLevel - extentPowers[d]));
-
-      struct BoxDecider
-      {
-        std::array<C, dim> m_bounds;
-
-        bool operator()(const TreeNode<C, dim> &tn)
-        {
-          bool notOutside = true;
-          for (int d = 0; d < dim; ++d)
-            notOutside &= (tn.getX(d) < m_bounds[d]);
-          return notOutside;
-        }
-      }
-      boxDecider{bounds};
+        bounds[d] = (1u << (m_uiMaxDepth - (coarsestLevel - extentPowers[d]))) / (1.0*(1u<<m_uiMaxDepth));
 
       DistTree<C, dim> dtree =
           DistTree<C, dim>::constructSubdomainDistTree( coarsestLevel,
-                                                        boxDecider,
+                                                        DistTree<C, dim>::BoxDecider(bounds),
                                                         comm,
                                                         sfc_tol );
 

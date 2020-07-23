@@ -102,16 +102,8 @@ namespace ot
     DistTree outTree(outTreeVec, comm);
     DistTree surrogateTree(surrogateTreeVec, comm);
 
-    if (inTree.m_usePhysCoordsDecider)
-    {
-      outTree.filterTree(inTree.getDomainDeciderPh());
-      surrogateTree.filterTree(inTree.getDomainDeciderPh());
-    }
-    else
-    {
-      outTree.filterTree(inTree.getDomainDeciderTN());
-      surrogateTree.filterTree(inTree.getDomainDeciderTN());
-    }
+    outTree.filterTree(inTree.getDomainDecider());
+    surrogateTree.filterTree(inTree.getDomainDecider());
 
     _outTree = outTree;
     _surrogateTree = surrogateTree;
@@ -753,8 +745,7 @@ namespace ot
   template <typename T, unsigned int dim>
   DistTree<T, dim>  DistTree<T, dim>::constructSubdomainDistTree(
           unsigned int finestLevel,
-          const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
-              &domainDecider,
+          const ::ibm::DomainDecider &domainDecider,
           MPI_Comm comm,
           double sfc_tol)
   {
@@ -777,62 +768,14 @@ namespace ot
       for (const TreeNode<T, dim> &tn : treePart)
         addMortonDescendants(nextLevel, tn, finerTreePart);
 
-      // Re-filter.
-      DendroIntL numKept = 0;
-      for (DendroIntL i = 0; i < finerTreePart.size(); ++i)
-        if (domainDecider(finerTreePart[i]) && (numKept++ < i))
-          finerTreePart[numKept-1] = finerTreePart[i];
-      finerTreePart.resize(numKept);
-
-      // Re-partition.
-      SFC_Tree<T, dim>::distTreeSort(finerTreePart, sfc_tol, comm);
-      SFC_Tree<T, dim>::distCoalesceSiblings(finerTreePart, comm);
-
-      std::swap(treePart, finerTreePart);
-      level = nextLevel;
-    }
-
-    DistTree<T, dim> dtree(treePart, comm);
-    dtree.filterTree(domainDecider);  // Associate decider with dtree.
-
-    return dtree;
-  }
-
-  template <typename T, unsigned int dim>
-  DistTree<T, dim>  DistTree<T, dim>::constructSubdomainDistTree(
-          unsigned int finestLevel,
-          const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
-            &domainDecider,
-          MPI_Comm comm,
-          double sfc_tol)
-  {
-    int rProc, nProc;
-    MPI_Comm_size(comm, &nProc);
-    MPI_Comm_rank(comm, &rProc);
-
-    std::vector<TreeNode<T, dim>> treePart;
-    if (rProc == 0)
-      treePart.emplace_back(); // Root
-
-    unsigned int level = 0;
-    const unsigned int jump = 3;
-
-    while (level < finestLevel)
-    {
-      // Extend deeper.
-      std::vector<TreeNode<T, dim>> finerTreePart;
-      unsigned int nextLevel = fmin(finestLevel, level + jump);
-      for (const TreeNode<T, dim> &tn : treePart)
-        addMortonDescendants(nextLevel, tn, finerTreePart);
-
-      // Re-filter.
+      // Re-select.
       DendroIntL numKept = 0;
 
       double phycd[dim];
       double physz;
 
       for (DendroIntL i = 0; i < finerTreePart.size(); ++i)
-        if ((treeNode2Physical(finerTreePart[i], phycd, physz), domainDecider(phycd, physz)) && (numKept++ < i))
+        if ((treeNode2Physical(finerTreePart[i], phycd, physz), domainDecider(phycd, physz) != ibm::IN) && (numKept++ < i))
           finerTreePart[numKept-1] = finerTreePart[i];
       finerTreePart.resize(numKept);
 

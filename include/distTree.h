@@ -13,7 +13,7 @@
 #include "octUtils.h"
 #include "mpi.h"
 
-#include <functional>
+#include "filterFunction.h"
 
 namespace ot
 {
@@ -34,6 +34,9 @@ namespace ot
    *        unit hypercube. If you want to filter the domain to a subset of the
    *        unit hypercube, use DistTree to accomplish that.
    *
+   * @note  A default filter function is provided and applied upon construction.
+   *        To provide a custom filter function, call filterTree().
+   *
    * @note  DistTree remembers the front and back TreeNode from the original partition.
    * @note  The partition cannot be changed without creating a new DistTree.
    */
@@ -52,16 +55,10 @@ namespace ot
           unsigned int finestLevel,
           MPI_Comm comm,
           double sfc_tol = 0.3);
+
       static DistTree constructSubdomainDistTree(
           unsigned int finestLevel,
-          const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
-              &domainDecider_tn,
-          MPI_Comm comm,
-          double sfc_tol = 0.3);
-      static DistTree constructSubdomainDistTree(
-          unsigned int finestLevel,
-          const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
-            &domainDecider_phys,
+          const ::ibm::DomainDecider &domainDecider_phys,
           MPI_Comm comm,
           double sfc_tol = 0.3);
 
@@ -88,21 +85,20 @@ namespace ot
       //     coarse grid (the finest grid has no surrogate).
       DistTree generateGridHierarchyDown(unsigned int numStrata, double loadFlexibility);
 
-      // filterTree() has 2 overloads, depending on the type of your decider.
-      void filterTree(
-          const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
-            &domainDecider);
-      void filterTree(
-          const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
-            &domainDecider);
+      // filterTree() requires the input decider to be in physical coordinate form.
+      // Discards 'IN' elements, keeps 'OUT' and 'INTERCEPTED' elements,
+      //   and calls setIsOnTreeBdry(true) on 'INTERCEPTED' elements.
+      void filterTree(const ::ibm::DomainDecider &domainDecider);
 
       void destroyTree();
 
-      const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
-        & getDomainDeciderTN() const;
+      const ::ibm::DomainDecider & getDomainDecider() const;
 
-      const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
-        & getDomainDeciderPh() const;
+      const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)>
+        & getDomainDeciderTN_asCell() const;
+
+      const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)>
+        & getDomainDeciderTN_asPoint() const;
 
       // Tree accessors.
       const std::vector<TreeNode<T, dim>> & getTreePartFiltered(int stratum = 0) const;
@@ -117,32 +113,39 @@ namespace ot
 
       // These deciders can be called directly.
 
-      // Default domainDecider (treeNode)
-      static bool defaultDomainDeciderTN(const TreeNode<T, dim> &tn)
-      {
-        bool isInside = true;
-
-        const T domSz = 1u << m_uiMaxDepth;
-        const T elemSz = 1u << (m_uiMaxDepth - tn.getLevel());
-        #pragma unroll(dim)
-        for (int d = 0; d < dim; d++)
-          if (/*tn.getX(d) < 0 || */ tn.getX(d) > domSz - elemSz)  //Beware wraparound.
-            isInside = false;
-
-        return isInside;
-      }
-
       // Default domainDecider (physical)
-      static bool defaultDomainDeciderPh(const double * physCoords, double physSize)
+      static ::ibm::Partition defaultDomainDecider(const double * physCoords, double physSize)
       {
-        bool isInside = true;
+        // Default: keep the unit cube.
 
-        #pragma unroll(dim)
-        for (int d = 0; d < dim; d++)
-          if (physCoords[d] < 0.0 || physCoords[d] + physSize > 1.0)
-            isInside = false;
+        // In = discard, Out = retain
 
-        return isInside;
+        // In_1d:    (coord + sz) <= 0.0  or  coord >= 1.0  // Closed "In" contains closure of octant.
+        // Out_1d:   coord  > 0.0  and (coord + sz) < 1.0   // Open "Out" contains closure of octant.
+
+        // In this case of the box,
+        //   In_Nd:  OR_{over dims} { In_1d() }
+        //   Out_Nd: AND_{over dims} { Out_1d() }
+
+        bool isIn = false;
+        bool isOut = true;
+
+        for (int d = 0; d < dim; ++d)
+        {
+          isIn  |= (physCoords[d] + physSize <= 0.0 or physCoords[d] >= 1.0);
+          isOut &= (physCoords[d] > 0.0 and physCoords[d] + physSize < 1.0);
+        }
+
+        // Can be isIn, or isOut, or neither, but NEVER both.
+
+        if (isIn && !isOut)
+          return ::ibm::IN;
+        else if (isOut && !isIn)
+          return ::ibm::OUT;
+        else if (!isIn && !isOut)
+          return ::ibm::INTERCEPTED;
+        else
+          throw std::logic_error("Filter function returned both isIn and isOut.");
       }
 
 
@@ -150,44 +153,41 @@ namespace ot
       struct BoxDecider
       {
         BoxDecider(const std::array<double, dim> &physDims)
-          : m_physDims(physDims)
-        {}
-
-        std::array<double, dim> m_physDims;
-
-        bool operator()(const double * physCoords, double physSize) const
+          : m_maxs(physDims)
         {
-          bool isInside = true;
-          for (int d = 0; d < dim; ++d)
-          {
-            isInside &= (physCoords[d] + physSize > 0.0f && physCoords[d] < m_physDims[d]);
-          }
-
-          return isInside;
+          m_mins.fill(0.0);
         }
-      };
 
-
-      // ExtentDecider
-      struct ExtentDecider
-      {
-        ExtentDecider(const std::array<unsigned int, dim> &extentPowers, unsigned int level)
-          : m_extentPowers(extentPowers),
-            m_level(level)
+        BoxDecider(const std::array<double, dim> &physMins,
+                   const std::array<double, dim> &physMaxs)
+          : m_mins(physMins), m_maxs(physMaxs)
         {}
 
-        std::array<unsigned int, dim> m_extentPowers;
-        unsigned int m_level;
+        std::array<double, dim> m_maxs;
+        std::array<double, dim> m_mins;
 
-        bool operator()(const TreeNode<T, dim> &tn) const
+
+        ::ibm::Partition operator()(const double * physCoords, double physSize) const
         {
-          bool isInside = true;
+          bool isIn = false;
+          bool isOut = true;
+  
           for (int d = 0; d < dim; ++d)
           {
-            isInside &= (tn.minX(d) < (1u << (T) (m_uiMaxDepth - m_level + m_extentPowers[d])));
+            isIn  |= (physCoords[d] + physSize <= m_mins[d] or physCoords[d] >= m_maxs[d]);
+            isOut &= (physCoords[d] > m_mins[d] and physCoords[d] + physSize < m_maxs[d]);
           }
-
-          return isInside;
+  
+          // Can be isIn, or isOut, or neither, but NEVER both.
+  
+          if (isIn && !isOut)
+            return ::ibm::IN;
+          else if (isOut && !isIn)
+            return ::ibm::OUT;
+          else if (!isIn && !isOut)
+            return ::ibm::INTERCEPTED;
+          else
+            throw std::logic_error("Filter function returned both isIn and isOut.");
         }
       };
 
@@ -196,10 +196,9 @@ namespace ot
       // Member variables.
       //
       MPI_Comm m_comm;
-      std::function<bool(const TreeNode<T, dim> &treeNodeElem)> m_domainDeciderTN;
-      std::function<bool(const double *elemPhysCoords, double elemPhysSize)> m_domainDeciderPh;
-
-      bool m_usePhysCoordsDecider;
+      ::ibm::DomainDecider m_domainDecider;
+      std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> m_domainDeciderTN_asCell;
+      std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> m_domainDeciderTN_asPoint;
 
       bool m_hasBeenFiltered;
 
@@ -222,12 +221,7 @@ namespace ot
       const TreeNode<T, dim> &get_m_treePartBack() const { return m_tpBackStrata[0]; }
 
 
-      void assignDomainDeciderTN(
-          const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
-            &domainDecider);
-      void assignDomainDeciderPh(
-          const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
-            &domainDecider);
+      void assignDomainDecider(const ::ibm::DomainDecider &domainDecider);
 
 
       //
@@ -235,20 +229,24 @@ namespace ot
       //
 
       // If given a decider on phys coords, can still test treeNodes.
-      bool conversionDomainDeciderTN(const TreeNode<T, dim> &tn)
+      ::ibm::Partition conversionDomainDeciderTN_asCell(const TreeNode<T, dim> &tn)
       {
         double physCoords[dim];
         double physSize;
         treeNode2Physical(tn, physCoords, physSize);
 
-        return m_domainDeciderPh(physCoords, physSize);
+        return m_domainDecider(physCoords, physSize);
       }
 
-      // If given a decider on treeNodes, can still test physCoords.
-      bool conversionDomainDeciderPh(const double * physCoords, double physSize)
+      ::ibm::Partition conversionDomainDeciderTN_asPoint(const TreeNode<T, dim> &tn)
       {
-        return m_domainDeciderTN(physical2TreeNode<T,dim>(physCoords, physSize));
+        double physCoords[dim];
+        double physSize;
+        treeNode2Physical(tn, physCoords, physSize);
+
+        return m_domainDecider(physCoords, 0.0);
       }
+
   };
 
 
@@ -265,10 +263,7 @@ namespace ot
     m_filteredTreePartSz(m_uiMaxDepth+1, 0),
     m_numStrata(0)
   {
-    m_usePhysCoordsDecider = false;
-
-    m_domainDeciderTN = DistTree::defaultDomainDeciderTN;
-    m_domainDeciderPh = DistTree::defaultDomainDeciderPh;
+    this->assignDomainDecider(DistTree::defaultDomainDecider);
 
     m_hasBeenFiltered = false;
   }
@@ -287,13 +282,9 @@ namespace ot
     m_filteredTreePartSz(m_uiMaxDepth+1, 0),
     m_numStrata(1)
   {
-    m_usePhysCoordsDecider = false;
-
     if (comm != MPI_COMM_NULL)
       SFC_Tree<T, dim>::distCoalesceSiblings(treePart, comm);
 
-    m_domainDeciderTN = DistTree::defaultDomainDeciderTN;
-    m_domainDeciderPh = DistTree::defaultDomainDeciderPh;
     m_originalTreePartSz[0] = treePart.size();
     m_filteredTreePartSz[0] = treePart.size();
 
@@ -306,7 +297,7 @@ namespace ot
     get_m_treePartFiltered().clear();
     std::swap(get_m_treePartFiltered(), treePart);  // Steal the tree vector.
 
-    m_hasBeenFiltered = false;
+    this->filterTree(DistTree::defaultDomainDecider);
   }
 
 
@@ -325,11 +316,7 @@ namespace ot
     m_filteredTreePartSz =    other.m_filteredTreePartSz;
     m_numStrata =             other.m_numStrata;
 
-    m_usePhysCoordsDecider =  other.m_usePhysCoordsDecider;
-    if (m_usePhysCoordsDecider)
-      this->assignDomainDeciderPh(other.m_domainDeciderPh);
-    else
-      this->assignDomainDeciderTN(other.m_domainDeciderTN);
+    this->assignDomainDecider(other.m_domainDecider);
   }
 
 
@@ -349,48 +336,27 @@ namespace ot
 
 
   //
-  // assignDomainDeciderTN()  (treeNode)
+  // assignDomainDecider()
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::assignDomainDeciderTN(
-      const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
-      &domainDecider)
+  void DistTree<T, dim>::assignDomainDecider(const ibm::DomainDecider &domainDecider)
   {
-    m_usePhysCoordsDecider = false;
-    m_domainDeciderTN = domainDecider;
+    m_domainDecider = domainDecider;
     {
       using namespace std::placeholders;
-      m_domainDeciderPh = std::bind(&DistTree<T,dim>::conversionDomainDeciderPh, this, _1, _2);
+      m_domainDeciderTN_asCell  = std::bind(&DistTree<T,dim>::conversionDomainDeciderTN_asCell, this, _1);
+      m_domainDeciderTN_asPoint = std::bind(&DistTree<T,dim>::conversionDomainDeciderTN_asPoint, this, _1);
     }
   }
 
 
   //
-  // assignDomainDeciderPh()  (physical)
+  // filterTree()
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::assignDomainDeciderPh(
-      const std::function<bool(const double *elemPhysCoords, double elemPhysSize)>
-      &domainDecider)
+  void DistTree<T, dim>::filterTree( const ::ibm::DomainDecider &domainDecider)
   {
-    m_usePhysCoordsDecider = true;
-    m_domainDeciderPh = domainDecider;
-    {
-      using namespace std::placeholders;
-      m_domainDeciderTN = std::bind(&DistTree<T,dim>::conversionDomainDeciderTN, this, _1);
-    }
-  }
-
-
-
-  //
-  // filterTree() (treeNode)
-  //
-  template <typename T, unsigned int dim>
-  void DistTree<T, dim>::filterTree( const std::function<bool(const TreeNode<T, dim> &treeNodeElem)>
-                                       &domainDecider)
-  {
-    this->assignDomainDeciderTN(domainDecider);
+    this->assignDomainDecider(domainDecider);
 
     for (int l = 0; l < m_numStrata; ++l)
     {
@@ -398,54 +364,22 @@ namespace ot
       size_t ii = 0;
 
       // Find first element to delete.
-      while (ii < oldSz && domainDecider(m_gridStrata[l][ii]))
+      // 'In' means get rid of it.
+      while (ii < oldSz && this->m_domainDeciderTN_asCell(m_gridStrata[l][ii]) != ::ibm::IN)
         ii++;
 
       m_filteredTreePartSz[l] = ii;
 
-      // Keep finding and deleting elements.
-      for ( ; ii < oldSz ; ii++)
-        if (domainDecider(m_gridStrata[l][ii]))
-          m_gridStrata[l][m_filteredTreePartSz[l]++] = std::move(m_gridStrata[l][ii]);
-
-      m_gridStrata[l].resize(m_filteredTreePartSz[l]);
-    }
-
-    m_hasBeenFiltered = true;
-  }
-
-
-  //
-  // filterTree() (physical)
-  //
-  template <typename T, unsigned int dim>
-  void DistTree<T, dim>::filterTree( const std::function<bool(const double *elemPhysCoords,
-                                                              double elemPhysSize)>   &domainDecider)
-  {
-    this->assignDomainDeciderPh(domainDecider);
-
-    // Intermediate variables to pass treeNode2Physical()-->domainDecider().
-    double physCoords[dim];
-    double physSize;
-
-    for (int l = 0; l < m_numStrata; ++l)
-    {
-      const size_t oldSz = m_gridStrata[l].size();
-      size_t ii = 0;
-
-      // Find first element to delete.
-      while (ii < oldSz
-          && (treeNode2Physical(m_gridStrata[l][ii], physCoords, physSize)
-              , domainDecider(physCoords, physSize)))
-        ii++;
-
-      m_filteredTreePartSz[l] = ii;
+      ::ibm::Partition subdomain;
 
       // Keep finding and deleting elements.
       for ( ; ii < oldSz ; ii++)
-        if ( (treeNode2Physical(m_gridStrata[l][ii], physCoords, physSize)
-              , domainDecider(physCoords, physSize)) )
-          m_gridStrata[l][m_filteredTreePartSz[l]++] = std::move(m_gridStrata[l][ii]);
+        if ( (subdomain = this->m_domainDeciderTN_asCell(m_gridStrata[l][ii])) != ::ibm::IN )
+        {
+          m_gridStrata[l][m_filteredTreePartSz[l]] = std::move(m_gridStrata[l][ii]);
+          m_gridStrata[l][m_filteredTreePartSz[l]].setIsOnTreeBdry(subdomain == ::ibm::INTERCEPTED);
+          m_filteredTreePartSz[l]++;
+        }
 
       m_gridStrata[l].resize(m_filteredTreePartSz[l]);
     }
@@ -456,24 +390,32 @@ namespace ot
 
 
   //
-  // getDomainDeciderTN()
+  // getDomainDecider()
   //
   template <typename T, unsigned int dim>
-  const std::function<bool(const TreeNode<T, dim> &treeNodeElem)> &
-      DistTree<T, dim>::getDomainDeciderTN() const
+  const ::ibm::DomainDecider & DistTree<T, dim>::getDomainDecider() const
   {
-    return m_domainDeciderTN;
+    return m_domainDecider;
   }
 
-
   //
-  // getDomainDeciderPh()
+  // getDomainDeciderTN_asCell()
   //
   template <typename T, unsigned int dim>
-  const std::function<bool(const double *elemPhysCoords, double elemPhysSize)> &
-      DistTree<T, dim>::getDomainDeciderPh() const
+  const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> &
+      DistTree<T, dim>::getDomainDeciderTN_asCell() const
   {
-    return m_domainDeciderPh;
+    return m_domainDeciderTN_asCell;
+  }
+
+  //
+  // getDomainDeciderTN_asPoint()
+  //
+  template <typename T, unsigned int dim>
+  const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodePoint)> &
+      DistTree<T, dim>::getDomainDeciderTN_asPoint() const
+  {
+    return m_domainDeciderTN_asPoint;
   }
 
 

@@ -168,14 +168,16 @@ namespace ot
         treePartBack = distTree.getTreePartBack(stratum);
 
         const std::vector<TreeNode<C, dim>> &inTreeFiltered = distTree.getTreePartFiltered(stratum);
+        // ^ includes marked boundary elements from distTree.filterTree().
 
         // Generate nodes from the tree. First, element-exterior nodes.
         for (const TreeNode<C, dim> &elem : inTreeFiltered)
-            ot::Element<C,dim>(elem).appendExteriorNodes(order, nodeList);
+            ot::Element<C,dim>(elem).appendExteriorNodes(order, nodeList, distTree.getDomainDecider());
+        // Only tests domainDecider if the element has been flagged as a boundary element.
 
-        // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),
-        // set the neighborhood flags.
-        ot::SFC_NodeSort<C, dim>::markExtantCellFlags(nodeList, distTree.getDomainDeciderTN());
+        /// // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),
+        /// // set the neighborhood flags.
+        /// ot::SFC_NodeSort<C, dim>::markExtantCellFlags(nodeList, distTree.getDomainDeciderTN());
 
         // Count unique element-exterior nodes.
         unsigned long long glbExtNodes =

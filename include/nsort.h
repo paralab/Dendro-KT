@@ -14,6 +14,8 @@
 #include "parUtils.h"
 #include "binUtils.h"
 
+#include "filterFunction.h"
+
 #include <iostream>
 #include <bitset>
 
@@ -238,7 +240,7 @@ namespace ot {
       void appendNodes(unsigned int order, std::vector<TN> &nodeList) const;
 
       void appendInteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
-      void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
+      void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList, const ::ibm::DomainDecider &domainDecider) const;
 
       void appendKFaces(CellType<dim> kface, std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const;
 

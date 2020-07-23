@@ -19,6 +19,8 @@
 #include "octUtils.h"
 #include "distTree.h"
 
+#include "filterFunction.h"
+
 #include <iostream>
 #include <vector>
 #include <functional>
@@ -140,16 +142,9 @@ class DA
     using C = unsigned int;    // Integer coordinate type.
 
     /**
-     * Takes element coordinates and size and returns whether the element should be kept in the domain.
-     * For the unit hypercube domain, this function would be to check that the
-     * element is within the range 0..1 on each dimension.
-     *
-     * Note: In order for DA construction with DistTree to work with a grid hierarchy,
-     * the domain decider must have the interpretation of returning true for any
-     * octant that has an intersection with the domain, and returning false otherwise.
+     * Returns IN to discard, OUT to keep, and INTERCEPTED to keep and mark as boundary.
      */
-    using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
-    using DomainDeciderT_TN = std::function<bool(const TreeNode<C, dim> &elemTreeNode)>;
+    using DomainDecider = ::ibm::DomainDecider;
 
     friend DendroIntL constructRegularSubdomainDA<dim>(
         DA<dim> &newSubDA,
