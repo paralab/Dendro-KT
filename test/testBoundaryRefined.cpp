@@ -1,17 +1,15 @@
 #ifdef BUILD_WITH_PETSC
 #include "petsc.h"
 #endif
-
 #include <iostream>
 #include <distTree.h>
 #include <oda.h>
 #include <point.h>
 #include <sfcTreeLoop_matvec_io.h>
 #include <octUtils.h>
-
-constexpr unsigned int DIM = 3;
+constexpr unsigned int DIM = 2;
 constexpr unsigned int nchild = 1u << DIM;
-
+static double xDomainExtent;
 template <unsigned int dim>
 void printTree(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart, int elev)
 {
@@ -23,22 +21,18 @@ void printTree(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart, int
   }
   std::cout << "\n";
 }
-
 void printMaxCoords(ot::DA<DIM> & octDA)
 {
   const size_t sz = octDA.getTotalNodalSz();
   auto partFront = octDA.getTreePartFront();
   auto partBack = octDA.getTreePartBack();
   const auto tnCoords = octDA.getTNCoords();
-
   {
     std::vector<double> maxCoords(4, 0.0);
-
     const int eleOrder = 1;
     const bool visitEmpty = false;
     const unsigned int padLevel = 0;
     const unsigned int npe = octDA.getNumNodesPerElement();
-
     ot::MatvecBaseCoords<DIM> loop(sz, eleOrder, visitEmpty, padLevel, tnCoords, *partFront, *partBack);
     while (!loop.isFinished())
     {
@@ -65,16 +59,17 @@ void printMaxCoords(ot::DA<DIM> & octDA)
     std::cout << "maxCoords == " << maxCoords[0] << " " << maxCoords[1] << " " << maxCoords[2] << "\n";
   }
 }
-
 void getBoundaryElements(const ot::DA<DIM>* octDA, unsigned  int eleOrder, const std::string fname){
   const size_t sz = octDA->getTotalNodalSz();
   auto partFront = octDA->getTreePartFront();
   auto partBack = octDA->getTreePartBack();
   const auto tnCoords = octDA->getTNCoords();
+  int rank = octDA->getRankActive();
+  int proc = octDA->getNpesActive();
   const unsigned int npe = octDA->getNumNodesPerElement();
   int counter = 0;
-  std::string boundaryFname = fname+"_boundary.txt";
-  std::string nonBoundaryFname = fname+"_nonboundary.txt";
+  std::string boundaryFname = fname+"_boundary" + std::to_string(rank) + "_" +std::to_string(proc) + ".txt";
+  std::string nonBoundaryFname = fname+"_nonboundary"+std::to_string(rank) +"_" + std::to_string(proc) + ".txt";
   std::ofstream foutBoundary(boundaryFname.c_str());
   std::ofstream foutNonBoundary(nonBoundaryFname.c_str());
   ot::MatvecBaseCoords <DIM> loop(sz,eleOrder, false,0,tnCoords,*partFront,*partBack);
@@ -84,13 +79,12 @@ void getBoundaryElements(const ot::DA<DIM>* octDA, unsigned  int eleOrder, const
       if(loop.subtreeInfo().isElementBoundary()){
         counter++;
         for(int i = 0; i < npe; i++){
-          foutBoundary << nodeCoordsFlat[3*i+0] << " "<< nodeCoordsFlat[3*i+1] << " " << nodeCoordsFlat[3*i+2] << "\n";
+          foutBoundary << nodeCoordsFlat[2*i+0] << " "<< nodeCoordsFlat[2*i+1] <<  "\n";
         }
       }
       else{
         for(int i = 0; i < npe; i++) {
-          foutNonBoundary << nodeCoordsFlat[3 * i + 0] << " " << nodeCoordsFlat[3 * i + 1] << " "
-                          << nodeCoordsFlat[3 * i + 2] << "\n";
+          foutNonBoundary << nodeCoordsFlat[2 * i + 0] << " " << nodeCoordsFlat[2 * i + 1] << "\n";
         }
       }
       loop.next();
@@ -101,26 +95,36 @@ void getBoundaryElements(const ot::DA<DIM>* octDA, unsigned  int eleOrder, const
   }
   foutBoundary.close();
   foutNonBoundary.close();
-  std::cout << "Number of boundary elements = " << counter << "\n";
-}
-
-bool DomainDecider(const double * physCoords, double physSize)
-{
-  bool isInside = true;
-  if (   physCoords[0] < 0.0 || physCoords[0] + physSize > 0.5
-      || physCoords[1] < 0.0 || physCoords[1] + physSize > 1.0
-      || physCoords[2] < 0.0 || physCoords[2] + physSize > 1.0)
-  {
-    isInside = false;
+  for(int i = 0; i < proc; i++){
+    if(i == rank){
+      std::cout << "Number of boundary elements in proc = " << i  << " = " << counter << "\n";
+    }
+    MPI_Barrier(octDA->getCommActive());
   }
-
-//    if ((physCoords[0] > 0.2 and physCoords[1] > 0.2 and physCoords[2] > 0.2 ) and
-//    ((physCoords[0] + physSize < 0.4) and (physCoords[1] + physSize < 0.4) and (physCoords[2] + physSize < 0.4))){
-//      isInside = false;
-//    }
-
-  return isInside;
 }
+
+bool DomainDecider(const double * p, double sz)
+{
+  const double outerMin[2] = {0.0, 0.0};
+  const double outerMax[2] = {xDomainExtent, 1.0};
+
+  const double innerMin[2] = {20.0/300.0, 20.0/300.0};
+  const double innerMax[2] = {30.0/300.0, 30.0/300.0};
+
+  return ( ( (p[0]+sz > outerMin[0] && p[0] < outerMax[0]) && (p[1]+sz > outerMin[1] && p[1] < outerMax[1]) ) // Inside outer
+           and
+           ( (p[0] < innerMin[0] || p[0]+sz > innerMax[0]) || (p[1] < innerMin[1] || p[1]+sz > innerMax[1]) ) // Outside inner
+         );
+}
+
+bool intersectsInnerBox(const double * p, double sz)
+{
+  const double innerMin[2] = {20.0/300.0, 20.0/300.0};
+  const double innerMax[2] = {30.0/300.0, 30.0/300.0};
+
+  return ( (p[0]+sz > innerMin[0] && p[0] < innerMax[0]) && (p[1]+sz > innerMin[1] && p[1] < innerMax[1]) );
+}
+
 
 
 /**
@@ -130,48 +134,93 @@ int main(int argc, char * argv[]){
   typedef unsigned int DENDRITE_UINT;
   PetscInitialize(&argc, &argv, NULL, NULL);
   _InitializeHcurve(DIM);
-
-  int eleOrder = 1;
-  int ndof = 1;
+  int rank; MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   m_uiMaxDepth = 10;
-  int level = 2;
-
+  xDomainExtent = 0.5;
+  const DENDRITE_UINT eleOrder = 1;
+  if(argc < 3){
+    if(not(rank)){
+      std::cout << "Usage: level xExtent\n";
+    }
+    exit(EXIT_FAILURE);
+  }
+  const DENDRITE_UINT level = static_cast<DENDRITE_UINT>(std::atoi(argv[1]));
+  xDomainExtent =  static_cast<double>(std::atof(argv[2]));
+  std::cout << level << " "<<  xDomainExtent << "\n";
   MPI_Comm comm = MPI_COMM_WORLD;
-
   constexpr bool printTreeOn = false;  // Can print the contents of the tree vectors.
-
-  std::array<double, DIM> physDims;
-  physDims.fill(1.0);
-  physDims[0] = 0.8;
-
+  unsigned int extents[] = {1,2,1};
+  std::array<unsigned int,DIM> a;
+  for (int d = 0; d < DIM; ++d)
+    a[d] = extents[d];
   using DTree = ot::DistTree<unsigned int, DIM>;
-  DTree distTree = DTree::constructSubdomainDistTree( level, DTree::BoxDecider(physDims),
+  DTree distTree = DTree::constructSubdomainDistTree( level,DomainDecider,
                                                       comm);
   ot::DA<DIM> *octDA = new ot::DA<DIM>(distTree, comm, eleOrder);
   /// printMaxCoords(*octDA);
-
   size_t oldTreeSize = 0;
   size_t refinedTreeSize = 0;
-
   // Access the original tree as a list of tree nodes.
   {
     const std::vector<ot::TreeNode<unsigned int, DIM>> &treePart = distTree.getTreePartFiltered();
     oldTreeSize = treePart.size();
-
     /// if (printTreeOn)
     ///   printTree(treePart, level+1);
   }
-
   std::cout << "Old Tree \n";
   std::cout << "Num elements: " << oldTreeSize << "\n";
   getBoundaryElements(octDA,eleOrder, "Old");
+  std::string fname = "BoNodes"+std::to_string(rank) + ".txt";
+  std::ofstream fout(fname.c_str());
+//  DomainInfo fullDomain;
+//  fullDomain.min.fill(0.0);
+//  fullDomain.max.fill(1.0);
+//  IO::writeBoundaryElements(octDA,"subDA",fullDomain);
+for(int i = 0; i < 7; i++) {
+  std::vector<ot::OCT_FLAGS::Refine> refineFlags(octDA->getLocalElementSz(), ot::OCT_FLAGS::Refine::OCT_NO_CHANGE);
+  const size_t sz = octDA->getTotalNodalSz();
+  auto partFront = octDA->getTreePartFront();
+  auto partBack = octDA->getTreePartBack();
+  const auto tnCoords = octDA->getTNCoords();
+  ot::MatvecBaseCoords<DIM> loop(sz, octDA->getElementOrder(), false, 0, tnCoords, *partFront, *partBack);
+  int counter = 0;
+  while (!loop.isFinished()) {
+    if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
 
-  std::vector<ot::OCT_FLAGS::Refine> refineFlags(oldTreeSize, ot::OCT_FLAGS::Refine::OCT_REFINE);
+      double physCoords[DIM];
+      double physSize;
+      treeNode2Physical(loop.subtreeInfo().getCurrentSubtree(), physCoords, physSize);
+      if (intersectsInnerBox(physCoords, physSize))
+        refineFlags[counter] = ot::OCT_FLAGS::Refine::OCT_REFINE;
+
+      /// const double *nodeCoordsFlat = loop.subtreeInfo().getNodeCoords();
+      /// for (int numEle = 0; numEle < 4; numEle++) {
+      ///   if ((nodeCoordsFlat[numEle * DIM + 0] >= (20. / 300.)) and
+      ///       (nodeCoordsFlat[numEle * DIM + 0] <= (30. / 300.)) and
+      ///       (nodeCoordsFlat[numEle * DIM + 1] >= (20. / 300.)) and
+      ///       (nodeCoordsFlat[numEle * DIM + 1] <= (30. / 300.))) {
+      ///     if (loop.subtreeInfo().isElementBoundary()) {
+      ///       refineFlags[counter] = ot::OCT_FLAGS::Refine::OCT_REFINE;
+      ///     }
+      ///   }
+      /// }
+
+      counter++;
+      loop.next();
+    } else {
+      loop.step();
+    }
+  }
+  
+  if (!(counter == octDA->getLocalElementSz()))
+  {
+    printf("WARNING!!  counter==%d, octDA->getLocalElementSz()==%d\n", counter, (int) octDA->getLocalElementSz());
+  }
+
 
   // distRemeshSubdomain()
   ot::DistTree<unsigned int, DIM> newDistTree, surrDistTree;
   ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, 0.3);
-
   // =======================================================================
   // Currently the boundary is detected from applying the carving function.
   // The boundary is not detected based solely on the existence of TreeNodes
@@ -179,30 +228,25 @@ int main(int argc, char * argv[]){
   // newDistTree instead of newTree. Otherwise, DA() constructor uses
   // default boundary definition of the unit cube.
   // =======================================================================
-  ot::DA<DIM> * newDA = new ot::DA<DIM>(newDistTree, comm,eleOrder,100,0.3); //DistTree overload
+  ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder, 100, 0.3); //DistTree overload
   /// printMaxCoords(*newDA);
-
   // Access the refined tree as a list of tree nodes.
   {
     const std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> &newTree = newDistTree.getTreePartFiltered();
     /// const std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> &surrTree = surrDistTree.getTreePartFiltered();
-
     refinedTreeSize = newTree.size();
-
     /// if (printTreeOn)
     ///   printTree(newTree, level+1);
   }
-
-
   std::swap(octDA, newDA);
-
+  delete newDA;
+  std::swap(distTree,newDistTree);
+//  IO::writeBoundaryElements(octDA, ("RefinedsubDA"+std::to_string(i)).c_str(), fullDomain);
   std::cout << "New tree \n";
   std::cout << "Num elements: " << refinedTreeSize << "\n";
-  getBoundaryElements(octDA, eleOrder, "Refined");
-
+  getBoundaryElements(octDA, eleOrder, ("Refined"+std::to_string(i)).c_str());
+}
   delete octDA;
-  delete newDA;
-
   _DestroyHcurve();
   PetscFinalize();
 }
