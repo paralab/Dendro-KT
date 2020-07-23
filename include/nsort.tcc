@@ -95,7 +95,7 @@ namespace ot {
   template <typename T, unsigned int dim>
   TNPoint<T,dim>::TNPoint (const TNPoint<T,dim> & other) :
       TreeNode<T,dim>(other),
-      m_isSelected(other.m_isSelected), m_numInstances(other.m_numInstances), m_owner(other.m_owner)
+      m_isSelected(other.m_isSelected), m_numInstances(other.m_numInstances), m_owner(other.m_owner), m_isCancellation(other.m_isCancellation)
   { }
 
   /**
@@ -117,6 +117,7 @@ namespace ot {
     m_isSelected = other.m_isSelected;
     m_numInstances = other.m_numInstances;
     m_owner = other.m_owner;
+    m_isCancellation = other.m_isCancellation;
   }
 
 
@@ -191,6 +192,20 @@ namespace ot {
 
     return cellType;
   }
+
+
+  template <typename T, unsigned int dim>
+  bool TNPoint<T,dim>::getIsCancellation() const
+  {
+    return m_isCancellation;
+  }
+
+  template <typename T, unsigned int dim>
+  void TNPoint<T,dim>::setIsCancellation(bool isCancellation)
+  {
+    m_isCancellation = isCancellation;
+  }
+
 
 
   template <typename T, unsigned int dim>
@@ -462,6 +477,44 @@ namespace ot {
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }
+
+
+    // Cancellations at odd external subnodes.
+    const unsigned int numSubNodes = intPow(2*order + 1, dim);
+    nodeIndices.fill(0);
+    for (unsigned int subNode = 0; subNode < numSubNodes; ++subNode)
+    {
+      if (std::count(nodeIndices.begin(), nodeIndices.end(), 0) == 0 &&
+          std::count(nodeIndices.begin(), nodeIndices.end(), order) == 0)
+      {
+        nodeIndices[0] = 2*order;  // Skip
+        subNode += 2*order - 1;
+      }
+
+      bool odd = false;
+      for (int d = 0; d < dim; ++d)
+        if (nodeIndices[d] % 2 == 1)
+          odd = true;
+
+      // Append cancellation nodes at odd locations.
+      if (odd)
+      {
+        std::array<T, dim> nodeCoords;
+        for (int d = 0; d < dim; ++d)
+        {
+          // Should be the same as if had children append.
+          nodeCoords[d] = len / 2 * nodeIndices[d] / order + TreeNode::m_uiCoords[d];
+        }
+
+        nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel+1));
+        nodeList.back().setIsCancellation(true);
+
+        incrementBaseB<unsigned int, dim>(nodeIndices, 2*order+1);
+      }
+    }
+
+
+
   }
 
 
@@ -699,7 +752,7 @@ namespace ot {
     // First local pass: Don't classify, just sort and count instances.
     countCGNodes(&(*points.begin()), &(*points.end()), order, false);
 
-    // Compact node list (remove literal duplicates).
+    // Compact node list (remove literal duplicates, we'll only send the representative).
     RankI numUniquePoints = 0;
     for (const TNP &pt : points)
     {
@@ -1353,7 +1406,7 @@ namespace ot {
   void SFC_NodeSort<T,dim>::scanForDuplicates(
       TNPoint<T,dim> *start, TNPoint<T,dim> *end,
       TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest,
-      TNPoint<T,dim> * &next, unsigned int &numDups)
+      TNPoint<T,dim> * &next, unsigned int &numDups, bool noCancellations)
   {
     std::array<T,dim> first_coords, other_coords;
     start->getAnchor(first_coords);
@@ -1362,6 +1415,7 @@ namespace ot {
     firstFinest = start;
     unsigned char numInstances = start->get_numInstances();
     bool sameLevel = true;
+    noCancellations = true;
     while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
     {
       numInstances += next->get_numInstances();
@@ -1371,9 +1425,11 @@ namespace ot {
         firstCoarsest = next;
       if (next->getLevel() > firstFinest->getLevel())
         firstFinest = next;
+      if (next->getIsCancellation())
+        noCancellations = false;
       next++;
     }
-    if (sameLevel)
+    if (sameLevel && noCancellations)
       numDups = numInstances;
     else
       numDups = 0;
@@ -1538,11 +1594,15 @@ namespace ot {
     unsigned int numDups;
     while (ptIter < end)
     {
-      scanForDuplicates(ptIter, end, firstCoarsest, unused_firstFinest, ptIter, numDups);
+      bool noCancellations = true;
+      scanForDuplicates(ptIter, end, firstCoarsest, unused_firstFinest, ptIter, numDups, noCancellations);
       if (!numDups)   // Signifies mixed levels. We have a winner.
       {
-        firstCoarsest->set_isSelected(TNP::Yes);
-        totalCount++;
+        if (noCancellations)  // A cancellation and a winner are never the same node.
+        {
+          firstCoarsest->set_isSelected(TNP::Yes);
+          totalCount++;
+        }
       }
       else            // All same level and cell type. Test whether hanging or not.
       {
@@ -1553,14 +1613,19 @@ namespace ot {
         /// unsigned char numIntersecting = bdim - cdim; //(dim - cdim) - (dim - bdim);
         /// unsigned int expectedDups = 1u << numIntersecting;
 
-        // NEW version where expected neighbourhood is precomputed by DA.
-        unsigned int expectedDups = firstCoarsest->expectedNeighboursExtantCellFlag();
+        /// // NEW version where expected neighbourhood is precomputed by DA.
+        /// unsigned int expectedDups = firstCoarsest->expectedNeighboursExtantCellFlag();
 
-        if (numDups == expectedDups)
-        {
-          firstCoarsest->set_isSelected(TNP::Yes);
-          totalCount++;
-        }
+        /// if (numDups == expectedDups)
+        /// {
+        ///   firstCoarsest->set_isSelected(TNP::Yes);
+        ///   totalCount++;
+        /// }
+
+        // NEW NEW version where cancellations indicate hanging.
+        // also the num of dups counted will be wrong, but it can be ignored.
+        firstCoarsest->set_isSelected(TNP::Yes);
+        totalCount++;
       }
     }
 
@@ -1825,7 +1890,7 @@ namespace ot {
 
 
   //
-  // SFC_NodeSort::countInstances()
+  // SFC_NodeSort::countInstances(): Transfers instance counters onto the first instance.
   //
   template <typename T, unsigned int dim>
   RankI SFC_NodeSort<T,dim>::countInstances(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int unused_order)
@@ -1838,7 +1903,14 @@ namespace ot {
       TNP *next = start + 1;
       while (next < end && (*next == *start))  // Compares both coordinates and level.
       {
-        delta_numInstances += next->get_numInstances();
+        if (next->getIsCancellation())
+        {
+          next->setIsCancellation(start->getIsCancellation());
+          start->setIsCancellation(true);
+        }
+        else
+          delta_numInstances += next->get_numInstances();
+
         next->set_numInstances(0);
         next++;
       }

@@ -173,6 +173,7 @@ namespace ot
         // Generate nodes from the tree. First, element-exterior nodes.
         for (const TreeNode<C, dim> &elem : inTreeFiltered)
             ot::Element<C,dim>(elem).appendExteriorNodes(order, nodeList, distTree.getDomainDecider());
+        // Also appends cancellation nodes where potential hanging nodes could be.
         // Only tests domainDecider if the element has been flagged as a boundary element.
 
         /// // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),

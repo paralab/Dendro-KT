@@ -160,6 +160,10 @@ namespace ot {
       /** @brief Get the cell that generated this point, based on coordinates and level. */
       TreeNode<T,dim> getCell() const;
 
+      bool getIsCancellation() const;
+
+      void setIsCancellation(bool isCancellation);
+
       /**
        * @brief Append all "base nodes," i.e. if this node were hanging, the nodes in the parent that it could point to.
        * @note The appended base nodes may not be exact. The least significant bit will have a rounding artifact. To
@@ -188,6 +192,9 @@ namespace ot {
       int m_owner = -1;
       long m_globId = -1;
       //TODO These members could be overlayed in a union if we are careful.
+
+
+      bool m_isCancellation = false;
   };
 
 
@@ -422,7 +429,7 @@ namespace ot {
        * @note Assumes that start < end.
        * @note Assumes that the field m_numInstances has been properly initialized for all points.
        */
-      static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest, TNPoint<T,dim> * &next, unsigned int &numDups);
+      static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest, TNPoint<T,dim> * &next, unsigned int &numDups, bool noCancellations);
 
       /** @brief Moves all domain boundary points to the end, returning the number of boundary points. */
       static RankI filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end);
