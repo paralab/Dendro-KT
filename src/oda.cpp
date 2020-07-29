@@ -176,9 +176,11 @@ namespace ot
         // Also appends cancellation nodes where potential hanging nodes could be.
         // Only tests domainDecider if the element has been flagged as a boundary element.
 
-        /// // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),
-        /// // set the neighborhood flags.
-        /// ot::SFC_NodeSort<C, dim>::markExtantCellFlags(nodeList, distTree.getDomainDeciderTN());
+        // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),
+        // set the neighborhood flags.
+        ///TODO this is probably buggy with false positives when boundary pinches subdomain.
+        //also maybe not consistent with the tree when there are hanging elements.
+        ot::SFC_NodeSort<C, dim>::markExtantCellFlags(nodeList, distTree.getDomainDeciderTN_asCell());
 
         // Count unique element-exterior nodes.
         unsigned long long glbExtNodes =

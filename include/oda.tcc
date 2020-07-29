@@ -298,7 +298,12 @@ namespace ot
             // For neighbour flags of exterior points, test each axis for boundary.
             // On an axis that is 'internal', none of the 1-side neighbours are marked.
             nodeListBuffer.clear();
-            element.appendExteriorNodes(eleOrder, nodeListBuffer);
+
+            std::array<double, dim> physMaxs;
+            for (int d = 0; d < dim; ++d)
+              physMaxs[d] = double(subdomainBBMaxs[d]) / double(1u << m_uiMaxDepth);
+            element.appendExteriorNodes(eleOrder, nodeListBuffer, (typename DistTree<C, dim>::BoxDecider)(physMaxs));
+
             for (TNPoint<C,dim> &node : nodeListBuffer)
             {
               node.resetExtantCellFlagAllNeighbours();

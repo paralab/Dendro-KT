@@ -359,9 +359,6 @@ namespace ot {
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
-    using DomainDeciderT = std::function<bool(const double *elemPhysCoords, double elemPhysSize)>;
-    using DomainDeciderT_TN = std::function<bool(const TreeNode<T, dim> &elemTreeNode)>;
-
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array. Also compact node list and compute ``scatter map.''
      */
@@ -370,7 +367,7 @@ namespace ot {
         const TreeNode<T,dim> *treePartFront, const TreeNode<T,dim> *treePartBack,
         MPI_Comm comm);
 
-    static void markExtantCellFlags(std::vector<TNPoint<T,dim>> &points, const DomainDeciderT_TN &domainDecider);
+    static void markExtantCellFlags(std::vector<TNPoint<T,dim>> &points, const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> &domainDecider_elem);
 
     static TreeNode<T, dim> getFirstExtantNeighbour(const TreeNode<T, dim> &pt);
 

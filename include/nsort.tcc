@@ -464,16 +464,27 @@ namespace ot {
 
       std::array<T,dim> nodeCoords;
       double physNodeCoords[dim];
+      unsigned int relNbrId = 0;
       #pragma unroll(dim)
       for (int d = 0; d < dim; d++)
       {
         nodeCoords[d] = len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
         physNodeCoords[d] = (1.0 * nodeIndices[d] / order * physSize) + physElemCoords[d];
+
+        const bool leftNode = nodeCoords[d] == 0;
+        const bool rightNode = nodeCoords[d] == order;
+        const bool middleNode = !leftNode && !rightNode;
+        // From the node's perspective, only need '1'
+        // if the element is completely to the right.
+        relNbrId |= (leftNode) * (1u << d);
       }
       nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
 
       // Only tests domainDecider if this element has been flagged as a boundary element.
       nodeList.back().setIsOnTreeBdry(this->getIsOnTreeBdry() && domainDecider(physNodeCoords, 0.0) == ibm::IN);
+
+      /// //TODO use the extantCellFlag based on the explicit tree
+      /// nodeList.back().addNeighbourExtantCellFlag(relNbrId);
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }
@@ -1023,7 +1034,7 @@ namespace ot {
   //
   template <typename T, unsigned int dim>
   void SFC_NodeSort<T,dim>::markExtantCellFlags(std::vector<TNPoint<T,dim>> &nodeList,
-                                                const DomainDeciderT_TN &domainDecider)
+                                                const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> &domainDecider_elem)
   {
     using C = T;
 
@@ -1058,10 +1069,8 @@ namespace ot {
             nbrTN.setX(d, nbrTN.getX(d) - elemSz);
 
         // Test if candidate neighbor exists.
-        if (domainDecider(nbrTN))
+        if (domainDecider_elem(nbrTN) != ibm::IN)
           node.addNeighbourExtantCellFlag(nbrId);
-        else
-          node.setIsOnTreeBdry(true);
       }
 
       // Now we have set the neighour flag and boundary flag of the node.
