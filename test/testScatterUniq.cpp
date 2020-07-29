@@ -4,6 +4,8 @@
 #include "nsort.h"
 #include "hcurvedata.h"
 
+#include "distTree.h"
+
 #include <vector>
 #include <iostream>
 #include <fstream>
@@ -110,7 +112,7 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
   // Extract nodes from the tree.
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior, ot::DistTree<T, dim>::defaultDomainDecider);
     /// ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
   }
 

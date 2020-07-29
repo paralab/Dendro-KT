@@ -12,6 +12,7 @@
 #include "mathUtils.h"
 #include "nsort.h"
 #include "distTree.h"
+#include "filterFunction.h"
 
 #include "hcurvedata.h"
 
@@ -124,6 +125,38 @@ int main(int argc, char * argv[])
 }
 
 
+template <unsigned int dim>
+bool defaultIsIn(const ot::TreeNode<unsigned int, dim> &tn)  // Discard
+{
+  return !(ot::TreeNode<unsigned int, dim>()).isAncestorInclusive(tn);
+}
+
+template <unsigned int dim>
+bool defaultIsOut(const ot::TreeNode<unsigned int, dim> &tn)  // Keep
+{
+  const unsigned int domainMax = (1u << m_uiMaxDepth);
+  for (int d = 0; d < dim; ++d)
+    if (tn.maxX(d) >= domainMax)
+      return false;
+  return true;
+}
+
+template <unsigned int dim>
+ibm::Partition defaultDecider(const ot::TreeNode<unsigned int, dim> &tn)
+{
+  const bool isIn = defaultIsIn(tn);
+  const bool isOut = defaultIsOut(tn);
+
+  if (isIn && !isOut)
+    return ibm::IN;
+  else if (isOut && !isIn)
+    return ibm::OUT;
+  else if (!isIn && !isOut)
+    return ibm::INTERCEPTED;
+  else
+    throw std::logic_error("Filter function returned both isIn and isOut.");
+}
+
 
 //
 // testExample()
@@ -150,18 +183,18 @@ void testExample(const char *msgPrefix, unsigned int expected, Tree<dim> &tree, 
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior, ot::DistTree<unsigned int, dim>::defaultDomainDecider);
     ot::Element<T,dim>(tn).appendNodes(order, nodeListCombined);
   }
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
   {
-    ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListExterior, ot::DistTree<T,dim>::defaultDomainDeciderTN);
+    ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListExterior, defaultDecider<dim>);
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(tree.front()), &(tree.back()), comm);
     ot::RankI globInterior = 0;
     par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
     numUniqueInteriorNodes = globInterior;
-    ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListCombined, ot::DistTree<T,dim>::defaultDomainDeciderTN);
+    ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListCombined, defaultDecider<dim>);
     numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListCombined, order, &(tree.front()), &(tree.back()), comm);
   }
   else

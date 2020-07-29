@@ -7,6 +7,7 @@
 #include <point.h>
 #include <sfcTreeLoop_matvec_io.h>
 #include <octUtils.h>
+#include <filterFunction.h>
 constexpr unsigned int DIM = 2;
 constexpr unsigned int nchild = 1u << DIM;
 static double xDomainExtent;
@@ -103,26 +104,54 @@ void getBoundaryElements(const ot::DA<DIM>* octDA, unsigned  int eleOrder, const
   }
 }
 
-bool DomainDecider(const double * p, double sz)
+ibm::Partition  DomainDecider(const double * p, double sz)
 {
-  const double outerMin[2] = {0.0, 0.0};
-  const double outerMax[2] = {xDomainExtent, 1.0};
+  const double boundsMin[2] = {0.0, 0.0};
+  const double boundsMax[2] = {xDomainExtent, 1.0};
 
-  const double innerMin[2] = {20.0/300.0, 20.0/300.0};
-  const double innerMax[2] = {30.0/300.0, 30.0/300.0};
+  const double cutoutMin[2] = {20.0/300.0, 20.0/300.0};
+  const double cutoutMax[2] = {30.0/300.0, 30.0/300.0};
 
-  return ( ( (p[0]+sz > outerMin[0] && p[0] < outerMax[0]) && (p[1]+sz > outerMin[1] && p[1] < outerMax[1]) ) // Inside outer
-           and
-           ( (p[0] < innerMin[0] || p[0]+sz > innerMax[0]) || (p[1] < innerMin[1] || p[1]+sz > innerMax[1]) ) // Outside inner
-         );
+  using ibm::IN;
+  using ibm::OUT;
+  using ibm::INTERCEPTED;
+
+  //
+  // Keep out, discard in.
+  //
+
+  bool isOut =
+  (
+    ( p[0] > boundsMin[0] && p[0]+sz < boundsMax[0]  &&  p[1] > boundsMin[1] && p[1]+sz < boundsMax[1] )   // Inside bounds
+      and
+    ( p[0]+sz < cutoutMin[0] || p[0] > cutoutMax[0]  ||  p[1]+sz < cutoutMin[1] || p[1] > cutoutMax[1] )   // Outside cutout
+  );
+
+
+  bool isIn =
+  (
+    ( p[0]+sz <= boundsMin[0] || p[0] >= boundsMax[0]  ||  p[1]+sz <= boundsMin[1] || p[1] >= boundsMax[1] )  // Outside bounds
+      or
+    ( p[0] >= cutoutMin[0] && p[0]+sz <= cutoutMax[0]  &&  p[1] >= cutoutMin[1] && p[1]+sz <= cutoutMax[1] )  // Inside cutout
+  );
+
+  if (isIn && !isOut)
+    return ibm::IN;
+  else if (isOut && !isIn)
+    return ibm::OUT;
+  else if (!isIn && !isOut)
+    return ibm::INTERCEPTED;
+  else
+    throw std::logic_error("Filter function returned both isIn and isOut.");
 }
+
 
 bool intersectsInnerBox(const double * p, double sz)
 {
-  const double innerMin[2] = {20.0/300.0, 20.0/300.0};
-  const double innerMax[2] = {30.0/300.0, 30.0/300.0};
+  const double cutoutMin[2] = {20.0/300.0, 20.0/300.0};
+  const double cutoutMax[2] = {30.0/300.0, 30.0/300.0};
 
-  return ( (p[0]+sz > innerMin[0] && p[0] < innerMax[0]) && (p[1]+sz > innerMin[1] && p[1] < innerMax[1]) );
+  return ( (p[0]+sz > cutoutMin[0] && p[0] < cutoutMax[0]) && (p[1]+sz > cutoutMin[1] && p[1] < cutoutMax[1]) );
 }
 
 

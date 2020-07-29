@@ -15,6 +15,9 @@
 #include "refel.h"
 #include<functional>
 #include "octUtils.h"
+
+#include "distTree.h"
+
 /// #include "matvecPreallocation.h"
 
 #include "hcurvedata.h"
@@ -123,7 +126,7 @@ void testGatherMap(MPI_Comm comm)
   for (const ot::TreeNode<T,dim> &tn : tree)
   {
     /// ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeListInterior);
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeListExterior, ot::DistTree<T, dim>::defaultDomainDecider);
   }
   /// numUniqueInteriorNodes = nodeListInterior.size();
   numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(tree.front()), &(tree.back()), comm);
@@ -264,7 +267,7 @@ void testGatherMap(MPI_Comm comm)
 /// 
 ///   // Add exterior points and resolve ownership/hanging nodes.
 ///   for (const ot::TreeNode<T,dim> &tn : tree)
-///     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
+///     ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList, ot::DistTree<T, dim>::defaultDomainDecider);
 ///   ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, tree.data(), scatterMap, gatherMap, comm);
 /// 
 ///   // Add interior points (we definitely own them and they cannot be hanging).
@@ -480,7 +483,7 @@ void testUniformGrid(MPI_Comm comm)
 
   // Append all exterior nodes, then do global resolving ownership. (There are no hanging nodes).
   for (auto &&tn : tree)
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList, ot::DistTree<T, dim>::defaultDomainDecider);
   ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, &(tree.front()), &(tree.back()), comm);
 
   // This is to test the new scattermap.
@@ -605,7 +608,7 @@ void testDummyMatvec()
 
   ot::SFC_Tree<T,dim>::distTreeSort(tree, tol, comm);
   for (const ot::TreeNode<T,dim> &tn : tree)
-    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList);
+    ot::Element<T,dim>(tn).appendExteriorNodes(order, nodeList, ot::DistTree<T, dim>::defaultDomainDecider);
   ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeList, order, &(tree.front()), &(tree.back()), comm);
 
   for (const ot::TreeNode<T,dim> &tn : tree)

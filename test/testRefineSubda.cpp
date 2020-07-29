@@ -66,13 +66,13 @@ int main(int argc, char * argv[]){
   constexpr bool printTreeOn = false;  // Can print the contents of the tree vectors.
 
   unsigned int extents[] = {1,2,1};
-  std::array<unsigned int,DIM> a;
+  std::array<double,DIM> a;
   for (int d = 0; d < DIM; ++d)
-    a[d] = extents[d];
+    a[d] = double(1u << extents[d]) / double(1u << level);
 
   using DTree = ot::DistTree<unsigned int, DIM>;
   DTree distTree = DTree::constructSubdomainDistTree( level,
-                                                      DTree::ExtentDecider(a, level),
+                                                      DTree::BoxDecider(a),
                                                       MPI_COMM_WORLD);
 
   treePart = distTree.getTreePartFiltered();

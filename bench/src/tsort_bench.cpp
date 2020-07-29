@@ -8,6 +8,7 @@
 */
 
 #include "tsort_bench.h"
+#include "distTree.h"
 
 namespace bench
 {
@@ -77,7 +78,7 @@ namespace bench
             // Before clearing the tree, generate the nodes, and save first element of the tree for splitters.
             for (auto &&tn : tree)
             {
-                ot::Element<T,dim>(tn).appendExteriorNodes(polyOrder, nodeListExterior);
+                ot::Element<T,dim>(tn).appendExteriorNodes(polyOrder, nodeListExterior, ot::DistTree<T, dim>::defaultDomainDecider);
                 /// ot::Element<T,dim>(tn).appendInteriorNodes(polyOrder, nodeListInterior);
             }
             treeSplitterF = tree.front();
