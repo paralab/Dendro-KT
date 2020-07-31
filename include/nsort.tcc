@@ -490,13 +490,16 @@ namespace ot {
     }
 
 
+    int numOdd = 0;
+    /// printf("Level %d\n", this->getLevel());
+
     // Cancellations at odd external subnodes.
     const unsigned int numSubNodes = intPow(2*order + 1, dim);
     nodeIndices.fill(0);
     for (unsigned int subNode = 0; subNode < numSubNodes; ++subNode)
     {
       if (std::count(nodeIndices.begin(), nodeIndices.end(), 0) == 0 &&
-          std::count(nodeIndices.begin(), nodeIndices.end(), order) == 0)
+          std::count(nodeIndices.begin(), nodeIndices.end(), 2*order) == 0)
       {
         nodeIndices[0] = 2*order;  // Skip
         subNode += 2*order - 1;
@@ -520,10 +523,16 @@ namespace ot {
         nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel+1));
         nodeList.back().setIsCancellation(true);
 
-        incrementBaseB<unsigned int, dim>(nodeIndices, 2*order+1);
+        /// printf("(%d,%d)  ", nodeCoords[0], nodeCoords[1]);
+        numOdd++;
       }
+      incrementBaseB<unsigned int, dim>(nodeIndices, 2*order+1);
     }
+    /// printf("\n");
 
+
+    /// printf("Emitted odd nodes:  %d\n", numOdd);
+    /// printf("\n");
 
 
   }
@@ -1438,6 +1447,10 @@ namespace ot {
         noCancellations = false;
       next++;
     }
+
+    /// if (firstCoarsest < end && firstCoarsest->getIsCancellation())
+    ///   std::cout << "Cancellation found:   " << *next << "\n";
+
     if (sameLevel && noCancellations)
       numDups = numInstances;
     else
@@ -1612,6 +1625,10 @@ namespace ot {
           firstCoarsest->set_isSelected(TNP::Yes);
           totalCount++;
         }
+        else
+        {
+          throw std::logic_error("Found mixed-level node and cancellation coincide.");
+        }
       }
       else            // All same level and cell type. Test whether hanging or not.
       {
@@ -1633,8 +1650,11 @@ namespace ot {
 
         // NEW NEW version where cancellations indicate hanging.
         // also the num of dups counted will be wrong, but it can be ignored.
-        firstCoarsest->set_isSelected(TNP::Yes);
-        totalCount++;
+        if (noCancellations)
+        {
+          firstCoarsest->set_isSelected(TNP::Yes);
+          totalCount++;
+        }
       }
     }
 
