@@ -491,7 +491,7 @@ namespace ot {
 
 
     int numOdd = 0;
-    /// printf("Level %d\n", this->getLevel());
+    /// printf("Element level %d  (nodes @ %d)\n", this->getLevel(), this->getLevel()+1);
 
     // Cancellations at odd external subnodes.
     const unsigned int numSubNodes = intPow(2*order + 1, dim);
@@ -1424,19 +1424,22 @@ namespace ot {
   void SFC_NodeSort<T,dim>::scanForDuplicates(
       TNPoint<T,dim> *start, TNPoint<T,dim> *end,
       TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest,
-      TNPoint<T,dim> * &next, unsigned int &numDups, bool noCancellations)
+      TNPoint<T,dim> * &next, int &numDups, bool &noCancellations)
   {
     std::array<T,dim> first_coords, other_coords;
     start->getAnchor(first_coords);
-    next = start + 1;
+    next = start;
     firstCoarsest = start;
     firstFinest = start;
-    unsigned char numInstances = start->get_numInstances();
+    unsigned char numInstances = 0;
     bool sameLevel = true;
     noCancellations = true;
+
     while (next < end && (next->getAnchor(other_coords), other_coords) == first_coords)
     {
-      numInstances += next->get_numInstances();
+      if (!next->getIsCancellation())
+        numInstances += next->get_numInstances();
+
       if (sameLevel && next->getLevel() != firstCoarsest->getLevel())
         sameLevel = false;
       if (next->getLevel() < firstCoarsest->getLevel())
@@ -1448,13 +1451,10 @@ namespace ot {
       next++;
     }
 
-    /// if (firstCoarsest < end && firstCoarsest->getIsCancellation())
-    ///   std::cout << "Cancellation found:   " << *next << "\n";
-
-    if (sameLevel && noCancellations)
+    if (sameLevel)
       numDups = numInstances;
     else
-      numDups = 0;
+      numDups = -1;
   }
 
 
@@ -1613,12 +1613,12 @@ namespace ot {
     RankI totalCount = 0;
     TNP *ptIter = start;
     TNP *firstCoarsest, *unused_firstFinest;
-    unsigned int numDups;
+    int numDups;
     while (ptIter < end)
     {
       bool noCancellations = true;
       scanForDuplicates(ptIter, end, firstCoarsest, unused_firstFinest, ptIter, numDups, noCancellations);
-      if (!numDups)   // Signifies mixed levels. We have a winner.
+      if (numDups == -1)   // Signifies mixed levels. We have a winner.
       {
         if (noCancellations)  // A cancellation and a winner are never the same node.
         {
@@ -1627,6 +1627,7 @@ namespace ot {
         }
         else
         {
+          std::cerr << "Coincide :  " << *firstCoarsest << "\n";
           throw std::logic_error("Found mixed-level node and cancellation coincide.");
         }
       }

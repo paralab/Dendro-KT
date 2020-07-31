@@ -417,16 +417,16 @@ namespace ot {
       using ScatterFacesCollection = std::array<std::vector<ScatterFace<T,dim>>, nSFOrient>;
 
       /**
-       * @brief Count the number of duplicate coordinate locations, if all are at the same level, or yield 0 if there are mixed levels.
+       * @brief Count the number of duplicate coordinate locations, if all are at the same level, or yield -1 if there are mixed levels.
        * @param [in] start The start of the scan.
        * @param [in] end Scan won't enter end.
        * @param [out] firstCoarsest The first duplicate, or if there are mixed levels, the first with the coarser level.
        * @param [out] next The next element that was not scanned. Future scans can pick up from here.
-       * @param [out] numDups If all same level, the number of duplicates. If mixed levels, 0.
+       * @param [out] numDups If all same level, the number of duplicates. If mixed levels, -1.
        * @note Assumes that start < end.
        * @note Assumes that the field m_numInstances has been properly initialized for all points.
        */
-      static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest, TNPoint<T,dim> * &next, unsigned int &numDups, bool noCancellations);
+      static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest, TNPoint<T,dim> * &next, int &numDups, bool &noCancellations);
 
       /** @brief Moves all domain boundary points to the end, returning the number of boundary points. */
       static RankI filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end);
