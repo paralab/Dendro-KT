@@ -213,20 +213,21 @@ bool testTopDownSubclass()
  */
 bool testMatvecBaseCoords()
 {
-  constexpr unsigned int dim = 3;
+  constexpr unsigned int dim = 2;
   using C = unsigned int;
 
   const unsigned int eleOrder = 1;
   const unsigned int ndofs = 1;
 
-  constexpr bool verbose = false;
+  constexpr bool verbose = true;
 
-  m_uiMaxDepth = 5;
+  const unsigned int level = 2;
+  m_uiMaxDepth = 3;
 
   _InitializeHcurve(dim);
 
-  constexpr bool randomness = true;
-  std::vector<ot::TreeNode<C, dim>> seed = ot::getPts<C, dim, randomness>(30);
+  constexpr bool randomness = false;
+  std::vector<ot::TreeNode<C, dim>> seed = ot::getPts<C, dim, randomness>(30, level, level);
 
   // Current hack to guarantee that tree balancing follows seeds to original depth.
   std::vector<ot::TreeNode<C, dim>> seed_siblings;
@@ -253,6 +254,10 @@ bool testMatvecBaseCoords()
   const size_t numNodes = octda.getTotalNodalSz();
   const ot::TreeNode<C, dim> firstElement = *octda.getTreePartFront();
   const ot::TreeNode<C, dim> lastElement = *octda.getTreePartBack();
+
+  printf("numNodes==%lu\n", numNodes);
+
+  ot::printNodeCoords(nodesPtr, nodesPtr + numNodes, eleOrder, std::cout);
 
   // [false] Do not visit empty subtrees.
   // [0]     Don't need to pad the stack beyond actual tree depth.
@@ -281,6 +286,8 @@ bool testMatvecBaseCoords()
   }
 
   _DestroyHcurve();
+
+  printf("leafCounter == %u,  origTreeSz == %u\n", leafCounter, origTreeSz);
 
   return (leafCounter == origTreeSz && origTreeSz > 0);
 }
