@@ -491,7 +491,6 @@ namespace ot {
 
 
     int numOdd = 0;
-    /// printf("Element level %d  (nodes @ %d)\n", this->getLevel(), this->getLevel()+1);
 
     // Cancellations at odd external subnodes.
     const unsigned int numSubNodes = intPow(2*order + 1, dim);
@@ -523,18 +522,10 @@ namespace ot {
         nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel+1));
         nodeList.back().setIsCancellation(true);
 
-        /// printf("(%d,%d)  ", nodeCoords[0], nodeCoords[1]);
         numOdd++;
       }
       incrementBaseB<unsigned int, dim>(nodeIndices, 2*order+1);
     }
-    /// printf("\n");
-
-
-    /// printf("Emitted odd nodes:  %d\n", numOdd);
-    /// printf("\n");
-
-
   }
 
 
