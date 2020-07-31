@@ -490,41 +490,44 @@ namespace ot {
     }
 
 
-    int numOdd = 0;
-
-    // Cancellations at odd external subnodes.
-    const unsigned int numSubNodes = intPow(2*order + 1, dim);
-    nodeIndices.fill(0);
-    for (unsigned int subNode = 0; subNode < numSubNodes; ++subNode)
+    if (this->getLevel() < m_uiMaxDepth)  // Don't need cancellations if no hanging elements.
     {
-      if (std::count(nodeIndices.begin(), nodeIndices.end(), 0) == 0 &&
-          std::count(nodeIndices.begin(), nodeIndices.end(), 2*order) == 0)
-      {
-        nodeIndices[0] = 2*order;  // Skip
-        subNode += 2*order - 1;
-      }
+      int numOdd = 0;
 
-      bool odd = false;
-      for (int d = 0; d < dim; ++d)
-        if (nodeIndices[d] % 2 == 1)
-          odd = true;
-
-      // Append cancellation nodes at odd locations.
-      if (odd)
+      // Cancellations at odd external subnodes.
+      const unsigned int numSubNodes = intPow(2*order + 1, dim);
+      nodeIndices.fill(0);
+      for (unsigned int subNode = 0; subNode < numSubNodes; ++subNode)
       {
-        std::array<T, dim> nodeCoords;
-        for (int d = 0; d < dim; ++d)
+        if (std::count(nodeIndices.begin(), nodeIndices.end(), 0) == 0 &&
+            std::count(nodeIndices.begin(), nodeIndices.end(), 2*order) == 0)
         {
-          // Should be the same as if had children append.
-          nodeCoords[d] = len / 2 * nodeIndices[d] / order + TreeNode::m_uiCoords[d];
+          nodeIndices[0] = 2*order;  // Skip
+          subNode += 2*order - 1;
         }
 
-        nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel+1));
-        nodeList.back().setIsCancellation(true);
+        bool odd = false;
+        for (int d = 0; d < dim; ++d)
+          if (nodeIndices[d] % 2 == 1)
+            odd = true;
 
-        numOdd++;
+        // Append cancellation nodes at odd locations.
+        if (odd)
+        {
+          std::array<T, dim> nodeCoords;
+          for (int d = 0; d < dim; ++d)
+          {
+            // Should be the same as if had children append.
+            nodeCoords[d] = len / 2 * nodeIndices[d] / order + TreeNode::m_uiCoords[d];
+          }
+
+          nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel+1));
+          nodeList.back().setIsCancellation(true);
+
+          numOdd++;
+        }
+        incrementBaseB<unsigned int, dim>(nodeIndices, 2*order+1);
       }
-      incrementBaseB<unsigned int, dim>(nodeIndices, 2*order+1);
     }
   }
 
