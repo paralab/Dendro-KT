@@ -363,11 +363,6 @@ namespace ot
       const size_t oldSz = m_gridStrata[l].size();
       size_t ii = 0;
 
-      // Find first element to delete.
-      // 'In' means get rid of it.
-      while (ii < oldSz && this->m_domainDeciderTN_asCell(m_gridStrata[l][ii]) != ::ibm::IN)
-        ii++;
-
       m_filteredTreePartSz[l] = ii;
 
       ::ibm::Partition subdomain;
