@@ -832,7 +832,7 @@ namespace ot
     childNodeCounts.fill(0);
     childFinestLevel.fill(0);
     childBdryCounts.fill(0);
-    *extantChildren = 0u;
+    *extantChildren = parentFrame.getExtantTreeChildrenMorton();
 
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
@@ -845,8 +845,6 @@ namespace ot
       childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
     }
 
-    // Must constrain extantChildren depending on segment limits
-    // (firstElement and lastElement)
     ExtantCellFlagT segmentChildren = -1;  // Initially all.
     int segmentChildFirst = -1;            // Beginning of subtree auto in.
     int segmentChildLast = NumChildren;    // End of subtree auto in.
@@ -890,10 +888,8 @@ namespace ot
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
 
-      *extantChildren |= (1u << nodeInstance.getChild_m());
     }
 
-    *extantChildren &= segmentChildren; // This should be implied, but just in case.
 
     //
     // Update child summaries.
@@ -906,7 +902,6 @@ namespace ot
       if (childFinestLevel[child_sfc] <= parLev)
       {
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        *extantChildren &= ~(1u << child_m);
         childNodeCounts[child_sfc] = 0;
       }
 
@@ -1002,7 +997,8 @@ namespace ot
     }
 
     if (m_visitEmpty)
-      *extantChildren = segmentChildren;
+      /// *extantChildren = segmentChildren;
+      *extantChildren = (1u << (1u << dim)) - 1;
   }
 
 
@@ -1063,7 +1059,7 @@ namespace ot
     childNodeCounts.fill(0);
     childFinestLevel.fill(0);
     childBdryCounts.fill(0);
-    *extantChildren = 0u;
+    *extantChildren = parentFrame.getExtantTreeChildrenMorton();
 
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
@@ -1076,8 +1072,6 @@ namespace ot
       childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
     }
 
-    // Must constrain extantChildren depending on segment limits
-    // (firstElement and lastElement)
     ExtantCellFlagT segmentChildren = -1;  // Initially all.
     int segmentChildFirst = -1;            // Beginning of subtree auto in.
     int segmentChildLast = NumChildren;    // End of subtree auto in.
@@ -1121,10 +1115,7 @@ namespace ot
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
 
-      *extantChildren |= (1u << nodeInstance.getChild_m());
     }
-
-    *extantChildren &= segmentChildren; // This should be implied, but just in case.
 
     //
     // Update child summaries.
@@ -1137,7 +1128,6 @@ namespace ot
       if (childFinestLevel[child_sfc] <= parLev)
       {
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        *extantChildren &= ~(1u << child_m);
         childNodeCounts[child_sfc] = 0;
       }
 
@@ -1320,7 +1310,8 @@ namespace ot
     }
 
     if (m_visitEmpty)
-      *extantChildren = segmentChildren;
+      /// *extantChildren = segmentChildren;
+      *extantChildren = (1u << (1u << dim)) - 1;
   }
 
 
@@ -1380,7 +1371,7 @@ namespace ot
     childNodeCounts.fill(0);
     childFinestLevel.fill(0);
     childBdryCounts.fill(0);
-    *extantChildren = 0u;
+    *extantChildren = parentFrame.getExtantTreeChildrenMorton();
 
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
@@ -1393,8 +1384,6 @@ namespace ot
       childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
     }
 
-    // Must constrain extantChildren depending on segment limits
-    // (firstElement and lastElement)
     ExtantCellFlagT segmentChildren = -1;  // Initially all.
     int segmentChildFirst = -1;            // Beginning of subtree auto in.
     int segmentChildLast = NumChildren;    // End of subtree auto in.
@@ -1438,10 +1427,8 @@ namespace ot
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
 
-      *extantChildren |= (1u << nodeInstance.getChild_m());
     }
 
-    *extantChildren &= segmentChildren; // This should be implied, but just in case.
 
     //
     // Update child summaries.
@@ -1454,7 +1441,6 @@ namespace ot
       if (childFinestLevel[child_sfc] <= parLev)
       {
         const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        *extantChildren &= ~(1u << child_m);
         childNodeCounts[child_sfc] = 0;
       }
 
@@ -1542,7 +1528,8 @@ namespace ot
     }
 
     if (m_visitEmpty)
-      *extantChildren = segmentChildren;
+      /// *extantChildren = segmentChildren;
+      *extantChildren = (1u << (1u << dim)) - 1;
   }
 
 
