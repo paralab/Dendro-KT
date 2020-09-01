@@ -58,7 +58,9 @@ namespace PoissonEq
         m_gridOperators.resize(m_numStrata);
         for (int s = 0; s < m_numStrata; ++s)
         {
-          m_gridOperators[s] = new PoissonMat<dim>(&getMDA()[s], ndofs);
+          throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
+          const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
+          m_gridOperators[s] = new PoissonMat<dim>(&getMDA()[s], &dummyOctList, ndofs);
           m_gridOperators[s]->setProblemDimensions(m_uiPtMin, m_uiPtMax);
         }
 
@@ -256,7 +258,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
       fineDA.createVector(_frhs, false, false, 1);
       fineDA.createVector(_Mfrhs, false, false, 1);
 
-      PoissonEq::PoissonVec<dim> poissonVec(&fineDA,1);
+      throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
+      const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
+      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dummyOctList, 1);
       poissonVec.setProblemDimensions(domain_min,domain_max);
 
       fineDA.setVectorByFunction(_ux.data(),    f_init, false, false, 1);
@@ -330,7 +334,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
       /// PoissonEq::PoissonMat<dim> poissonMat(octDA,1);
       /// poissonMat.setProblemDimensions(domain_min,domain_max);
 
-      PoissonEq::PoissonVec<dim> poissonVec(&fineDA,1);
+      throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
+      const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
+      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dummyOctList, 1);
       poissonVec.setProblemDimensions(domain_min,domain_max);
 
       fineDA.petscSetVectorByFunction(ux, f_init, false, false, 1);

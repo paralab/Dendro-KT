@@ -257,7 +257,8 @@ int testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
   const double loadFlexibility = 0.3;
 
   // Uniform grid ODA.
-  ot::DA<dim> *octDA = new ot::DA<dim>(comm, order, numPtsPerProc, loadFlexibility);
+  std::vector<ot::TreeNode<unsigned, dim>> outTreePart;
+  ot::DA<dim> *octDA = new ot::DA<dim>(comm, order, numPtsPerProc, loadFlexibility, outTreePart);
 
   std::vector<double> vecIn, vecOut;
   octDA->createVector(vecIn, false, false, 1);
@@ -267,7 +268,7 @@ int testInstances(MPI_Comm comm, unsigned int depth, unsigned int order)
   std::fill(vecIn.begin(), vecIn.end(), 1.0);
   /// std::fill(vecOut.begin(), vecOut.end(), 1.0);
 
-  myConcreteFeMatrix<dim> mat(octDA, 1);
+  myConcreteFeMatrix<dim> mat(octDA, &outTreePart, 1);
   mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
 
   // Check that the output vector contains the grid intersection degree at each node.
@@ -308,7 +309,8 @@ int testMatching(MPI_Comm comm, unsigned int depth, unsigned int order)
   const double loadFlexibility = 0.3;
 
   // Uniform grid ODA.
-  ot::DA<dim> *octDA = new ot::DA<dim>(comm, order, numPtsPerProc, loadFlexibility);
+  std::vector<ot::TreeNode<unsigned, dim>> outTreePart;
+  ot::DA<dim> *octDA = new ot::DA<dim>(comm, order, numPtsPerProc, loadFlexibility, outTreePart);
 
   std::vector<double> vecIn, vecOut;
   octDA->createVector(vecIn, false, false, 1);
@@ -319,7 +321,7 @@ int testMatching(MPI_Comm comm, unsigned int depth, unsigned int order)
   // Fill the in vector with all ones.
   std::iota(vecIn.begin(), vecIn.end(), globNodeRank);
 
-  myConcreteFeMatrix<dim> mat(octDA, 1);
+  myConcreteFeMatrix<dim> mat(octDA, &outTreePart, 1);
   mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
 
   // Check that the output vector contains the grid intersection degree at each node.
@@ -381,7 +383,7 @@ int testAdaptive(MPI_Comm comm, unsigned int depth, unsigned int order)
   std::fill(vecIn.begin(), vecIn.end(), 1.0);
   /// std::iota(vecIn.begin(), vecIn.end(), globNodeRank);
 
-  myConcreteFeMatrix<dim> mat(octDA, 1);
+  myConcreteFeMatrix<dim> mat(octDA, &tree, 1);
   mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
 
   // TODO that is not correct. for example, the middle nodes in the Example1.depth3 should end up with value of 5.
@@ -550,7 +552,6 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   ///       tree[tIdx].getX(0)/block, tree[tIdx].getX(1)/block, tree[tIdx].getLevel());
   /// }
 
-  tree.clear();
 
   std::vector<double> vecIn, vecOut;
   octDA->createVector(vecIn, false, false, 1);
@@ -584,7 +585,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 
   // Distributed matvec.
   /// if (!rProc) fprintf(stderr, "[dbg] Starting distributed matvec.\n");
-  myConcreteFeMatrix<dim> mat(octDA, 1);
+  myConcreteFeMatrix<dim> mat(octDA, &tree, 1);
   mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
   /// if (!rProc) fprintf(stderr, "[dbg] Finished distributed matvec.\n");
 
@@ -631,7 +632,9 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
     std::function<void(const double *, double *, unsigned int, const double *, double, bool)> eleOp =
         std::bind(&myConcreteFeMatrix<dim>::elementalMatVec, &mat, _1, _2, _3, _4, _5, _6);
     fem::matvec(&(*vecInSeqCopy.cbegin()), &(*vecOutSeq.begin()), 1, &(*tnCoordsSeqCopy.cbegin()),
-        globNumNodes, treeFront, treeBack, eleOp, 1.0, octDA->getReferenceElement());
+        globNumNodes,
+        &(*tree.cbegin()), tree.size(),
+        treeFront, treeBack, eleOp, 1.0, octDA->getReferenceElement());
     /// fprintf(stderr, "[dbg] Finished sequential matvec.\n");
 
     // Compare outputs of global and sequential matvec.

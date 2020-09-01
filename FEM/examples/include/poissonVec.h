@@ -36,7 +36,7 @@ namespace PoissonEq
 
 
     public:
-        PoissonVec(ot::DA<dim>* da,unsigned int dof=1);
+        PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof=1);
         ~PoissonVec();
 
         /**@biref elemental compute vec for rhs*/

@@ -68,7 +68,7 @@ class DummySubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outpu
     using BaseT = ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>;
     using FrameT = ot::Frame<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>;
 
-    DummySubclass() : BaseT(true) {}
+    DummySubclass() : BaseT(nullptr, 0) {}
 
     void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
     {
@@ -144,7 +144,7 @@ class TopDownSubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<uns
   using FrameT = ot::Frame<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>;
   using BaseT = ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>;
   public:
-    TopDownSubclass() : BaseT(true) {}
+    TopDownSubclass() : BaseT(nullptr, 0) {}
 
     void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
     {
@@ -244,10 +244,7 @@ bool testMatvecBaseCoords()
   // DA to get nodal vector for test.
   MPI_Comm comm = MPI_COMM_WORLD;
   ot::DA<dim> octda(tree, comm, eleOrder);
-  // Destroys tree.
-  // There are ways to get around this, and in the future the user will
-  // have the freedom of whether to detroy the tree or not.
-  // But not needed in this test, so the interface remains.
+  assert(tree.size() > 0);
 
   const ot::TreeNode<C, dim> *nodesPtr = octda.getTNCoords();
   const size_t numNodes = octda.getTotalNodalSz();
@@ -256,7 +253,7 @@ bool testMatvecBaseCoords()
 
   // [false] Do not visit empty subtrees.
   // [0]     Don't need to pad the stack beyond actual tree depth.
-  ot::MatvecBaseCoords<dim> treeloop_coords_only(numNodes, eleOrder, false, 0, nodesPtr, firstElement, lastElement);
+  ot::MatvecBaseCoords<dim> treeloop_coords_only(numNodes, eleOrder, false, 0, nodesPtr, &(*tree.cbegin()), tree.size(), firstElement, lastElement);
 
   size_t leafCounter = 0;
 
@@ -311,7 +308,7 @@ bool testMatvecSubclass()
   const ot::TreeNode<C, dim> firstElement;
   const ot::TreeNode<C, dim> lastElement;
 
-  ot::MatvecBase<dim, T> treeloop_mvec(numNodes, ndofs, eleOrder, &(*nodes.begin()), &(*vals.begin()), firstElement, lastElement);
+  ot::MatvecBase<dim, T> treeloop_mvec(numNodes, ndofs, eleOrder, &(*nodes.begin()), &(*vals.begin()), &firstElement, 1, firstElement, lastElement);
 
   while (!treeloop_mvec.isFinished())
   {

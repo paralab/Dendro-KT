@@ -7,7 +7,7 @@
 namespace PoissonEq {
 
 template <unsigned int dim>
-PoissonVec<dim>::PoissonVec(ot::DA<dim>* da,unsigned int dof) : feVector<PoissonVec<dim>, dim>(da,dof)
+PoissonVec<dim>::PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof) : feVector<PoissonVec<dim>, dim>(da, octList, dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)

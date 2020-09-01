@@ -22,7 +22,7 @@ void printTree(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart, int
   }
   std::cout << "\n";
 }
-void printMaxCoords(ot::DA<DIM> & octDA)
+void printMaxCoords(ot::DA<DIM> & octDA, const std::vector<ot::TreeNode<unsigned, DIM>> &treePart)
 {
   const size_t sz = octDA.getTotalNodalSz();
   auto partFront = octDA.getTreePartFront();
@@ -34,7 +34,7 @@ void printMaxCoords(ot::DA<DIM> & octDA)
     const bool visitEmpty = false;
     const unsigned int padLevel = 0;
     const unsigned int npe = octDA.getNumNodesPerElement();
-    ot::MatvecBaseCoords<DIM> loop(sz, eleOrder, visitEmpty, padLevel, tnCoords, *partFront, *partBack);
+    ot::MatvecBaseCoords<DIM> loop(sz, eleOrder, visitEmpty, padLevel, tnCoords, &(*treePart.cbegin()), treePart.size(), *partFront, *partBack);
     while (!loop.isFinished())
     {
       if (loop.isPre() && loop.subtreeInfo().isLeaf())
@@ -60,7 +60,7 @@ void printMaxCoords(ot::DA<DIM> & octDA)
     std::cout << "maxCoords == " << maxCoords[0] << " " << maxCoords[1] << " " << maxCoords[2] << "\n";
   }
 }
-void getBoundaryElements(const ot::DA<DIM>* octDA, unsigned  int eleOrder, const std::string fname){
+void getBoundaryElements(const ot::DA<DIM>* octDA, const std::vector<ot::TreeNode<unsigned, DIM>> &treePart, unsigned  int eleOrder, const std::string fname){
   const size_t sz = octDA->getTotalNodalSz();
   auto partFront = octDA->getTreePartFront();
   auto partBack = octDA->getTreePartBack();
@@ -73,7 +73,7 @@ void getBoundaryElements(const ot::DA<DIM>* octDA, unsigned  int eleOrder, const
   std::string nonBoundaryFname = fname+"_nonboundary"+std::to_string(rank) +"_" + std::to_string(proc) + ".txt";
   std::ofstream foutBoundary(boundaryFname.c_str());
   std::ofstream foutNonBoundary(nonBoundaryFname.c_str());
-  ot::MatvecBaseCoords <DIM> loop(sz,eleOrder, false,0,tnCoords,*partFront,*partBack);
+  ot::MatvecBaseCoords <DIM> loop(sz,eleOrder, false,0,tnCoords, &(*treePart.cbegin()), treePart.size(), *partFront,*partBack);
   while(!loop.isFinished()){
     if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
       const double *nodeCoordsFlat = loop.subtreeInfo().getNodeCoords();
@@ -186,7 +186,7 @@ int main(int argc, char * argv[]){
   DTree distTree = DTree::constructSubdomainDistTree( level,DomainDecider,
                                                       comm);
   ot::DA<DIM> *octDA = new ot::DA<DIM>(distTree, comm, eleOrder);
-  /// printMaxCoords(*octDA);
+  /// printMaxCoords(*octDA, distTree.getTreePartFiltered());
   size_t oldTreeSize = 0;
   size_t refinedTreeSize = 0;
   // Access the original tree as a list of tree nodes.
@@ -198,7 +198,7 @@ int main(int argc, char * argv[]){
   }
   std::cout << "Old Tree \n";
   std::cout << "Num elements: " << oldTreeSize << "\n";
-  getBoundaryElements(octDA,eleOrder, "Old");
+  getBoundaryElements(octDA, distTree.getTreePartFiltered(),eleOrder, "Old");
   std::string fname = "BoNodes"+std::to_string(rank) + ".txt";
   std::ofstream fout(fname.c_str());
 //  DomainInfo fullDomain;
@@ -211,7 +211,7 @@ for(int i = 0; i < 7; i++) {
   auto partFront = octDA->getTreePartFront();
   auto partBack = octDA->getTreePartBack();
   const auto tnCoords = octDA->getTNCoords();
-  ot::MatvecBaseCoords<DIM> loop(sz, octDA->getElementOrder(), false, 0, tnCoords, *partFront, *partBack);
+  ot::MatvecBaseCoords<DIM> loop(sz, octDA->getElementOrder(), false, 0, tnCoords, &(*distTree.getTreePartFiltered().cbegin()), distTree.getTreePartFiltered().size(), *partFront, *partBack);
   int counter = 0;
   while (!loop.isFinished()) {
     if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
@@ -258,7 +258,7 @@ for(int i = 0; i < 7; i++) {
   // default boundary definition of the unit cube.
   // =======================================================================
   ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder, 100, 0.3); //DistTree overload
-  /// printMaxCoords(*newDA);
+  /// printMaxCoords(*newDA, newDistTree.getTreePartFiltered());
   // Access the refined tree as a list of tree nodes.
   {
     const std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> &newTree = newDistTree.getTreePartFiltered();
@@ -273,7 +273,7 @@ for(int i = 0; i < 7; i++) {
 //  IO::writeBoundaryElements(octDA, ("RefinedsubDA"+std::to_string(i)).c_str(), fullDomain);
   std::cout << "New tree \n";
   std::cout << "Num elements: " << refinedTreeSize << "\n";
-  getBoundaryElements(octDA, eleOrder, ("Refined"+std::to_string(i)).c_str());
+  getBoundaryElements(octDA, distTree.getTreePartFiltered(), eleOrder, ("Refined"+std::to_string(i)).c_str());
 }
   delete octDA;
   _DestroyHcurve();

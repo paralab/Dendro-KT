@@ -165,10 +165,11 @@ namespace bench
             Point<dim> domain_min(-0.5,-0.5,-0.5);
             Point<dim> domain_max(0.5,0.5,0.5);
 
-            HeatEq::HeatMat<dim> heatMat(octDA,DOF);
+            assert(tree.size() > 0);
+            HeatEq::HeatMat<dim> heatMat(octDA, &tree,DOF);
             heatMat.setProblemDimensions(domain_min,domain_max);
 
-            /// HeatEq::HeatVec<dim> heatVec(octDA,DOF);
+            /// HeatEq::HeatVec<dim> heatVec(octDA, &tree, DOF);
             /// heatVec.setProblemDimensions(domain_min,domain_max);
 
             /// double * ux=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI_U, false,false);

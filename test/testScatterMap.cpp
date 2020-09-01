@@ -615,7 +615,9 @@ void testDummyMatvec()
     ot::Element<T,dim>(tn).appendInteriorNodes(order, nodeList);
   const ot::TreeNode<T,dim> treeFront = tree.front();
   const ot::TreeNode<T,dim> treeBack = tree.back();
-  tree.clear();
+  /// tree.clear();
+
+  assert(tree.size() > 0);
 
   unsigned int localSize = nodeList.size();
 
@@ -655,7 +657,7 @@ void testDummyMatvec()
     vecIn[ii] = 1;
   RE refElement{dim, order};
 
-  fem::matvec<da, TN, RE>(&(*vecIn.cbegin()), &(*vecOut.begin()), 1, &(*coords.cbegin()), sz, treeFront, treeBack, eleOp, scale, &refElement);
+  fem::matvec<da, TN, RE>(&(*vecIn.cbegin()), &(*vecOut.begin()), 1, &(*coords.cbegin()), sz, &(*tree.cbegin()), tree.size(), treeFront, treeBack, eleOp, scale, &refElement);
 
   std::cout << "Input\n";
   ot::printNodes<unsigned int, dim, da>(&(*coords.cbegin()), &(*coords.cend()), &(*vecIn.cbegin()), order);

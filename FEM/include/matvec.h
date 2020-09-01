@@ -39,7 +39,7 @@ namespace fem
 
     // Declaring the matvec at the top.
     template<typename T,typename TN, typename RE>
-    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement);
+    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement);
 
     template<typename T,typename TN, typename RE>
     void matvec_rec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, TN subtreeRoot, RotI pRot, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, const T* pVecIn, T *pVecOut, const TN* pCoords, unsigned int pSz, bool isFirstChild);

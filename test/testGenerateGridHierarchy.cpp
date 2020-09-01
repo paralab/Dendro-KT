@@ -177,9 +177,9 @@ int main(int argc, char * argv[])
   mats.reserve(numStrata);
   surrogateMats.reserve(numStrata);
   for (int l = 0; l < numStrata; ++l)
-    mats.emplace_back(&multiDA[l], dofs);
+    mats.emplace_back(&multiDA[l], &dtree.getTreePartFiltered(l), dofs);
   for (int l = 0; l < numStrata; ++l)
-    surrogateMats.emplace_back(&surrogateMultiDA[l], dofs);
+    surrogateMats.emplace_back(&surrogateMultiDA[l], &dtree.getTreePartFiltered(l), dofs);
 
   std::cerr << "Finished all construct mat.\n";
 

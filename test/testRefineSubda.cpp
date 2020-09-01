@@ -24,14 +24,14 @@ void printTree(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart, int
 
 
 
-void printMaxCoords(ot::DA<DIM> & octDA){
+void printMaxCoords(ot::DA<DIM> & octDA, const std::vector<ot::TreeNode<unsigned, DIM>> &treePart){
   const size_t sz = octDA.getTotalNodalSz();
   auto partFront = octDA.getTreePartFront();
   auto partBack = octDA.getTreePartBack();
   const auto tnCoords = octDA.getTNCoords();
   {
     std::vector<double> maxCoords(4, 0.0);
-    ot::MatvecBaseCoords<DIM> loop(sz, 1, false, 0, tnCoords, *partFront, *partBack);
+    ot::MatvecBaseCoords<DIM> loop(sz, 1, false, 0, tnCoords, &(*treePart.cbegin()), treePart.size(), *partFront, *partBack);
     while (!loop.isFinished()) {
       if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
         const double *nodeCoordsFlat = loop.subtreeInfo().getNodeCoords();
@@ -84,7 +84,7 @@ int main(int argc, char * argv[]){
 
   if (printTreeOn)
     printTree(treePart, level+1);
-  printMaxCoords(*octDA);
+  printMaxCoords(*octDA, distTree.getTreePartFiltered());
 
   std::vector<ot::OCT_FLAGS::Refine> refineFlags(treePart.size(),ot::OCT_FLAGS::Refine::OCT_REFINE);
 
@@ -104,7 +104,7 @@ int main(int argc, char * argv[]){
   if (printTreeOn)
     printTree(newTree, level+1);
   ot::DA<DIM> * newDA =new ot::DA<DIM>(newTree,MPI_COMM_WORLD,eleOrder,100,0.3);
-  printMaxCoords(*newDA);
+  printMaxCoords(*newDA, newDistTree.getTreePartFiltered());
 
   std::swap(octDA, newDA);
   delete newDA;
