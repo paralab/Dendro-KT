@@ -25,7 +25,7 @@ namespace HeatEq
         static constexpr unsigned int m_uiDim = dim;
 
     public:
-        HeatVec(ot::DA<dim>* da,unsigned int dof=1);
+        HeatVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof=1);
         ~HeatVec();
 
         /**@biref elemental compute vec for rhs*/

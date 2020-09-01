@@ -49,7 +49,7 @@ int main(int argc, char * argv[])
 
   const unsigned int numElements = treeNodes.size();
   ot::DA<dim> daRoot(treeNodes, comm, eleOrder, 1, 0);
-  // treeNodes is emptied.
+  assert(treeNodes.size() > 0);
 
   std::cout << "(1u<<dim) == " << (1u<<dim) << "\n";
   std::cout << "daRoot.getLocalNodalSz() == " << daRoot.getLocalNodalSz() << "\n";
@@ -98,7 +98,7 @@ int main(int argc, char * argv[])
 
 
 
-  PoissonEq::PoissonMat<dim> pmat(&daRoot, 1);
+  PoissonEq::PoissonMat<dim> pmat(&daRoot, &treeNodes, 1);
 
   const TN *coords = daRoot.getTNCoords();
   std::vector<double> flatcoords(dim*nPe);
@@ -134,7 +134,7 @@ int main(int argc, char * argv[])
 
 
   constexpr bool noVisitEmpty = false;
-  ot::MatvecBaseOut<dim, double, true> treeLoopOut(numNodes, 1, eleOrder, noVisitEmpty, 0, coords, *daRoot.getTreePartFront(), *daRoot.getTreePartBack());
+  ot::MatvecBaseOut<dim, double, true> treeLoopOut(numNodes, 1, eleOrder, noVisitEmpty, 0, coords, &(*treeNodes.cbegin()), treeNodes.size(), *daRoot.getTreePartFront(), *daRoot.getTreePartBack());
 
   int eidx = 0;
 

@@ -235,7 +235,7 @@ namespace fem
      */
 
     template <typename T, typename TN, typename RE>
-    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
+    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
       // Initialize output vector to 0.
@@ -246,7 +246,7 @@ namespace fem
       const unsigned int eleOrder = refElement->getOrder();
       const unsigned int npe = intPow(eleOrder+1, dim);
 
-      ot::MatvecBase<dim, T> treeloop(sz, ndofs, eleOrder, coords, vecIn, partFront, partBack);
+      ot::MatvecBase<dim, T> treeloop(sz, ndofs, eleOrder, coords, vecIn, treePartPtr, treePartSz, partFront, partBack);
       std::vector<T> leafResult(ndofs*npe, 0.0);
 
       while (!treeloop.isFinished())

@@ -118,6 +118,8 @@ namespace ot
                  unsigned int eleOrder,
                  const TreeNode<unsigned int, dim> * allNodeCoords,
                  const NodeT * inputNodeVals,
+                 const TreeNode<unsigned int, dim> *treePartPtr,
+                 unsigned int treePartSz,
                  const TreeNode<unsigned int, dim> &firstElement,
                  const TreeNode<unsigned int, dim> &lastElement );
 
@@ -315,9 +317,11 @@ namespace ot
                                       unsigned int eleOrder,
                                       const TreeNode<unsigned int, dim> * allNodeCoords,
                                       const NodeT * inputNodeVals,
+                                      const TreeNode<unsigned int, dim> *treePartPtr,
+                                      unsigned int treePartSz,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
-  : BaseT(numNodes > 0, get_max_depth(allNodeCoords, numNodes)),
+  : BaseT(treePartPtr, treePartSz, get_max_depth(allNodeCoords, numNodes)),
     m_ndofs(ndofs),
     m_eleOrder(eleOrder),
     m_interp_matrices(eleOrder)

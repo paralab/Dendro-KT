@@ -757,30 +757,36 @@ namespace ot
     template <unsigned int dim>
     template <typename T>
     DA<dim>::DA(std::function<void(const T *, T *)> func, unsigned int dofSz, MPI_Comm comm, unsigned int order, double interp_tol, size_t grainSz, double sfc_tol)
-        : m_refel{dim, order}
+        /// : m_refel{dim, order}
     {
-      std::vector<unsigned int> varIndex(dofSz);
-      for (unsigned int ii = 0; ii < dofSz; ii++)
-        varIndex[ii] = ii;
+      /// std::vector<unsigned int> varIndex(dofSz);
+      /// for (unsigned int ii = 0; ii < dofSz; ii++)
+      ///   varIndex[ii] = ii;
 
-      // Get a complete tree sufficiently granular to represent func with accuracy interp_tol.
-      std::vector<ot::TreeNode<C,dim>> completeTree;
-      function2Octree<C,dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, m_uiMaxDepth, interp_tol, sfc_tol, order, comm);
+      /// // Get a complete tree sufficiently granular to represent func with accuracy interp_tol.
+      /// std::vector<ot::TreeNode<C,dim>> completeTree;
+      /// function2Octree<C,dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, m_uiMaxDepth, interp_tol, sfc_tol, order, comm);
 
-      // Make the tree balanced, using completeTree as a minimal set of TreeNodes.
-      // Calling distTreeBalancing() on a complete tree with ptsPerElement==1
-      // should do exactly what we want.
-      std::vector<ot::TreeNode<C,dim>> balancedTree;
-      ot::SFC_Tree<C,dim>::distTreeBalancing(completeTree, balancedTree, 1, sfc_tol, comm);
+      /// // Make the tree balanced, using completeTree as a minimal set of TreeNodes.
+      /// // Calling distTreeBalancing() on a complete tree with ptsPerElement==1
+      /// // should do exactly what we want.
+      /// std::vector<ot::TreeNode<C,dim>> balancedTree;
+      /// ot::SFC_Tree<C,dim>::distTreeBalancing(completeTree, balancedTree, 1, sfc_tol, comm);
 
-      ot::DistTree<C,dim> distTree(balancedTree, comm);   // Uses default domain decider.
+      /// ot::DistTree<C,dim> distTree(balancedTree, comm);   // Uses default domain decider.
 
-      // Create ODA based on balancedTree.
-      construct(distTree, comm, order, grainSz, sfc_tol);
+      /// // Create ODA based on balancedTree.
+      /// construct(distTree, comm, order, grainSz, sfc_tol);
+
+      throw std::logic_error(
+          "This constructor is deprecated. Pass the arguments to an intermediate DistTree and then use the DistTree constructor:\n"
+          "    DistTree<unsigned, dim> distTree = DistTree<unsigned, dim>::constructDistTreeByFunc(func, dofSz, comm, order, interp_tol, sfc_tol);\n"
+          "    DA<dim> da(distTree, comm, order, grainSz, sfc_tol);\n"
+          );
     }
 
     template <unsigned int dim>
-    DA<dim>::DA(MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    DA<dim>::DA(MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, std::vector<TreeNode<C,dim>> &outTreePart)
         : m_refel{dim, order}
     {
         // Ignore interp_tol and just pick a uniform refinement level to satisfy grainSz.
@@ -788,6 +794,8 @@ namespace ot
         util::constructRegularGrid<C,dim>(comm, grainSz, sfc_tol, tree);
 
         ot::DistTree<C,dim> distTree(tree, comm);   // Uses default domain decider.
+
+        outTreePart = distTree.getTreePartFiltered();
 
         construct(distTree, comm, order, grainSz, sfc_tol);
     }

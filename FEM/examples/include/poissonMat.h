@@ -41,7 +41,7 @@ namespace PoissonEq
 
     public:
         /**@brief: constructor. Matrix-free matrix depends on spatial structure represented by ODA.*/
-        PoissonMat(ot::DA<dim>* da,unsigned int dof=1);
+        PoissonMat(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
 
         /**@brief default destructor*/
         ~PoissonMat();

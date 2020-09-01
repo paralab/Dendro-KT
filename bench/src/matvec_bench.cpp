@@ -119,7 +119,9 @@ namespace bench
             // In this pass all we do is execute matvec in a loop.
 
             // Construct regular grid DA for regular grid benchmark.
-            ot::DA<dim> *octDA = new ot::DA<dim>(comm, eleOrder, numPts, loadFlexibility);
+            std::vector<ot::TreeNode<unsigned, dim>> treePart;
+            ot::DA<dim> *octDA = new ot::DA<dim>(comm, eleOrder, numPts, loadFlexibility, treePart);
+            assert(treePart.size() > 0);
 
             const unsigned int DOF = 1;   // matvec only supports dof==1 right now.
 
@@ -136,10 +138,10 @@ namespace bench
             Point<dim> domain_min(-0.5,-0.5,-0.5);
             Point<dim> domain_max(0.5,0.5,0.5);
 
-            HeatEq::HeatMat<dim> heatMat(octDA,DOF);
+            HeatEq::HeatMat<dim> heatMat(octDA, &treePart,DOF);
             heatMat.setProblemDimensions(domain_min,domain_max);
 
-            /// HeatEq::HeatVec<dim> heatVec(octDA,DOF);
+            /// HeatEq::HeatVec<dim> heatVec(octDA, &treePart,DOF);
             /// heatVec.setProblemDimensions(domain_min,domain_max);
 
             /// double * ux=octDA->getVecPointerToDof(uSolVecPtr,VAR::M_UI_U, false,false);

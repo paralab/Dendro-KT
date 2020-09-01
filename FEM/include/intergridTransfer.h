@@ -69,8 +69,15 @@ namespace fem
 
     const bool visitEmpty = true;
     const unsigned int padlevel = 1;
-    ot::MatvecBaseIn<dim, DofT> treeLoopIn(in.sz, ndofs, eleOrder, visitEmpty, padlevel, in.coords, in.vecIn, in.partFront, in.partBack);
-    ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(out.sz, ndofs, eleOrder, visitEmpty, padlevel, out.coords, out.partFront, out.partBack);
+
+    throw std::logic_error("Not implemented fully. Add octList to interface for iteration.");
+    const TN *in_treePartPtr = nullptr;  // &(*octList->cbegin());
+    const size_t in_treePartSz = -314;   // octList->size();
+    const TN *out_treePartPtr = nullptr;  // &(*octList->cbegin());
+    const size_t out_treePartSz = -314;   // octList->size();
+
+    ot::MatvecBaseIn<dim, DofT> treeLoopIn(in.sz, ndofs, eleOrder, visitEmpty, padlevel, in.coords, in.vecIn, in_treePartPtr, in_treePartSz, in.partFront, in.partBack);
+    ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(out.sz, ndofs, eleOrder, visitEmpty, padlevel, out.coords, out_treePartPtr, out_treePartSz, out.partFront, out.partBack);
 
     /// size_t totalNumNodes = 0;
     /// size_t numNodesUsed = 0;

@@ -25,7 +25,7 @@ void printTree(const std::vector<ot::TreeNode<unsigned int, dim>> &treePart, int
  * @param octDA
  * @param refineFlags
  */
-void generateRefinementFlags(const ot::DA<DIM> * octDA,std::vector<ot::OCT_FLAGS::Refine> & refineFlags){
+void generateRefinementFlags(const ot::DA<DIM> * octDA, const std::vector<ot::TreeNode<unsigned, DIM>> &treePart, std::vector<ot::OCT_FLAGS::Refine> & refineFlags){
   const size_t sz = octDA->getTotalNodalSz();
   auto partFront = octDA->getTreePartFront();
   auto partBack = octDA->getTreePartBack();
@@ -34,7 +34,7 @@ void generateRefinementFlags(const ot::DA<DIM> * octDA,std::vector<ot::OCT_FLAGS
   refineFlags.resize(octDA->getLocalElementSz());
   const unsigned int npe = octDA->getNumNodesPerElement();
   int counter = 0;
-  ot::MatvecBaseCoords <DIM> loop(sz,eleOrder, false,0,tnCoords,*partFront,*partBack);
+  ot::MatvecBaseCoords <DIM> loop(sz,eleOrder, false,0,tnCoords,  &(*treePart.cbegin()), treePart.size(), *partFront,*partBack);
   while(!loop.isFinished()){
     if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
       if (loop.subtreeInfo().isElementBoundary()) {
@@ -50,7 +50,7 @@ void generateRefinementFlags(const ot::DA<DIM> * octDA,std::vector<ot::OCT_FLAGS
     }
   }
 }
-unsigned int getNumElements(const ot::DA<DIM> * octDA){
+unsigned int getNumElements(const ot::DA<DIM> * octDA, const std::vector<ot::TreeNode<unsigned, DIM>> &treePart){
   const size_t sz = octDA->getTotalNodalSz();
   auto partFront = octDA->getTreePartFront();
   auto partBack = octDA->getTreePartBack();
@@ -58,7 +58,7 @@ unsigned int getNumElements(const ot::DA<DIM> * octDA){
   const unsigned int eleOrder = octDA->getElementOrder();
   const unsigned int npe = octDA->getNumNodesPerElement();
   int counter = 0;
-  ot::MatvecBaseCoords <DIM> loop(sz,eleOrder, false,0,tnCoords,*partFront,*partBack);
+  ot::MatvecBaseCoords <DIM> loop(sz,eleOrder, false,0,tnCoords, &(*treePart.cbegin()), treePart.size(),  *partFront,*partBack);
   while(!loop.isFinished()){
     if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
       counter++;
@@ -133,19 +133,20 @@ int main(int argc, char * argv[]){
   ot::DA<DIM> *octDA = new ot::DA<DIM>(distTree, comm, eleOrder);  //TODO in release mode this segfaults, why?
 
   std::cout << "da elements: " << octDA->getLocalElementSz()
-            << "  loop elements: "<< getNumElements(octDA)  << "  "
-            << (octDA->getLocalElementSz() == getNumElements(octDA) ? "(equal)" : "(not equal!)") << "\n";
-  assert(octDA->getLocalElementSz() == getNumElements(octDA));
+            << "  loop elements: "<< getNumElements(octDA, treePart)  << "  "
+            << (octDA->getLocalElementSz() == getNumElements(octDA, treePart) ? "(equal)" : "(not equal!)") << "\n";
+  assert(octDA->getLocalElementSz() == getNumElements(octDA, treePart));
 
   std::vector<ot::OCT_FLAGS::Refine> refineFlags;
-  generateRefinementFlags(octDA,refineFlags);
+  generateRefinementFlags(octDA, treePart,refineFlags);
   ot::DistTree<unsigned int, DIM> newDistTree, surrDistTree;
   ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, 0.3);
+  const std::vector<ot::TreeNode<unsigned int, DIM>> &newTreePart = newDistTree.getTreePartFiltered();
   ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder, 100, 0.3); //DistTree overload
 
   std::cout << "da elements: " << newDA->getLocalElementSz()
-            << "  loop elements: "<< getNumElements(newDA) <<  "  "
-            << (newDA->getLocalElementSz() == getNumElements(newDA) ? "(equal)" : "(not equal!)") << "\n";
-  assert(newDA->getLocalElementSz() == getNumElements(newDA)); // assertion fails using original sfctreeloop
+            << "  loop elements: "<< getNumElements(newDA, newTreePart) <<  "  "
+            << (newDA->getLocalElementSz() == getNumElements(newDA, newTreePart) ? "(equal)" : "(not equal!)") << "\n";
+  assert(newDA->getLocalElementSz() == getNumElements(newDA, newTreePart)); // assertion fails using original sfctreeloop
   PetscFinalize();
 }

@@ -29,7 +29,7 @@ namespace HeatEq
 
     public:
         /**@brief: constructor*/
-        HeatMat(ot::DA<dim>* da,unsigned int dof=1);
+        HeatMat(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
 
         /**@brief default destructor*/
         ~HeatMat();

@@ -7,7 +7,7 @@
 namespace HeatEq {
 
 template <unsigned int dim>
-HeatVec<dim>::HeatVec(ot::DA<dim>* da,unsigned int dof) : feVector<HeatVec<dim>, dim>(da,dof)
+HeatVec<dim>::HeatVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof) : feVector<HeatVec<dim>, dim>(da,octList,dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     imV1=new double[nPe];

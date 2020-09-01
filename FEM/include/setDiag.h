@@ -27,7 +27,10 @@ namespace fem
     std::vector<DofT> leafResult(ndofs*npe, 0.0);
 
     constexpr bool noVisitEmpty = false;
-    ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, partFront, partBack);
+    throw std::logic_error("Not implemented fully. Add octList to interface for iteration.");
+    const TN *treePartPtr = nullptr;  // &(*octList->cbegin());
+    const size_t treePartSz = -314;   // octList->size();
+    ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, treePartPtr, treePartSz, partFront, partBack);
 
     while (!treeLoopOut.isFinished())
     {

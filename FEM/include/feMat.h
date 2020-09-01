@@ -24,6 +24,8 @@ protected:
     /**@brief: pointer to OCT DA*/
     ot::DA<dim>* m_uiOctDA;
 
+    const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList;
+
     /// /**@brief: type of the DA*/  //TODO
     /// ot::DAType m_uiDaType;
 
@@ -44,8 +46,9 @@ public:
       * @par[in] daType: type of the DA
       * @note Does not own da.
     **/
-    feMat(ot::DA<dim>* da)
-      : m_uiOctDA(da)
+    feMat(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList)
+      : m_uiOctDA(da),
+        m_octList(octList)
     {
       std::array<double, dim> lo, hi;
       std::fill(lo.begin(), lo.end(), -1);
@@ -54,7 +57,7 @@ public:
     }
 
     feMat(feMat &&other)
-      : feMat(m_uiOctDA)
+      : feMat(m_uiOctDA, m_octList)
     { }
 
     /**@brief deconstructor*/

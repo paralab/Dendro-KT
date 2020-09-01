@@ -27,6 +27,8 @@ protected:
     /**@brief: pointer to OCT DA*/
     ot::DA<dim>* m_uiOctDA;
 
+    const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList;
+
     /// /**@brief: type of the DA*/  ///TODO
     /// ot::DAType m_uiDaType;
 
@@ -46,7 +48,8 @@ public:
     /**@brief: feVec constructor
      * @par[in] daType: type of the DA
      * */
-    feVec(ot::DA<dim>* da)
+    feVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList)
+      : m_octList(octList)
     {
         m_uiOctDA=da;
     }

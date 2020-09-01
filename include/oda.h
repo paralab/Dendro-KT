@@ -288,7 +288,7 @@ class DA
 
 
         /** @brief Construct oda for regular grid. */
-        DA(MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+        DA(MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, std::vector<TreeNode<C, dim>> &outTreePart);
 
         /**@brief: Construct a DA from a function
          * @param [in] func : input function, we will produce a 2:1 balanced unique sorted octree from this.

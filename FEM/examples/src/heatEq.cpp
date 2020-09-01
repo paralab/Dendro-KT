@@ -103,7 +103,12 @@ int main_ (Parameters &pm, MPI_Comm comm)
         //var[2]=0;
     };
 
-    ot::DA<dim>* octDA=new ot::DA<dim>(f_rhs,1,comm,eOrder,wavelet_tol,100,partition_tol);
+
+    ot::DistTree<unsigned, dim> distTree =
+        ot::DistTree<unsigned, dim>::constructDistTreeByFunc(f_rhs, 1, comm, eOrder, wavelet_tol, partition_tol);
+    ot::DA<dim> *octDA = new ot::DA<dim>(distTree, comm, eOrder, 100, partition_tol);
+    const std::vector<ot::TreeNode<unsigned, dim>> &treePart = distTree.getTreePartFiltered();
+    assert(treePart.size() > 0);
 
 #ifndef BUILD_WITH_PETSC
     //
@@ -116,10 +121,10 @@ int main_ (Parameters &pm, MPI_Comm comm)
     octDA->createVector(frhs, false, false, 1);
     octDA->createVector(Mfrhs, false, false, 1);
 
-    HeatEq::HeatMat<dim> heatMat(octDA,1);
+    HeatEq::HeatMat<dim> heatMat(octDA, &treePart,1);
     heatMat.setProblemDimensions(domain_min,domain_max);
 
-    HeatEq::HeatVec<dim> heatVec(octDA,1);
+    HeatEq::HeatVec<dim> heatVec(octDA, &treePart,1);
     heatVec.setProblemDimensions(domain_min,domain_max);
 
     octDA->setVectorByFunction(ux.data(),f_init,false,false,1);
@@ -151,10 +156,10 @@ int main_ (Parameters &pm, MPI_Comm comm)
     octDA->petscCreateVector(frhs, false, false, 1);
     octDA->petscCreateVector(Mfrhs, false, false, 1);
 
-    HeatEq::HeatMat<dim> heatMat(octDA,1);
+    HeatEq::HeatMat<dim> heatMat(octDA, &treePart,1);
     heatMat.setProblemDimensions(domain_min,domain_max);
 
-    HeatEq::HeatVec<dim> heatVec(octDA,1);
+    HeatEq::HeatVec<dim> heatVec(octDA, &treePart,1);
     heatVec.setProblemDimensions(domain_min,domain_max);
 
     octDA->petscSetVectorByFunction(ux, f_init, false, false, 1);

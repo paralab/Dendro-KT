@@ -74,6 +74,8 @@
 #include "binUtils.h"
 #include "templateUtils.h"
 
+#include "meshLoop.h"
+
 /// #include "refel.h"
 /// #include "tensor.h"
 
@@ -225,6 +227,9 @@ namespace ot
       typename FrameInputs<dim, InputTypes>::DataStoreT   m_rootInputData;
       typename FrameOutputs<dim, OutputTypes>::DataStoreT m_rootOutputData;
       SummaryType m_rootSummary;
+      const TreeNode<C, dim> * m_treePartPtr;
+      std::array<RankI, (1u<<dim)+1> m_rootTreeSplitters;
+
       std::vector<FrameT> m_stack;
 
       // More stack-like things.
@@ -243,7 +248,7 @@ namespace ot
       void reset()
       {
         m_stack.clear();
-        m_stack.emplace_back(m_rootInputData, m_rootOutputData, m_rootSummary);
+        m_stack.emplace_back(m_rootInputData, m_rootOutputData, m_rootSummary, m_treePartPtr, m_rootTreeSplitters);
       }
 
       // getSubtreeInfo()
@@ -263,6 +268,7 @@ namespace ot
           m_stack.back().m_isPre = false;
           FrameT &parentFrame = m_stack.back();
           parentFrame.m_extantChildren = 0u;   /*(1u << (1u << dim)) - 1;*/
+          // parentFrame must also contain treeSplitters so that topDownNodes can use it.
           topDownNodes(parentFrame, &parentFrame.m_extantChildren);  // Free to resize children buffers.
 
           parentFrame.m_numExtantChildren = 0;
@@ -279,6 +285,8 @@ namespace ot
             if (parentFrame.m_extantChildren & (1u << child_m))
             {
               assert(m_stack.size() < m_stack.capacity());  // Otherwise, violated constructor max_depth.
+
+              // Frame constructor must select a sub-list of the tree, and do treeSplitters.
 
               m_stack.emplace_back(
                   &parentFrame,
@@ -433,27 +441,33 @@ namespace ot
       }
 
       // SFC_TreeLoop() : constructor
-      SFC_TreeLoop(bool nonempty, unsigned int max_depth)  //TODO?
+      SFC_TreeLoop(const TreeNode<C,dim> *sortedTreePart, size_t localTreeSz, unsigned int max_depth)  //TODO?
+        : m_treePartPtr(sortedTreePart)
       {
-        if (nonempty)
+        if (localTreeSz > 0)
           // The multi-level frame access pattern depends on references to
           // a given level not being invalidated. So, never reallocate the stack.
           m_stack.reserve(max_depth * NumChildren + 1);
 
+        // Initializes m_rootTreeSplitters, preparing for pushing root frame, and later reset() operations.
+        RankI ancStart, ancEnd;
+        SFC_Tree<C, dim>::SFC_locateBuckets(m_treePartPtr, 0, localTreeSz, 0+1, 0, m_rootTreeSplitters, ancStart, ancEnd); 
+
         // This statement initializes references in the first stack frame
         // to refer to our member variables. If these member variables are
         // assigned to later, updated contents will be reflected in the frame.
-        m_stack.emplace_back(m_rootInputData, m_rootOutputData, m_rootSummary);
+        m_stack.emplace_back(m_rootInputData, m_rootOutputData, m_rootSummary, m_treePartPtr, m_rootTreeSplitters);
 
         // Prevent traversal if empty. isFinished()==true.
-        if (!nonempty)
+        if (!(localTreeSz > 0))
           m_stack.back().m_isPre = false;
 
         // Note that the concrete class is responsible to
         // initialize the root data and summary member variables.
       }
 
-      SFC_TreeLoop(bool nonempty) : SFC_TreeLoop(nonempty, m_uiMaxDepth) {}
+      SFC_TreeLoop(const TreeNode<C,dim> *sortedTreePart, size_t localTreeSz)
+        : SFC_TreeLoop(sortedTreePart, localTreeSz, m_uiMaxDepth) {}
 
       SFC_TreeLoop() = delete;
 
@@ -491,12 +505,16 @@ namespace ot
       // Frame()
       Frame(typename FrameInputs<dim, InputTypes>::DataStoreT   &rootInputData,
             typename FrameOutputs<dim, OutputTypes>::DataStoreT &rootOutputData,
-            SummaryType &rootSummary)
+            SummaryType &rootSummary,
+            const TreeNode<C, dim> * treePartPtr,
+            const std::array<RankI, NumChildren+1> &rootTreeSplitters)
         : i(rootInputData),
           o(rootOutputData),
           mySummaryHandle(rootSummary),
           m_parentFrame(nullptr),
-          m_currentSubtree()
+          m_currentSubtree(),
+          m_treePartPtr(treePartPtr),
+          m_treeSplitters(rootTreeSplitters)
       {
         m_pRot = 0;
         m_isPre = true;
@@ -516,6 +534,29 @@ namespace ot
         m_isPre = true;
         m_extantChildren = 0u;
         m_numExtantChildren = 0;
+
+        m_treePartPtr = parentFrame->m_treePartPtr;
+
+        RankI ancStart, ancEnd;
+        SFC_Tree<C, dim>::SFC_locateBuckets(m_treePartPtr,
+                                            parentFrame->m_treeSplitters[child],
+                                            parentFrame->m_treeSplitters[child+1],
+                                            m_currentSubtree.getLevel()+1,
+                                            m_pRot,
+                                            m_treeSplitters,
+                                            ancStart, ancEnd); 
+
+        // DEBUG, TODO remove
+        size_t num_non_descendants = 0;
+        for (size_t ii = parentFrame->m_treeSplitters[child];
+                    ii < parentFrame->m_treeSplitters[child+1];
+                    ++ii)
+        {
+          const TreeNode<C, dim> *testTreeNode = &m_treePartPtr[ii];
+          if (!m_currentSubtree.isAncestorInclusive(*testTreeNode))
+            num_non_descendants++;
+        }
+        assert(num_non_descendants == 0);  // Else mismatch between traversals.
       }
 
       // Frame()
@@ -575,6 +616,26 @@ namespace ot
       // getCurrentSubtree()
       const TreeNode<C,dim> &getCurrentSubtree() { return m_currentSubtree; }
 
+      // getTreeSplitters()
+      const std::array<RankI, NumChildren+1> & getTreeSplitters() const { return m_treeSplitters; }
+
+      // getExtantTreeChildrenMorton()  -- based on tree splitters nonzero
+      ExtantCellFlagT getExtantTreeChildrenMorton() const
+      {
+        ExtantCellFlagT extantFlag = 0u;
+
+        constexpr unsigned int rotOffset = 2*(1 << dim);  // num columns in rotations[].
+        const ChildI * const rot_perm = &rotations[m_pRot*rotOffset + 0];
+
+        for (ChildI child_sfc = 0; child_sfc < (1 << dim); ++child_sfc)
+        {
+          const ChildI child_m = rot_perm[child_sfc];
+          extantFlag |= (m_treeSplitters[child_sfc+1] > m_treeSplitters[child_sfc]) << child_m;
+        }
+
+        return extantFlag;
+      }
+
     public:
       FrameInputs<dim, InputTypes> i;
       FrameOutputs<dim, OutputTypes> o;
@@ -588,6 +649,8 @@ namespace ot
       RotI m_pRot;
       unsigned int m_numExtantChildren;
       ExtantCellFlagT m_extantChildren;
+      const TreeNode<C, dim> * m_treePartPtr;
+      std::array<RankI, NumChildren+1> m_treeSplitters;
   };
 
 
