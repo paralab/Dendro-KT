@@ -977,26 +977,34 @@ namespace ot {
       }
       else
       {
-        const unsigned int frontLev = splitters[rProc].getLevel();
+        const TreeNode<T, dim> splitter = splitters[rProc];
+        const unsigned int frontLev = splitter.getLevel();
         segBegin = points.begin();
         for (unsigned int testLev = 1; testLev <= frontLev; testLev++)
         {
           const ChildI *rot_inv = &rotations[pRot*rotOffset + 1*numChildren];   // child_sfc == rot_inv[child_morton];
-          const ChildI spChild_m = splitters[rProc].getMortonIndex(testLev);
+          const ChildI spChild_m = splitter.getMortonIndex(testLev);
           const ChildI spChild_sfc = rot_inv[spChild_m];
 
-          while (segBegin < points.end() && rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segBegin).getMortonIndex(testLev)] < spChild_sfc)
+          while (segBegin < points.end()
+              && KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segBegin).getAncestor(testLev-1) == splitter.getAncestor(testLev-1)
+              && rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segBegin).getMortonIndex(testLev)] < spChild_sfc)
             segBegin++;
           // Could be replaced by a binary search.
 
-          if (segBegin == points.end() || rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segBegin).getMortonIndex(testLev)] > spChild_sfc)
+          if (segBegin == points.end()
+              || KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segBegin).getAncestor(testLev-1) != splitter.getAncestor(testLev-1)
+              || rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segBegin).getMortonIndex(testLev)] > spChild_sfc)
             break;
-          // Else, child_sfc == spChild_sfc, so we need to keep descending.
+
+          // Else, subtrees equal, so we need to keep descending.
 
           const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
           pRot = orientLookup[spChild_m];
         }
       }
+
+      pRot = 0;
 
       // Find last contained node.
       if (globalNonemptyRank == globalNonemptySize - 1)
@@ -1005,21 +1013,27 @@ namespace ot {
       }
       else
       {
-        const unsigned int nextFrontLev = splitters[rProc+1].getLevel();
+        const TreeNode<T, dim> splitter = splitters[rProc+1];
+        const unsigned int nextFrontLev = splitter.getLevel();
         segEnd = segBegin;
         for (unsigned int testLev = 1; testLev <= nextFrontLev; testLev++)
         {
           const ChildI *rot_inv = &rotations[pRot*rotOffset + 1*numChildren];   // child_sfc == rot_inv[child_morton];
-          const ChildI spChild_m = splitters[rProc+1].getMortonIndex(testLev);
+          const ChildI spChild_m = splitter.getMortonIndex(testLev);
           const ChildI spChild_sfc = rot_inv[spChild_m];
 
-          while (segEnd < points.end() && rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segEnd).getMortonIndex(testLev)] < spChild_sfc)
+          while (segEnd < points.end()
+              && KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segEnd).getAncestor(testLev-1) == splitter.getAncestor(testLev-1)
+              && rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segEnd).getMortonIndex(testLev)] < spChild_sfc)
             segEnd++;
           // Could be replaced by a binary search.
 
-          if (segEnd == points.end() || rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segEnd).getMortonIndex(testLev)] > spChild_sfc)
+          if (segEnd == points.end()
+              || KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segEnd).getAncestor(testLev-1) != splitter.getAncestor(testLev-1)
+              || rot_inv[KeyFunInboundsContainer<TNP, TreeNode<T,dim>>(*segEnd).getMortonIndex(testLev)] > spChild_sfc)
             break;
-          // Else, child_sfc == spChild_sfc, so we need to keep descending.
+
+          // Else, subtrees equal, so we need to keep descending.
 
           const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
           pRot = orientLookup[spChild_m];
