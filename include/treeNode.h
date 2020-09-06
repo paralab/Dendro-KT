@@ -130,6 +130,8 @@ namespace ot {
       /**@brief return the coordinates of the dth dimention*/
       T getX(int d) const;
 
+      const std::array<T, dim> & getX() const { return m_uiCoords; }
+
       // This gives write access to coordinates.
       /**@brief set the coordinate in the dth dimension*/
       void setX(int d, T coord);
