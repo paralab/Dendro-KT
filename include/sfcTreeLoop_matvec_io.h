@@ -25,7 +25,6 @@
 #include <vector>
 #include <tuple>
 
-
 namespace ot
 {
 
@@ -614,8 +613,8 @@ namespace ot
 
     // m_rootSummary
     rootFrame.mySummaryHandle = generate_node_summary(allNodeCoords, allNodeCoords + numNodes);
-    rootFrame.mySummaryHandle.m_segmentByFirstElement = true;
-    rootFrame.mySummaryHandle.m_segmentByLastElement = true;
+    rootFrame.mySummaryHandle.m_segmentByFirstElement = false;
+    rootFrame.mySummaryHandle.m_segmentByLastElement = false;
     rootFrame.mySummaryHandle.m_firstElement = firstElement;
     rootFrame.mySummaryHandle.m_lastElement = lastElement;
 
@@ -667,8 +666,8 @@ namespace ot
 
     // m_rootSummary
     rootFrame.mySummaryHandle = generate_node_summary(allNodeCoords, allNodeCoords + numNodes);
-    rootFrame.mySummaryHandle.m_segmentByFirstElement = true;
-    rootFrame.mySummaryHandle.m_segmentByLastElement = true;
+    rootFrame.mySummaryHandle.m_segmentByFirstElement = false;
+    rootFrame.mySummaryHandle.m_segmentByLastElement = false;
     rootFrame.mySummaryHandle.m_firstElement = firstElement;
     rootFrame.mySummaryHandle.m_lastElement = lastElement;
 
@@ -726,8 +725,8 @@ namespace ot
 
     // m_rootSummary
     rootFrame.mySummaryHandle = generate_node_summary(allNodeCoords, allNodeCoords + numNodes);
-    rootFrame.mySummaryHandle.m_segmentByFirstElement = true;
-    rootFrame.mySummaryHandle.m_segmentByLastElement = true;
+    rootFrame.mySummaryHandle.m_segmentByFirstElement = false;
+    rootFrame.mySummaryHandle.m_segmentByLastElement = false;
     rootFrame.mySummaryHandle.m_firstElement = firstElement;
     rootFrame.mySummaryHandle.m_lastElement = lastElement;
 
@@ -845,30 +844,6 @@ namespace ot
       childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
     }
 
-    ExtantCellFlagT segmentChildren = -1;  // Initially all.
-    int segmentChildFirst = -1;            // Beginning of subtree auto in.
-    int segmentChildLast = NumChildren;    // End of subtree auto in.
-    if (parentFrame.mySummaryHandle.m_segmentByFirstElement)
-    {
-      // Scan from front to back eliminating children until firstElement is reached.
-      TreeNode<unsigned int, dim> &firstElement = parentFrame.mySummaryHandle.m_firstElement;
-      int &cf = segmentChildFirst;
-      while (++cf < int(NumChildren) && !childSubtreesSFC[cf].isAncestorInclusive(firstElement))
-        segmentChildren &= ~(1u << childSubtreesSFC[cf].getMortonIndex());
-    }
-    if (parentFrame.mySummaryHandle.m_segmentByLastElement)
-    {
-      // Scan from back to front eliminating children until lastElement is reached.
-      TreeNode<unsigned int, dim> &lastElement = parentFrame.mySummaryHandle.m_lastElement;
-      int &cl = segmentChildLast;
-      while (--cl >= 0 && !childSubtreesSFC[cl].isAncestorInclusive(lastElement))
-        segmentChildren &= ~(1u << childSubtreesSFC[cl].getMortonIndex());
-    }
-
-    // Iteration ranges based on segment discovery.
-    const ChildI segmentChildBegin = (segmentChildFirst >= 0 ? segmentChildFirst : 0);
-    const ChildI segmentChildEnd = (segmentChildLast < NumChildren ? segmentChildLast + 1 : NumChildren);
-
     //
     // Initial pass over the input data.
     // Count #points per child, finest level, extant children.
@@ -877,7 +852,7 @@ namespace ot
                                                                  &(*myNodes.begin()),
                                                                  numInputNodes,
                                                                  this->getCurrentRotation(),
-                                                                 segmentChildren ))
+                                                                 *extantChildren ))
     {
       const ChildI child_sfc = nodeInstance.getChild_sfc();
 
@@ -911,14 +886,6 @@ namespace ot
 
       summaries[child_sfc].m_initializedIn = true;
       summaries[child_sfc].m_initializedOut = false;
-
-      // firstElement and lastElement of local segment.
-      summaries[child_sfc].m_segmentByFirstElement = (child_sfc == segmentChildFirst && parLev+1 < parentFrame.mySummaryHandle.m_firstElement.getLevel());
-      summaries[child_sfc].m_segmentByLastElement = (child_sfc == segmentChildLast && parLev+1 < parentFrame.mySummaryHandle.m_lastElement.getLevel());
-      if (summaries[child_sfc].m_segmentByFirstElement)
-        summaries[child_sfc].m_firstElement = parentFrame.mySummaryHandle.m_firstElement;
-      if (summaries[child_sfc].m_segmentByLastElement)
-        summaries[child_sfc].m_lastElement = parentFrame.mySummaryHandle.m_lastElement;
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         thereAreHangingNodes = true;
@@ -1072,30 +1039,6 @@ namespace ot
       childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
     }
 
-    ExtantCellFlagT segmentChildren = -1;  // Initially all.
-    int segmentChildFirst = -1;            // Beginning of subtree auto in.
-    int segmentChildLast = NumChildren;    // End of subtree auto in.
-    if (parentFrame.mySummaryHandle.m_segmentByFirstElement)
-    {
-      // Scan from front to back eliminating children until firstElement is reached.
-      TreeNode<unsigned int, dim> &firstElement = parentFrame.mySummaryHandle.m_firstElement;
-      int &cf = segmentChildFirst;
-      while (++cf < int(NumChildren) && !childSubtreesSFC[cf].isAncestorInclusive(firstElement))
-        segmentChildren &= ~(1u << childSubtreesSFC[cf].getMortonIndex());
-    }
-    if (parentFrame.mySummaryHandle.m_segmentByLastElement)
-    {
-      // Scan from back to front eliminating children until lastElement is reached.
-      TreeNode<unsigned int, dim> &lastElement = parentFrame.mySummaryHandle.m_lastElement;
-      int &cl = segmentChildLast;
-      while (--cl >= 0 && !childSubtreesSFC[cl].isAncestorInclusive(lastElement))
-        segmentChildren &= ~(1u << childSubtreesSFC[cl].getMortonIndex());
-    }
-
-    // Iteration ranges based on segment discovery.
-    const ChildI segmentChildBegin = (segmentChildFirst >= 0 ? segmentChildFirst : 0);
-    const ChildI segmentChildEnd = (segmentChildLast < NumChildren ? segmentChildLast + 1 : NumChildren);
-
     //
     // Initial pass over the input data.
     // Count #points per child, finest level, extant children.
@@ -1104,7 +1047,7 @@ namespace ot
                                                                  &(*myNodes.begin()),
                                                                  numInputNodes,
                                                                  this->getCurrentRotation(),
-                                                                 segmentChildren ))
+                                                                 *extantChildren ))
     {
       const ChildI child_sfc = nodeInstance.getChild_sfc();
 
@@ -1114,7 +1057,6 @@ namespace ot
       if (childFinestLevel[child_sfc] < nodeLevel)
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
-
     }
 
     //
@@ -1137,14 +1079,6 @@ namespace ot
 
       summaries[child_sfc].m_initializedIn = true;
       summaries[child_sfc].m_initializedOut = false;
-
-      // firstElement and lastElement of local segment.
-      summaries[child_sfc].m_segmentByFirstElement = (child_sfc == segmentChildFirst && parLev+1 < parentFrame.mySummaryHandle.m_firstElement.getLevel());
-      summaries[child_sfc].m_segmentByLastElement = (child_sfc == segmentChildLast && parLev+1 < parentFrame.mySummaryHandle.m_lastElement.getLevel());
-      if (summaries[child_sfc].m_segmentByFirstElement)
-        summaries[child_sfc].m_firstElement = parentFrame.mySummaryHandle.m_firstElement;
-      if (summaries[child_sfc].m_segmentByLastElement)
-        summaries[child_sfc].m_lastElement = parentFrame.mySummaryHandle.m_lastElement;
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         thereAreHangingNodes = true;
@@ -1384,30 +1318,6 @@ namespace ot
       childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
     }
 
-    ExtantCellFlagT segmentChildren = -1;  // Initially all.
-    int segmentChildFirst = -1;            // Beginning of subtree auto in.
-    int segmentChildLast = NumChildren;    // End of subtree auto in.
-    if (parentFrame.mySummaryHandle.m_segmentByFirstElement)
-    {
-      // Scan from front to back eliminating children until firstElement is reached.
-      TreeNode<unsigned int, dim> &firstElement = parentFrame.mySummaryHandle.m_firstElement;
-      int &cf = segmentChildFirst;
-      while (++cf < int(NumChildren) && !childSubtreesSFC[cf].isAncestorInclusive(firstElement))
-        segmentChildren &= ~(1u << childSubtreesSFC[cf].getMortonIndex());
-    }
-    if (parentFrame.mySummaryHandle.m_segmentByLastElement)
-    {
-      // Scan from back to front eliminating children until lastElement is reached.
-      TreeNode<unsigned int, dim> &lastElement = parentFrame.mySummaryHandle.m_lastElement;
-      int &cl = segmentChildLast;
-      while (--cl >= 0 && !childSubtreesSFC[cl].isAncestorInclusive(lastElement))
-        segmentChildren &= ~(1u << childSubtreesSFC[cl].getMortonIndex());
-    }
-
-    // Iteration ranges based on segment discovery.
-    const ChildI segmentChildBegin = (segmentChildFirst >= 0 ? segmentChildFirst : 0);
-    const ChildI segmentChildEnd = (segmentChildLast < NumChildren ? segmentChildLast + 1 : NumChildren);
-
     //
     // Initial pass over the input data.
     // Count #points per child, finest level, extant children.
@@ -1416,7 +1326,7 @@ namespace ot
                                                                  &(*myNodes.begin()),
                                                                  numInputNodes,
                                                                  this->getCurrentRotation(),
-                                                                 segmentChildren ))
+                                                                 *extantChildren ))
     {
       const ChildI child_sfc = nodeInstance.getChild_sfc();
 
@@ -1450,14 +1360,6 @@ namespace ot
 
       summaries[child_sfc].m_initializedIn = true;
       summaries[child_sfc].m_initializedOut = false;
-
-      // firstElement and lastElement of local segment.
-      summaries[child_sfc].m_segmentByFirstElement = (child_sfc == segmentChildFirst && parLev+1 < parentFrame.mySummaryHandle.m_firstElement.getLevel());
-      summaries[child_sfc].m_segmentByLastElement = (child_sfc == segmentChildLast && parLev+1 < parentFrame.mySummaryHandle.m_lastElement.getLevel());
-      if (summaries[child_sfc].m_segmentByFirstElement)
-        summaries[child_sfc].m_firstElement = parentFrame.mySummaryHandle.m_firstElement;
-      if (summaries[child_sfc].m_segmentByLastElement)
-        summaries[child_sfc].m_lastElement = parentFrame.mySummaryHandle.m_lastElement;
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         thereAreHangingNodes = true;
