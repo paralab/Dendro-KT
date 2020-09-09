@@ -345,6 +345,96 @@ void KroneckerProduct(unsigned M, const da **A, const da **in, da **out, unsigne
     case 20:
       KroneckerProductFixedDof<dim, da, forward, 20>(M, A, in, out);
       break;
+    case 21:
+      KroneckerProductFixedDof<dim, da, forward, 21>(M, A, in, out);
+      break;
+    case 22:
+      KroneckerProductFixedDof<dim, da, forward, 22>(M, A, in, out);
+      break;
+    case 23:
+      KroneckerProductFixedDof<dim, da, forward, 23>(M, A, in, out);
+      break;
+    case 24:
+      KroneckerProductFixedDof<dim, da, forward, 24>(M, A, in, out);
+      break;
+    case 25:
+      KroneckerProductFixedDof<dim, da, forward, 25>(M, A, in, out);
+      break;
+    case 26:
+      KroneckerProductFixedDof<dim, da, forward, 26>(M, A, in, out);
+      break;
+    case 27:
+      KroneckerProductFixedDof<dim, da, forward, 27>(M, A, in, out);
+      break;
+    case 28:
+      KroneckerProductFixedDof<dim, da, forward, 28>(M, A, in, out);
+      break;
+    case 29:
+      KroneckerProductFixedDof<dim, da, forward, 29>(M, A, in, out);
+      break;
+    case 30:
+      KroneckerProductFixedDof<dim, da, forward, 30>(M, A, in, out);
+      break;
+    case 31:
+      KroneckerProductFixedDof<dim, da, forward, 31>(M, A, in, out);
+      break;
+    case 32:
+      KroneckerProductFixedDof<dim, da, forward, 32>(M, A, in, out);
+      break;
+    case 33:
+      KroneckerProductFixedDof<dim, da, forward, 33>(M, A, in, out);
+      break;
+    case 34:
+      KroneckerProductFixedDof<dim, da, forward, 34>(M, A, in, out);
+      break;
+    case 35:
+      KroneckerProductFixedDof<dim, da, forward, 35>(M, A, in, out);
+      break;
+    case 36:
+      KroneckerProductFixedDof<dim, da, forward, 36>(M, A, in, out);
+      break;
+    case 37:
+      KroneckerProductFixedDof<dim, da, forward, 37>(M, A, in, out);
+      break;
+    case 38:
+      KroneckerProductFixedDof<dim, da, forward, 38>(M, A, in, out);
+      break;
+    case 39:
+      KroneckerProductFixedDof<dim, da, forward, 39>(M, A, in, out);
+      break;
+    case 40:
+      KroneckerProductFixedDof<dim, da, forward, 40>(M, A, in, out);
+      break;
+    case 41:
+      KroneckerProductFixedDof<dim, da, forward, 41>(M, A, in, out);
+      break;
+    case 42:
+      KroneckerProductFixedDof<dim, da, forward, 42>(M, A, in, out);
+      break;
+    case 43:
+      KroneckerProductFixedDof<dim, da, forward, 43>(M, A, in, out);
+      break;
+    case 44:
+      KroneckerProductFixedDof<dim, da, forward, 44>(M, A, in, out);
+      break;
+    case 45:
+      KroneckerProductFixedDof<dim, da, forward, 45>(M, A, in, out);
+      break;
+    case 46:
+      KroneckerProductFixedDof<dim, da, forward, 46>(M, A, in, out);
+      break;
+    case 47:
+      KroneckerProductFixedDof<dim, da, forward, 47>(M, A, in, out);
+      break;
+    case 48:
+      KroneckerProductFixedDof<dim, da, forward, 48>(M, A, in, out);
+      break;
+    case 49:
+      KroneckerProductFixedDof<dim, da, forward, 49>(M, A, in, out);
+      break;
+    case 50:
+      KroneckerProductFixedDof<dim, da, forward, 50>(M, A, in, out);
+      break;
     default:
       const bool isNumberOfDegreesOfFreedomSupported = false;
       assert(isNumberOfDegreesOfFreedomSupported);  // Need to add more cases.
