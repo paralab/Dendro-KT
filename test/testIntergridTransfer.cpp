@@ -72,8 +72,8 @@ int main(int argc, char *argv[])
   _InitializeHcurve(dim);
 
   /// bool success = testNull<dim>(argc, argv);
-  /// bool success = testMultiDA<dim>(argc, argv);
-  bool success  = testUniform2(argc, argv);
+  bool success = testMultiDA<dim>(argc, argv);
+  /// bool success  = testUniform2(argc, argv);
 
   _DestroyHcurve();
   MPI_Finalize();
@@ -423,20 +423,27 @@ bool testMultiDA(int argc, char * argv[])
       fprintf(stderr, "%s \t EMPTY \t Surrogate ODA is empty!\n", rankPrefix.c_str());
   }
 
+  const unsigned int fineLev = 0;
+  const unsigned int coarseLev = 1;
+
   fem::MeshFreeInputContext<DofT, TN> igtIn{
       fineVec.data(),
-      multiDA[0].getTNCoords() + multiDA[0].getLocalNodeBegin(),
-      multiDA[0].getLocalNodalSz(),
-      *multiDA[0].getTreePartFront(),
-      *multiDA[0].getTreePartBack()
+      multiDA[fineLev].getTNCoords() + multiDA[fineLev].getLocalNodeBegin(),
+      multiDA[fineLev].getLocalNodalSz(),
+      &(*dtree.getTreePartFiltered(fineLev).begin()),
+      dtree.getTreePartFiltered(fineLev).size(),
+      *multiDA[fineLev].getTreePartFront(),
+      *multiDA[fineLev].getTreePartBack()
   };
 
   fem::MeshFreeOutputContext<DofT, TN> igtOut{
       surrogateVec.data(),
-      surrogateMultiDA[1].getTNCoords() + surrogateMultiDA[1].getLocalNodeBegin(),
-      surrogateMultiDA[1].getLocalNodalSz(),
-      *surrogateMultiDA[1].getTreePartFront(),
-      *surrogateMultiDA[1].getTreePartBack()
+      surrogateMultiDA[coarseLev].getTNCoords() + surrogateMultiDA[coarseLev].getLocalNodeBegin(),
+      surrogateMultiDA[coarseLev].getLocalNodalSz(),
+      &(*surrogateDTree.getTreePartFiltered(coarseLev).begin()),
+      surrogateDTree.getTreePartFiltered(coarseLev).size(),
+      *surrogateMultiDA[coarseLev].getTreePartFront(),
+      *surrogateMultiDA[coarseLev].getTreePartBack()
   };
 
   const RefElement * refel = multiDA[0].getReferenceElement();
@@ -577,6 +584,8 @@ bool testNull(int argc, char * argv[])
   std::vector<ot::TreeNode<C, dim>> coordsIn, coordsOut;
   ot::TreeNode<C, dim> frontIn, frontOut, backIn, backOut;
 
+  std::vector<ot::TreeNode<C, dim>> octListIn, octListOut;
+
   unsigned int sz = 0;
   unsigned int ndofs = 1;
 
@@ -584,8 +593,8 @@ bool testNull(int argc, char * argv[])
 
 
   fem::locIntergridTransfer(
-      fem::MeshFreeInputContext<T, TN>{vecIn.data(), coordsIn.data(), sz, frontIn, backIn},
-      fem::MeshFreeOutputContext<T, TN>{vecOut.data(), coordsOut.data(), sz, frontOut, backOut},
+      fem::MeshFreeInputContext<T, TN>{vecIn.data(), coordsIn.data(), sz, octListIn.data(), octListIn.size(), frontIn, backIn},
+      fem::MeshFreeOutputContext<T, TN>{vecOut.data(), coordsOut.data(), sz, octListOut.data(), octListOut.size(), frontOut, backOut},
       ndofs,
       &refel);
 

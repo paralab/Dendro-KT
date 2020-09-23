@@ -77,6 +77,8 @@ protected:
     /**@brief: pointer to OCT DA*/
     ot::MultiDA<dim> * m_multiDA;
     ot::MultiDA<dim> * m_surrogateMultiDA;
+    /// const std::vector<std::vector<ot::TreeNode<unsigned int, dim>>> * m_multiOctList;  //TODO
+    /// const std::vector<std::vector<ot::TreeNode<unsigned int, dim>>> * m_surrogateMultiOctList;
     unsigned int m_numStrata;
     unsigned int m_ndofs;
 
@@ -451,10 +453,18 @@ void gmgMat<dim, LeafClass>::restriction(const VECType *fineRes, VECType *coarse
   bench::t_gmg_loc_restrict.start();
 #endif
 
+  throw std::logic_error("Not implemented fully. Need vector of octList for iteration.");
+  const TN *treePartPtr = nullptr;  // &(*octList->cbegin());
+  const size_t treePartSz = -314;   // octList->size();
+  const TN *surrTreePartPtr = nullptr;  // &(*octList->cbegin());
+  const size_t surrTreePartSz = -314;   // octList->size();
+
   fem::MeshFreeInputContext<VECType, TN>
       inctx{ fineGhostedPtr,
              fineDA.getTNCoords(),
              (unsigned) fineDA.getTotalNodalSz(),
+             treePartPtr,
+             treePartSz,
              *fineDA.getTreePartFront(),
              *fineDA.getTreePartBack() };
 
@@ -462,6 +472,8 @@ void gmgMat<dim, LeafClass>::restriction(const VECType *fineRes, VECType *coarse
       outctx{surrGhostedPtr,
              surrDA.getTNCoords(),
              (unsigned) surrDA.getTotalNodalSz(),
+             surrTreePartPtr,
+             surrTreePartSz,
              *surrDA.getTreePartFront(),
              *surrDA.getTreePartBack() };
 
@@ -542,10 +554,18 @@ void gmgMat<dim, LeafClass>::prolongation(const VECType *coarseCrx, VECType *fin
   bench::t_gmg_loc_restrict.start();
 #endif
 
+  throw std::logic_error("Not implemented fully. Need vector of octList for iteration.");
+  const TN *treePartPtr = nullptr;  // &(*octList->cbegin());
+  const size_t treePartSz = -314;   // octList->size();
+  const TN *surrTreePartPtr = nullptr;  // &(*octList->cbegin());
+  const size_t surrTreePartSz = -314;   // octList->size();
+
   fem::MeshFreeInputContext<VECType, TN>
       inctx{ surrGhostedPtr,
              surrDA.getTNCoords(),
              (unsigned) surrDA.getTotalNodalSz(),
+             surrTreePartPtr,
+             surrTreePartSz,
              *surrDA.getTreePartFront(),
              *surrDA.getTreePartBack() };
 
@@ -553,6 +573,8 @@ void gmgMat<dim, LeafClass>::prolongation(const VECType *coarseCrx, VECType *fin
       outctx{fineGhostedPtr,
              fineDA.getTNCoords(),
              (unsigned) fineDA.getTotalNodalSz(),
+             treePartPtr,
+             treePartSz,
              *fineDA.getTreePartFront(),
              *fineDA.getTreePartBack() };
 
