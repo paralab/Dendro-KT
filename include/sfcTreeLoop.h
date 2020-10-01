@@ -815,12 +815,11 @@ namespace ot
           // Prepare to iterate over children which are incident to current node.
           FType incidentSubspace;
           FType incidentSubspaceDim;
-          m_extantChildren = \
-              m_subtree.incidentChildren(m_nodesBegin[m_pNodeIdx],
-                                         m_firstIncidentChild_m,
-                                         incidentSubspace,
-                                         incidentSubspaceDim);
-          m_extantChildren &= m_subtreeChildren;
+          m_subtree.incidentChildren(m_nodesBegin[m_pNodeIdx],
+                                     m_firstIncidentChild_m,
+                                     incidentSubspace,
+                                     incidentSubspaceDim);
+          m_extantChildren = m_subtreeChildren;
           m_bitExpander = binOp::TallBitMatrix<dim, FType>::generateColumns(incidentSubspace);
           m_incidentSubspaceVolume = 1u << incidentSubspaceDim;
           m_virtChildIdx = 0;

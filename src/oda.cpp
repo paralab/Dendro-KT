@@ -176,12 +176,6 @@ namespace ot
         // Also appends cancellation nodes where potential hanging nodes could be.
         // Only tests domainDecider if the element has been flagged as a boundary element.
 
-        // Before passing the nodeList to SFC_NodeSort::dist_countCGNodes(),
-        // set the neighborhood flags.
-        ///TODO this is probably buggy with false positives when boundary pinches subdomain.
-        //also maybe not consistent with the tree when there are hanging elements.
-        ot::SFC_NodeSort<C, dim>::markExtantCellFlags(nodeList, distTree.getDomainDeciderTN_asCell());
-
         // Count unique element-exterior nodes.
         unsigned long long glbExtNodes =
             ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList,
@@ -191,15 +185,9 @@ namespace ot
                                                        activeComm);
 
         // Finish generating nodes from the tree - element-interior nodes.
-        // The neighborhood space (complement of open cell type) for interior
-        // nodes is 0000 (no shared neighbors on any axis). The only valid
-        // neighbor index is 0, which refers to the host cell. We already
-        // know the host cell exists. Therefore flag is [0]->1, [>0]->0.
         size_t intNodeIdx = nodeList.size();
         for (const TreeNode<C, dim> &elem : inTreeFiltered)
             ot::Element<C,dim>(elem).appendInteriorNodes(order, nodeList);
-        while (intNodeIdx < nodeList.size())
-          nodeList[intNodeIdx++].setExtantCellFlag(1u);
       }
 
       // Finish constructing.
@@ -208,7 +196,7 @@ namespace ot
 
 
     //
-    // construct() - given the partition of owned points with extantCellFlags initialized.
+    // construct() - given the partition of owned points.
     //
     template <unsigned int dim>
     void DA<dim>::construct(std::vector<TNPoint<C,dim>> &ownedNodes,

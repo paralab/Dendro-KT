@@ -189,12 +189,12 @@ void testExample(const char *msgPrefix, unsigned int expected, Tree<dim> &tree, 
   numUniqueInteriorNodes = nodeListInterior.size();
   if (RunDistributed)
   {
-    ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListExterior, defaultDecider<dim>);
+    /// ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListExterior, defaultDecider<dim>);
     numUniqueExteriorNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, order, &(tree.front()), &(tree.back()), comm);
     ot::RankI globInterior = 0;
     par::Mpi_Allreduce(&numUniqueInteriorNodes, &globInterior, 1, MPI_SUM, comm);
     numUniqueInteriorNodes = globInterior;
-    ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListCombined, defaultDecider<dim>);
+    /// ot::SFC_NodeSort<T,dim>::markExtantCellFlags(nodeListCombined, defaultDecider<dim>);
     numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListCombined, order, &(tree.front()), &(tree.back()), comm);
   }
   else

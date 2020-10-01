@@ -265,11 +265,10 @@ namespace ot {
        *                for each incident child that is adjacent to the first incident child.
        * @param [out] incidenceSubspaceDim The number of set ones in incidenceSubspace.
        *                The number of incident children is pow(2, incidenceSubspaceDim).
-       * @return Convert m_extantCellFlag from point neighborhood bitstring to incident children bitstring.
        * @note Use with TallBitMatrix to easily iterate over the child numbers of incident children.
        * @note It is ASSUMED that isIncident(pointCoords) is true.
        */
-      ExtantCellFlagT  incidentChildren(
+      void  incidentChildren(
           const ot::TreeNode<T,dim> &pointCoords,
           typename ot::CellType<dim>::FlagType &incidenceOffset,
           typename ot::CellType<dim>::FlagType &incidenceSubspace,
@@ -368,8 +367,6 @@ namespace ot {
         MPI_Comm comm);
 
     static void markExtantCellFlags(std::vector<TNPoint<T,dim>> &points, const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> &domainDecider_elem);
-
-    static TreeNode<T, dim> getFirstExtantNeighbour(const TreeNode<T, dim> &pt);
 
     /**
      * @brief Count all unique, nonhanging nodes in/on the domain.

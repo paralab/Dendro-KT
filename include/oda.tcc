@@ -118,7 +118,7 @@ namespace ot
       // * Partition tree using sfc_tol
       // * Store front/back tree elements, discard tree.
       //
-      // * Generate all the nodes in Morton order and assign correct extant cell flag.
+      // * Generate all the nodes in Morton order.
       // * Partition the nodes to agree with tree splitters.
       //
       // * Compute scatter/gather maps (other overload of construct()).
@@ -288,12 +288,6 @@ namespace ot
             // Neighbour flags of interior points label the host cell as neighbour 0.
             // Because the neighbourhood has dimension 0, no other cells are tested.
             element.appendInteriorNodes(eleOrder, nodeList);
-            for (TNPoint<C,dim> *nodePtr = &nodeList[nodeListOldSz];
-                nodePtr < &(*nodeList.end()); nodePtr++)
-            {
-              nodePtr->resetExtantCellFlagNoNeighbours();
-              nodePtr->addNeighbourExtantCellFlag(0);
-            }
 
             // For neighbour flags of exterior points, test each axis for boundary.
             // On an axis that is 'internal', none of the 1-side neighbours are marked.
@@ -306,8 +300,6 @@ namespace ot
 
             for (TNPoint<C,dim> &node : nodeListBuffer)
             {
-              node.resetExtantCellFlagAllNeighbours();
-
               // Exclude a node from nodeList if it is 'upperEdge' on an axis,
               // unless it is boundary on the same axis.
               bool excludeNode = false;
@@ -318,13 +310,11 @@ namespace ot
                 // Check for subdomain boundaries.
                 if (node.getX(d) == subdomainBBMins[d])
                 {
-                  node.excludeSideExtantCellFlag(d, 0);
                   node.setIsOnTreeBdry(true);
                   isBoundaryOnAxis = true;
                 }
                 else if (node.getX(d) == subdomainBBMaxs[d])
                 {
-                  node.excludeSideExtantCellFlag(d, 1);
                   node.setIsOnTreeBdry(true);
                   isBoundaryOnAxis = true;
                 }
@@ -332,13 +322,6 @@ namespace ot
                 // Check for upper edge of the cell (owned by another cell).
                 if (node.getX(d) == element.maxX(d) && !isBoundaryOnAxis)
                   excludeNode = true;
-
-                // Check for interiorness.
-                else if (element.minX(d) < node.getX(d)
-                                        && node.getX(d) < element.maxX(d))
-                {
-                  node.excludeSideExtantCellFlag(d, 1); //???
-                }
               }
 
               if (!excludeNode)

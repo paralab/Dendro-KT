@@ -48,16 +48,12 @@ namespace ot {
         /**level of the tree node*/
         unsigned int m_uiLevel;
 
-        /**Existence of open cells surrounding a point, one bit per cell.*/
-        /* @note Empty unless previously set (or copied after setting) setExtantCellFlag(). */
-        ExtantCellFlagT m_extantCellFlag;
-
         /**As a point, is this point exposed as part of the tree/domain boundary?
          * As an element, does the element have any exposed exterior points?
-         * @note false unless previously set (or copied after setting) setExtantCellFlag(). */
-        bool m_isOnTreeBdry;  //TODO add to ctors, getters/setters.
+         * @note false unless previously set (or copied after setting) setIsOnTreeBdry(). */
+        bool m_isOnTreeBdry;
 
-        // m_extantCellFlag and m_isOnTreeBdry are just tags.
+        // m_isOnTreeBdry is just a tag.
         // Not computed automatically by TreeNode.
 
     public:
@@ -142,27 +138,6 @@ namespace ot {
 
       // These methods don't tell you which element is which neighbor,
       //  look in nsort.h / nsort.tcc for that.
-
-      /**@brief Get the bitfield of extant neighbor regions surrounding the point.
-       * @note Empty unless previously set (or copied after setting) setExtantCellFlag(). */
-      inline ExtantCellFlagT getExtantCellFlag() const;
-
-      /**@brief Set the bitfield of extant neighbor regions surrounding the point.
-       * @note Empty unless set (or copied after setting) setExtantCellFlag(). */
-      inline void setExtantCellFlag(ExtantCellFlagT extantCellFlag);
-
-      inline void resetExtantCellFlagNoNeighbours();
-
-      inline void resetExtantCellFlagAllNeighbours();
-
-      inline void addNeighbourExtantCellFlag(unsigned int nbrId);
-
-      inline void removeNeighbourExtantCellFlag(unsigned int nbrId);
-
-      /**@brief Record hyperplane face boundary. side=0: neg empty. side=1: pos empty.*/
-      inline void excludeSideExtantCellFlag(unsigned int axis, unsigned char side);
-
-      inline unsigned int expectedNeighboursExtantCellFlag() const;
 
       /**As a point, is this point exposed as part of the tree/domain boundary?
        * As an element, does the element have any exposed exterior points?

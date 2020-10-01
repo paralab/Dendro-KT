@@ -50,7 +50,6 @@ namespace ot {
       m_uiLevel = 0;
       m_uiCoords.fill(0);
 
-      m_extantCellFlag = 0u;
       m_isOnTreeBdry = false;
 
       //==========
@@ -69,7 +68,6 @@ namespace ot {
     {
       m_uiLevel = level;
 
-      m_extantCellFlag = 0u;
       m_isOnTreeBdry = false;
 
       T mask = -(1u << (m_uiMaxDepth - level));
@@ -100,7 +98,6 @@ namespace ot {
       m_uiCoords = other.m_uiCoords;
       m_uiLevel = other.m_uiLevel;
 
-      m_extantCellFlag = other.m_extantCellFlag;
       m_isOnTreeBdry = other.m_isOnTreeBdry;
     } //end function
 
@@ -113,7 +110,6 @@ namespace ot {
       m_uiCoords = coords;
       m_uiLevel = level;
 
-      m_extantCellFlag = 0u;
       m_isOnTreeBdry = false;
     }
 
@@ -129,7 +125,6 @@ namespace ot {
       m_uiCoords = other.m_uiCoords;
       m_uiLevel = other.m_uiLevel;
 
-      m_extantCellFlag = other.m_extantCellFlag;
       m_isOnTreeBdry = other.m_isOnTreeBdry;
 
       return *this;
@@ -265,58 +260,6 @@ inline void TreeNode<T,dim>::setX(int d, T coord) {
   assert(0 <= d && d < dim);
 #endif
   m_uiCoords[d] = coord;
-}
-
-template <typename T, unsigned int dim>
-inline ExtantCellFlagT TreeNode<T, dim>::getExtantCellFlag() const
-{
-  return m_extantCellFlag;
-}
-
-template <typename T, unsigned int dim>
-inline void TreeNode<T, dim>::setExtantCellFlag(ExtantCellFlagT extantCellFlag)
-{
-  const ExtantCellFlagT mask = (1u << (1u << dim)) - 1;
-  m_extantCellFlag = extantCellFlag & mask;
-}
-
-
-template <typename T, unsigned int dim>
-inline void TreeNode<T, dim>::resetExtantCellFlagNoNeighbours()
-{
-  m_extantCellFlag = 0u;
-}
-
-template <typename T, unsigned int dim>
-inline void TreeNode<T, dim>::resetExtantCellFlagAllNeighbours()
-{
-  m_extantCellFlag = (1u << (1u << dim)) - 1;
-}
-
-template <typename T, unsigned int dim>
-inline void TreeNode<T, dim>::addNeighbourExtantCellFlag(unsigned int nbrId)
-{
-  m_extantCellFlag |= (1u << nbrId);
-}
-
-template <typename T, unsigned int dim>
-inline void TreeNode<T, dim>::removeNeighbourExtantCellFlag(unsigned int nbrId)
-{
-  m_extantCellFlag &= ~(1u << nbrId);
-}
-
-template <typename T, unsigned int dim>
-inline void TreeNode<T, dim>::excludeSideExtantCellFlag(unsigned int axis, unsigned char side)
-{
-  m_extantCellFlag &= (side == 0 ?
-      binOp::hyperplaneHiMask<T, dim>(axis)     // If exclude neg (lo), keep pos (hi).
-    : binOp::hyperplaneLoMask<T, dim>(axis));   // If exclude pos (hi), keep neg (lo).
-}
-
-template <typename T, unsigned int dim>
-inline unsigned int TreeNode<T, dim>::expectedNeighboursExtantCellFlag() const
-{
-  return binOp::countOnes(m_extantCellFlag);
 }
 
 
