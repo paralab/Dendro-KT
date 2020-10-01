@@ -17,9 +17,6 @@
 
 namespace ot
 {
-  //TODO the DA class and the eleTreeIterator class should now take
-  //references to DistTree instead of references to std::vector<TreeNode<T,dim>>
-
   /**
    * @brief Intermediate container for filtering trees before creating the DA.
    *

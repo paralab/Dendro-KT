@@ -12,7 +12,6 @@
 
 #include "tsort.h"    // RankI, ChildI, LevI, RotI
 #include "nsort.h"    // TNPoint
-#include "eleTreeIterator.h"
 
 #include "sfcTreeLoop_matvec.h"
 
@@ -272,56 +271,7 @@ namespace fem
         std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
     }
 
-    template<typename T,typename TN, typename RE>
-    /// void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
-    void matvec_eleTreeIterator(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
-    {
-      // Initialize output vector to 0.
-      std::fill(vecOut, vecOut + ndofs*sz, 0);
 
-      /// //DEBUG
-      /// fprintf(stderr, "\nBegin Matvec.\n");
-      /// for (unsigned int ii = 0; ii < sz; ii++)
-      /// {
-      ///   fprintf(stderr, "{%02u} (%u)|%s|%u\n", ii, coords[ii].getLevel(), coords[ii].getBase32Hex().data(),
-      ///       ot::TNPoint<typename TN::coordType,TN::coordDim>(1, {coords[ii].getX(0), coords[ii].getX(1)}, coords[ii].getLevel()).get_lexNodeRank(coords[ii].getParent().getChildMorton(coords[ii].getMortonIndex()), (unsigned int) refElement->getOrder()));
-      ///   if ((ii%8) == 7)
-      ///     fprintf(stderr, "\n");
-      /// }
-
-#if 1
-      // NEW iterative way:
-      using C = typename TN::coordType;
-      constexpr unsigned int dim = TN::coordDim;
-      const unsigned int eleOrder = refElement->getOrder();
-      const unsigned int npe = intPow(eleOrder+1, dim);
-
-      ElementLoop<C, dim, T> loop( sz, coords, eleOrder, partFront, partBack);
-      loop.initialize(vecIn, ndofs);
-
-      std::vector<T> leafResult(ndofs*npe, 0.0);
-
-      for (ELIterator<C, dim, T> it = loop.begin(); it != loop.end(); ++it)
-      {
-        ElementNodeBuffer<C, dim, T> leafBuf = *it;
-
-        // Perform elemental matvec op.
-        T * leafVal = leafBuf.getNodeBuffer();
-        T * leafValTemp = &(*leafResult.begin());
-        eleOp(leafVal, leafValTemp, ndofs, leafBuf.getNodeCoords(), scale);
-
-        // Copy results back to leaf buffer.
-        std::copy_n(leafValTemp, ndofs*npe, leafVal);
-        leafBuf.submitElement();
-      }
-      loop.finalize(vecOut);
-#else
-      // OLD recursive way:
-      // Top level of recursion.
-      TN treeRoot;  // Default constructor constructs root cell.
-      matvec_rec<T,TN,RE>(vecIn, vecOut, ndofs, coords, treeRoot, 0, sz, partFront, partBack, eleOp, scale, refElement, nullptr, nullptr, nullptr, 0, true);
-#endif
-    }
 
     // Recursive implementation.
     template<typename T,typename TN, typename RE>

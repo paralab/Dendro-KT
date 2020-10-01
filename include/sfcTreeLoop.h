@@ -3,8 +3,6 @@
  * @author: Masado Ishii  --  UofU SoC,
  * @date: 2019-10-23
  * @brief: Stateful const iterator over implicit mesh, giving access to element nodes.
- *         Similar in spirit to eleTreeIterator.h, but hopefully an improvement.
- *
  *         My aim is to make the element loop more flexible and easier to reason about.
  */
 
