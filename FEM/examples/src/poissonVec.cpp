@@ -95,6 +95,8 @@ bool PoissonVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
+
+    return true;
 }
 
 template <unsigned int dim>
@@ -106,6 +108,8 @@ bool PoissonVec<dim>::postComputeVec(const VECType* in,VECType* out, double scal
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
+
+    return true;
 }
 
 

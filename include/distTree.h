@@ -357,6 +357,8 @@ namespace ot
     m_numStrata =             other.m_numStrata;
 
     this->assignDomainDecider(other.m_domainDecider);
+
+    return *this;
   }
 
 

@@ -822,6 +822,8 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
                   ADD_VALUES);
     }
   }
+
+  return true;
 }
 
 #endif

@@ -165,6 +165,8 @@ int main(int argc, char * argv[])
 template <unsigned int dim>
 int testNodeRank(MPI_Comm comm, unsigned int order)
 {
+  int testResult = 0;
+
   int rProc, nProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -182,8 +184,12 @@ int testNodeRank(MPI_Comm comm, unsigned int order)
       bool matching = (nodeRank == ii);
       fprintf(stderr, "%s%u%s%u%s ",
           (matching ? GRN : RED), nodeRank, (matching ? "==" : "!="), ii, NRM);
+
+      testResult += (!matching);
     }
   }
+
+  return testResult;
 }
 
 

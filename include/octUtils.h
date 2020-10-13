@@ -267,7 +267,7 @@ int createRegularOctree(std::vector<TreeNode<T, dim>>& out,
    */
 
 template <typename T, unsigned int dim>
-int function2Octree(std::function<void(const double *, double*)> fx,
+void function2Octree(std::function<void(const double *, double*)> fx,
                     const unsigned int numVars,
                     const unsigned int* varIndex,
                     const unsigned int numInterpVars,
@@ -302,7 +302,7 @@ std::vector<ot::TreeNode<TNT, dim>> function2BalancedOctree(
 
 
 template <typename T, unsigned int dim>
-int function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<ot::TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm )
+void function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<ot::TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm )
 {
   int size, rank;
   MPI_Comm_size(comm, &size);

@@ -102,7 +102,7 @@ namespace bench
     }
 
 
-    void dump_profile_info(std::ostream& fout, profiler_t* timers, char ** names, unsigned int n ,MPI_Comm comm)
+    void dump_profile_info(std::ostream& fout, profiler_t* timers, const char * const * names, unsigned int n ,MPI_Comm comm)
     {
 
         double stat;
@@ -184,7 +184,7 @@ int main(int argc, char** argv)
 
     bench::bench_kernel(pts_per_core,mIter,pOrder,comm);
     profiler_t counters []={bench::t_sort, bench::t_con, bench::t_bal, bench::t_cg, bench::t_sm};
-    char * counter_names[] ={"sort","cons","bal","cg","sm"};
+    const char * counter_names[] ={"sort","cons","bal","cg","sm"};
     bench::dump_profile_info(std::cout,counters,counter_names,5,comm);
 
     _DestroyHcurve();

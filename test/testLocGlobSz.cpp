@@ -36,7 +36,8 @@ int main(int argc, char * argv[])
 
   fprintf(stderr, "%*s[%d] Local size = %llu, global size = %llu\n",
       40*rProc, "\0", rProc,
-      octDA.getLocalNodalSz(), octDA.getGlobalNodeSz());
+      (long long unsigned) octDA.getLocalNodalSz(),
+      (long long unsigned) octDA.getGlobalNodeSz());
 
   _DestroyHcurve();
 

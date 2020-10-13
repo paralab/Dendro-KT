@@ -40,7 +40,7 @@ template <unsigned int dim, class LeafClass>
 struct gmgMatStratumWrapper
 {
   gmgMat<dim, LeafClass> * m_gmgMat;
-  unsigned int m_stratum;
+  int m_stratum;
 };
 
 
@@ -870,6 +870,7 @@ PetscErrorCode gmgMat<dim, LeafClass>::petscUserApplySmoother(PC pc, Vec res, Ve
   PCShellGetContext(pc, (void **) &gmgMatWrapper);
   const unsigned int stratum = gmgMatWrapper->m_stratum;
   gmgMatWrapper->m_gmgMat->applySmoother(res, resLeft, stratum);
+  return 0;  // TODO how to check for an actual error.
 }
 
 template <unsigned int dim, class LeafClass>

@@ -402,7 +402,7 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   {
     //DEBUG
     if ((long) s - (long) sPrev < 0)
-      fprintf(stderr, "[%d] Negative count: %u - %u\n", rProc, s, sPrev);
+      fprintf(stderr, "[%d] Negative count: %lld - %lld\n", rProc, (long long) s, (long long) sPrev);
 
     sendDspl.push_back(sPrev);
     assert((s - sPrev) >=0);

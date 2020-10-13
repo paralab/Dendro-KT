@@ -23,7 +23,7 @@ namespace fem
   {
     const DofT *vecIn;
     const TN *coords;
-    unsigned int sz;
+    size_t sz;
     const TN *treePartPtr;
     size_t treePartSz;
     const TN &partFront;
@@ -36,7 +36,7 @@ namespace fem
   {
     DofT * const vecOut;
     const TN *coords;
-    unsigned int sz;
+    size_t sz;
     const TN *treePartPtr;
     size_t treePartSz;
     const TN &partFront;

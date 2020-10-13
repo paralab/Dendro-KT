@@ -203,7 +203,12 @@ void testExample(const char *msgPrefix, unsigned int expected, Tree<dim> &tree, 
     numUniqueCombinedNodes = ot::SFC_NodeSort<T,dim>::countCGNodes(&(*nodeListCombined.begin()), &(*nodeListCombined.end()), order);
   }
   numUniqueNodes = numUniqueInteriorNodes + numUniqueExteriorNodes;
-  printf("%s: Algorithm says # points == %s%u%s \t [Int:%u] [Ext:%u] [Comb:%u].\n", msgPrefix, (numUniqueNodes == expected ? GRN : RED), numUniqueNodes, NRM, numUniqueInteriorNodes, numUniqueExteriorNodes, numUniqueCombinedNodes);
+  printf("%s: Algorithm says # points == %s%lld%s \t [Int:%lld] [Ext:%lld] [Comb:%lld].\n",
+      msgPrefix, (numUniqueNodes == expected ? GRN : RED),
+      (long long int) numUniqueNodes, NRM,
+      (long long int) numUniqueInteriorNodes,
+      (long long int) numUniqueExteriorNodes,
+      (long long int) numUniqueCombinedNodes);
   nodeListInterior.clear();
   nodeListExterior.clear();
   nodeListCombined.clear();

@@ -353,8 +353,8 @@ int main(int argc, char** argv)
     };
 
     double params[] = {
-        pts_per_core,
-        eleOrder,
+        (double) pts_per_core,
+        (double) eleOrder,
     };
 
 

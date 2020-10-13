@@ -80,6 +80,8 @@ class MeshLoopInterface_S_NS : public MeshLoopImpl<T, dim, TreatSorted>
 
       if (!visitPost)
         gotoNextPre();
+
+      return BaseT::isPre();
     }
 
 
@@ -94,6 +96,8 @@ class MeshLoopInterface_S_NS : public MeshLoopImpl<T, dim, TreatSorted>
 
       if (!visitPost)
         gotoNextPre();
+
+      return BaseT::isPre();
     }
 
 

@@ -342,6 +342,8 @@ bool PoissonMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
+
+    return true;
 }
 
 template <unsigned int dim>
@@ -353,6 +355,8 @@ bool PoissonMat<dim>::postMatVec(const VECType* in,VECType* out,double scale) {
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
+
+    return true;
 }
 
 template <unsigned int dim>

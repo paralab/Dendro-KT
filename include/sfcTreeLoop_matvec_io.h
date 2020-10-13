@@ -120,7 +120,7 @@ namespace ot
                  unsigned int padlevel,
                  const TreeNode<unsigned int, dim> * allNodeCoords,
                  const TreeNode<unsigned int, dim> *treePartPtr,
-                 unsigned int treePartSz,
+                 size_t treePartSz,
                  const TreeNode<unsigned int, dim> &firstElement,
                  const TreeNode<unsigned int, dim> &lastElement );
 
@@ -268,7 +268,7 @@ namespace ot
                  const TreeNode<unsigned int, dim> * allNodeCoords,
                  const NodeT * inputNodeVals,
                  const TreeNode<unsigned int, dim> *treePartPtr,
-                 unsigned int treePartSz,
+                 size_t treePartSz,
                  const TreeNode<unsigned int, dim> &firstElement,
                  const TreeNode<unsigned int, dim> &lastElement );
 
@@ -438,7 +438,7 @@ namespace ot
                  unsigned int padlevel,
                  const TreeNode<unsigned int, dim> * allNodeCoords,
                  const TreeNode<unsigned int, dim> *treePartPtr,
-                 unsigned int treePartSz,
+                 size_t treePartSz,
                  const TreeNode<unsigned int, dim> &firstElement,
                  const TreeNode<unsigned int, dim> &lastElement );
 
@@ -599,7 +599,7 @@ namespace ot
                                       unsigned int padlevel,
                                       const TreeNode<unsigned int, dim> * allNodeCoords,
                                       const TreeNode<unsigned int, dim> *treePartPtr,
-                                      unsigned int treePartSz,
+                                      size_t treePartSz,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
   : BaseT(treePartPtr, treePartSz, get_max_depth(allNodeCoords, numNodes) + (visitEmpty ? padlevel : 0)),
@@ -650,7 +650,7 @@ namespace ot
                                       const TreeNode<unsigned int, dim> * allNodeCoords,
                                       const NodeT * inputNodeVals,
                                       const TreeNode<unsigned int, dim> *treePartPtr,
-                                      unsigned int treePartSz,
+                                      size_t treePartSz,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
   : BaseT(treePartPtr, treePartSz, get_max_depth(allNodeCoords, numNodes) + (visitEmpty ? padlevel : 0)),
@@ -709,7 +709,7 @@ namespace ot
                                       unsigned int padlevel,
                                       const TreeNode<unsigned int, dim> * allNodeCoords,
                                       const TreeNode<unsigned int, dim> *treePartPtr,
-                                      unsigned int treePartSz,
+                                      size_t treePartSz,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
   : BaseT(treePartPtr, treePartSz, get_max_depth(allNodeCoords, numNodes) + (visitEmpty ? padlevel : 0)),

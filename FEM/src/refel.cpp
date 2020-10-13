@@ -337,6 +337,8 @@ RefElement & RefElement::operator= (RefElement &&other)
   std::swap(Vu_1,           other.Vu_1);
   std::swap(im_vec1,        other.im_vec1);
   std::swap(im_vec2,        other.im_vec2);
+
+  return *this;
 }
 
 

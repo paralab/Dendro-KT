@@ -118,6 +118,8 @@ namespace ot {
     m_numInstances = other.m_numInstances;
     m_owner = other.m_owner;
     m_isCancellation = other.m_isCancellation;
+
+    return *this;
   }
 
 
