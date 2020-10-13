@@ -119,7 +119,7 @@ namespace ot
                  const TreeNode<unsigned int, dim> * allNodeCoords,
                  const NodeT * inputNodeVals,
                  const TreeNode<unsigned int, dim> *treePartPtr,
-                 unsigned int treePartSz,
+                 size_t treePartSz,
                  const TreeNode<unsigned int, dim> &firstElement,
                  const TreeNode<unsigned int, dim> &lastElement );
 
@@ -318,7 +318,7 @@ namespace ot
                                       const TreeNode<unsigned int, dim> * allNodeCoords,
                                       const NodeT * inputNodeVals,
                                       const TreeNode<unsigned int, dim> *treePartPtr,
-                                      unsigned int treePartSz,
+                                      size_t treePartSz,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
   : BaseT(treePartPtr, treePartSz, get_max_depth(allNodeCoords, numNodes)),
@@ -429,6 +429,10 @@ namespace ot
     //   - If a child is a leaf and #nonhanging nodes <= npe, copy into lex position.
     //   - Else copy nodes into same order as they appear in parent.
     // ========================================================================
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+    bench::t_topdown.start();
+#endif
 
     const unsigned npe = intPow(m_eleOrder+1, dim);
     const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
@@ -615,6 +619,11 @@ namespace ot
                      &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * nodeRank]);
       }
     }
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+    bench::t_topdown.stop();
+#endif
+
   }
 
 
@@ -655,6 +664,10 @@ namespace ot
     //   - Pass through parent nodes.
     //         Accumulate into parent level nodes from child buffer lex position.
     // ========================================================================
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+    bench::t_bottomup.start();
+#endif
 
     const unsigned npe = intPow(m_eleOrder+1, dim);
     const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
@@ -793,6 +806,11 @@ namespace ot
     // Clean slate for next iteration, and detect nothing written by overwriteNodeValsOut.
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
       parentFrame.template getChildOutput<0>(child_sfc).resize(0);
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+    bench::t_bottomup.stop();
+#endif
+
   }
 
 

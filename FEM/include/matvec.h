@@ -252,12 +252,21 @@ namespace fem
       {
         if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf())
         {
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+          bench::t_elemental.start();
+#endif
+
           const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
           const T * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
 
           eleOp(nodeValsFlat, &(*leafResult.begin()), ndofs, nodeCoordsFlat, scale, treeloop.subtreeInfo().isElementBoundary());
 
           treeloop.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
+
+#ifdef DENDRO_KT_MATVEC_BENCH_H
+          bench::t_elemental.stop();
+#endif
 
           treeloop.next();
         }

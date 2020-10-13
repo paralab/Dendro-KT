@@ -430,6 +430,22 @@ target_include_directories(matvecBenchAdaptive PUBLIC ${MPI_INCLUDE_PATH}
 target_link_libraries(matvecBenchAdaptive dendroKT ${MPI_LIBRARIES} m)
 
 
+## matvec_bench_channel (./matvecBenchChannel)
+## ---------------------
+set(SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/matvec_bench.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/matvec_bench_channel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp)
+add_executable(matvecBenchChannel ${SRC_FILES})
+target_include_directories(matvecBenchChannel PUBLIC ${MPI_INCLUDE_PATH}
+                                              ${CMAKE_CURRENT_SOURCE_DIR}/bench/include
+                                              ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+target_link_libraries(matvecBenchChannel dendroKT ${MPI_LIBRARIES} m)
+
+
 
 ## Examples
 if(BUILD_EXAMPLES)
