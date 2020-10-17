@@ -172,6 +172,7 @@ set(DENDRO_KT_INC include/dendro.h
                   array/include/arraySlice.h
                   FEM/include/matvec.h
                   FEM/include/tensor.h
+                  FEM/include/tensor_impl.h
                   FEM/include/refel.h
                   FEM/include/basis.h
                   FEM/include/lapac.h
@@ -201,6 +202,9 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   IO/vtk/src/checkPoint.cpp
                   src/oda.cpp
                   FEM/src/tensor.cpp
+                  FEM/src/tensor_special_float.cpp
+                  FEM/src/tensor_special_double.cpp
+                  FEM/src/tensor_special_longlong.cpp
                   FEM/src/refel.cpp
                   FEM/src/basis.cpp
                   )
