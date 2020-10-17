@@ -322,7 +322,11 @@ void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, co
   // But actually we want to store row-major, so transpose.
   for (int i = 0; i < (ndofs*nPe); i++)
     for (int j = i+1; j < (ndofs*nPe); j++)
-      std::swap(ematBuf[i*(ndofs*nPe)+j], ematBuf[j*(ndofs*nPe)+i]);
+    {
+      const int idx_ij = (i*(ndofs*nPe)+j);
+      const int idx_ji = (j*(ndofs*nPe)+i);
+      std::swap(ematBuf[idx_ij], ematBuf[idx_ji]);
+    }
 
   // Copy the matrix into MatRecord vector.
   for (int i = 0; i < (ndofs*nPe); i++)

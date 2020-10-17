@@ -21,7 +21,7 @@ static constexpr double scaling = 16.0; /// The octant Coords are scaled by 16 i
 static double centerSphere[3][3]{{0.5, 0.5, 8.0},
                                  {0.5, 0.0, 8.0 + RADIUS * 2 + 0.01},
                                  {0.5, 1.0, 8.0 + RADIUS * 2 + 0.01}};
-static constexpr double DOMAIN[3]{1.0, 1.0, 16.0}; /// Physical domain of 1 X 1 X 16 is carved out from [16,16,16]
+static const double DomainExt[3] = {1.0, 1.0, 16.0}; /// Physical domain of 1 X 1 X 16 is carved out from [16,16,16]
 static unsigned int maxLevel;
 enum CREATION_STAGE : bool {
     INITIAL = true,
@@ -167,14 +167,14 @@ ibm::Partition DomainDecider(const double *physCoords, double physSize)
   const double size = physSize * scaling;
 
   const bool isOutCube =
-      (0.0 < coords[0] and coords[0] + size < DOMAIN[0]) and
-      (0.0 < coords[1] and coords[1] + size < DOMAIN[1]) and
-      (0.0 < coords[2] and coords[2] + size < DOMAIN[2]);
+      (0.0 < coords[0] and coords[0] + size < DomainExt[0]) and
+      (0.0 < coords[1] and coords[1] + size < DomainExt[1]) and
+      (0.0 < coords[2] and coords[2] + size < DomainExt[2]);
 
   const bool isInCube =
-      (coords[0] + size <= 0.0 or DOMAIN[0] <= coords[0]) or
-      (coords[1] + size <= 0.0 or DOMAIN[1] <= coords[1]) or
-      (coords[2] + size <= 0.0 or DOMAIN[2] <= coords[2]);
+      (coords[0] + size <= 0.0 or DomainExt[0] <= coords[0]) or
+      (coords[1] + size <= 0.0 or DomainExt[1] <= coords[1]) or
+      (coords[2] + size <= 0.0 or DomainExt[2] <= coords[2]);
 
   bool isOut = true;
   bool isIn = false;
@@ -238,9 +238,9 @@ ibm::Partition DomainDecider(const double *physCoords, double physSize) {
     coords[0] = physCoords[0] * scaling;
     coords[1] = physCoords[1] * scaling;
     coords[2] = physCoords[2] * scaling;
-    if (((coords[0] <= 0.0) and (coords[0] + physSize * scaling >= DOMAIN[0]))
-        or ((coords[1] <= 0.0) and (coords[1] + physSize * scaling >= DOMAIN[1]))
-        or ((coords[2] <= 0.0) and (coords[2] + physSize * scaling >= DOMAIN[2]))
+    if (((coords[0] <= 0.0) and (coords[0] + physSize * scaling >= DomainExt[0]))
+        or ((coords[1] <= 0.0) and (coords[1] + physSize * scaling >= DomainExt[1]))
+        or ((coords[2] <= 0.0) and (coords[2] + physSize * scaling >= DomainExt[2]))
         ) {
       return ibm::Partition::INTERCEPTED;
     }
@@ -268,7 +268,7 @@ ibm::Partition DomainDecider(const double *physCoords, double physSize) {
     // want to discard point that are inside the sphere.
     bool insideDomainBoundaries(true);
     for (int d = 0; d < DIM; d++) {
-      insideDomainBoundaries = insideDomainBoundaries and (coords[d] > 0.0) and (coords[d] < DOMAIN[d]);
+      insideDomainBoundaries = insideDomainBoundaries and (coords[d] > 0.0) and (coords[d] < DomainExt[d]);
     }
     isOutsideDomain[n] = isOutsideDomain[n] and (insideDomainBoundaries);
   }

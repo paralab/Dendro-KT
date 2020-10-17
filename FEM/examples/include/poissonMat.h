@@ -18,8 +18,8 @@ namespace PoissonEq
         double * imV[dim-1];
         double * Qx[dim];
 
-        mutable double * phi_i;   //
-        mutable double * ematBuf; // Needed for assembly.
+        double * phi_i;   //
+        double * ematBuf; // Needed for assembly.
 
         // References for convenient access to base class members.
         ot::DA<dim> * &m_uiOctDA = feMat<dim>::m_uiOctDA;
