@@ -11,13 +11,17 @@
 */
 
 #include "matvec_bench.h"
+#include "genChannelPoints.h"
 
 #include "treeNode.h"
 #include "tsort.h"
 #include "nsort.h"
 #include "octUtils.h"
 #include "hcurvedata.h"
-#include "octUtils.h"
+#include "filterFunction.h"
+#include "distTree.h"
+
+#include "oct2vtk.h"  // For debug the geometry
 
 #include "matvec.h"
 #include "feMatrix.h"
@@ -72,9 +76,6 @@ namespace bench
     }
 
 
-    // TODO write filter function for a box
-
-
 
     template <unsigned int dim>
     void bench_kernel(unsigned int numPts, unsigned int numWarmup, unsigned int numRuns, unsigned int eleOrder, MPI_Comm comm)
@@ -91,54 +92,74 @@ namespace bench
         using T = unsigned int;
         using TreeNode = ot::TreeNode<T,dim>;
         using TNP = ot::TNPoint<T,dim>;
+        using SFC_Tree = ot::SFC_Tree<T,dim>;
 
-        /// using ScatterMap = ot::ScatterMap;
-        /// using RecvMap = ot::GatherMap;
         const unsigned int maxPtsPerRegion = 1;
-        const T leafLevel = m_uiMaxDepth;
-        const double loadFlexibility = 0.3;
+        const double loadFlexibility = 0.1;
 
-        //TODO make a new channel generator
+        const int lengthPower2 = 4;  // 16 = 2^4;
+
+        const ibm::DomainDecider boxDecider = getBoxDecider<dim>(lengthPower2);
+
+        std::vector<ot::TreeNode<unsigned int, dim>> points = getChannelPoints<dim>(
+            numPts, lengthPower2, comm);
+
+        // Remove duplicates that force leafs to m_uiMaxDepth.
+        ot::SFC_Tree<T,dim>::distRemoveDuplicates(points, loadFlexibility, false, comm);
 
         // 1. Benchmark construction/balancing/ODA on adaptive grid.
         {
-            // Generate points for adaptive grid.
-            std::vector<TreeNode> points = ot::getPts<T,dim>(numPts);
             std::vector<TreeNode> tree;
 
             // Warmup run for adaptive grid.
-            ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
+            std::vector<TreeNode> points_copy = points;
+            ot::SFC_Tree<T,dim>::distTreeBalancing(points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
 
             //
             // Benchmark the adaptive grid example.
             //
 
             // Time sorting.
-            tree.clear();
-            t_adaptive_tsort.start();
-            ot::SFC_Tree<T,dim>::distTreeSort(points, loadFlexibility, comm);
-            t_adaptive_tsort.stop();
-            gRptSz.b1_treeSortSz = points.size();
+            for (int ii = 0; ii < numRuns; ii++)
+            {
+              points_copy = points;
+              tree.clear();
+              t_adaptive_tsort.start();
+              ot::SFC_Tree<T,dim>::distTreeSort(points_copy, loadFlexibility, comm);
+              t_adaptive_tsort.stop();
+            }
+            gRptSz.b1_treeSortSz = points_copy.size();
 
             // Time construction.
-            tree.clear();
-            t_adaptive_tconstr.start();
-            ot::SFC_Tree<T,dim>::distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
-            t_adaptive_tconstr.stop();
+            for (int ii = 0; ii < numRuns; ii++)
+            {
+              points_copy = points;
+              tree.clear();
+              t_adaptive_tconstr.start();
+              ot::SFC_Tree<T,dim>::distTreeConstruction(points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
+              t_adaptive_tconstr.stop();
+            }
             gRptSz.b1_treeConstructionSz = tree.size();
 
             // Time balanced construction.
-            tree.clear();
-            t_adaptive_tbal.start();
-            ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
-            t_adaptive_tbal.stop();
+            for (int ii = 0; ii < numRuns; ii++)
+            {
+              points_copy = points;
+              tree.clear();
+              t_adaptive_tbal.start();
+              ot::SFC_Tree<T,dim>::distTreeBalancing(points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
+              t_adaptive_tbal.stop();
+            }
             gRptSz.b1_treeBalancingSz = tree.size();
 
             // Generate DA from balanced tree.
-            t_adaptive_oda.start();
-            ot::DA<dim> oda(tree, comm, eleOrder, numPts, loadFlexibility);
-            t_adaptive_oda.stop();
-            gDistRptSz.b1_globNodeSz = oda.getGlobalNodeSz();
+            for (int ii = 0; ii < numRuns; ii++)
+            {
+              t_adaptive_oda.start();
+              ot::DA<dim> oda(tree, comm, eleOrder, numPts, loadFlexibility);
+              t_adaptive_oda.stop();
+              gDistRptSz.b1_globNodeSz = oda.getGlobalNodeSz();
+            }
         }
 
         // 2. Benchmark matvec on regular grid.
@@ -147,11 +168,13 @@ namespace bench
             // In this pass all we do is execute matvec in a loop.
 
             // Construct an adaptive grid based on a Gaussian point cloud.
+            std::vector<TreeNode> points_copy = points;
             std::vector<TreeNode> tree;
-            std::vector<TreeNode> points = ot::getPts<T,dim>(numPts);
-            ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
-            points.clear();
+            ot::SFC_Tree<T,dim>::distTreeBalancing(points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
             gRptSz.b2_treeMatvecSz = tree.size();
+
+            ///DEBUG
+            /// io::vtk::oct2vtu<unsigned int, dim>(&(*tree.cbegin()), (unsigned int) tree.size(), "testChannel", MPI_COMM_WORLD);
 
             // DA based on adaptive grid.
             ot::DA<dim> *octDA = new ot::DA<dim>(tree, comm, eleOrder, numPts, loadFlexibility);
@@ -375,7 +398,7 @@ int main(int argc, char** argv)
         "ghostexchange", 
         "topdown", 
         "bottomup", 
-        "treeinterior", 
+        /// "treeinterior", 
         "elemental", 
     };
 
@@ -389,11 +412,11 @@ int main(int argc, char** argv)
         bench::t_ghostexchange, 
         bench::t_topdown, 
         bench::t_bottomup, 
-        bench::t_treeinterior, 
+        /// bench::t_treeinterior, 
         bench::t_elemental, 
     };
 
-    bench::dump_profile_info(std::cout, msgPrefix, params,param_names,2, counters,counter_names,10, comm);
+    bench::dump_profile_info(std::cout, msgPrefix, params,param_names,2, counters,counter_names,9, comm);
 
     _DestroyHcurve();
     MPI_Finalize();

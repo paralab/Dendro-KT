@@ -1887,5 +1887,24 @@ namespace par {
     Mpi_Bcast(&sync, 1, nProc-1, comm);
   }
 
+
+  template <typename WeightT>
+  double loadImbalance(WeightT localWeight, MPI_Comm comm)
+  {
+    int nProc;
+    MPI_Comm_size(comm, &nProc);
+
+    WeightT sumWeight = 0;
+    par::Mpi_Allreduce(&localWeight, &sumWeight, 1, MPI_SUM, comm);
+
+    double localImbalance = fabs((double) localWeight / (double) sumWeight - 1.0 / nProc);
+
+    double maxImbalance;
+    par::Mpi_Allreduce(&localImbalance, &maxImbalance, 1, MPI_MAX, comm);
+
+    return maxImbalance;
+  }
+
+
 }//end namespace
 

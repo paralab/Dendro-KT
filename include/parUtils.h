@@ -585,6 +585,13 @@ namespace par {
   template <class TN>
   void dbg_printTNList(const TN *tnList, unsigned int listSz, unsigned int lev, MPI_Comm comm);
 
+
+
+  template <typename WeightT>
+  double loadImbalance(WeightT localWeight, MPI_Comm comm);
+
+
+
 }//end namespace
 
 #ifdef USE_OLD_SORT

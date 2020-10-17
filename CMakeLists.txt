@@ -142,6 +142,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/mathUtils.h
                   include/mathUtils.tcc
                   include/octUtils.h
+                  include/tnUtils.h
                   include/ompUtils.h
                   include/ompUtils.tcc
                   include/point.h
@@ -435,6 +436,8 @@ target_link_libraries(matvecBenchAdaptive dendroKT ${MPI_LIBRARIES} m)
 set(SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/matvec_bench.h
   ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/matvec_bench_channel.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/genChannelPoints.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/genChannelPoints.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp

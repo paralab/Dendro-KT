@@ -11,6 +11,9 @@
 
 #include "tsort.h"
 #include "octUtils.h"
+#include "tnUtils.h"
+
+#include "filterFunction.h"
 
 #include "meshLoop.h"
 
@@ -576,6 +579,72 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
 }  // end function
 
 
+//
+// locTreeConstructionWithFilter()
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
+                                               bool refineAll,
+                                               std::vector<TreeNode<T,D>> &tree,
+                                               LevI sLev,
+                                               LevI eLev,
+                                               RotI pRot,
+                                               TreeNode<T,D> pNode)
+{
+  constexpr char numChildren = TreeNode<T,D>::numChildren;
+  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  using TreeNode = TreeNode<T,D>;
+
+  // Lookup tables to apply rotations.
+  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+  TreeNode cNode = pNode.getFirstChildMorton();
+
+  if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+  {
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      ChildI child = rot_perm[child_sfc];
+      RotI cRot = orientLookup[child];
+      cNode.setMortonIndex(child);
+
+      double physCoords[D];
+      double physSize;
+      treeNode2Physical(cNode, physCoords, physSize);
+
+      const ibm::Partition childRegion = decider(physCoords, physSize);
+
+      if (childRegion != ibm::IN)
+      {
+        if (childRegion == ibm::INTERCEPTED ||
+            childRegion == ibm::OUT && refineAll)
+        {
+          locTreeConstructionWithFilter( decider, refineAll, tree, sLev + 1, eLev, cRot, cNode);
+        }
+        else
+        {
+          // Append a leaf orthant.
+          tree.push_back(cNode);
+        }
+      }
+    }
+  }
+  else   // sLev == eLev. Append all children.
+  {
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      ChildI child = rot_perm[child_sfc];
+      cNode.setMortonIndex(child);
+      tree.push_back(cNode);
+    }
+  }
+
+}  // end function
+
+
 template <typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
@@ -610,6 +679,40 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
   distRemoveDuplicates(tree, loadFlexibility, false, comm);
 }
 
+
+/// template <typename T, unsigned int D>
+/// void
+/// SFC_Tree<T,D>:: distTreeConstructionWithFilter( const ibm::DomainDecider &decider,
+///                                                 bool refineAll,
+///                                                 std::vector<TreeNode<T,D>> &tree,
+///                                                 double loadFlexibility,
+///                                                 MPI_Comm comm)
+/// {
+///   int nProc, rProc;
+///   MPI_Comm_rank(comm, &rProc);
+///   MPI_Comm_size(comm, &nProc);
+/// 
+///   tree.clear();
+/// 
+///   // The heavy lifting to globally sort/partition.
+///   distTreePartition(points, maxPtsPerRegion, loadFlexibility, comm);
+/// 
+///   // Instead of locally sorting, locally complete the tree.
+///   // Since we don't have info about the global buckets, construct from the top.
+///   const LevI leafLevel = m_uiMaxDepth;
+///   locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
+///                       0, (RankI) points.size(),
+///                       1, leafLevel,         //TODO is sLev 0 or 1?
+///                       0, TreeNode<T,D>());
+///   // When (sLev,eLev)==(0,m_uiMaxDepth), nodes with level m_uiMaxDepth+1 are created.
+///   // This must be leading to incorrect ancestry tests because duplicates do
+///   // not always get removed properly in that case.
+/// 
+///   // We have now introduced duplicate sections of subtrees at the
+///   // edges of the partition.
+/// 
+///   distRemoveDuplicates(tree, loadFlexibility, false, comm);
+/// }
 
 template <typename T, unsigned int D>
 void

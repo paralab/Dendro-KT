@@ -17,6 +17,7 @@
 #include <vector>
 #include "hcurvedata.h"
 #include "parUtils.h"
+#include "filterFunction.h"
 #include <stdio.h>
 
 namespace ot
@@ -320,6 +321,14 @@ struct SFC_Tree
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm);
+
+  static void locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
+                                             bool refineAll,
+                                             std::vector<TreeNode<T,D>> &tree,
+                                             LevI sLev,
+                                             LevI eLev,
+                                             RotI pRot,
+                                             TreeNode<T,D> pNode);
 
   static constexpr bool RM_DUPS_AND_ANC = false;
   static constexpr bool RM_DUPS_ONLY = true;
