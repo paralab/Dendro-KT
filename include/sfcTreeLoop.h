@@ -477,7 +477,7 @@ namespace ot
       const FrameT & getCurrentFrame() const { return m_stack.back(); }
       FrameT & getCurrentFrame() { return m_stack.back(); }
 
-      const RotI getCurrentRotation()
+      RotI getCurrentRotation() const
       {
         assert (m_stack.size() > 0);
         return m_stack.back().m_pRot;

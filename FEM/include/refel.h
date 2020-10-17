@@ -230,7 +230,7 @@ class RefElement
     inline const double *getWgq() const { if (!m_isValid) throw "Invalid!"; return &(*(w.begin())); }
     inline const double *getWgll() const { if (!m_isValid) throw "Invalid!"; return &(*(wgll.begin())); }
 
-    inline const double getElementSz() const { if (!m_isValid) throw "Invalid!"; return (u.back() - u.front()); }
+    inline double getElementSz() const { if (!m_isValid) throw "Invalid!"; return (u.back() - u.front()); }
 
      /**
      * @param[in] in: input function values.
