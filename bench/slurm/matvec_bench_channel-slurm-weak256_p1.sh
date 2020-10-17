@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=2:00:00     # walltime, abbreviated by -t
+#SBATCH --time=0:10:00     # walltime, abbreviated by -t
 #SBATCH -o ../results/ipdps21/out-job-%j-node-%N.tsv      # name of the stdout, using the job number (%j) and 
                            # the first node (%N)
 #SBATCH -e ../results/ipdps21/err-job-%j-node-%N.log      # name of the stderr, using job and first node values
