@@ -24,21 +24,23 @@ module load intel/19.0.5
 
 RUNPROGRAM=/home1/07803/masado/Dendro-KT/build/matvecBenchChannel
 
-PTS_TOTAL_STRONG=4096
 PTS_PER_PROC_WEAK=1024
 
 # If there are not enough levels then we may get errors.
 MAX_DEPTH=15
 
 ELE_ORDER=1
-ibrun -n   1  -o   0 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
-ibrun -n   2  -o   1 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
-ibrun -n   4  -o   3 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
-ibrun -n   8  -o   7 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
-ibrun -n  16  -o  15 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
-ibrun -n  32  -o  31 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
-ibrun -n  64  -o  63 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
-ibrun -n 128  -o 127 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
-ibrun -n 256  -o 255 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" &
+ibrun -n   1  -o   0 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np001.tsv" &
+ibrun -n   2  -o   1 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np002.tsv" &
+ibrun -n   4  -o   3 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np004.tsv" &
+ibrun -n   8  -o   7 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np008.tsv" &
+ibrun -n  16  -o  15 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np016.tsv" &
+ibrun -n  32  -o  31 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np032.tsv" &
+ibrun -n  64  -o  63 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np064.tsv" &
+ibrun -n 128  -o 127 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np128.tsv" &
+ibrun -n 256  -o 255 task_affinity $RUNPROGRAM $PTS_PER_PROC_WEAK $MAX_DEPTH $ELE_ORDER "weak_p1" > "out-${SLURM_JOB_ID}-np256.tsv" &
 wait
+
+cat "out-${SLURM_JOB_ID}-"np{001,002,004,008,016,032,064,128,256}.tsv | sort > "out-${SLURM_JOB_ID}-np001-256.tsv"
+rm "out-${SLURM_JOB_ID}-"np{001,002,004,008,016,032,064,128,256}.tsv
 
