@@ -323,12 +323,30 @@ struct SFC_Tree
                                    MPI_Comm comm);
 
   static void locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
+                                             TreeNode<T,D> *points,
+                                             std::vector<TreeNode<T,D>> &tree,
+                                             RankI maxPtsPerRegion,
+                                             RankI begin, RankI end,
+                                             LevI sLev,
+                                             LevI eLev,
+                                             RotI pRot,
+                                             TreeNode<T,D> pNode);
+
+  static void locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
                                              bool refineAll,
                                              std::vector<TreeNode<T,D>> &tree,
                                              LevI sLev,
                                              LevI eLev,
                                              RotI pRot,
                                              TreeNode<T,D> pNode);
+
+  static void distTreeConstructionWithFilter(
+                                   const ibm::DomainDecider &decider,
+                                   std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
+                                   RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm);
 
   static constexpr bool RM_DUPS_AND_ANC = false;
   static constexpr bool RM_DUPS_ONLY = true;
@@ -391,6 +409,20 @@ struct SFC_Tree
                                RankI maxPtsPerRegion);
 
   static void distTreeBalancing(std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
+                                   RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm);
+
+  static void locTreeBalancingWithFilter(
+                               const ibm::DomainDecider &decider,
+                               std::vector<TreeNode<T,D>> &points,
+                               std::vector<TreeNode<T,D>> &tree,
+                               RankI maxPtsPerRegion);
+
+  static void distTreeBalancingWithFilter(
+                                   const ibm::DomainDecider &decider,
+                                   std::vector<TreeNode<T,D>> &points,
                                    std::vector<TreeNode<T,D>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,

@@ -21,8 +21,6 @@
 #include "filterFunction.h"
 #include "distTree.h"
 
-#include "oct2vtk.h"  // For debug the geometry
-
 #include "matvec.h"
 #include "feMatrix.h"
 
@@ -107,13 +105,15 @@ namespace bench
         // Remove duplicates that force leafs to m_uiMaxDepth.
         ot::SFC_Tree<T,dim>::distRemoveDuplicates(points, loadFlexibility, false, comm);
 
+        ot::DistTree<unsigned int, dim> dtree;
+
         // 1. Benchmark construction/balancing/ODA on adaptive grid.
         {
             std::vector<TreeNode> tree;
 
             // Warmup run for adaptive grid.
             std::vector<TreeNode> points_copy = points;
-            ot::SFC_Tree<T,dim>::distTreeBalancing(points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
+            ot::SFC_Tree<T,dim>::distTreeBalancingWithFilter(boxDecider, points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
 
             //
             // Benchmark the adaptive grid example.
@@ -136,7 +136,7 @@ namespace bench
               points_copy = points;
               tree.clear();
               t_adaptive_tconstr.start();
-              ot::SFC_Tree<T,dim>::distTreeConstruction(points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
+              ot::SFC_Tree<T,dim>::distTreeConstructionWithFilter(boxDecider, points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
               t_adaptive_tconstr.stop();
             }
             gRptSz.b1_treeConstructionSz = tree.size();
@@ -147,16 +147,19 @@ namespace bench
               points_copy = points;
               tree.clear();
               t_adaptive_tbal.start();
-              ot::SFC_Tree<T,dim>::distTreeBalancing(points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
+              ot::SFC_Tree<T,dim>::distTreeBalancingWithFilter(boxDecider, points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
               t_adaptive_tbal.stop();
             }
             gRptSz.b1_treeBalancingSz = tree.size();
+
+            dtree = ot::DistTree<unsigned int, dim>(tree, comm);
+            dtree.filterTree(boxDecider);
 
             // Generate DA from balanced tree.
             for (int ii = 0; ii < numRuns; ii++)
             {
               t_adaptive_oda.start();
-              ot::DA<dim> oda(tree, comm, eleOrder, numPts, loadFlexibility);
+              ot::DA<dim> oda(dtree, comm, eleOrder, numPts, loadFlexibility);
               t_adaptive_oda.stop();
               gDistRptSz.b1_globNodeSz = oda.getGlobalNodeSz();
             }
@@ -168,16 +171,11 @@ namespace bench
             // In this pass all we do is execute matvec in a loop.
 
             // Construct an adaptive grid based on a Gaussian point cloud.
-            std::vector<TreeNode> points_copy = points;
-            std::vector<TreeNode> tree;
-            ot::SFC_Tree<T,dim>::distTreeBalancing(points_copy, tree, maxPtsPerRegion, loadFlexibility, comm);
+            std::vector<TreeNode> tree = dtree.getTreePartFiltered();
             gRptSz.b2_treeMatvecSz = tree.size();
 
-            ///DEBUG
-            /// io::vtk::oct2vtu<unsigned int, dim>(&(*tree.cbegin()), (unsigned int) tree.size(), "testChannel", MPI_COMM_WORLD);
-
             // DA based on adaptive grid.
-            ot::DA<dim> *octDA = new ot::DA<dim>(tree, comm, eleOrder, numPts, loadFlexibility);
+            ot::DA<dim> *octDA = new ot::DA<dim>(dtree, comm, eleOrder, numPts, loadFlexibility);
             gDistRptSz.b2_globNodeSz = octDA->getGlobalNodeSz();
 
             const unsigned int DOF = 1;   // matvec only supports dof==1 right now.

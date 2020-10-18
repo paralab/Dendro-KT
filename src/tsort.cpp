@@ -580,6 +580,93 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
 
 
 //
+// locTreeConstructionWithFilter(points)
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: locTreeConstructionWithFilter(
+                                  const ibm::DomainDecider &decider,
+                                  TreeNode<T,D> *points,
+                                  std::vector<TreeNode<T,D>> &tree,
+                                  RankI maxPtsPerRegion,
+                                  RankI begin, RankI end,
+                                  LevI sLev,
+                                  LevI eLev,
+                                  RotI pRot,
+                                  TreeNode<T,D> pNode)
+{
+  if (end <= begin) { return; }
+
+  constexpr char numChildren = TreeNode<T,D>::numChildren;
+  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  using TreeNode = TreeNode<T,D>;
+
+  std::array<RankI, numChildren+1> tempSplitters;
+  RankI ancStart, ancEnd;
+  SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters, ancStart, ancEnd);
+
+  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+  TreeNode cNode = pNode.getFirstChildMorton();
+
+  if (sLev < eLev)  // This means eLev is further from the root level than sLev.
+  {
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      ChildI child = rot_perm[child_sfc];
+      RotI cRot = orientLookup[child];
+      cNode.setMortonIndex(child);
+
+      double physCoords[D];
+      double physSize;
+      treeNode2Physical(cNode, physCoords, physSize);
+
+      const ibm::Partition childRegion = decider(physCoords, physSize);
+
+      if (childRegion != ibm::IN)
+      {
+        if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] > maxPtsPerRegion)
+        {
+          locTreeConstructionWithFilter(
+              decider,
+              points, tree, maxPtsPerRegion,
+              tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+              sLev+1, eLev,
+              cRot,
+              cNode);
+        }
+        else
+        {
+          // Append a leaf orthant.
+          tree.push_back(cNode);
+        }
+      }
+    }
+  }
+  else   // We have reached eLev. Violate `maxPtsPerRegion' to satisfy completeness.
+  {
+    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    {
+      ChildI child = rot_perm[child_sfc];
+      cNode.setMortonIndex(child);
+
+      double physCoords[D];
+      double physSize;
+      treeNode2Physical(cNode, physCoords, physSize);
+
+      const ibm::Partition childRegion = decider(physCoords, physSize);
+
+      if (childRegion != ibm::IN)
+        tree.push_back(cNode);
+    }
+  }
+
+}  // end function
+
+
+//
 // locTreeConstructionWithFilter()
 //
 template <typename T, unsigned int D>
@@ -638,7 +725,15 @@ SFC_Tree<T,D>:: locTreeConstructionWithFilter( const ibm::DomainDecider &decider
     {
       ChildI child = rot_perm[child_sfc];
       cNode.setMortonIndex(child);
-      tree.push_back(cNode);
+
+      double physCoords[D];
+      double physSize;
+      treeNode2Physical(cNode, physCoords, physSize);
+
+      const ibm::Partition childRegion = decider(physCoords, physSize);
+
+      if (childRegion != ibm::IN)
+        tree.push_back(cNode);
     }
   }
 
@@ -680,39 +775,36 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
 }
 
 
-/// template <typename T, unsigned int D>
-/// void
-/// SFC_Tree<T,D>:: distTreeConstructionWithFilter( const ibm::DomainDecider &decider,
-///                                                 bool refineAll,
-///                                                 std::vector<TreeNode<T,D>> &tree,
-///                                                 double loadFlexibility,
-///                                                 MPI_Comm comm)
-/// {
-///   int nProc, rProc;
-///   MPI_Comm_rank(comm, &rProc);
-///   MPI_Comm_size(comm, &nProc);
-/// 
-///   tree.clear();
-/// 
-///   // The heavy lifting to globally sort/partition.
-///   distTreePartition(points, maxPtsPerRegion, loadFlexibility, comm);
-/// 
-///   // Instead of locally sorting, locally complete the tree.
-///   // Since we don't have info about the global buckets, construct from the top.
-///   const LevI leafLevel = m_uiMaxDepth;
-///   locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
-///                       0, (RankI) points.size(),
-///                       1, leafLevel,         //TODO is sLev 0 or 1?
-///                       0, TreeNode<T,D>());
-///   // When (sLev,eLev)==(0,m_uiMaxDepth), nodes with level m_uiMaxDepth+1 are created.
-///   // This must be leading to incorrect ancestry tests because duplicates do
-///   // not always get removed properly in that case.
-/// 
-///   // We have now introduced duplicate sections of subtrees at the
-///   // edges of the partition.
-/// 
-///   distRemoveDuplicates(tree, loadFlexibility, false, comm);
-/// }
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: distTreeConstructionWithFilter(
+    const ibm::DomainDecider &decider,
+    std::vector<TreeNode<T,D>> &points,
+    std::vector<TreeNode<T,D>> &tree,
+    RankI maxPtsPerRegion,
+    double loadFlexibility,
+    MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  tree.clear();
+
+  // The heavy lifting to globally sort/partition.
+  distTreePartition(points, maxPtsPerRegion, loadFlexibility, comm);
+
+  // Instead of locally sorting, locally complete the tree.
+  // Since we don't have info about the global buckets, construct from the top.
+  const LevI leafLevel = m_uiMaxDepth;
+  locTreeConstructionWithFilter(decider,
+                      &(*points.begin()), tree, maxPtsPerRegion,
+                      0, (RankI) points.size(),
+                      1, leafLevel,         //TODO is sLev 0 or 1?
+                      0, TreeNode<T,D>());
+
+  distRemoveDuplicates(tree, loadFlexibility, false, comm);
+}
 
 template <typename T, unsigned int D>
 void
@@ -1228,16 +1320,43 @@ SFC_Tree<T,D>:: locTreeBalancing(std::vector<TreeNode<T,D>> &points,
                       1, leafLevel,         //TODO is sLev 0 or 1?
                       0, TreeNode<T,D>());
 
-  /// //DEBUG
-  /// std::cout << "Original tree:\n";
-  /// for (const TreeNode<T,D> &tn : tree)
-  ///   std::cout << "\t" << tn.getBase32Hex().data() << "\n";
-  /// std::cout << "\n";
-
   propagateNeighbours(tree);
 
   std::vector<TreeNode<T,D>> newTree;
   locTreeConstruction(&(*tree.begin()), newTree, 1,
+                      0, (RankI) tree.size(),
+                      1, leafLevel,         //TODO is sLev 0 or 1?
+                      0, TreeNode<T,D>());
+
+  tree = newTree;
+}
+
+//
+// locTreeBalancingWithFilter()
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: locTreeBalancingWithFilter(
+                                 const ibm::DomainDecider &decider,
+                                 std::vector<TreeNode<T,D>> &points,
+                                 std::vector<TreeNode<T,D>> &tree,
+                                 RankI maxPtsPerRegion)
+{
+  const LevI leafLevel = m_uiMaxDepth;
+
+  locTreeConstructionWithFilter(
+                      decider,
+                      &(*points.begin()), tree, maxPtsPerRegion,
+                      0, (RankI) points.size(),
+                      1, leafLevel,         //TODO is sLev 0 or 1?
+                      0, TreeNode<T,D>());
+
+  propagateNeighbours(tree);
+
+  std::vector<TreeNode<T,D>> newTree;
+  locTreeConstructionWithFilter(
+                      decider,
+                      &(*tree.begin()), newTree, 1,
                       0, (RankI) tree.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
                       0, TreeNode<T,D>());
@@ -1266,6 +1385,32 @@ SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
   distRemoveDuplicates(tree, loadFlexibility, true, comm);   // Duplicate neighbours could cause over-refinement.
   std::vector<TreeNode<T,D>> newTree;
   distTreeConstruction(tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
+
+  tree = newTree;
+}
+
+//
+// distTreeBalancingWithFilter()
+//
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>:: distTreeBalancingWithFilter(
+                                   const ibm::DomainDecider &decider,
+                                   std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
+                                   RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  distTreeConstructionWithFilter(decider, points, tree, maxPtsPerRegion, loadFlexibility, comm);
+  propagateNeighbours(tree);
+  distRemoveDuplicates(tree, loadFlexibility, true, comm);   // Duplicate neighbours could cause over-refinement.
+  std::vector<TreeNode<T,D>> newTree;
+  distTreeConstructionWithFilter(decider, tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
 
   tree = newTree;
 }
