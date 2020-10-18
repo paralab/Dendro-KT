@@ -117,6 +117,9 @@ namespace bench
   }
 
 
+  // returns a random set of k unique integers betwen [0, n-1).
+  std::vector<size_t> reservoirSample(size_t n, size_t k);
+
 
   template <unsigned int dim>
   std::vector<ot::TreeNode<unsigned int, dim>> getChannelPoints(
@@ -132,19 +135,101 @@ namespace bench
 
     //TODO use a distributed method to generate the initial grid in parallel
     //TODO compute how many points each processor needs to remove
-    //TODO remove excess points.
+    // Otherwise just generate the points list on rank 0.
 
-    std::vector<ot::TreeNode<unsigned int, dim>> points;
+    std::vector<ot::TreeNode<unsigned int, dim>> tree;
     if (rank == 0)
-      ot::SFC_Tree<unsigned int, dim>::locTreeConstructionWithFilter(boxDecider, false, points, 1, depth, 0, ot::TreeNode<unsigned int, dim>());
+    {
+      constexpr int numChildren = (1u << dim);
 
-    ot::SFC_Tree<unsigned int, dim>::distTreeSort(points, 0.3, comm);
+      ot::SFC_Tree<unsigned int, dim>::locTreeConstructionWithFilter(boxDecider, false, tree, 1, depth, 0, ot::TreeNode<unsigned int, dim>());
 
-    return points;
+      const int coarseningLoss = numChildren - 1;
+      const long long int surplus = tree.size() - totalNumPts;
+      const long long int numFamiliesToCoarsen = surplus / coarseningLoss;
+
+      // Select which families to coarsen. Must know how many there are first.
+      size_t numFinest = 0;
+      for (const ot::TreeNode<unsigned int, dim> &tn : tree)
+        if (tn.getLevel() == depth)
+          numFinest++;
+      const size_t totalFineFamilies = numFinest / numChildren;
+
+      // Selection.
+      std::vector<size_t> familiesToCoarsen = reservoirSample(
+          totalFineFamilies, numFamiliesToCoarsen);
+      std::sort(familiesToCoarsen.begin(), familiesToCoarsen.end());
+
+      // Copy non-coarsened elements and append parents of coarsened families.
+      std::vector<ot::TreeNode<unsigned int, dim>> newTree;
+      size_t allFineFamiliesIdx = 0;
+      size_t coarsenedFamiliesIdx = 0;
+      for (size_t ii = 0; ii < tree.size(); ++ii)
+      {
+        if (tree[ii].getLevel() == depth)
+        {
+          if (coarsenedFamiliesIdx < numFamiliesToCoarsen
+              && familiesToCoarsen[coarsenedFamiliesIdx] == allFineFamiliesIdx)
+          {
+            newTree.push_back(tree[ii].getParent());
+            coarsenedFamiliesIdx++;
+          }
+          else
+          {
+            assert(ii + numChildren <= tree.size());
+            for (int childIdx = 0; childIdx < numChildren; ++childIdx)
+              newTree.push_back(tree[ii + childIdx]);
+          }
+          ii += (numChildren - 1);
+          allFineFamiliesIdx++;
+        }
+        else
+        {
+          newTree.push_back(tree[ii]);
+        }
+      }
+
+      tree = newTree;
+    }
+
+    ot::SFC_Tree<unsigned int, dim>::distTreeSort(tree, 0.3, comm);
+
+    return tree;
   }
 
 
 
+  //
+  // reservoirSample
+  //
+  std::vector<size_t> reservoirSample(size_t n, size_t k)
+  {
+    // https://en.wikipedia.org/wiki/Reservoir_sampling
+    // doi:10.1145/198429.198435
+
+    std::vector<size_t> reservoir(k, 0);
+    std::iota(reservoir.begin(), reservoir.end(), 0);
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> uniform_real(0.0, 1.0);
+    std::uniform_int_distribution<int> uniform_int(0, k-1);
+
+    double w = exp(log(uniform_real(gen)) / k);
+
+    size_t ii = k-1;
+    while (ii < n)
+    {
+      ii += floor(log(uniform_real(gen)) / log(1.0-w)) + 1;
+      if (ii < n)
+      {
+        reservoir[uniform_int(gen)] = ii;
+        w *= exp(log(uniform_real(gen)) / k);
+      }
+    }
+
+    return reservoir;
+  }
 
 
 

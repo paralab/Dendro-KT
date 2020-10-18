@@ -30,7 +30,6 @@
 #include <cstring>
 
 
-
 namespace bench
 {
     profiler_t t_adaptive_tsort;
@@ -102,7 +101,7 @@ namespace bench
         std::vector<ot::TreeNode<unsigned int, dim>> points = getChannelPoints<dim>(
             numPts, lengthPower2, comm);
 
-        // Remove duplicates that force leafs to m_uiMaxDepth.
+        // Remove duplicates that could force leafs to m_uiMaxDepth.
         ot::SFC_Tree<T,dim>::distRemoveDuplicates(points, loadFlexibility, false, comm);
 
         ot::DistTree<unsigned int, dim> dtree;
