@@ -348,6 +348,13 @@ struct SFC_Tree
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
+  static void distTreeConstructionWithFilter( const ibm::DomainDecider &decider,
+                                              bool refineAll,
+                                              std::vector<TreeNode<T,D>> &tree,
+                                              LevI eLev,
+                                              double loadFlexibility,
+                                              MPI_Comm comm);
+
   static constexpr bool RM_DUPS_AND_ANC = false;
   static constexpr bool RM_DUPS_ONLY = true;
 

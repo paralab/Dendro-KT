@@ -806,6 +806,124 @@ SFC_Tree<T,D>:: distTreeConstructionWithFilter(
   distRemoveDuplicates(tree, loadFlexibility, false, comm);
 }
 
+
+template <typename T, unsigned int D>
+void
+SFC_Tree<T,D>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider,
+                                               bool refineAll,
+                                               std::vector<TreeNode<T,D>> &tree,
+                                               LevI eLev,
+                                               double loadFlexibility,
+                                               MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  constexpr char numChildren = TreeNode<T,D>::numChildren;
+  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+
+  std::vector<TreeNode<T,D>> leafs;
+
+  struct SubtreeList
+  {
+    std::vector<TreeNode<T,D>> oct;
+    std::vector<RotI> rot;
+
+    void swap(SubtreeList &other)
+    {
+      std::swap(this->oct, other.oct);
+      std::swap(this->rot, other.rot);
+    }
+
+    void clear()
+    {
+      this->oct.clear();
+      this->rot.clear();
+    }
+  };
+
+  SubtreeList uncommittedSubtrees;
+  SubtreeList tmpUncommittedSubtrees;
+  SubtreeList refined;
+
+  enum Phase : int {SINGLE_RANK = 0, ALL_RANKS = 1};
+  int phase = SINGLE_RANK;
+
+  if (rProc == 0)
+  {
+    uncommittedSubtrees.oct.push_back(TreeNode<T,D>());
+    uncommittedSubtrees.rot.push_back(0);
+  }
+
+  for (int nextLevel = 1; nextLevel <= eLev; ++nextLevel)
+  {
+    for (size_t ii = 0; ii < uncommittedSubtrees.oct.size(); ++ii)
+    {
+      // Lookup tables to apply rotations.
+      const RotI pRot = uncommittedSubtrees.rot[ii];
+      const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
+      const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+
+      TreeNode<T,D> cNode = uncommittedSubtrees.oct[ii].getFirstChildMorton();
+
+      for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+      {
+        ChildI child = rot_perm[child_sfc];
+        RotI cRot = orientLookup[child];
+        cNode.setMortonIndex(child);
+
+        double physCoords[D];
+        double physSize;
+        treeNode2Physical(cNode, physCoords, physSize);
+
+        const ibm::Partition childRegion = decider(physCoords, physSize);
+
+        if (childRegion != ibm::IN)
+        {
+          if (childRegion == ibm::INTERCEPTED ||
+              childRegion == ibm::OUT && refineAll)
+          {
+            refined.oct.push_back(cNode);
+            refined.rot.push_back(cRot);
+          }
+          else
+            leafs.push_back(cNode);
+        }
+      }
+    }
+
+    uncommittedSubtrees.clear();
+    uncommittedSubtrees.swap(refined);
+
+    if (phase == SINGLE_RANK)
+    {
+      if (rProc == 0 && uncommittedSubtrees.oct.size() >= nProc)
+        phase = ALL_RANKS;
+
+      par::Mpi_Bcast(&phase, 1, 0, comm);
+    }
+
+    if (phase == ALL_RANKS
+        && par::loadImbalance(uncommittedSubtrees.oct.size(), comm) > loadFlexibility)
+    {
+      long long int locSz = uncommittedSubtrees.oct.size();
+      long long int globSz = 0;
+      par::Mpi_Allreduce(&locSz, &globSz, 1, MPI_SUM, comm);
+      const size_t newLocSz = globSz / nProc + (rProc < globSz % nProc);
+      par::scatterValues(uncommittedSubtrees.oct, tmpUncommittedSubtrees.oct, newLocSz, comm);
+      par::scatterValues(uncommittedSubtrees.rot, tmpUncommittedSubtrees.rot, newLocSz, comm);
+      uncommittedSubtrees.clear();
+      uncommittedSubtrees.swap(tmpUncommittedSubtrees);
+    }
+  }
+  leafs.insert(leafs.cend(), uncommittedSubtrees.oct.begin(), uncommittedSubtrees.oct.end());
+  distTreeSort(leafs, loadFlexibility, comm);
+  tree = leafs;
+}
+
+
+
 template <typename T, unsigned int D>
 void
 SFC_Tree<T,D>:: distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree, double loadFlexibility, bool strict, MPI_Comm comm)
