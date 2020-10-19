@@ -29,7 +29,6 @@
 
 #include <cstring>
 
-
 namespace bench
 {
     profiler_t t_adaptive_tsort;

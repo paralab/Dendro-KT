@@ -120,7 +120,6 @@ namespace bench
   // returns a random set of k unique integers betwen [0, n-1).
   std::vector<size_t> reservoirSample(size_t n, size_t k);
 
-
   template <unsigned int dim>
   std::vector<ot::TreeNode<unsigned int, dim>> getChannelPoints(
       size_t ptsPerProc, int lengthPower2, MPI_Comm comm)
@@ -133,31 +132,38 @@ namespace bench
     const int depth = solveForDepth<dim>(totalNumPts, lengthPower2);
     const ibm::DomainDecider boxDecider = getBoxDecider<dim>(lengthPower2);
 
-    //TODO use a distributed method to generate the initial grid in parallel
-    //TODO compute how many points each processor needs to remove
-    // Otherwise just generate the points list on rank 0.
-
     std::vector<ot::TreeNode<unsigned int, dim>> tree;
-    if (rank == 0)
+
+    ot::SFC_Tree<unsigned int, dim>::distTreeConstructionWithFilter(
+        boxDecider, false, tree, depth, 0.1, comm);
+
+    ot::SFC_Tree<unsigned int, dim>::distCoalesceSiblings(tree, comm);
+
     {
       constexpr int numChildren = (1u << dim);
-
-      ot::SFC_Tree<unsigned int, dim>::locTreeConstructionWithFilter(boxDecider, false, tree, 1, depth, 0, ot::TreeNode<unsigned int, dim>());
-
       const int coarseningLoss = numChildren - 1;
-      const long long int surplus = tree.size() - totalNumPts;
-      const long long int numFamiliesToCoarsen = surplus / coarseningLoss;
+
+      long long int locTreeSz = tree.size();
+      long long int globTreeSz = 0;
+      par::Mpi_Allreduce(&locTreeSz, &globTreeSz, 1, MPI_SUM, comm);
+
+      const long long int surplus = globTreeSz - totalNumPts;
+      const long long int totalNumFamiliesToCoarsen = surplus / coarseningLoss;
 
       // Select which families to coarsen. Must know how many there are first.
       size_t numFinest = 0;
       for (const ot::TreeNode<unsigned int, dim> &tn : tree)
         if (tn.getLevel() == depth)
           numFinest++;
-      const size_t totalFineFamilies = numFinest / numChildren;
+      const long long int localFineFamilies = numFinest / numChildren;
+      long long int globalFineFamilies = 0;
+      par::Mpi_Allreduce(&localFineFamilies, &globalFineFamilies, 1, MPI_SUM, comm);
+      const long long int numFamiliesToCoarsen
+        = (double(totalNumFamiliesToCoarsen) / globalFineFamilies) * localFineFamilies;
 
       // Selection.
       std::vector<size_t> familiesToCoarsen = reservoirSample(
-          totalFineFamilies, numFamiliesToCoarsen);
+          localFineFamilies, numFamiliesToCoarsen);
       std::sort(familiesToCoarsen.begin(), familiesToCoarsen.end());
 
       // Copy non-coarsened elements and append parents of coarsened families.
