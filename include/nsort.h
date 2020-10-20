@@ -480,23 +480,6 @@ namespace ot {
        */
       static int getProcNeighboursSingleNode(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList);
 
-      /**
-       * @brief Takes sorted lists of owned nodes and scatterfaces and computes the scattermap.
-       * @note This method uses ScatterFace::get_owner() to determine destination.
-       * @note All lists must already be SFC-sorted for this to work.
-       */
-      static ScatterMap computeScattermap(const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces);
-
-      /**
-       * @brief Recursive dual-traversal to collect owned nodes for the scattermap.
-       */
-      template <typename ActionT>
-      static void computeScattermap_impl(const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
-          RankI ownedNodes_bg, RankI ownedNodes_end,
-          std::array<RankI, nSFOrient> scatterFaces_bg,
-          std::array<RankI, nSFOrient> scatterFaces_end,
-          LevI sLev, LevI eLev, RotI pRot,
-          ActionT &visitAction);
 
       /** @brief State of visitor for computeScattermap dual traversal. */
       struct SMVisit_data
@@ -518,23 +501,6 @@ namespace ot {
         std::map<int, RankI> m_sendOffsetsMap;
         std::vector<RankI> m_scatterMap;
       };
-
-      /** @brief Action of visitor for computeScattermap dual traversal, 1st pass counting. */
-      static void visit_count(SMVisit_data &visitor,
-          const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
-          RankI ownedNodes_bg, RankI ownedNodes_end,
-          const std::array<RankI, nSFOrient> &scatterFaces_bg,
-          const std::array<RankI, nSFOrient> &scatterFaces_end);
-
-      /**
-       * @brief Action of visitor for computeScattermap dual traversal, 2nd pass mapping.
-       * @pre The offsets need to be initialized with SMVisit_data::computeOffsets().
-       * */
-      static void visit_buildMap(SMVisit_data &visitor,
-          const std::vector<TNPoint<T,dim>> &ownedNodes, const ScatterFacesCollection &scatterFaces,
-          RankI ownedNodes_bg, RankI ownedNodes_end,
-          const std::array<RankI, nSFOrient> &scatterFaces_bg,
-          const std::array<RankI, nSFOrient> &scatterFaces_end);
 
       /** @brief Adapter to combine state and action for 1st pass counting. */
       struct SMVisit_count
