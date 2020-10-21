@@ -119,9 +119,6 @@ namespace ot {
     template<typename T, unsigned int dim>
     TreeNode<T,dim>& TreeNode<T,dim>::operator=(TreeNode<T,dim> const &other)
     {
-      if (this == &other)
-        return *this;
-
       m_uiCoords = other.m_uiCoords;
       m_uiLevel = other.m_uiLevel;
 

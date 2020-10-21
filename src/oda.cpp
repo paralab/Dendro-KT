@@ -195,7 +195,7 @@ namespace ot
         std::vector<TNPoint<C,dim>> tmpList;
 
         // Compact local exterior node list.
-        SFC_Tree<C, dim>::locTreeSort(exteriorNodeList);
+        SFC_Tree<C, dim>::locTreeSortMaxDepth(exteriorNodeList);
         tmpList.clear();
         if (exteriorNodeList.size() > 0)
         {
@@ -215,7 +215,7 @@ namespace ot
           pt.set_owner(rProc);
 
         // Compact local cancellation node list.
-        SFC_Tree<C, dim>::locTreeSort(cancelNodeList);
+        SFC_Tree<C, dim>::locTreeSortMaxDepth(cancelNodeList);
         tmpList.clear();
         if (cancelNodeList.size() > 0)
         {
@@ -234,20 +234,19 @@ namespace ot
         for (auto &pt : cancelNodeList)
           pt.set_owner(rProc);
 
-
         // distTreePartition only works on TreeNode inside the unit cube, not TNPoint.
         // Create a key for each tnpoint.
         tmpList.clear();
         std::vector<TreeNode<C, dim>> combinedCoords;
         for (auto &pt : exteriorNodeList)
         {
-          const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), pt.getLevel()), pt.getLevel());
+          const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), pt.getLevel());
           combinedCoords.push_back(key);
           tmpList.push_back(pt);
         }
         for (auto &pt : cancelNodeList)
         {
-          const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), pt.getLevel()), pt.getLevel());
+          const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), pt.getLevel());
           combinedCoords.push_back(key);
           tmpList.push_back(pt);
         }
@@ -283,7 +282,7 @@ namespace ot
         // For each non-cancelled coordinate, choose a representative pre-owner.
         // To that representative rank, send all instances --> scattermap.
         // To the other ranks, send just the chosen representative --> gathermap.
-        SFC_Tree<C, dim>::locTreeSort(nodeCongress);
+        SFC_Tree<C, dim>::locTreeSortMaxDepth(nodeCongress);
         std::vector<std::vector<TNPoint<C, dim>>> sendBack(nProc);
         size_t numUniqNodes = 0;
         {
@@ -315,7 +314,10 @@ namespace ot
 
               // Help others with gathermap.
               for (size_t recipientId = congressId; recipientId < nextId; ++recipientId)
+              {
+                assert(0 <= nodeCongress[recipientId].get_owner() && nodeCongress[recipientId].get_owner() < nProc);
                 sendBack[nodeCongress[recipientId].get_owner()].push_back(repNode);
+              }
 
               // Help owner with scattermap.
               for (size_t deferentId = congressId; deferentId < nextId; ++deferentId)

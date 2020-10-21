@@ -107,6 +107,11 @@ struct KeyFunIdentity_Pt
   const PointType &operator()(const PointType &pt) { return pt; }
 };
 
+template <typename T, unsigned int D>
+struct KeyFunIdentity_maxDepth
+{
+  const TreeNode<T,D> operator()(TreeNode<T,D> tn) { tn.setLevel(m_uiMaxDepth); return tn; }
+};
 
 
 
@@ -133,6 +138,17 @@ struct SFC_Tree
           0, (RankI) points.size(),
           1, m_uiMaxDepth, 0,
           KeyFunIdentity_Pt<PointType>());
+  }
+
+
+
+  template <class PointType>
+  static void locTreeSortMaxDepth(std::vector<PointType> &points)
+  {
+    SFC_Tree<T, D>::locTreeSort< KeyFunIdentity_maxDepth<T, D>,
+                                 PointType, TreeNode<T, D>, int, false >
+      (&(*points.begin()), nullptr, 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
+       KeyFunIdentity_maxDepth<T, D>());
   }
 
 
