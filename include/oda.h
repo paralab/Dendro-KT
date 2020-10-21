@@ -315,8 +315,10 @@ class DA
         void construct(DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
 
-        /** @brief The latter part of construct() if already have ownedNodes. */
-        void construct(std::vector<TNPoint<C,dim>> &ownedNodes,
+        /** @brief The latter part of construct() if already have ownedNodes and scatter/gather maps. */
+        void construct(const std::vector<TreeNode<C,dim>> &ownedNodes,
+                       const ScatterMap &sm,
+                       const GatherMap &gm,
                        unsigned int eleOrder,
                        const TreeNode<C,dim> *treePartFront,
                        const TreeNode<C,dim> *treePartBack,

@@ -109,6 +109,18 @@ std::string dbgCoordStr(const TreeNode<T,dim> &tnCoords, unsigned int refLev)
 }
 
 
+template <typename T, unsigned int dim>
+std::array<T, dim> clampCoords(const std::array<T, dim> &coords, unsigned int cellLevel)
+{
+  std::array<T, dim> newCoords = coords;
+  const T len = 1u << (m_uiMaxDepth - cellLevel);
+  const T last = (1u << m_uiMaxDepth) - len;
+  for (int d = 0; d < dim; ++d)
+    if (newCoords[d] >= (1u << m_uiMaxDepth))
+      newCoords[d] = last;
+  return newCoords;
+}
+
 
 template <typename T, unsigned int dim>
 void printtn(const TreeNode<T, dim> &tn, unsigned int eLev, FILE *out=stdout)
