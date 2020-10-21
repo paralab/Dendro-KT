@@ -132,10 +132,10 @@ int main(int argc, char * argv[])
   const size_t numGhostNodes = ghostIncidenceRate.getNumGhostPoints().get();
   const size_t numIncidentGhostNodes = ghostIncidenceRate.getNumIncidentGhostPoints().get();
 
-  fprintf(stdout, "%03d, \tsendTo %3d \trecvFrom %3d, \t "
-                  "numLocal==%lu, "
-                  "%snumGhost==%lu, " NRM
-                  "%snumIncidentGhost==%lu, " NRM
+  fprintf(stdout, "%03d\tsendTo\t%3d\trecvFrom\t%3d\t"
+                  "numLocal==%lu\t"
+                  "%snumGhost==%lu\t" NRM
+                  "%snumIncidentGhost==%lu\t" NRM
                   "\n",
       rank,
       da.getNumOutboundRanks(), da.getNumInboundRanks(),
