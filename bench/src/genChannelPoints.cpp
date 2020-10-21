@@ -159,43 +159,46 @@ namespace bench
       long long int globalFineFamilies = 0;
       par::Mpi_Allreduce(&localFineFamilies, &globalFineFamilies, 1, MPI_SUM, comm);
       const long long int numFamiliesToCoarsen
-        = (double(totalNumFamiliesToCoarsen) / globalFineFamilies) * localFineFamilies;
+        = (localFineFamilies > 0) ? (double(totalNumFamiliesToCoarsen) / globalFineFamilies) * localFineFamilies : 0;
 
-      // Selection.
-      std::vector<size_t> familiesToCoarsen = reservoirSample(
-          localFineFamilies, numFamiliesToCoarsen);
-      std::sort(familiesToCoarsen.begin(), familiesToCoarsen.end());
-
-      // Copy non-coarsened elements and append parents of coarsened families.
-      std::vector<ot::TreeNode<unsigned int, dim>> newTree;
-      size_t allFineFamiliesIdx = 0;
-      size_t coarsenedFamiliesIdx = 0;
-      for (size_t ii = 0; ii < tree.size(); ++ii)
+      if (numFamiliesToCoarsen > 0)
       {
-        if (tree[ii].getLevel() == depth)
+        // Selection.
+        std::vector<size_t> familiesToCoarsen = reservoirSample(
+            localFineFamilies, numFamiliesToCoarsen);
+        std::sort(familiesToCoarsen.begin(), familiesToCoarsen.end());
+
+        // Copy non-coarsened elements and append parents of coarsened families.
+        std::vector<ot::TreeNode<unsigned int, dim>> newTree;
+        size_t allFineFamiliesIdx = 0;
+        size_t coarsenedFamiliesIdx = 0;
+        for (size_t ii = 0; ii < tree.size(); ++ii)
         {
-          if (coarsenedFamiliesIdx < numFamiliesToCoarsen
-              && familiesToCoarsen[coarsenedFamiliesIdx] == allFineFamiliesIdx)
+          if (tree[ii].getLevel() == depth)
           {
-            newTree.push_back(tree[ii].getParent());
-            coarsenedFamiliesIdx++;
+            if (coarsenedFamiliesIdx < numFamiliesToCoarsen
+                && familiesToCoarsen[coarsenedFamiliesIdx] == allFineFamiliesIdx)
+            {
+              newTree.push_back(tree[ii].getParent());
+              coarsenedFamiliesIdx++;
+            }
+            else
+            {
+              assert(ii + numChildren <= tree.size());
+              for (int childIdx = 0; childIdx < numChildren; ++childIdx)
+                newTree.push_back(tree[ii + childIdx]);
+            }
+            ii += (numChildren - 1);
+            allFineFamiliesIdx++;
           }
           else
           {
-            assert(ii + numChildren <= tree.size());
-            for (int childIdx = 0; childIdx < numChildren; ++childIdx)
-              newTree.push_back(tree[ii + childIdx]);
+            newTree.push_back(tree[ii]);
           }
-          ii += (numChildren - 1);
-          allFineFamiliesIdx++;
         }
-        else
-        {
-          newTree.push_back(tree[ii]);
-        }
-      }
 
-      tree = newTree;
+        tree = newTree;
+      }
     }
 
     ot::SFC_Tree<unsigned int, dim>::distTreeSort(tree, 0.3, comm);
