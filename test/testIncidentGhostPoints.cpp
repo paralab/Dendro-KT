@@ -91,12 +91,12 @@ int main(int argc, char * argv[])
   MPI_Comm comm = MPI_COMM_WORLD;
   MPI_Comm_size(comm, &npes);
   MPI_Comm_rank(comm, &rank);
- 
+
   if (argc <= 1)
   {
     if(!rank)
     {
-      std::cout << "usage :  " << argv[0] << " pts_per_core(weak scaling) maxdepth elementalOrder\n";    
+      std::cout << "usage :  " << argv[0] << " pts_per_core(weak scaling) maxdepth elementalOrder sfc_tol\n";
       std::flush(std::cout);
     }
     MPI_Abort(comm,0);
@@ -111,13 +111,14 @@ int main(int argc, char * argv[])
   m_uiMaxDepth = atoi(argv[2]);
   const unsigned int eleOrder = atoi(argv[3]);
 
-  const double loadFlexibility = 0.1;
+  const double loadFlexibility = atof(argv[4]);
   const int lengthPower2 = 4;  // 16 = 2^4;
 
   const ibm::DomainDecider boxDecider = bench::getBoxDecider<DIM>(lengthPower2);
 
   std::vector<ot::TreeNode<unsigned int, DIM>> treePart = bench::getChannelPoints<DIM>(
       pts_per_core, lengthPower2, comm);
+  SFC_Tree::distTreeSort(treePart, loadFlexibility, comm);
 
   ot::DistTree<unsigned int, DIM> distTree(treePart, comm);
   distTree.filterTree(boxDecider);
@@ -131,11 +132,14 @@ int main(int argc, char * argv[])
   const size_t numGhostNodes = ghostIncidenceRate.getNumGhostPoints().get();
   const size_t numIncidentGhostNodes = ghostIncidenceRate.getNumIncidentGhostPoints().get();
 
-  fprintf(stdout, "%03d, numLocal==%lu, "
+  fprintf(stdout, "%03d, \tsendTo %3d \trecvFrom %3d, \t "
+                  "numLocal==%lu, "
                   "%snumGhost==%lu, " NRM
                   "%snumIncidentGhost==%lu, " NRM
                   "\n",
-      rank, numLocalNodes,
+      rank,
+      da.getNumOutboundRanks(), da.getNumInboundRanks(),
+      numLocalNodes,
       (numGhostNodes < 0.5 * numLocalNodes ? GRN : RED ), numGhostNodes,
       (numIncidentGhostNodes >= 0.9 * numGhostNodes ? GRN : RED ), numIncidentGhostNodes
       );

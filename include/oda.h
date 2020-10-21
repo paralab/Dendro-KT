@@ -353,6 +353,10 @@ class DA
         /**@brief see if the current DA is active*/
         inline bool isActive() const { return m_uiIsActive; }
 
+        int getNumOutboundRanks() const { return m_sm.m_sendProc.size(); }
+
+        int getNumInboundRanks() const { return m_gm.m_recvProc.size(); }
+
         /**@brief get number of nodes per element*/
         inline unsigned int getNumNodesPerElement() const { return m_uiNpE; }
 
