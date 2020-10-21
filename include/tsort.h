@@ -117,7 +117,7 @@ struct SFC_Tree
   template <class PointType>
   static void locTreeSort(std::vector<PointType> &points)
   {
-    SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 1, m_uiMaxDepth, 0);
+    SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0);
   }
 
 
