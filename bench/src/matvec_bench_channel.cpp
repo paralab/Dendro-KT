@@ -74,7 +74,7 @@ namespace bench
 
 
     template <unsigned int dim>
-    void bench_kernel(unsigned int numPts, unsigned int numWarmup, unsigned int numRuns, unsigned int eleOrder, MPI_Comm comm)
+    void bench_kernel(unsigned int numPts, unsigned int numWarmup, unsigned int numRuns, unsigned int eleOrder, int lengthPower2, MPI_Comm comm)
     {
         // numWarmup affects number of matVec warmup runs.
         // numRuns affects number of matVec runs.
@@ -93,7 +93,7 @@ namespace bench
         const unsigned int maxPtsPerRegion = 1;
         const double loadFlexibility = 0.1;
 
-        const int lengthPower2 = 4;  // 16 = 2^4;
+        /// const int lengthPower2 = 4;  // 16 = 2^4;
 
         const ibm::DomainDecider boxDecider = getBoxDecider<dim>(lengthPower2);
 
@@ -349,7 +349,7 @@ int main(int argc, char** argv)
     if(argc<=1)
     {
         if(!rank)
-            std::cout<<"usage :  "<<argv[0]<<" pts_per_core(weak scaling) maxdepth elementalOrder msgPrefix(<" << msgPrefixLimit << ")"<<std::endl;
+            std::cout<<"usage :  "<<argv[0]<<" pts_per_core(weak scaling) maxdepth elementalOrder [lenPower2 (e.g. 4 for 16:1:1, default)] msgPrefix(<" << msgPrefixLimit << ")"<<std::endl;
         
         MPI_Abort(comm,0);
     }
@@ -363,14 +363,20 @@ int main(int argc, char** argv)
     char msgPrefix[2*msgPrefixLimit + 1];
     msgPrefix[0] = '\0';
     msgPrefix[msgPrefixLimit] = '\0';
-    if (argc > 4)
+    if (argc > 4 && argc <= 5)
       std::strncpy(msgPrefix, argv[4], msgPrefixLimit);
+    else if (argc > 5)
+      std::strncpy(msgPrefix, argv[5], msgPrefixLimit);
+
+    int lengthPower2 = 4;
+    if (argc > 5)
+      lengthPower2 = atoi(argv[4]);
 
     _InitializeHcurve(dim);
 
     const unsigned int numWarmup = 10;
     const unsigned int numRuns = 10;
-    bench::bench_kernel<dim>(pts_per_core, numWarmup, numRuns, eleOrder, comm);
+    bench::bench_kernel<dim>(pts_per_core, numWarmup, numRuns, eleOrder, lengthPower2,comm);
 
 
     const char * param_names[] = {
