@@ -339,7 +339,7 @@ namespace ot
         int r = 0;
         for (const std::vector<TNPoint<C, dim>> &sendList : sendBack)
         {
-          nodeCongress.insert(nodeCongress.cend(), sendList.begin(), sendList.end());
+          nodeCongress.insert(nodeCongress.end(), sendList.begin(), sendList.end());
           sched.sdispls[r] = sdispl;
           sched.scounts[r] = sendList.size();
           sdispl += sendList.size();
@@ -418,7 +418,7 @@ namespace ot
         {
           if (scatterSets[r].size() > 0)
           {
-            scatterMap.m_map.insert(scatterMap.m_map.cend(), scatterSets[r].cbegin(), scatterSets[r].cend());
+            scatterMap.m_map.insert(scatterMap.m_map.end(), scatterSets[r].cbegin(), scatterSets[r].cend());
             scatterMap.m_sendCounts.push_back(scatterSets[r].size());
             scatterMap.m_sendOffsets.push_back(smapSendOffset);
             smapSendOffset += scatterSets[r].size();
