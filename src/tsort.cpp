@@ -939,7 +939,7 @@ SFC_Tree<T,D>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider
       uncommittedSubtrees.swap(tmpUncommittedSubtrees);
     }
   }
-  leafs.insert(leafs.cend(), uncommittedSubtrees.oct.begin(), uncommittedSubtrees.oct.end());
+  leafs.insert(leafs.end(), uncommittedSubtrees.oct.begin(), uncommittedSubtrees.oct.end());
   distTreeSort(leafs, loadFlexibility, comm);
   tree = leafs;
 }
