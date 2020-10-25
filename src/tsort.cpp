@@ -489,7 +489,7 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
     RankI ancStart, ancEnd;
     if (front.begin < front.end)
     {
-      SFC_bucketing(points, front.begin, front.end, front.lev, front.rot_id, childSplitters, ancStart, ancEnd);
+      SFC_bucketing(points, front.begin, front.end, front.lev+1, front.rot_id, childSplitters, ancStart, ancEnd);
 
       // Put 'ancestor' points one of the closest sibling bucket.
       const bool ancestorsFirst = true;
