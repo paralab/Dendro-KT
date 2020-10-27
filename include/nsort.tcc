@@ -525,6 +525,7 @@ namespace ot {
       // This method does not cover all cases correctly,
       // but it does prevent faces from becoming _partially_ boundary faces.
       std::bitset<numVertices> vertexTestBoundary;
+      vertexTestBoundary[0] = true;
       for (int d = 0; d < dim; ++d)
         if (0 == nodeIndices[d])
           vertexTestBoundary = vertexTestBoundary;
@@ -539,7 +540,6 @@ namespace ot {
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }
-
 
     if (this->getLevel() < m_uiMaxDepth)  // Don't need cancellations if no hanging elements.
     {
