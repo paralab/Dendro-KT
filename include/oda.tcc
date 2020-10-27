@@ -116,12 +116,7 @@ namespace ot
       // =========================
       // * Generate tree in Morton order.
       // * Partition tree using sfc_tol
-      // * Store front/back tree elements, discard tree.
-      //
-      // * Generate all the nodes in Morton order.
-      // * Partition the nodes to agree with tree splitters.
-      //
-      // * Compute scatter/gather maps (other overload of construct()).
+      // * DA construction.
       // =========================
 
       constexpr unsigned int NUM_CHILDREN = 1u << dim;
@@ -213,185 +208,23 @@ namespace ot
       ///       treePart[ii].getLevel(), ot::dbgCoordStr(treePart[ii], 2).c_str());
 
       if (isActive0)
-        SFC_Tree<C, dim>::distTreeSort(treePart, sfc_tol, activeComm0);
-
-      locNumActiveElements = treePart.size();
-      treePartFront = treePart.front();
-      treePartBack = treePart.back();
-
-      std::swap(newTreePart, treePart);
-
-      // ------------------------------------------
-
-
-      /// DendroIntL locNumEle = locNumActiveElements;
-      /// DendroIntL globNumEle = 0;
-      /// par::Mpi_Allreduce(&locNumEle, &globNumEle, 1, MPI_SUM, comm);
-      /// fprintf(stderr, "[%d] during construction: globNumEle==%llu\n", rProc, globNumEle);
-
-
-      // Now we know how many elements would go to each proc,
-      // and what is the front and back of the local entire partition.
-
-      // Next, generate points.
-
-      // A processor is 'active' if it has elements, otherwise 'inactive'.
-      bool isActive = (locNumActiveElements > 0);
-      MPI_Comm activeComm;
-      MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
-
-      std::vector<ot::TNPoint<C,dim>> nodeList;
-      std::vector<ot::TNPoint<C,dim>> nodeListBuffer;
-
-      DendroIntL locTraversedEle = 0;
-      DendroIntL globTraversedEle = 0;
-
-      if (isActive)
       {
-        // Generate local points.
-        // Do this by traversing the element tree and adding points owned by each element.
-
-        // Invariant: A TreeNode on the stack contains a descendant subtree
-        //            that corresponds to a locally owned element.
-
-        /// fprintf(stderr, "%*s [%d] Front==(%d)%s  Back==(%d)%s\n",
-        ///     15*rProc, "", rProc,
-        ///     treePartFront.getLevel(), treePartFront.getBase32Hex().data(),
-        ///     treePartBack.getLevel(), treePartBack.getBase32Hex().data());
-
-        std::vector<ot::TreeNode<C,dim>> treeStack;
-        std::vector<ot::RotI> rotStack;
-        treeStack.emplace_back();      // Root.
-        rotStack.push_back(0);         //
-
-        while (treeStack.size())
-        {
-          // Pop the next subtree from the stack.
-          const ot::TreeNode<C,dim> subtree = treeStack.back();
-          const ot::RotI pRot = rotStack.back();
-          treeStack.pop_back();
-          rotStack.pop_back();
-
-          /// fprintf(stderr, "%*s [%d] next subtree: (%d)%s\n",
-          ///     15*rProc, "", rProc, subtree.getLevel(), subtree.getBase32Hex().data());
-
-          //
-          // Leaf: A local element. Add its points.
-          //
-          if (subtree.getLevel() == level)
-          {
-            locTraversedEle++;
-
-            const ot::Element<C,dim> element(subtree);
-            DendroIntL nodeListOldSz = nodeList.size();
-
-            // Neighbour flags of interior points label the host cell as neighbour 0.
-            // Because the neighbourhood has dimension 0, no other cells are tested.
-            element.appendInteriorNodes(eleOrder, nodeList);
-
-            // For neighbour flags of exterior points, test each axis for boundary.
-            // On an axis that is 'internal', none of the 1-side neighbours are marked.
-            nodeListBuffer.clear();
-
-            std::array<double, dim> physMaxs;
-            for (int d = 0; d < dim; ++d)
-              physMaxs[d] = double(subdomainBBMaxs[d]) / double(1u << m_uiMaxDepth);
-            element.appendExteriorNodes(eleOrder, nodeListBuffer, (typename DistTree<C, dim>::BoxDecider)(physMaxs));
-
-            for (TNPoint<C,dim> &node : nodeListBuffer)
-            {
-              // Exclude a node from nodeList if it is 'upperEdge' on an axis,
-              // unless it is boundary on the same axis.
-              bool excludeNode = false;
-              for (int d = 0; d < dim; d++)
-              {
-                bool isBoundaryOnAxis = false;
-
-                // Check for subdomain boundaries.
-                if (node.getX(d) == subdomainBBMins[d])
-                {
-                  node.setIsOnTreeBdry(true);
-                  isBoundaryOnAxis = true;
-                }
-                else if (node.getX(d) == subdomainBBMaxs[d])
-                {
-                  node.setIsOnTreeBdry(true);
-                  isBoundaryOnAxis = true;
-                }
-
-                // Check for upper edge of the cell (owned by another cell).
-                if (node.getX(d) == element.maxX(d) && !isBoundaryOnAxis)
-                  excludeNode = true;
-              }
-
-              if (!excludeNode)
-                nodeList.emplace_back(node);
-            }
-          }
-
-
-          //
-          // Nonleaf: Ancestor of a local element. Push its children onto stack.
-          //
-          else
-          {
-            const bool ancestorOfFront = subtree.isAncestor(treePartFront);
-            const bool ancestorOfBack = subtree.isAncestor(treePartBack);
-
-            const ot::ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*NUM_CHILDREN];
-            const ot::RotI * const orientLookup = &HILBERT_TABLE[pRot*NUM_CHILDREN];
-
-            // Push children onto stack in reverse sfc order.
-            // There can be 0, 1, or 2 thresholds of entering/leaving local partition.
-            bool keepNextChild = !ancestorOfBack;
-            for (ot::ChildI child_rev = 0; child_rev < NUM_CHILDREN; child_rev++)
-            {
-              const ot::ChildI child_sfc = NUM_CHILDREN-1 - child_rev;
-              const ot::ChildI child_m = rot_perm[child_sfc];
-              const ot::RotI cRot = orientLookup[child_m];
-              ot::TreeNode<C,dim> child = subtree.getChildMorton(child_m);
-
-              bool intersectsSubdomainBB = true;
-              for (int d = 0; d < dim; d++)
-              {
-                if (subdomainBBMaxs[d] <= child.minX(d) ||
-                    child.maxX(d) <= subdomainBBMins[d])
-                {
-                  intersectsSubdomainBB = false;
-                  break;
-                }
-              }
-
-
-              if (child.isAncestorInclusive(treePartBack))
-                keepNextChild = true;
-
-              if (keepNextChild && intersectsSubdomainBB)
-              {
-                treeStack.emplace_back(child);
-                rotStack.push_back(cRot);
-              }
-
-              if (child.isAncestorInclusive(treePartFront))
-                keepNextChild = false;
-            }
-          }
-        }
-
+        SFC_Tree<C, dim>::distTreeSort(treePart, sfc_tol, activeComm0);
+        SFC_Tree<C, dim>::distCoalesceSiblings(treePart, activeComm0);
       }
 
-      /// par::Mpi_Allreduce(&locTraversedEle, &globTraversedEle, 1, MPI_SUM, comm);
-      /// fprintf(stderr, "[%d] during construction: globTraversedEle==%llu\n", rProc, globTraversedEle);
+      std::array<double, dim> physMaxs;
+      for (int d = 0; d < dim; ++d)
+        physMaxs[d] = double(subdomainBBMaxs[d]) / double(1u << m_uiMaxDepth);
 
-      /// DendroIntL locNumNodes = nodeList.size();
-      /// DendroIntL globNumNodes = 0;
-      /// par::Mpi_Allreduce(&locNumNodes, &globNumNodes, 1, MPI_SUM, comm);
-      /// fprintf(stderr, "[%d] during construction: globNumNodes==%llu\n", rProc, globNumNodes);
+      DistTree<C, dim> dtree(treePart, comm);
+      dtree.filterTree((typename DistTree<C, dim>::BoxDecider)(physMaxs));
 
-      // Finish constructing.
-      newSubDA.construct(nodeList, eleOrder, &treePartFront, &treePartBack, isActive, comm, activeComm);
+      newTreePart = dtree.getTreePartFiltered();
 
-      return locNumActiveElements;
+      newSubDA.construct(dtree, comm, eleOrder, 1, sfc_tol);
+
+      return newSubDA.getLocalElementSz();
     }
 
 
