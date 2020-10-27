@@ -28,6 +28,7 @@ int main(int argc, char * argv[])
   std::vector<size_t> bdyIndex;
   octDA.getBoundaryNodeIndices(bdyIndex);
 
+  std::cout << "octDA local num elements == " << octDA.getLocalElementSz() << "\n";
   std::cout << "octDA local num nodes == " << octDA.getLocalNodalSz() << "\n";
   std::cout << "octDA local bdyIndex.size() == " << bdyIndex.size() << "\n";
 
