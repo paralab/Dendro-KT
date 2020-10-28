@@ -518,6 +518,17 @@ namespace ot
         m_isPre = true;
         m_extantChildren = 0u;
         m_numExtantChildren = 0;
+
+        // This subtree is INTERCEPTED iff it contains INTERCEPTED subtrees.
+        m_currentSubtree.setIsOnTreeBdry(false);
+        for (size_t ii = rootTreeSplitters[0];
+                    ii < rootTreeSplitters[NumChildren];
+                    ++ii)
+          if (m_treePartPtr[ii].getIsOnTreeBdry())
+          {
+            m_currentSubtree.setIsOnTreeBdry(true);
+            break;
+          }
       }
 
       // Frame()
@@ -543,6 +554,18 @@ namespace ot
                                             m_pRot,
                                             m_treeSplitters,
                                             ancStart, ancEnd); 
+
+        // This subtree is INTERCEPTED iff it contains INTERCEPTED subtrees.
+        m_currentSubtree.setIsOnTreeBdry(false);
+        for (size_t ii = parentFrame->m_treeSplitters[child];
+                    ii < parentFrame->m_treeSplitters[child+1];
+                    ++ii)
+          if (m_treePartPtr[ii].getIsOnTreeBdry())
+          {
+            m_currentSubtree.setIsOnTreeBdry(true);
+            break;
+          }
+
 
         // DEBUG, TODO remove
         size_t num_non_descendants = 0;

@@ -179,7 +179,7 @@ namespace ot
 
         /** isElementBoundary() */
         bool isElementBoundary() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_numBdryNodes > 0;
+          return treeloop.getCurrentSubtree().getIsOnTreeBdry();
         }
 
         /** getLeafNodeBdry() */
@@ -342,7 +342,7 @@ namespace ot
 
         /** isElementBoundary() */
         bool isElementBoundary() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_numBdryNodes > 0;
+          return treeloop.getCurrentSubtree().getIsOnTreeBdry();
         }
 
         /** getLeafNodeBdry() */
@@ -520,7 +520,7 @@ namespace ot
 
         /** isElementBoundary() */
         bool isElementBoundary() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_numBdryNodes > 0;
+          return treeloop.getCurrentSubtree().getIsOnTreeBdry();
         }
 
         /** getLeafNodeBdry() */
