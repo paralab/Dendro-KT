@@ -166,7 +166,7 @@ namespace ot
 
         /** readNodeNonhangingIn() */
         const std::vector<bool> & readNodeNonhangingIn() const {
-          return treeloop.getCurrentFrame().template getMyInputHandle<1>();
+          return treeloop.getNodeNonhangingIn(treeloop.getCurrentFrame());
         }
 
         /** getEleOrder() */
@@ -224,8 +224,19 @@ namespace ot
           const TreeNode<unsigned int, dim> *begin,
           size_t numNodes);
 
+      friend void fillLeafNodeBdry<MatvecBaseCoords, dim, FrameT>(const FrameT &, unsigned int, const std::vector<bool> &, std::vector<bool> &);
+
+      static const std::vector<bool> & getNodeNonhangingIn(const FrameT &frame)
+      {
+        return frame.template getMyInputHandle<1>();
+      }
+      static       std::vector<bool> & getNodeNonhangingIn(      FrameT &frame)
+      {
+        return frame.template getMyInputHandle<1>();
+      }
+
       void fillAccessNodeCoordsFlat();
-      void fillLeafNodeBdry();
+      void fillLeafNodeBdry() { ::ot::fillLeafNodeBdry<MatvecBaseCoords, dim>(BaseT::getCurrentFrame(), m_eleOrder, m_parentNodeBdry, m_leafNodeBdry); }
 
       unsigned int m_eleOrder;
 
@@ -233,6 +244,7 @@ namespace ot
 
       // Non-stack leaf buffer and parent-of-leaf buffer.
       std::vector<bool> m_leafNodeBdry;
+      std::vector<bool> m_parentNodeBdry;
 
       std::vector<double> m_accessNodeCoordsFlat;
   };
@@ -319,7 +331,7 @@ namespace ot
 
         /** readNodeNonhangingIn() */
         const std::vector<bool> & readNodeNonhangingIn() const {
-          return treeloop.getCurrentFrame().template getMyInputHandle<2>();
+          return treeloop.getNodeNonhangingIn(treeloop.getCurrentFrame());
         }
 
         /** overwriteNodeValsIn() */
@@ -386,6 +398,17 @@ namespace ot
         return MatvecBase<dim, NodeT>::generate_node_summary(begin, end);
       }
 
+      friend void fillLeafNodeBdry<MatvecBaseIn, dim, FrameT>(const FrameT &, unsigned int, const std::vector<bool> &, std::vector<bool> &);
+
+      static const std::vector<bool> & getNodeNonhangingIn(const FrameT &frame)
+      {
+        return frame.template getMyInputHandle<2>();
+      }
+      static       std::vector<bool> & getNodeNonhangingIn(      FrameT &frame)
+      {
+        return frame.template getMyInputHandle<2>();
+      }
+
       static unsigned int get_max_depth(
           const TreeNode<unsigned int, dim> *begin,
           size_t numNodes)
@@ -394,7 +417,7 @@ namespace ot
       }
 
       void fillAccessNodeCoordsFlat();
-      void fillLeafNodeBdry();
+      void fillLeafNodeBdry() { ::ot::fillLeafNodeBdry<MatvecBaseIn, dim>(BaseT::getCurrentFrame(), m_eleOrder, m_parentNodeBdry, m_leafNodeBdry); }
 
       unsigned int m_ndofs;
       unsigned int m_eleOrder;
@@ -404,6 +427,7 @@ namespace ot
       // Non-stack leaf buffer and parent-of-leaf buffer.
       std::vector<NodeT> m_parentNodeVals;
       std::vector<bool> m_leafNodeBdry;
+      std::vector<bool> m_parentNodeBdry;
 
       std::vector<double> m_accessNodeCoordsFlat;
 
@@ -486,7 +510,7 @@ namespace ot
 
         /** readNodeNonhangingIn() */
         const std::vector<bool> & readNodeNonhangingIn() const {
-          return treeloop.getCurrentFrame().template getMyInputHandle<1>();
+          return treeloop.getNodeNonhangingIn(treeloop.getCurrentFrame());
         }
 
         /** getNumNodesOut() */
@@ -571,8 +595,19 @@ namespace ot
         return MatvecBase<dim, NodeT>::get_max_depth(begin, numNodes);
       }
 
+      friend void fillLeafNodeBdry<MatvecBaseOut, dim, FrameT>(const FrameT &, unsigned int, const std::vector<bool> &, std::vector<bool> &);
+
+      static const std::vector<bool> & getNodeNonhangingIn(const FrameT &frame)
+      {
+        return frame.template getMyInputHandle<1>();
+      }
+      static       std::vector<bool> & getNodeNonhangingIn(      FrameT &frame)
+      {
+        return frame.template getMyInputHandle<1>();
+      }
+
       void fillAccessNodeCoordsFlat();
-      void fillLeafNodeBdry();
+      void fillLeafNodeBdry() { ::ot::fillLeafNodeBdry<MatvecBaseOut, dim>(BaseT::getCurrentFrame(), m_eleOrder, m_parentNodeBdry, m_leafNodeBdry); }
 
       unsigned int m_ndofs;
       unsigned int m_eleOrder;
@@ -582,6 +617,7 @@ namespace ot
       // Non-stack leaf buffer and parent-of-leaf buffer.
       std::vector<NodeT> m_parentNodeVals;
       std::vector<bool> m_leafNodeBdry;
+      std::vector<bool> m_parentNodeBdry;
 
       std::vector<double> m_accessNodeCoordsFlat;
 
@@ -633,6 +669,9 @@ namespace ot
 
     rootFrame.mySummaryHandle.m_initializedIn = true;
     rootFrame.mySummaryHandle.m_initializedOut = false;
+
+    const unsigned npe = intPow(m_eleOrder+1, dim);
+    m_parentNodeBdry.resize(npe, 0);
   }
 
 
@@ -695,6 +734,7 @@ namespace ot
     // Non-stack leaf buffer and parent-of-leaf buffer.
     const unsigned npe = intPow(m_eleOrder+1, dim);
     m_parentNodeVals.resize(ndofs * npe, 0);
+    m_parentNodeBdry.resize(npe, 0);
   }
 
 
@@ -752,6 +792,7 @@ namespace ot
     // Non-stack leaf buffer and parent-of-leaf buffer.
     const unsigned npe = intPow(m_eleOrder+1, dim);
     m_parentNodeVals.resize(ndofs * npe, 0);
+    m_parentNodeBdry.resize(npe, 0);
   }
 
 
@@ -917,7 +958,25 @@ namespace ot
       }
     }
 
-    // --- Deleted p2c since no inputs except coordinates ---
+    // --- No inputs except coordinates, but leaf node boundary depends on p2c. ---
+
+    std::fill(m_parentNodeBdry.begin(), m_parentNodeBdry.end(), false);
+    if (thereAreHangingNodes)
+    {
+      for (size_t nIdx = 0; nIdx < numInputNodes; nIdx++)
+      {
+        if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
+        {
+          const unsigned int nodeRank =
+              TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
+                                                           myNodes[nIdx],
+                                                           m_eleOrder );
+          assert(nodeRank < npe);
+          m_parentNodeBdry[nodeRank] = parentFrame.template getMyInputHandle<0>()[nIdx].getIsOnTreeBdry();
+        }
+      }
+    }
+
 
     childNodeCounts.fill(0);
     // Note: Re-uses the memory from childNodeCounts for mutable offsets.
@@ -1125,6 +1184,7 @@ namespace ot
     //
     // Perform any needed interpolations.
     //
+    std::fill(m_parentNodeBdry.begin(), m_parentNodeBdry.end(), false);
     if (thereAreHangingNodes || (m_visitEmpty && !*extantChildren))
     {
       // Pointer to the parent's node values.
@@ -1150,6 +1210,8 @@ namespace ot
             std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],
                          m_ndofs,
                          &m_parentNodeVals[m_ndofs * nodeRank] );
+
+            m_parentNodeBdry[nodeRank] = parentFrame.template getMyInputHandle<0>()[nIdx].getIsOnTreeBdry();
           }
         }
 
@@ -1387,6 +1449,27 @@ namespace ot
       parentFrame.template getChildInput<1>(child_sfc).clear();
       parentFrame.template getChildInput<1>(child_sfc).resize(allocNodes, false);//don't assume nonhanging until we fill
     }
+
+
+    // --- No inputs except coordinates, but leaf node boundary depends on p2c. ---
+
+    std::fill(m_parentNodeBdry.begin(), m_parentNodeBdry.end(), false);
+    if (thereAreHangingNodes)
+    {
+      for (size_t nIdx = 0; nIdx < numInputNodes; nIdx++)
+      {
+        if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
+        {
+          const unsigned int nodeRank =
+              TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
+                                                           myNodes[nIdx],
+                                                           m_eleOrder );
+          assert(nodeRank < npe);
+          m_parentNodeBdry[nodeRank] = parentFrame.template getMyInputHandle<0>()[nIdx].getIsOnTreeBdry();
+        }
+      }
+    }
+
 
     childNodeCounts.fill(0);
     // Note: Re-uses the memory from childNodeCounts for mutable offsets.
@@ -1673,29 +1756,6 @@ namespace ot
                              m_eleOrder,
                              m_accessNodeCoordsFlat);
   }
-
-
-  // The definitions are here if you need them, just copy for
-  //   both MatvecBaseIn and MatvecBaseOut.
-
-
-  /// // fillLeafNodeBdry()
-  /// template <unsigned int dim, typename NodeT>
-  /// void MatvecBase<dim, NodeT>::fillLeafNodeBdry()
-  /// {
-  ///   const FrameT &frame = BaseT::getCurrentFrame();
-  ///   const size_t numNodes = frame.template getMyInputHandle<0>().size();
-  ///   const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
-  ///   const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
-  ///   const unsigned int curLev = subtree.getLevel();
-
-  ///   m_leafNodeBdry.resize(dim * numNodes);
-
-  ///   for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
-  ///     m_leafNodeBdry[nIdx] = nodeCoords[nIdx].getIsOnTreeBdry();
-  /// }
-
-
 
 
   //

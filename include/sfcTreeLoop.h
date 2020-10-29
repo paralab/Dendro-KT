@@ -635,7 +635,7 @@ namespace ot
 
 
       // getCurrentSubtree()
-      const TreeNode<C,dim> &getCurrentSubtree() { return m_currentSubtree; }
+      const TreeNode<C,dim> &getCurrentSubtree() const { return m_currentSubtree; }
 
       // getTreeSplitters()
       const std::array<RankI, NumChildren+1> & getTreeSplitters() const { return m_treeSplitters; }
