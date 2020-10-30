@@ -662,12 +662,18 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
           const unsigned char child_m = subtree.getMortonIndex();
 
           const std::vector<bool> nodeNonhangingIn = subtreeInfo.readNodeNonhangingIn();
+          const ot::TreeNode<CoordT, dim> * nodeCoordsIn = subtreeInfo.readNodeCoordsIn();
+
           std::vector<bool> slice_nh, slice_h, slice_all;
           for (unsigned nIdx = 0; nIdx < nodeNonhangingIn.size(); ++nIdx)
             for (int dofIdx = 0; dofIdx < m_uiDof; ++dofIdx)
             {
-              slice_nh.push_back(nodeNonhangingIn[nIdx]);
-              slice_h.push_back(!nodeNonhangingIn[nIdx]);
+              // Since parent nodes on hanging faces are mapped, need to consider
+              // nonhanging child nodes on hanging faces as though hanging.
+              const bool nh = (nodeNonhangingIn[nIdx]
+                  && nodeCoordsIn[nIdx].getLevel() == subtree.getLevel());
+              slice_nh.push_back(nh);
+              slice_h.push_back(!nh);
               slice_all.push_back(true);
             }
 

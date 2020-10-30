@@ -405,6 +405,14 @@ add_executable(tstIncidentGhostPoints ${SRC_FILES})
 target_include_directories(tstIncidentGhostPoints PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/bench/include)
 target_link_libraries(tstIncidentGhostPoints dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/matrix.h
+              ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/matrix.cpp)
+add_executable(tstMatAssembly ${SRC_FILES})
+set_property(TARGET tstMatAssembly PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+target_include_directories(tstMatAssembly PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+target_link_libraries(tstMatAssembly dendroKT ${MPI_LIBRARIES} m)
+
+
 ## tsort_bench (./tsortBench)
 ## -----------
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/tsort_bench.h ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/tsort_bench.cpp)
