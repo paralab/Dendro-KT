@@ -4,8 +4,6 @@
  * @date: 2019-02-20
  */
 
-#include <bitset>
-
 namespace ot {
 
   // ==================== Begin: CellType ==================== //
@@ -441,46 +439,6 @@ namespace ot {
     }
   }
 
-
-  template <typename T, unsigned int dim>
-  std::array<double,dim> genPhysNodeCoords(const Element<T, dim> &element,
-                                           const std::array<unsigned int, dim> &nodeIndices,
-                                           const unsigned int order)
-  {
-    double physElemCoords[dim];
-    double physSize;
-    treeNode2Physical(element, physElemCoords, physSize);
-
-    std::array<double, dim> physNodeCoordsOut;
-
-    #pragma unroll(dim)
-    for (int d = 0; d < dim; d++)
-    {
-      physNodeCoordsOut[d] = (1.0 * nodeIndices[d] / order * physSize) + physElemCoords[d];
-    }
-
-    return physNodeCoordsOut;
-  }
-
-  template <typename T, unsigned int dim>
-  std::array<T,dim> genNodeCoords(const Element<T, dim> &element,
-                                  const std::array<unsigned int, dim> &nodeIndices,
-                                  const unsigned int order)
-  {
-    const unsigned int len = 1u << (m_uiMaxDepth - element.getLevel());
-
-    std::array<T,dim> nodeCoords;
-
-    #pragma unroll(dim)
-    for (int d = 0; d < dim; d++)
-    {
-      nodeCoords[d] = len * nodeIndices[d] / order  +  element.getX(d);
-    }
-
-    return nodeCoords;
-  }
-
-
   template <typename T, unsigned int dim>
   void Element<T,dim>::appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList, const ::ibm::DomainDecider &domainDecider) const
   {
@@ -488,26 +446,14 @@ namespace ot {
     using TreeNode = TreeNode<T,dim>;
     const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
 
-    std::array<unsigned int, dim> nodeIndices;
-
-    constexpr size_t numVertices = 1u << dim;
-    std::bitset<numVertices> vertexBoundary;  // defaults to all false.
-
-    // If this element has been flagged as boundary,
-    // then evaluate vertexBoundary.
-    if (this->getIsOnTreeBdry())
-    {
-      for (int v = 0; v < numVertices; ++v)
-      {
-        for (int d = 0; d < dim; ++d)
-          nodeIndices[d] = bool(v & (1u << d)) * order;
-        const std::array<double, dim> physNodeCoords = genPhysNodeCoords<T, dim>(*this, nodeIndices, order);
-        vertexBoundary[v] = (domainDecider(physNodeCoords.data(), 0.0) == ibm::IN);
-      }
-    }
-
-    nodeIndices.fill(0);
     const unsigned int numNodes = intPow(order+1, dim);
+
+    double physElemCoords[dim];
+    double physSize;
+    treeNode2Physical(*this, physElemCoords, physSize);
+
+    std::array<unsigned int, dim> nodeIndices;
+    nodeIndices.fill(0);
     for (unsigned int node = 0; node < numNodes; node++)
     {
       // For exterior, need at least one of the entries in nodeIndices to be 0 or order.
@@ -518,28 +464,30 @@ namespace ot {
         node += order - 1;
       }
 
-      std::array<T,dim> nodeCoords = genNodeCoords<T,dim>(*this, nodeIndices, order);
+      std::array<T,dim> nodeCoords;
+      double physNodeCoords[dim];
+      unsigned int relNbrId = 0;
+      #pragma unroll(dim)
+      for (int d = 0; d < dim; d++)
+      {
+        nodeCoords[d] = len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
+        physNodeCoords[d] = (1.0 * nodeIndices[d] / order * physSize) + physElemCoords[d];
+
+        const bool leftNode = nodeCoords[d] == 0;
+        const bool rightNode = nodeCoords[d] == order;
+        const bool middleNode = !leftNode && !rightNode;
+        // From the node's perspective, only need '1'
+        // if the element is completely to the right.
+        relNbrId |= (leftNode) * (1u << d);
+      }
       nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
 
-      // Assign boundary flag (true/false) to the node.
-      // This method does not cover all cases correctly,
-      // but it does prevent faces from becoming _partially_ boundary faces.
-      std::bitset<numVertices> vertexTestBoundary;
-      vertexTestBoundary[0] = true;
-      for (int d = 0; d < dim; ++d)
-        if (0 == nodeIndices[d])
-          vertexTestBoundary = vertexTestBoundary;
-        else if (0 < nodeIndices[d] && nodeIndices[d] < order)
-          vertexTestBoundary |= vertexTestBoundary << (1u << d);
-        else if (nodeIndices[d] == order)
-          vertexTestBoundary = vertexTestBoundary << (1u << d);
-
-      // Tag a node if and only if all vertices on the face are boundary nodes.
-      const bool isBoundaryNode = ((vertexBoundary & vertexTestBoundary) == vertexTestBoundary);
-      nodeList.back().setIsOnTreeBdry(isBoundaryNode);
+      // Only tests domainDecider if this element has been flagged as a boundary element.
+      nodeList.back().setIsOnTreeBdry(this->getIsOnTreeBdry() && domainDecider(physNodeCoords, 0.0) == ibm::IN);
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }
+
 
     if (this->getLevel() < m_uiMaxDepth)  // Don't need cancellations if no hanging elements.
     {
