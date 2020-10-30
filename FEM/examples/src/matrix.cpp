@@ -59,10 +59,17 @@ int main(int argc, char *argv[]) {
         delete octDA;
     }
 
+    fprintf(stderr, "newDA->getElementSz() == %lu\n", newDA->getLocalElementSz());
+
     Vec funcVec;
     newDA->petscCreateVector(funcVec, false, false, 1);
     std::function<void(const double *, double *)> functionPointer = [&](const double *x, double *var) {
-        var[0] = sin(M_PI * x[0]) * sin(M_PI * x[1]) * sin(M_PI * x[2]);
+        double product = 1.0;
+        for (int d = 0; d < DIM; ++d)
+          product *= sin(M_PI * x[d]);
+        var[0] = product;
+
+        /// var[0] = 1;
     };
     newDA->petscSetVectorByFunction(funcVec, functionPointer, false, false, 1);
 
@@ -73,7 +80,11 @@ int main(int argc, char *argv[]) {
     Vec result, matVecResult;
     newDA->petscCreateVector(result, false, false, 1);
     newDA->petscCreateVector(matVecResult, false, false, 1);
-    for(int counter = 14; counter < 15; counter++) {
+
+    const TREENODE * localCoords = newDA->getTNCoords() + newDA->getLocalNodeBegin();
+
+    /// for(int counter = 7; counter < 8; counter++) {
+    for(int counter = 0; counter < newDA->getLocalElementSz(); counter++) {
         newDA->createMatrix(J, MATAIJ);
         matrix<DIM> mat(newDA, treePart, counter);
         mat.getAssembledMatrix(&J, MATAIJ);
@@ -92,16 +103,17 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < newDA->getLocalNodalSz(); i++) {
             maxDiff[i] = fabs(value[i] - value1[i]);
             if (maxDiff[i] > 1E-5){
-                std::cout << value[i] << " " << value1[i] << "\n";
+                std::cout << ot::dbgCoordStr(localCoords[i], 5) << "   " << value[i] << " " << value1[i] << "\n";
             }
         }
         double diff = *std::max_element(maxDiff.begin(), maxDiff.end());
         if(diff > 1E-5){
-            std::cout << "Failed for " << counter << " " << diff << "\n";
+            std::cout << RED "Failed" NRM " for " << counter << " " << diff << "\n";
         }
         else{
-            std::cout << "Passed for " << counter << "\n";
+            std::cout << GRN "Passed" NRM " for " << counter << "\n";
         }
+
         VecRestoreArrayRead(matVecResult, &value1);
         VecRestoreArrayRead(result, &value);
         MatDestroy(&J);

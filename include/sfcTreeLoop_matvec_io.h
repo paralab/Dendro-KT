@@ -1239,7 +1239,7 @@ namespace ot
 
         // Nodal values.
         // Don't overwrite nonhanging nodes that are on a hanging face.
-        if (myNodes[nIdx].getLevel() > parSubtree.getLevel())
+        if (!thereAreHangingNodes || myNodes[nIdx].getLevel() > parSubtree.getLevel())
           std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
                        &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * nodeRank]);
       }
@@ -1551,7 +1551,7 @@ namespace ot
                   m_eleOrder );
 
           // Don't move nonhanging nodes that are on a hanging face.
-          if (myNodes[nIdx].getLevel() > parSubtree.getLevel())
+          if (!thereAreHangingNodes || myNodes[nIdx].getLevel() > parSubtree.getLevel())
           {
             // Nodal values.
             for (int dof = 0; dof < m_ndofs; dof++)
