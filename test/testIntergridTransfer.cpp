@@ -658,34 +658,66 @@ bool checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA, const ot::
   auto partBack = octDA->getTreePartBack();
   const auto tnCoords = octDA->getTNCoords();
   const unsigned int nPe = octDA->getNumNodesPerElement();
-  ot::MatvecBase<DIM, PetscScalar> treeloop(sz, ndof, 1, tnCoords, ghostedArray, &(*distTree.getTreePartFiltered().cbegin()), distTree.getTreePartFiltered().size(), *partFront, *partBack);
+  ot::MatvecBase<DIM, PetscScalar> treeloop(sz, ndof, octDA->getElementOrder(), tnCoords, ghostedArray, &(*distTree.getTreePartFiltered().cbegin()), distTree.getTreePartFiltered().size(), *partFront, *partBack);
   bool testPassed = true;
-  while (!treeloop.isFinished())
+
+  constexpr bool useTreeLoop = true;
+
+  if (useTreeLoop)
   {
-    if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf())
+    while (!treeloop.isFinished())
     {
-      const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
-      const PetscScalar * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
-      for(int i = 0; i < nPe; i++){
-        double correctValue = 0;
-        for(int dim = 0; dim < DIM; dim++){
-          correctValue += nodeCoordsFlat[DIM*i+dim];
+      if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf())
+      {
+        const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
+        const PetscScalar * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
+        for(int i = 0; i < nPe; i++){
+          double correctValue = 0;
+          for(int dim = 0; dim < DIM; dim++){
+            correctValue += nodeCoordsFlat[DIM*i+dim];
+          }
+          double interpolatedValue = nodeValsFlat[i];
+          if(fabs(interpolatedValue-correctValue) > 1E-6){
+            fprintf(stdout, "Value at (%0.3f %0.3f) should be [%0.3f] != [%0.3f]\n",
+                nodeCoordsFlat[DIM*i + 0],
+                nodeCoordsFlat[DIM*i + 1],
+                nodeCoordsFlat[DIM*i + 0] + nodeCoordsFlat[DIM*i + 1],
+                interpolatedValue);
+            testPassed = false;
+          }
         }
-        double interpolatedValue = nodeValsFlat[i];
-        if(fabs(interpolatedValue-correctValue) > 1E-6){
-          fprintf(stdout, "Value at (%0.3f %0.3f) should be [%0.3f] != [%0.3f]\n",
-              nodeCoordsFlat[DIM*i + 0],
-              nodeCoordsFlat[DIM*i + 1],
-              nodeCoordsFlat[DIM*i + 0] + nodeCoordsFlat[DIM*i + 1],
-              interpolatedValue);
-          testPassed = false;
-        }
+        treeloop.next();
       }
-      treeloop.next();
+      else
+        treeloop.step();
     }
-    else
-      treeloop.step();
   }
+
+  else
+  {
+    for (size_t ii = 0; ii < octDA->getLocalNodalSz(); ++ii)
+    {
+      std::array<double, DIM> physCoords;
+      double physSize;
+      ot::treeNode2Physical(octDA->getTNCoords()[ii], physCoords.data(), physSize);
+
+      double correctValue = 0.0;
+      for (int d = 0; d < DIM; ++d)
+        correctValue += physCoords[d];
+
+      const double interpolatedValue = array[ii];
+
+      if(fabs(interpolatedValue-correctValue) > 1E-6){
+        fprintf(stdout, "Value at (%0.3f %0.3f) should be [%0.3f] != [%0.3f]\n",
+            physCoords[0],
+            physCoords[1],
+            correctValue,
+            interpolatedValue);
+        testPassed = false;
+      }
+    }
+  }
+
   if(testPassed){
     std::cout << GRN << "TEST linear passed" << NRM << "\n";
   }
@@ -696,12 +728,13 @@ bool checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA, const ot::
   return testPassed;
 }
 bool testLinear(int argc, char * argv[]){
+  m_uiMaxDepth = 10;
   using DENDRITE_UINT = unsigned  int;
   using TREENODE = ot::TreeNode<DENDRITE_UINT, DIM>;
   /// PetscInitialize(&argc, &argv, NULL, NULL);
   MPI_Comm comm = MPI_COMM_WORLD;
   /// _InitializeHcurve(DIM);
-  int eleOrder = 1;
+  int eleOrder = 2;
   ot::DistTree<unsigned int, DIM> oldDistTree;
   {
     std::vector<ot::TreeNode<unsigned int, DIM>> treePart;
