@@ -1593,41 +1593,44 @@ namespace ot
       }
 
       // Use transpose of interpolation operator on each hanging child.
-      for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+      if (UseAccumulation)
       {
-        auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
-        const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-        if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe
-            && childOutput.size() > 0)
+        for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
         {
-          // Has hanging nodes. Interpolation-transpose.
-          constexpr bool transposeTrue = true;
-          m_interp_matrices.template IKD_ParentChildInterpolation<transposeTrue>(
-              &(*childOutput.begin()),
-              &(*childOutput.begin()),
-              m_ndofs,
-              child_m);
-
-          for (int nIdxDof = 0; nIdxDof < m_ndofs * npe; nIdxDof++)
-            parentNodeVals[nIdxDof] += parentFrame.template getChildOutput<0>(child_sfc)[nIdxDof];
-        }
-      }
-
-      if (parentNonleaf)
-      {
-        // Accumulate from intermediate parent lex buffer to parent output.
-        for (size_t nIdx = 0; nIdx < numParentNodes; nIdx++)
-        {
-          if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
+          auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
+          const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
+          if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe
+              && childOutput.size() > 0)
           {
-            const unsigned int nodeRank =
-                TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
-                                                             myNodes[nIdx],
-                                                             m_eleOrder );
-            assert(nodeRank < npe);
-            for (int dof = 0; dof < m_ndofs; dof++)
-              myOutNodeValues[m_ndofs * nIdx + dof]
-                += m_parentNodeVals[m_ndofs * nodeRank + dof];
+            // Has hanging nodes. Interpolation-transpose.
+            constexpr bool transposeTrue = true;
+            m_interp_matrices.template IKD_ParentChildInterpolation<transposeTrue>(
+                &(*childOutput.begin()),
+                &(*childOutput.begin()),
+                m_ndofs,
+                child_m);
+
+            for (int nIdxDof = 0; nIdxDof < m_ndofs * npe; nIdxDof++)
+              parentNodeVals[nIdxDof] += parentFrame.template getChildOutput<0>(child_sfc)[nIdxDof];
+          }
+        }
+
+        if (parentNonleaf)
+        {
+          // Accumulate from intermediate parent lex buffer to parent output.
+          for (size_t nIdx = 0; nIdx < numParentNodes; nIdx++)
+          {
+            if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
+            {
+              const unsigned int nodeRank =
+                  TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
+                                                               myNodes[nIdx],
+                                                               m_eleOrder );
+              assert(nodeRank < npe);
+              for (int dof = 0; dof < m_ndofs; dof++)
+                myOutNodeValues[m_ndofs * nIdx + dof]
+                  += m_parentNodeVals[m_ndofs * nodeRank + dof];
+            }
           }
         }
       }
