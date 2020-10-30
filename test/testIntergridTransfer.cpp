@@ -1,6 +1,7 @@
 #include "hcurvedata.h"
 #include "octUtils.h"
 #include "intergridTransfer.h"
+#include "sfcTreeLoop_matvec_io.h"
 
 #include "distTree.h"
 #include "gmgMat.h"
@@ -24,6 +25,8 @@ bool testMultiDA(int argc, char * argv[]);
 template <int dim>
 bool testUniform2(int argc, char * argv[]);
 bool testUniform2(int argc, char * argv[]);
+
+bool testLinear(int argc, char * argv[]);
 
 template <typename T>
 struct VRange
@@ -74,6 +77,8 @@ int main(int argc, char *argv[])
   /// bool success = testNull<dim>(argc, argv);
   bool success = testMultiDA<dim>(argc, argv);
   /// bool success  = testUniform2(argc, argv);
+
+  success &= testLinear(argc, argv);
 
   _DestroyHcurve();
   MPI_Finalize();
@@ -600,3 +605,173 @@ bool testNull(int argc, char * argv[])
 
   return true;
 }
+
+
+
+
+
+
+
+
+//
+// Created by maksbh on 5/6/20.
+//
+static constexpr unsigned int DIM = 2;
+/**
+ * @brief Generate Flags that refine only the boundary elements.
+ * If you set all to Refine. The code works.
+ * @param octDA
+ * @param refineFlags
+ */
+void generateRefinementFlags(ot::DA<DIM> * octDA, std::vector<ot::OCT_FLAGS::Refine> & refineFlags, const ot::DistTree<unsigned int, DIM> &distTree){
+  const size_t sz = octDA->getTotalNodalSz();
+  auto partFront = octDA->getTreePartFront();
+  auto partBack = octDA->getTreePartBack();
+  const auto tnCoords = octDA->getTNCoords();
+  ot::MatvecBaseCoords <DIM> loop(sz,1, false,0,tnCoords,&(*distTree.getTreePartFiltered().cbegin()), distTree.getTreePartFiltered().size(), *partFront,*partBack);
+  int counter = 0;
+  while(!loop.isFinished()){
+    if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
+      bool boundaryOctant = loop.subtreeInfo().isElementBoundary();
+      if(boundaryOctant){
+        refineFlags[counter]=ot::OCT_FLAGS::Refine::OCT_REFINE;
+      }
+      else{
+        refineFlags[counter]=ot::OCT_FLAGS::Refine::OCT_NO_CHANGE;
+      }
+      counter++;
+      loop.next();
+    }
+    else{
+      loop.step();
+    }
+  }
+}
+bool checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA, const ot::DistTree<unsigned int, DIM> &distTree){
+  const int ndof = 1;
+  double *ghostedArray;
+  octDA->nodalVecToGhostedNodal(array,ghostedArray, false,ndof);
+  octDA->readFromGhostBegin(ghostedArray,ndof);
+  octDA->readFromGhostEnd(ghostedArray,ndof);
+  const size_t sz = octDA->getTotalNodalSz();
+  auto partFront = octDA->getTreePartFront();
+  auto partBack = octDA->getTreePartBack();
+  const auto tnCoords = octDA->getTNCoords();
+  const unsigned int nPe = octDA->getNumNodesPerElement();
+  ot::MatvecBase<DIM, PetscScalar> treeloop(sz, ndof, 1, tnCoords, ghostedArray, &(*distTree.getTreePartFiltered().cbegin()), distTree.getTreePartFiltered().size(), *partFront, *partBack);
+  bool testPassed = true;
+  while (!treeloop.isFinished())
+  {
+    if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf())
+    {
+      const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
+      const PetscScalar * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
+      for(int i = 0; i < nPe; i++){
+        double correctValue = 0;
+        for(int dim = 0; dim < DIM; dim++){
+          correctValue += nodeCoordsFlat[DIM*i+dim];
+        }
+        double interpolatedValue = nodeValsFlat[i];
+        if(fabs(interpolatedValue-correctValue) > 1E-6){
+          fprintf(stdout, "Value at (%0.3f %0.3f) should be [%0.3f] != [%0.3f]\n",
+              nodeCoordsFlat[DIM*i + 0],
+              nodeCoordsFlat[DIM*i + 1],
+              nodeCoordsFlat[DIM*i + 0] + nodeCoordsFlat[DIM*i + 1],
+              interpolatedValue);
+          testPassed = false;
+        }
+      }
+      treeloop.next();
+    }
+    else
+      treeloop.step();
+  }
+  if(testPassed){
+    std::cout << GRN << "TEST linear passed" << NRM << "\n";
+  }
+  else{
+    std::cout << RED << "TEST linear failed" << NRM << "\n";
+  }
+
+  return testPassed;
+}
+bool testLinear(int argc, char * argv[]){
+  using DENDRITE_UINT = unsigned  int;
+  using TREENODE = ot::TreeNode<DENDRITE_UINT, DIM>;
+  /// PetscInitialize(&argc, &argv, NULL, NULL);
+  MPI_Comm comm = MPI_COMM_WORLD;
+  /// _InitializeHcurve(DIM);
+  int eleOrder = 1;
+  ot::DistTree<unsigned int, DIM> oldDistTree;
+  {
+    std::vector<ot::TreeNode<unsigned int, DIM>> treePart;
+    ot::createRegularOctree(treePart, 2, comm);
+    oldDistTree = ot::DistTree<unsigned int, DIM>(treePart, comm);
+  }
+  ot::DA<DIM> *oldDA = new ot::DA<DIM>(oldDistTree, comm, eleOrder);
+  /// Set Vector by a function
+  std::vector<VECType> coarseVec;
+  oldDA->template createVector<VECType>(coarseVec,false,false,1);
+  std::function<void(const double *, double *)> functionPointer = [&](const double *x, double *var) {
+    var[0] = x[0] + x[1];
+  };
+  oldDA->setVectorByFunction(coarseVec.data(),functionPointer,false,false,1);
+  /// Refinement Flags
+  std::vector<ot::OCT_FLAGS::Refine> octFlags(oldDistTree.getTreePartFiltered().size(),ot::OCT_FLAGS::Refine::OCT_NO_CHANGE);
+  generateRefinementFlags(oldDA,octFlags,oldDistTree);
+  ot::DistTree<unsigned int, DIM> newDistTree;
+  ot::DistTree<unsigned int, DIM> surrDistTree;
+  {
+    std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> newTree;
+    std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> surrTree;
+    ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(oldDistTree.getTreePartFiltered(), octFlags, newTree, surrTree, 0.3, comm);
+
+    newDistTree = ot::DistTree<unsigned int, DIM>(newTree, comm);
+    surrDistTree = ot::DistTree<unsigned int, DIM>(surrTree, comm);
+  }
+  ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder);
+  std::cout << "Number of elements in OldDA " << oldDA->getLocalElementSz() << "\n";
+  std::cout << "Number of elements in NewDA " << newDA->getLocalElementSz() << "\n";
+  /// Intergrid Transfer
+  unsigned int ndof = 1;
+  static std::vector<VECType> fineGhosted, surrGhosted;
+  newDA->template createVector<VECType>(fineGhosted, false, true, ndof);
+  ot::DA<DIM> *surrDA = new ot::DA<DIM>(surrDistTree, comm, eleOrder);
+  surrDA->template createVector<VECType>(surrGhosted,false, true, ndof);
+  std::fill(fineGhosted.begin(), fineGhosted.end(), 0);
+  VECType *fineGhostedPtr = fineGhosted.data();
+  VECType *surrGhostedPtr = surrGhosted.data();
+  // 1. Copy input data to ghosted buffer.
+  ot::distShiftNodes(*oldDA,   coarseVec.data(),
+                     *surrDA,     surrGhostedPtr + ndof * surrDA->getLocalNodeBegin(),
+                     ndof);
+  surrDA->template readFromGhostBegin<VECType>(surrGhostedPtr, ndof);
+  surrDA->template readFromGhostEnd<VECType>(surrGhostedPtr, ndof);
+  fem::MeshFreeInputContext<VECType, TREENODE>
+      inctx{ surrGhostedPtr,
+             surrDA->getTNCoords(),
+             (unsigned) surrDA->getTotalNodalSz(),
+             &(*surrDistTree.getTreePartFiltered().cbegin()),
+             surrDistTree.getTreePartFiltered().size(),
+             *surrDA->getTreePartFront(),
+             *surrDA->getTreePartBack() };
+  fem::MeshFreeOutputContext<VECType, TREENODE>
+      outctx{fineGhostedPtr,
+             newDA->getTNCoords(),
+             (unsigned) newDA->getTotalNodalSz(),
+             &(*newDistTree.getTreePartFiltered().cbegin()),
+             newDistTree.getTreePartFiltered().size(),
+             *newDA->getTreePartFront(),
+             *newDA->getTreePartBack() };
+  const RefElement * refel = newDA->getReferenceElement();
+  fem::locIntergridTransfer(inctx, outctx, ndof, refel);
+  newDA->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndof);
+  newDA->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndof);
+  double *newDAVec;
+  newDA->createVector(newDAVec,false,false,1);
+  newDA->template ghostedNodalToNodalVec<VECType>(fineGhostedPtr, newDAVec, true, ndof);
+  return checkIntergridTransfer(newDAVec,newDA,newDistTree);
+  /// Bunch of stuff to be deleted.
+  /// PetscFinalize();
+}
+
