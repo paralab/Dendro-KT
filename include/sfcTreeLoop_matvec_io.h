@@ -1232,7 +1232,7 @@ namespace ot
           if (m_visitEmpty || childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
           {
             // Has hanging nodes. Interpolate.
-            // Non-hanging node values will be overwritten later, not to worry.
+            // Nodes not on a hanging face will be overwritten later, not to worry.
             constexpr bool transposeFalse = false;
             m_interp_matrices.template IKD_ParentChildInterpolation<transposeFalse>(
                 parentNodeVals,
@@ -1246,7 +1246,7 @@ namespace ot
           if (m_visitEmpty || childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
           {
             // If not p2c, just copy the parent node values into child.
-            // Again, note that non-hanging node values will be overwritten later.
+            // Again, note that nodes not on a hanging face will be overwritten later.
             std::copy_n(parentNodeVals, m_ndofs * npe, &(*parentFrame.template getChildInput<1>(child_sfc).begin()));
           }
         }
@@ -1300,8 +1300,10 @@ namespace ot
         // Use the isHanging buffer to figure out if the coordinate is valid.
 
         // Nodal values.
-        std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
-                     &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * nodeRank]);
+        // Don't overwrite nonhanging nodes that are on a hanging face.
+        if (myNodes[nIdx].getLevel() > parSubtree.getLevel())
+          std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
+                       &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * nodeRank]);
       }
     }
 
@@ -1631,19 +1633,23 @@ namespace ot
                   myNodes[nIdx],
                   m_eleOrder );
 
-          // Nodal values.
-          for (int dof = 0; dof < m_ndofs; dof++)
+          // Don't move nonhanging nodes that are on a hanging face.
+          if (myNodes[nIdx].getLevel() > parSubtree.getLevel())
           {
-            if (UseAccumulation)
-              myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
-            else
-              myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
-          }
+            // Nodal values.
+            for (int dof = 0; dof < m_ndofs; dof++)
+            {
+              if (UseAccumulation)
+                myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
+              else
+                myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
+            }
 
-          // Zero out the values after they are transferred.
-          // This is necessary so that later linear transforms are not contaminated.
-          std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
-                       m_ndofs, zero );
+            // Zero out the values after they are transferred.
+            // This is necessary so that later linear transforms are not contaminated.
+            std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
+                         m_ndofs, zero );
+          }
         }
       }
       else
