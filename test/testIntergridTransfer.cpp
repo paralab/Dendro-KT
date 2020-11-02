@@ -26,6 +26,7 @@ template <int dim>
 bool testUniform2(int argc, char * argv[]);
 bool testUniform2(int argc, char * argv[]);
 
+template <unsigned int dim>
 bool testLinear(int argc, char * argv[]);
 
 template <typename T>
@@ -74,11 +75,13 @@ int main(int argc, char *argv[])
   MPI_Init(&argc, &argv);
   _InitializeHcurve(dim);
 
-  /// bool success = testNull<dim>(argc, argv);
-  bool success = testMultiDA<dim>(argc, argv);
-  /// bool success  = testUniform2(argc, argv);
+  bool success = true;
 
-  success &= testLinear(argc, argv);
+  /// success &= testNull<dim>(argc, argv);
+  success &= testMultiDA<dim>(argc, argv);
+  /// success &= testUniform2(argc, argv);
+
+  success &= testLinear<dim>(argc, argv);
 
   _DestroyHcurve();
   MPI_Finalize();
@@ -616,13 +619,13 @@ bool testNull(int argc, char * argv[])
 //
 // Created by maksbh on 5/6/20.
 //
-static constexpr unsigned int DIM = 2;
 /**
  * @brief Generate Flags that refine only the boundary elements.
  * If you set all to Refine. The code works.
  * @param octDA
  * @param refineFlags
  */
+template <unsigned int DIM>
 void generateRefinementFlags(ot::DA<DIM> * octDA, std::vector<ot::OCT_FLAGS::Refine> & refineFlags, const ot::DistTree<unsigned int, DIM> &distTree){
   const size_t sz = octDA->getTotalNodalSz();
   auto partFront = octDA->getTreePartFront();
@@ -647,6 +650,7 @@ void generateRefinementFlags(ot::DA<DIM> * octDA, std::vector<ot::OCT_FLAGS::Ref
     }
   }
 }
+template <unsigned int DIM>
 bool checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA, const ot::DistTree<unsigned int, DIM> &distTree){
   const int ndof = 1;
   double *ghostedArray;
@@ -661,7 +665,7 @@ bool checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA, const ot::
   ot::MatvecBase<DIM, PetscScalar> treeloop(sz, ndof, octDA->getElementOrder(), tnCoords, ghostedArray, &(*distTree.getTreePartFiltered().cbegin()), distTree.getTreePartFiltered().size(), *partFront, *partBack);
   bool testPassed = true;
 
-  constexpr bool useTreeLoop = true;
+  constexpr bool useTreeLoop = false;
 
   if (useTreeLoop)
   {
@@ -681,7 +685,7 @@ bool checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA, const ot::
             fprintf(stdout, "Value at (%0.3f %0.3f) should be [%0.3f] != [%0.3f]\n",
                 nodeCoordsFlat[DIM*i + 0],
                 nodeCoordsFlat[DIM*i + 1],
-                nodeCoordsFlat[DIM*i + 0] + nodeCoordsFlat[DIM*i + 1],
+                correctValue,
                 interpolatedValue);
             testPassed = false;
           }
@@ -727,6 +731,7 @@ bool checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA, const ot::
 
   return testPassed;
 }
+template <unsigned int DIM>
 bool testLinear(int argc, char * argv[]){
   m_uiMaxDepth = 10;
   using DENDRITE_UINT = unsigned  int;
@@ -746,12 +751,15 @@ bool testLinear(int argc, char * argv[]){
   std::vector<VECType> coarseVec;
   oldDA->template createVector<VECType>(coarseVec,false,false,1);
   std::function<void(const double *, double *)> functionPointer = [&](const double *x, double *var) {
-    var[0] = x[0] + x[1];
+    double sum = 0.0;
+    for (int d = 0; d < DIM; ++d)
+      sum += x[d];
+    var[0] = sum;
   };
   oldDA->setVectorByFunction(coarseVec.data(),functionPointer,false,false,1);
   /// Refinement Flags
   std::vector<ot::OCT_FLAGS::Refine> octFlags(oldDistTree.getTreePartFiltered().size(),ot::OCT_FLAGS::Refine::OCT_NO_CHANGE);
-  generateRefinementFlags(oldDA,octFlags,oldDistTree);
+  generateRefinementFlags<DIM>(oldDA,octFlags,oldDistTree);
   ot::DistTree<unsigned int, DIM> newDistTree;
   ot::DistTree<unsigned int, DIM> surrDistTree;
   {
@@ -803,7 +811,7 @@ bool testLinear(int argc, char * argv[]){
   double *newDAVec;
   newDA->createVector(newDAVec,false,false,1);
   newDA->template ghostedNodalToNodalVec<VECType>(fineGhostedPtr, newDAVec, true, ndof);
-  return checkIntergridTransfer(newDAVec,newDA,newDistTree);
+  return checkIntergridTransfer<DIM>(newDAVec,newDA,newDistTree);
   /// Bunch of stuff to be deleted.
   /// PetscFinalize();
 }
