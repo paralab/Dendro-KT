@@ -1551,7 +1551,7 @@ namespace ot
                   m_eleOrder );
 
           // Don't move nonhanging nodes that are on a hanging face.
-          if (!thereAreHangingNodes || myNodes[nIdx].getLevel() > parSubtree.getLevel())
+          if (!UseAccumulation || !thereAreHangingNodes || myNodes[nIdx].getLevel() > parSubtree.getLevel())
           {
             // Nodal values.
             for (int dof = 0; dof < m_ndofs; dof++)
