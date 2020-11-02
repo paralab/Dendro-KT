@@ -399,6 +399,11 @@ add_executable(tstProduceHangingSubda ${SRC_FILES})
 target_include_directories(tstProduceHangingSubda PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstProduceHangingSubda dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testHangingBoundary.cpp)
+add_executable(tstHangingBoundary ${SRC_FILES})
+target_include_directories(tstHangingBoundary PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstHangingBoundary dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIncidentGhostPoints.cpp
               ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/genChannelPoints.cpp)
 add_executable(tstIncidentGhostPoints ${SRC_FILES})
