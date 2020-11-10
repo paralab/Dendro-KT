@@ -303,7 +303,7 @@ namespace ot
       if (nProc == 1)
       {
         if(printDebug) std::cerr << rankPrefix << "Single processor policy.\n";
-        std::copy_n(srcLocal, dstDA.getLocalNodalSz(), dstLocal);
+        std::copy_n(srcLocal, ndofs * dstDA.getLocalNodalSz(), dstLocal);
         return;
       }
 
