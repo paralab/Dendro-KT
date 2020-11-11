@@ -1022,7 +1022,7 @@ namespace ot
       }
     }
 
-    if (m_visitEmpty)
+    if (m_visitEmpty && this->isLeafOrLower())
       /// *extantChildren = segmentChildren;
       *extantChildren = (1u << (1u << dim)) - 1;
   }
@@ -1307,7 +1307,7 @@ namespace ot
       }
     }
 
-    if (m_visitEmpty)
+    if (m_visitEmpty && this->isLeafOrLower())
       /// *extantChildren = segmentChildren;
       *extantChildren = (1u << (1u << dim)) - 1;
   }
@@ -1514,7 +1514,7 @@ namespace ot
       }
     }
 
-    if (m_visitEmpty)
+    if (m_visitEmpty && this->isLeafOrLower())
       /// *extantChildren = segmentChildren;
       *extantChildren = (1u << (1u << dim)) - 1;
   }
