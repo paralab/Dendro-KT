@@ -17,10 +17,12 @@ namespace bench2
   extern profiler_t t_ghostread_end;
   extern profiler_t t_ghostread_manage_begin;
   extern profiler_t t_ghostread_manage_end;
+  extern profiler_t t_ghostread_barrier;
   extern profiler_t t_ghostwrite_begin;
   extern profiler_t t_ghostwrite_end;
   extern profiler_t t_ghostwrite_manage_begin;
   extern profiler_t t_ghostwrite_manage_end;
+  extern profiler_t t_ghostwrite_barrier;
 
   typedef long long unsigned Counter;
   extern Counter c_ghostread_sends;
@@ -32,6 +34,8 @@ namespace bench2
   extern Counter c_ghostwrite_recvs;
   extern Counter c_ghostwrite_recvSz;
 }
+
+const bool useProfilingBarriers = true;
 
 namespace ot
 {
@@ -789,6 +793,11 @@ namespace ot
             upstB = vec;
             MPI_Request *reql = ctx.getUpstRequestList();
 
+            exclusiveTiming.switchTo( &bench2::t_ghostread_barrier );
+
+            if (useProfilingBarriers)
+              MPI_Barrier(m_uiActiveComm);
+
             exclusiveTiming.switchTo( &bench2::t_ghostread_begin );
 
             for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
@@ -818,6 +827,11 @@ namespace ot
               const T *nodeSrc = vec + dof * (m_sm.m_map[k] + m_uiLocalNodeBegin);
               std::copy(nodeSrc, nodeSrc + dof, dnstB + dof * k);
             }
+
+            exclusiveTiming.switchTo( &bench2::t_ghostread_barrier );
+
+            if (useProfilingBarriers)
+              MPI_Barrier(m_uiActiveComm);
 
             exclusiveTiming.switchTo( &bench2::t_ghostread_begin );
 
@@ -866,6 +880,11 @@ namespace ot
 
         const unsigned int nUpstProcs = m_gm.m_recvProc.size();
         const unsigned int nDnstProcs = m_sm.m_sendProc.size();
+
+        exclusiveTiming.switchTo( &bench2::t_ghostread_barrier );
+
+        if (useProfilingBarriers)
+          MPI_Barrier(m_uiActiveComm);
 
         exclusiveTiming.switchTo( &bench2::t_ghostread_end );
 
@@ -922,6 +941,11 @@ namespace ot
             dnstB = (T*) ctx.getSendBuffer();
             MPI_Request *reql = ctx.getDnstRequestList();
 
+            exclusiveTiming.switchTo( &bench2::t_ghostwrite_barrier );
+
+            if (useProfilingBarriers)
+              MPI_Barrier(m_uiActiveComm);
+
             exclusiveTiming.switchTo( &bench2::t_ghostwrite_begin );
 
             for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
@@ -945,6 +969,11 @@ namespace ot
             /// upstB = (T*) ctx.getRecvBuffer();
             upstB = vec;
             MPI_Request *reql = ctx.getUpstRequestList();
+
+            exclusiveTiming.switchTo( &bench2::t_ghostwrite_barrier );
+
+            if (useProfilingBarriers)
+              MPI_Barrier(m_uiActiveComm);
 
             exclusiveTiming.switchTo( &bench2::t_ghostwrite_begin );
 
@@ -1002,6 +1031,11 @@ namespace ot
         const unsigned int nDnstProcs = m_sm.m_sendProc.size();
         const size_t dnstBSz = m_sm.m_map.size();
 
+        exclusiveTiming.switchTo( &bench2::t_ghostwrite_barrier );
+
+        if (useProfilingBarriers)
+          MPI_Barrier(m_uiActiveComm);
+
         exclusiveTiming.switchTo( &bench2::t_ghostwrite_end );
 
         // 2. Wait on recvs.
@@ -1020,6 +1054,11 @@ namespace ot
           for (unsigned int v = 0; v < dof; v++)
             vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] += nodeSrc[v];
         }
+
+        exclusiveTiming.switchTo( &bench2::t_ghostwrite_barrier );
+
+        if (useProfilingBarriers)
+          MPI_Barrier(m_uiActiveComm);
 
         exclusiveTiming.switchTo( &bench2::t_ghostwrite_end );
 

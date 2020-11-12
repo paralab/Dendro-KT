@@ -48,12 +48,14 @@ namespace bench2
   profiler_t t_ghostread_end;
   profiler_t t_ghostread_manage_begin;
   profiler_t t_ghostread_manage_end;
+  profiler_t t_ghostread_barrier;
   profiler_t t_ghostwrite_begin;
   profiler_t t_ghostwrite_end;
   profiler_t t_ghostwrite_manage_begin;
   profiler_t t_ghostwrite_manage_end;
+  profiler_t t_ghostwrite_barrier;
 
-  std::array<ProfilerReference, 11> profilers =
+  std::array<ProfilerReference, 13> profilers =
   {
     ProfilerReference(t_topdown, "topdown"),
     ProfilerReference(t_bottomup, "bottomup"),
@@ -63,11 +65,13 @@ namespace bench2
     ProfilerReference(t_ghostread_end, "ghostread_end"),
     ProfilerReference(t_ghostread_manage_begin, "ghostread_manage_begin"),
     ProfilerReference(t_ghostread_manage_end, "ghostread_manage_end"),
+    ProfilerReference(t_ghostread_barrier, "ghostread_barrier"),
 
     ProfilerReference(t_ghostwrite_begin, "ghostwrite_begin"),
     ProfilerReference(t_ghostwrite_end, "ghostwrite_end"),
     ProfilerReference(t_ghostwrite_manage_begin, "ghostwrite_manage_begin"),
     ProfilerReference(t_ghostwrite_manage_begin, "ghostwrite_manage_end"),
+    ProfilerReference(t_ghostwrite_barrier, "ghostwrite_barrier"),
   };
 
 
