@@ -48,6 +48,37 @@ class profiler_t
 };
 
 
+class ExclusiveTiming
+{
+  public:
+    ExclusiveTiming(profiler_t *profiler)
+    {
+      this->switchTo(profiler);
+    }
+
+    ~ExclusiveTiming()
+    {
+      this->stopTiming();
+    }
+
+    void switchTo(profiler_t *profiler)
+    {
+      this->stopTiming();
+      if (profiler != nullptr)
+        profiler->start();
+      this->m_currentRunningTimer = profiler;
+    }
+
+    void stopTiming()
+    {
+      if (m_currentRunningTimer != nullptr)
+        m_currentRunningTimer->stop();
+      m_currentRunningTimer = nullptr;
+    }
+
+  private:
+    profiler_t *m_currentRunningTimer = nullptr;
+};
 
 
 
