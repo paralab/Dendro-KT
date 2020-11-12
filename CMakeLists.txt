@@ -479,6 +479,23 @@ target_include_directories(matvecBenchChannel PUBLIC ${MPI_INCLUDE_PATH}
 target_link_libraries(matvecBenchChannel dendroKT ${MPI_LIBRARIES} m)
 
 
+## profile_matvec (./profile_matvec)
+## ---------------------
+set(SRC_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/profile_matvec.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/genChannelPoints.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/genChannelPoints.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp)
+add_executable(profileMatvec ${SRC_FILES})
+target_include_directories(profileMatvec PUBLIC ${MPI_INCLUDE_PATH}
+                                              ${CMAKE_CURRENT_SOURCE_DIR}/bench/include
+                                              ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+target_link_libraries(profileMatvec dendroKT ${MPI_LIBRARIES} m)
+
+
 
 ## Examples
 if(BUILD_EXAMPLES)
