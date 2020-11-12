@@ -1,6 +1,5 @@
 #include "profiler.h"
 
-#include "profile_matvec.h"
 #include "genChannelPoints.h"
 
 #include "treeNode.h"
