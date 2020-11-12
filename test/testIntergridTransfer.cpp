@@ -220,7 +220,7 @@ bool testUniform2(int argc, char * argv[])
   gmgMatObj.restriction(&(*fineVec.cbegin()), &(*coarseVec.begin()), 0);
 
   bounds = getBounds(coarseVec);
-  (checks.emplace_back(), checks[checkIdx++] = lastCheck =
+  (checks.push_back(false), checks[checkIdx++] = lastCheck =
           mpiAllTrue(1.0 <= bounds.lo && bounds.hi == 1.0, comm));
   if (!rProc && outputStatus)
   {
@@ -243,7 +243,7 @@ bool testUniform2(int argc, char * argv[])
   gmgMatObj.prolongation(&(*coarseVec.cbegin()), &(*fineVec.begin()), 0);
 
   bounds = getBounds(coarseVec);
-  (checks.emplace_back(), checks[checkIdx++] = lastCheck =
+  (checks.push_back(false), checks[checkIdx++] = lastCheck =
           mpiAllTrue(bounds.lo == 1.0 && bounds.hi == 1.0, comm));
   if (!rProc && outputStatus)
   {
@@ -280,7 +280,7 @@ bool testUniform2(int argc, char * argv[])
       difference[i] -= coarseVec[i];
     bounds = getBounds(difference);
   }
-  (checks.emplace_back(), checks[checkIdx++] = lastCheck =
+  (checks.push_back(false), checks[checkIdx++] = lastCheck =
           mpiAllTrue(-1e-6 <= bounds.lo && bounds.hi <= 1e-6, comm));
   if (!rProc && outputStatus)
   {
@@ -308,7 +308,7 @@ bool testUniform2(int argc, char * argv[])
       difference[i] -= fineVec[i];
     bounds = getBounds(difference);
   }
-  (checks.emplace_back(), checks[checkIdx++] = lastCheck =
+  (checks.push_back(false), checks[checkIdx++] = lastCheck =
           mpiAllTrue(-1e-6 <= bounds.lo && bounds.hi <= 1e-6, comm));
   if (!rProc && outputStatus)
   {
