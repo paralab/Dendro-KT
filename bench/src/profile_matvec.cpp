@@ -17,6 +17,7 @@
 #include "poissonVec.h"
 
 #include <cstring>
+#include <sstream>
 
 
 namespace bench2
@@ -294,7 +295,16 @@ int main(int argc, char** argv)
     if (argc < 1+7)
     {
       if (rankGlobal == 0)
+      {
         std::cerr << help;
+
+	std::stringstream attempt;
+        attempt << "Received: ";
+	for (int argi = 0; argi < argc; ++argi)
+	  attempt << std::string(argv[argi]) << " ";
+	attempt << "\n";
+        std::cerr << attempt.str();
+      }
       MPI_Barrier(commGlobal);
       MPI_Abort(commGlobal, 1);
     }
