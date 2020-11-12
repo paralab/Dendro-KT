@@ -96,7 +96,7 @@ int main(int argc, char * argv[])
   {
     if(!rank)
     {
-      std::cout << "usage :  " << argv[0] << " pts_per_core(weak scaling) maxdepth elementalOrder sfc_tol\n";
+      std::cout << "usage :  " << argv[0] << " pts_per_core(weak scaling) maxdepth elementalOrder sfc_tol [lenPower2 (e.g. 4 for 16:1:1, default)]\n";
       std::flush(std::cout);
     }
     MPI_Abort(comm,0);
@@ -112,7 +112,10 @@ int main(int argc, char * argv[])
   const unsigned int eleOrder = atoi(argv[3]);
 
   const double loadFlexibility = atof(argv[4]);
-  const int lengthPower2 = 4;  // 16 = 2^4;
+
+  int lengthPower2 = 4;
+  if (argc > 5)
+    lengthPower2 = atoi(argv[5]);
 
   const ibm::DomainDecider boxDecider = bench::getBoxDecider<DIM>(lengthPower2);
 

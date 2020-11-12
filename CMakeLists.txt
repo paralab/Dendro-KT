@@ -359,6 +359,11 @@ add_executable(tstIntergridTransfer ${SRC_FILES})
 target_include_directories(tstIntergridTransfer PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstIntergridTransfer dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIntergridSubda.cpp)
+add_executable(tstIntergridSubda ${SRC_FILES})
+target_include_directories(tstIntergridSubda PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstIntergridSubda dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRemesh.cpp)
 add_executable(tstRemesh ${SRC_FILES})
 target_include_directories(tstRemesh PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
@@ -399,11 +404,24 @@ add_executable(tstProduceHangingSubda ${SRC_FILES})
 target_include_directories(tstProduceHangingSubda PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstProduceHangingSubda dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testHangingBoundary.cpp)
+add_executable(tstHangingBoundary ${SRC_FILES})
+target_include_directories(tstHangingBoundary PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstHangingBoundary dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIncidentGhostPoints.cpp
               ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/genChannelPoints.cpp)
 add_executable(tstIncidentGhostPoints ${SRC_FILES})
 target_include_directories(tstIncidentGhostPoints PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/bench/include)
 target_link_libraries(tstIncidentGhostPoints dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/matrix.h
+              ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/matrix.cpp)
+add_executable(tstMatAssembly ${SRC_FILES})
+set_property(TARGET tstMatAssembly PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+target_include_directories(tstMatAssembly PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+target_link_libraries(tstMatAssembly dendroKT ${MPI_LIBRARIES} m)
+
 
 ## tsort_bench (./tsortBench)
 ## -----------

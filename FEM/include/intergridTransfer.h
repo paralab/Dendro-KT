@@ -137,6 +137,18 @@ namespace fem
 
           treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*leafResult.cbegin()));
 
+          //NOTE (2020-10-29):
+          //  At time of writing the MatvecBaseOut uses accumulation in c2p
+          //  ONLY IF the template argument UseAccumulation is set to true.
+          //  This policy allows the coarse->fine interpolation to preserve
+          //  linear functions.
+          //
+          //  An idea to distinguish (coarse->fine c2p) from (fine->coarse c2p):
+          //  We really should be writing the out values during the Post-side
+          //  of leaf traversal. So maybe the traversal of the in-mesh
+          //  could be a MatvecBase (in/out), copying the leaf values at IN leaf,
+          //  and only transfering to the new mesh at the OUT leaf.
+
           treeLoopIn.next();
           treeLoopOut.next();
         }

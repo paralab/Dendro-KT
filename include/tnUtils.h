@@ -138,7 +138,7 @@ void printtn(const TreeNode<T, dim> &tn, unsigned int eLev, FILE *out=stdout)
 
 
 template <typename T, unsigned int dim>
-void printtn(const TreeNode<T, dim> &tn, unsigned int eLev, std::ostream &out=std::cout)
+std::ostream & printtn(const TreeNode<T, dim> &tn, unsigned int eLev, std::ostream &out=std::cout)
 {
   const T x0 = (dim >= 1 ? tn.getX(0) >> (m_uiMaxDepth - eLev) : 0);
   const T x1 = (dim >= 2 ? tn.getX(1) >> (m_uiMaxDepth - eLev) : 0);
@@ -173,6 +173,8 @@ void printtn(const TreeNode<T, dim> &tn, unsigned int eLev, std::ostream &out=st
     default:
       out << "Add higher dimensions to printtn() in octUtils.h ";
   }
+
+  return out;
 }
 
 
