@@ -42,7 +42,7 @@ OUT_PREFIX4="out-${SLURM_JOB_ID}-weak-512K-a01-adap"
 # Supposedly good for oversubscribing
 export I_MPI_WAIT_MODE=1
 
-mpirun -np $TASKS $RUNPROGRAM $NUM_WARMUP $NUM_RUNS $PTS_PER_PROC $ELE_ORDER $SFC_TOL $LENPOW $ISADAPTIVE > "${OUT_PREFIX1}-transpose.tsv"
+mpirun -np $TASKS $RUNPROGRAM $NUM_WARMUP $NUM_RUNS $PTS_PER_PROC_WEAK $ELE_ORDER $SFC_TOL $LENPOW $ISADAPTIVE > "${OUT_PREFIX1}-transpose.tsv"
 
 $TRANSPOSEIT 73 "${OUT_PREFIX1}-transpose.tsv" > "${OUT_PREFIX1}.tsv"
 cat "${OUT_PREFIX1}.tsv" | egrep 'npes|.min' > "${OUT_PREFIX1}-min.tsv"
@@ -50,7 +50,7 @@ cat "${OUT_PREFIX1}.tsv" | egrep 'npes|.mean' > "${OUT_PREFIX1}-mean.tsv"
 cat "${OUT_PREFIX1}.tsv" | egrep 'npes|.max' > "${OUT_PREFIX1}-max"
 
 
-mpirun -np $TASKS $RUNPROGRAM $NUM_WARMUP $NUM_RUNS $(( 4 * $PTS_PER_PROC )) $ELE_ORDER $SFC_TOL $LENPOW $ISADAPTIVE > "${OUT_PREFIX4}-transpose.tsv"
+mpirun -np $TASKS $RUNPROGRAM $NUM_WARMUP $NUM_RUNS $(( 4 * $PTS_PER_PROC_WEAK )) $ELE_ORDER $SFC_TOL $LENPOW $ISADAPTIVE > "${OUT_PREFIX4}-transpose.tsv"
 
 $TRANSPOSEIT 73 "${OUT_PREFIX4}-transpose.tsv" > "${OUT_PREFIX4}.tsv"
 cat "${OUT_PREFIX4}.tsv" | egrep 'npes|.min' > "${OUT_PREFIX4}-min.tsv"
