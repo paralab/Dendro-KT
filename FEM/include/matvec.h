@@ -18,6 +18,10 @@
 #include<iostream>
 #include<functional>
 
+namespace bench2
+{
+  extern profiler_t t_elemental;
+}
 
 namespace fem
 {
@@ -252,6 +256,7 @@ namespace fem
       {
         if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf())
         {
+          bench2::t_elemental.start();
 
 #ifdef DENDRO_KT_MATVEC_BENCH_H
           bench::t_elemental.start();
@@ -267,6 +272,7 @@ namespace fem
 #ifdef DENDRO_KT_MATVEC_BENCH_H
           bench::t_elemental.stop();
 #endif
+          bench2::t_elemental.stop();
 
           treeloop.next();
         }

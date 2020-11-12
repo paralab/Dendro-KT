@@ -7,6 +7,12 @@
  */
 
 
+namespace bench2
+{
+  extern profiler_t t_topdown;
+  extern profiler_t t_bottomup;
+}
+
 
 /*
  * The recursive structure that is being mimicked:
@@ -378,7 +384,11 @@ namespace ot
       {
         static bool reentry = false;
         if (!reentry && (reentry = true))
+        {
+          bench2::t_topdown.start();
           asConcreteType().topDownNodes(parentFrame, extantChildren);
+          bench2::t_topdown.stop();
+        }
         else
           fprintf(stderr, "Warning! NotImplemented topDownNodes() for type %s\n", typeid(asConcreteType()).name());
         reentry = false;
@@ -400,7 +410,11 @@ namespace ot
       {
         static bool reentry = false;
         if (!reentry && (reentry = true))
+        {
+          bench2::t_bottomup.start();
           asConcreteType().bottomUpNodes(parentFrame, extantChildren);
+          bench2::t_bottomup.stop();
+        }
         else
           fprintf(stderr, "Warning! NotImplemented bottomUpNodes() for type %s\n", typeid(asConcreteType()).name());
         reentry = false;

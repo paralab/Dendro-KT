@@ -9,6 +9,30 @@
 #include "parUtils.h"
 #include <sstream>
 
+#include "profiler.h"
+
+namespace bench2
+{
+  extern profiler_t t_ghostread_begin;
+  extern profiler_t t_ghostread_end;
+  extern profiler_t t_ghostread_manage_begin;
+  extern profiler_t t_ghostread_manage_end;
+  extern profiler_t t_ghostwrite_begin;
+  extern profiler_t t_ghostwrite_end;
+  extern profiler_t t_ghostwrite_manage_begin;
+  extern profiler_t t_ghostwrite_manage_end;
+
+  typedef long long unsigned Counter;
+  extern Counter c_ghostread_sends;
+  extern Counter c_ghostread_sendSz;
+  extern Counter c_ghostread_recvs;
+  extern Counter c_ghostread_recvSz;
+  extern Counter c_ghostwrite_sends;
+  extern Counter c_ghostwrite_sendSz;
+  extern Counter c_ghostwrite_recvs;
+  extern Counter c_ghostwrite_recvSz;
+}
+
 namespace ot
 {
 
@@ -737,6 +761,8 @@ namespace ot
     {
         // Send to downstream, recv from upstream.
 
+        ExclusiveTiming exclusiveTiming( &bench2::t_ghostread_manage_begin );
+
         if (m_uiGlobalNpes==1)
             return;
 
@@ -763,13 +789,20 @@ namespace ot
             upstB = vec;
             MPI_Request *reql = ctx.getUpstRequestList();
 
+            exclusiveTiming.switchTo( &bench2::t_ghostread_begin );
+
             for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
             {
               T *upstProcStart = upstB + dof*m_gm.m_recvOffsets[upstIdx];
               size_t upstCount = dof*m_gm.m_recvCounts[upstIdx];
               size_t upstProc = m_gm.m_recvProc[upstIdx];
               par::Mpi_Irecv(upstProcStart, upstCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
+
+              bench2::c_ghostread_recvs++;
+              bench2::c_ghostread_recvSz += upstCount;
             }
+
+            exclusiveTiming.switchTo( &bench2::t_ghostread_manage_begin );
           }
 
           // 3. Send data.
@@ -786,6 +819,8 @@ namespace ot
               std::copy(nodeSrc, nodeSrc + dof, dnstB + dof * k);
             }
 
+            exclusiveTiming.switchTo( &bench2::t_ghostread_begin );
+
             // 3b. Fire the sends.
             for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
             {
@@ -793,17 +828,26 @@ namespace ot
               size_t dnstCount = dof*m_sm.m_sendCounts[dnstIdx];
               size_t dnstProc = m_sm.m_sendProc[dnstIdx];
               par::Mpi_Isend(dnstProcStart, dnstCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
+
+              bench2::c_ghostread_sends++;
+              bench2::c_ghostread_sendSz += dnstCount;
             }
+
+            exclusiveTiming.switchTo( &bench2::t_ghostread_manage_begin );
           }
         }
 
         m_uiCommTag++;   // inactive procs also advance tag.
+
+        exclusiveTiming.stopTiming();
     }
 
     template <unsigned int dim>
     template <typename T>
     void DA<dim>::readFromGhostEnd(T *vec,unsigned int dof)
     {
+        ExclusiveTiming exclusiveTiming( &bench2::t_ghostread_manage_end );
+
         if (m_uiGlobalNpes==1)
             return;
 
@@ -823,6 +867,8 @@ namespace ot
         const unsigned int nUpstProcs = m_gm.m_recvProc.size();
         const unsigned int nDnstProcs = m_sm.m_sendProc.size();
 
+        exclusiveTiming.switchTo( &bench2::t_ghostread_end );
+
         // 2. Wait on recvs and sends.
         reql = ctxPtr->getUpstRequestList();
         for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
@@ -832,16 +878,22 @@ namespace ot
         for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
           MPI_Wait(&reql[dnstIdx], &status);
 
+        exclusiveTiming.switchTo( &bench2::t_ghostread_manage_end );
+
         // 3. Release the asynchronous exchange context.
         /// ctxPtr->deAllocateRecvBuffer();
         ctxPtr->deAllocateSendBuffer();
         m_uiMPIContexts.erase(ctxPtr);
+
+        exclusiveTiming.stopTiming();
     }
 
     template <unsigned int dim>
     template <typename T>
     void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof)
     {
+        ExclusiveTiming exclusiveTiming( &bench2::t_ghostwrite_manage_begin );
+
         // The same as readFromGhosts, but roles reversed:
         // Send to upstream, recv from downstream.
 
@@ -870,13 +922,20 @@ namespace ot
             dnstB = (T*) ctx.getSendBuffer();
             MPI_Request *reql = ctx.getDnstRequestList();
 
+            exclusiveTiming.switchTo( &bench2::t_ghostwrite_begin );
+
             for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
             {
               T *dnstProcStart = dnstB + dof * m_sm.m_sendOffsets[dnstIdx];
               size_t dnstCount = dof*m_sm.m_sendCounts[dnstIdx];
               size_t dnstProc = m_sm.m_sendProc[dnstIdx];
               par::Mpi_Irecv(dnstProcStart, dnstCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
+
+              bench2::c_ghostwrite_recvs++;
+              bench2::c_ghostwrite_recvSz += dnstCount;
             }
+
+            exclusiveTiming.switchTo( &bench2::t_ghostwrite_manage_begin );
           }
 
           // 3. Send data. Since vec is collated [abc abc], ghosts can be sent directly from vec.
@@ -887,17 +946,26 @@ namespace ot
             upstB = vec;
             MPI_Request *reql = ctx.getUpstRequestList();
 
+            exclusiveTiming.switchTo( &bench2::t_ghostwrite_begin );
+
             for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
             {
               T *upstProcStart = upstB + dof*m_gm.m_recvOffsets[upstIdx];
               size_t upstCount = dof*m_gm.m_recvCounts[upstIdx];
               size_t upstProc = m_gm.m_recvProc[upstIdx];
               par::Mpi_Isend(upstProcStart, upstCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
+
+              bench2::c_ghostwrite_sends++;
+              bench2::c_ghostwrite_sendSz += upstCount;
             }
+
+            exclusiveTiming.switchTo( &bench2::t_ghostwrite_manage_begin );
           }
         }
 
         m_uiCommTag++;   // inactive procs also advance tag.
+
+        exclusiveTiming.stopTiming();
     }
 
 
@@ -905,6 +973,8 @@ namespace ot
     template <typename T>
     void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof)
     {
+        ExclusiveTiming exclusiveTiming( &bench2::t_ghostwrite_manage_end );
+
         // The same as readFromGhosts, but roles reversed:
         // Send to upstream, recv from downstream.
 
@@ -932,10 +1002,14 @@ namespace ot
         const unsigned int nDnstProcs = m_sm.m_sendProc.size();
         const size_t dnstBSz = m_sm.m_map.size();
 
+        exclusiveTiming.switchTo( &bench2::t_ghostwrite_end );
+
         // 2. Wait on recvs.
         reql = ctxPtr->getDnstRequestList();
         for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
           MPI_Wait(&reql[dnstIdx], &status);
+
+        exclusiveTiming.switchTo( &bench2::t_ghostwrite_manage_end );
 
         // 3. "De-stage" the received downstream data.
         for (size_t k = 0; k < dnstBSz; k++)
@@ -947,15 +1021,21 @@ namespace ot
             vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] += nodeSrc[v];
         }
 
+        exclusiveTiming.switchTo( &bench2::t_ghostwrite_end );
+
         // 4. Wait on sends.
         reql = ctxPtr->getUpstRequestList();
         for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
           MPI_Wait(&reql[upstIdx], &status);
 
+        exclusiveTiming.switchTo( &bench2::t_ghostwrite_manage_end );
+
         // 5. Release the asynchronous exchange context.
         /// ctxPtr->deAllocateRecvBuffer();
         ctxPtr->deAllocateSendBuffer();
         m_uiMPIContexts.erase(ctxPtr);
+
+        exclusiveTiming.stopTiming();
     }
 
     template <unsigned int dim>

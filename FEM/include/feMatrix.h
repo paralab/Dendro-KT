@@ -16,6 +16,14 @@
 
 #include <exception>
 
+namespace bench2
+{
+  typedef long long unsigned Counter;
+  extern Counter c_treeSz;
+  extern Counter c_locNodeSz;
+  extern Counter c_totNodeSz;
+};
+
 template <typename LeafT, unsigned int dim>
 class feMatrix : public feMat<dim> {
   //TODO I don't really get why we use LeafT and not just virtual methods.
@@ -260,6 +268,10 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
 
   // Shorter way to refer to our member DA.
   ot::DA<dim> * &m_oda = feMat<dim>::m_uiOctDA;
+
+  bench2::c_treeSz += m_oda->getLocalElementSz();
+  bench2::c_locNodeSz += m_oda->getLocalNodalSz();
+  bench2::c_totNodeSz += m_oda->getTotalNodalSz();
 
   // Static buffers for ghosting. Check/increase size.
   static std::vector<VECType> inGhosted, outGhosted;
