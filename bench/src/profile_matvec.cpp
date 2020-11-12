@@ -46,12 +46,14 @@ namespace bench2
   profiler_t t_elemental;
   profiler_t t_ghostread_begin;
   profiler_t t_ghostread_end;
-  profiler_t t_ghostread_manage;
+  profiler_t t_ghostread_manage_begin;
+  profiler_t t_ghostread_manage_end;
   profiler_t t_ghostwrite_begin;
   profiler_t t_ghostwrite_end;
-  profiler_t t_ghostwrite_manage;
+  profiler_t t_ghostwrite_manage_begin;
+  profiler_t t_ghostwrite_manage_end;
 
-  std::array<ProfilerReference, 9> profilers =
+  std::array<ProfilerReference, 11> profilers =
   {
     ProfilerReference(t_topdown, "topdown"),
     ProfilerReference(t_bottomup, "bottomup"),
@@ -59,11 +61,13 @@ namespace bench2
 
     ProfilerReference(t_ghostread_begin, "ghostread_begin"),
     ProfilerReference(t_ghostread_end, "ghostread_end"),
-    ProfilerReference(t_ghostread_manage, "ghostread_manage"),
+    ProfilerReference(t_ghostread_manage_begin, "ghostread_manage_begin"),
+    ProfilerReference(t_ghostread_manage_end, "ghostread_manage_end"),
 
     ProfilerReference(t_ghostwrite_begin, "ghostwrite_begin"),
     ProfilerReference(t_ghostwrite_end, "ghostwrite_end"),
-    ProfilerReference(t_ghostwrite_manage, "ghostwrite_manage"),
+    ProfilerReference(t_ghostwrite_manage_begin, "ghostwrite_manage_begin"),
+    ProfilerReference(t_ghostwrite_manage_begin, "ghostwrite_manage_end"),
   };
 
 
@@ -90,6 +94,8 @@ namespace bench2
   };
 
   Counter c_treeSz;
+  Counter c_locNodeSz;
+  Counter c_totNodeSz;
   Counter c_ghostread_sends;
   Counter c_ghostread_sendSz;
   Counter c_ghostread_recvs;
@@ -99,9 +105,11 @@ namespace bench2
   Counter c_ghostwrite_recvs;
   Counter c_ghostwrite_recvSz;
 
-  std::array<CounterReference, 9> counters =
+  std::array<CounterReference, 11> counters =
   {
     CounterReference(c_treeSz,            "treeSz"),
+    CounterReference(c_locNodeSz,         "locNodeSz"),
+    CounterReference(c_totNodeSz,         "totNodeSz"),
     CounterReference(c_ghostread_sends,   "ghostread_sends"),
     CounterReference(c_ghostread_sendSz,  "ghostread_sendSz"),
     CounterReference(c_ghostread_recvs,   "ghostread_recvs"),
