@@ -484,7 +484,9 @@ target_link_libraries(matvecBenchChannel dendroKT ${MPI_LIBRARIES} m)
 set(SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/profile_matvec.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/genChannelPoints.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/sendUtilization.h
   ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/genChannelPoints.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/sendUtilization.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
