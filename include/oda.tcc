@@ -35,7 +35,7 @@ namespace bench2
   extern Counter c_ghostwrite_recvSz;
 }
 
-const bool useProfilingBarriers = true;
+const bool useProfilingBarriers = false;
 
 namespace ot
 {
