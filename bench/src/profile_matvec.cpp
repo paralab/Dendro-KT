@@ -1,6 +1,7 @@
 #include "profiler.h"
 
 #include "genChannelPoints.h"
+#include "sendUtilization.h"
 
 #include "treeNode.h"
 #include "tsort.h"
@@ -109,7 +110,10 @@ namespace bench2
   Counter c_ghostwrite_recvs;
   Counter c_ghostwrite_recvSz;
 
-  std::array<CounterReference, 11> counters =
+  Counter c_ghostSenderUsedSz;
+  Counter c_ghostSenderUnderuseSz;
+
+  std::array<CounterReference, 13> counters =
   {
     CounterReference(c_treeSz,            "treeSz"),
     CounterReference(c_locNodeSz,         "locNodeSz"),
@@ -123,6 +127,8 @@ namespace bench2
     CounterReference(c_ghostwrite_recvs,  "ghostwrite_recvs"),
     CounterReference(c_ghostwrite_recvSz, "ghostwrite_recvSz"),
 
+    CounterReference(c_ghostSenderUsedSz,     "ghostSenderUsedSz"),
+    CounterReference(c_ghostSenderUnderuseSz, "ghostSenderUnderuseSz"),
   };
 
 
@@ -471,6 +477,11 @@ namespace bench2
     // Benchmark
     for (int ii = 0; ii < opt.m_numRuns; ii++)
       myPoissonMat.matVec(ux, dummy, 1.0);
+
+    const long long unsigned countSendRequired = opt.m_numRuns * bench::computeSendRequired(&octDA, dtree);
+
+    c_ghostSenderUsedSz = countSendRequired;
+    c_ghostSenderUnderuseSz = c_ghostread_sendSz - countSendRequired;
 
     octDA.destroyVector(uSolVec);
     octDA.destroyVector(dummyVec);
