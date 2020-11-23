@@ -9,6 +9,9 @@ namespace bench
 {
   template <unsigned int dim>
   long long unsigned computeSendRequired(ot::DA<dim> *octDA, const ot::DistTree<unsigned, dim> &distTree);
+
+  template <unsigned int dim>
+  long long unsigned computeLocNonorigin(ot::DA<dim> *octDA, const ot::DistTree<unsigned, dim> &distTree);
 }
 
 

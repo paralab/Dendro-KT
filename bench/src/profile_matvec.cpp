@@ -112,8 +112,9 @@ namespace bench2
 
   Counter c_ghostSenderUsedSz;
   Counter c_ghostSenderUnderuseSz;
+  Counter c_locNonorigin;
 
-  std::array<CounterReference, 13> counters =
+  std::array<CounterReference, 14> counters =
   {
     CounterReference(c_treeSz,            "treeSz"),
     CounterReference(c_locNodeSz,         "locNodeSz"),
@@ -129,6 +130,8 @@ namespace bench2
 
     CounterReference(c_ghostSenderUsedSz,     "ghostSenderUsedSz"),
     CounterReference(c_ghostSenderUnderuseSz, "ghostSenderUnderuseSz"),
+
+    CounterReference(c_locNonorigin, "locNonorigin"),
   };
 
 
@@ -482,6 +485,8 @@ namespace bench2
 
     c_ghostSenderUsedSz = countSendRequired;
     c_ghostSenderUnderuseSz = c_ghostread_sendSz - countSendRequired;
+
+    c_locNonorigin = opt.m_numRuns * bench::computeLocNonorigin(&octDA, dtree);
 
     octDA.destroyVector(uSolVec);
     octDA.destroyVector(dummyVec);
