@@ -1062,6 +1062,14 @@ namespace ot {
     points.resize(segEnd - segBegin);
     //TODO Does the interface require that we set_isSelected(TNP::Yes)?
 
+    // Being contained is not sufficient
+    // to match the partition for efficient communication.
+    // Should send back to one of the originating ranks.
+    std::vector<int> nodeOwners;
+    for (const auto &pt : points)
+      nodeOwners.push_back((pt.get_owner() >= 0 ? pt.get_owner() : rProc));
+    points = par::sendAll(points, nodeOwners, comm);
+
     long numOwnedPoints = points.size();
 
     // Compute global node count.

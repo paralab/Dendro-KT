@@ -343,6 +343,10 @@ namespace par {
 
 
 
+    template <typename T>
+    std::vector<T> sendAll(const std::vector<T> &sdata, const std::vector<int> &sdest, MPI_Comm comm);
+
+
   /**
     @brief Re-distributes a STL vector, preserving the relative ordering of the
     elements. 
