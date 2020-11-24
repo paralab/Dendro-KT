@@ -154,6 +154,16 @@ struct SFC_Tree
        KeyFunIdentity_maxDepth<T, D>(), (int*) nullptr);
   }
 
+  template <class PointType, typename... CompanionT>
+  static void locTreeSortMaxDepth(std::vector<PointType> &points, std::vector<CompanionT>& ... companions)
+  {
+    SFC_Tree<T, D>::locTreeSort< KeyFunIdentity_maxDepth<T, D>,
+                                 PointType, TreeNode<T, D>, true, CompanionT...>
+      (&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
+       KeyFunIdentity_maxDepth<T, D>(), (companions.data())...);
+  }
+
+
 
   // Notes:
   //   - This method operates in-place.
@@ -330,6 +340,27 @@ struct SFC_Tree
       bool isActive,
       std::vector<int> &activeList);
 
+
+  /** @brief Map any collection of treeNodes in the domain
+   *         to the partition ranks that own them.
+   *         The rank ids are returned
+   *         in the range [0 .. partitionFrontSplitters.size()-1].
+   */
+  static std::vector<int> treeNode2PartitionRank(
+      const std::vector<TreeNode<T,D>> &treeNodes,
+      const std::vector<TreeNode<T,D>> &partitionFrontSplitters);
+
+  /** @brief Map any collection of treeNodes in the domain
+   *         to the partition ranks that own them.
+   *         partitionFrontSplitters contains front elements from active ranks.
+   *         partitionActiveList contains the global rank ids of active ranks.
+   *         The rank ids are returned
+   *         in the range [0 .. max{partitionActiveList}].
+   */
+  static std::vector<int> treeNode2PartitionRank(
+      const std::vector<TreeNode<T,D>> &treeNodes,
+      const std::vector<TreeNode<T,D>> &partitionFrontSplitters,
+      const std::vector<int> &partitionActiveList);
 
 
   // -------------------------------------------------------------
