@@ -976,8 +976,8 @@ namespace ot {
     SFC_Tree<T,dim>::template locTreeSort< KeyFunInboundsContainer_t<TNP, TreeNode<T,dim>>,
                                            TNP,
                                            TreeNode<T,dim>,
-                                           int, false >(
-        &(*points.begin()), nullptr, 0, numUniqPoints, 1, m_uiMaxDepth, 0, KeyFunInboundsContainer<TNP, TreeNode<T,dim>>);
+                                           false, int >(
+        &(*points.begin()), 0, numUniqPoints, 1, m_uiMaxDepth, 0, KeyFunInboundsContainer<TNP, TreeNode<T,dim>>, (int*) nullptr);
 
     // The points are now sorted such that some contiguous segment in the middle
     // belongs to the local tree partition. Find that segment and trim.

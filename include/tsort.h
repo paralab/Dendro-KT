@@ -126,18 +126,21 @@ struct SFC_Tree
   }
 
 
-  template <class PointType, typename CompanionT>
-  static void locTreeSort(std::vector<PointType> &points, std::vector<CompanionT> &companions)
+  template <class PointType, typename... CompanionT>
+  static void locTreeSort(std::vector<PointType> &points, std::vector<CompanionT>& ... companions)
   {
     SFC_Tree<T, D>::locTreeSort<KeyFunIdentity_Pt<PointType>,
                                 PointType,
                                 PointType,
-                                CompanionT,
-                                true>
-         (points.data(), companions.data(),
+                                true,
+                                CompanionT...
+                                >
+         (points.data(),
           0, (RankI) points.size(),
           1, m_uiMaxDepth, 0,
-          KeyFunIdentity_Pt<PointType>());
+          KeyFunIdentity_Pt<PointType>(),
+          (companions.data())...
+          );
   }
 
 
@@ -146,9 +149,9 @@ struct SFC_Tree
   static void locTreeSortMaxDepth(std::vector<PointType> &points)
   {
     SFC_Tree<T, D>::locTreeSort< KeyFunIdentity_maxDepth<T, D>,
-                                 PointType, TreeNode<T, D>, int, false >
-      (&(*points.begin()), nullptr, 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
-       KeyFunIdentity_maxDepth<T, D>());
+                                 PointType, TreeNode<T, D>, false, int>
+      (&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
+       KeyFunIdentity_maxDepth<T, D>(), (int*) nullptr);
   }
 
 
@@ -166,13 +169,15 @@ struct SFC_Tree
   //   - Allows the generality of a ``key function,''
   //        i.e. function to produce TreeNodes-like objects to sort by.
   //   - Otherwise, same as above except shuffles a parallel companion array along with the TreeNodes.
-  template <class KeyFun, typename PointType, typename KeyType, typename Companion, bool useCompanions = true>
-  static void locTreeSort(PointType *points, Companion *companions,
+  template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
+  static void locTreeSort(PointType *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
                           RotI pRot,            // Initial rotation, use 0 if sLev is 1.
-                          KeyFun keyfun);
+                          KeyFun keyfun,
+                          Companion * ... companions
+                          );
 
   // Notes:
   //   - outSplitters contains both the start and end of children at level `lev'
@@ -218,8 +223,8 @@ struct SFC_Tree
   // Notes:
   //   - Same as above except shuffles a parallel companion array along with the TreeNodes.
   //   - In actuality the above version calls this one.
-  template <class KeyFun, typename PointType, typename KeyType, typename Companion, bool useCompanions = true>
-  static void SFC_bucketing_general(PointType *points, Companion* companions,
+  template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
+  static void SFC_bucketing_general(PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
                           RotI pRot,
@@ -228,7 +233,9 @@ struct SFC_Tree
                           bool ancestorsFirst,
                           std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
                           RankI &outAncStart,
-                          RankI &outAncEnd);
+                          RankI &outAncEnd,
+                          Companion * ... companions
+                          );
 
 
   /**
