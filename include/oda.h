@@ -411,10 +411,10 @@ class DA
         inline const TreeNode<C,dim> * getTNCoords() const { return &(*m_tnCoords.cbegin()); }
 
         /**@brief: get first treeNode of the local partition of the tree (front splitter). */
-        inline const TreeNode<C,dim> * getTreePartFront() const { return &m_treePartFront; }
+        inline const TreeNode<C,dim> * getTreePartFront() const { return (m_uiLocalElementSz > 0 ? &m_treePartFront : nullptr); }
 
         /**@brief: get last treeNode of the local partition of the tree (back splitter). */
-        inline const TreeNode<C,dim> * getTreePartBack() const { return &m_treePartBack; }
+        inline const TreeNode<C,dim> * getTreePartBack() const { return (m_uiLocalElementSz > 0 ? &m_treePartBack : nullptr); }
 
         //TODO again, I don't think RefElement belongs in DA, but it is for now. Maybe it belongs?
         inline const RefElement * getReferenceElement() const { return &m_refel; }
