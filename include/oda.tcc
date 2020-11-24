@@ -166,93 +166,21 @@ namespace ot
         }
       }
 
-      // TODO we can easily accept the subdomain box coordinates as parameters.
-
-      // Establish the subdomain box.
-      const unsigned int elemSz = 1u << (m_uiMaxDepth - level);
-      DendroIntL totalNumElements = 1;
-      std::array<C,dim> subdomainBBMins;  // uiCoords.
-      std::array<C,dim> subdomainBBMaxs;  //
-      #pragma unroll(dim)
-      for (int d = 0; d < dim; d++)
-      {
-        subdomainBBMins[d] = 0u;
-        subdomainBBMaxs[d] = elemSz << extentPowers[d];
-        totalNumElements *= (1u << extentPowers[d]);
-      }
-
-      // Need to find treePartFront and treePartBack.
-      ot::TreeNode<C,dim> treePartFront, treePartBack;
-      DendroIntL locNumActiveElements = totalNumElements;
-
-
-      // ------------------------------------------
-
-      // Generate elements in lexicographic order.
-      DendroIntL genPart = totalNumElements / nProc +
-                           (rProc < totalNumElements % nProc);
-      DendroIntL genStart = (totalNumElements / nProc) * rProc +
-                            (rProc < totalNumElements % nProc ? rProc : totalNumElements % nProc);
-      std::array<DendroIntL, dim> genLimits;
-      std::array<DendroIntL, dim> genStrides;
-      std::array<DendroIntL, dim> genIdx;
-      for (int d = 0; d < dim; d++)
-        genLimits[d] = 1u << extentPowers[d];
-      genStrides[0] = 1;
-      for (int d = 1; d < dim; d++)
-        genStrides[d] = genStrides[d-1] * genLimits[d-1];
-      DendroIntL remainder = genStart;
-      for (int d = dim-1; d >= 0; d--)
-      {
-        genIdx[d] = remainder / genStrides[d];
-        remainder -= genIdx[d] * genStrides[d];
-      }
-
-      /// fprintf(stderr, "[%d] Generate starting at (%llu, %llu, %llu)\n",
-      ///     rProc, genIdx[0], genIdx[1], genIdx[2]);
-
-      std::vector<ot::TreeNode<C, dim>> treePart;
-      ot::TreeNode<C, dim> elem;
-      elem.setLevel(level);
-      for (DendroIntL ii = 0; ii < genPart; ii++)
-      {
-        for (int d = 0; d < dim; d++)
-          elem.setX(d, genIdx[d] * elemSz);
-
-        treePart.emplace_back(elem);
-
-        incrementFor<DendroIntL,dim>(genIdx, genLimits);
-      }
-
-      /// fprintf(stderr, "[%d] Ended generating at (%llu, %llu, %llu)\n",
-      ///     rProc, genIdx[0], genIdx[1], genIdx[2]);
-
-      bool isActive0 = (treePart.size() > 0);
-      MPI_Comm activeComm0;
-      MPI_Comm_split(comm, (treePart.size() ? 1 : MPI_UNDEFINED), rProc, &activeComm0);
-
-      /// for (DendroIntL ii = 0; ii < treePart.size(); ii++)
-      ///   fprintf(stderr, "%*slev==%u, coords==%s\n", 30*rProc, "",
-      ///       treePart[ii].getLevel(), ot::dbgCoordStr(treePart[ii], 2).c_str());
-
-      if (isActive0)
-      {
-        SFC_Tree<C, dim>::distTreeSort(treePart, sfc_tol, activeComm0);
-        SFC_Tree<C, dim>::distCoalesceSiblings(treePart, activeComm0);
-      }
-
-      std::array<double, dim> physMaxs;
+      std::array<double, dim> bounds;
       for (int d = 0; d < dim; ++d)
-        physMaxs[d] = double(subdomainBBMaxs[d]) / double(1u << m_uiMaxDepth);
+        bounds[d] = (1u << (m_uiMaxDepth - (level - extentPowers[d]))) / (1.0*(1u<<m_uiMaxDepth));
 
-      DistTree<C, dim> dtree(treePart, comm);
-      dtree.filterTree((typename DistTree<C, dim>::BoxDecider)(physMaxs));
+      DistTree<C, dim> dtree =
+          DistTree<C, dim>::constructSubdomainDistTree( level,
+                                                        typename DistTree<C, dim>::BoxDecider(bounds),
+                                                        comm,
+                                                        sfc_tol );
+
+      newSubDA.construct(dtree, comm, eleOrder, 100, sfc_tol);
 
       newTreePart = dtree.getTreePartFiltered();
 
-      newSubDA.construct(dtree, comm, eleOrder, 1, sfc_tol);
-
-      return newSubDA.getLocalElementSz();
+      return newTreePart.size();
     }
 
 

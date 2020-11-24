@@ -107,6 +107,11 @@ struct KeyFunIdentity_Pt
   const PointType &operator()(const PointType &pt) { return pt; }
 };
 
+template <typename T, unsigned int D>
+struct KeyFunIdentity_maxDepth
+{
+  const TreeNode<T,D> operator()(TreeNode<T,D> tn) { tn.setLevel(m_uiMaxDepth); return tn; }
+};
 
 
 
@@ -117,7 +122,7 @@ struct SFC_Tree
   template <class PointType>
   static void locTreeSort(std::vector<PointType> &points)
   {
-    SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 1, m_uiMaxDepth, 0);
+    SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0);
   }
 
 
@@ -133,6 +138,17 @@ struct SFC_Tree
           0, (RankI) points.size(),
           1, m_uiMaxDepth, 0,
           KeyFunIdentity_Pt<PointType>());
+  }
+
+
+
+  template <class PointType>
+  static void locTreeSortMaxDepth(std::vector<PointType> &points)
+  {
+    SFC_Tree<T, D>::locTreeSort< KeyFunIdentity_maxDepth<T, D>,
+                                 PointType, TreeNode<T, D>, int, false >
+      (&(*points.begin()), nullptr, 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
+       KeyFunIdentity_maxDepth<T, D>());
   }
 
 
@@ -274,6 +290,12 @@ struct SFC_Tree
   // Notes:
   //   - points will be replaced/resized with globally sorted data.
   static void distTreePartition(std::vector<TreeNode<T,D>> &points,
+                           unsigned int noSplitThresh,
+                           double loadFlexibility,
+                           MPI_Comm comm);
+
+  static par::SendRecvSchedule
+    distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
                            unsigned int noSplitThresh,
                            double loadFlexibility,
                            MPI_Comm comm);

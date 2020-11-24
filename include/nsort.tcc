@@ -540,6 +540,21 @@ namespace ot {
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }
+  }
+
+  template <typename T, unsigned int dim>
+  void Element<T,dim>::appendCancellationNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+
+    const unsigned int numNodes = intPow(order+1, dim);
+
+    double physElemCoords[dim];
+    double physSize;
+    treeNode2Physical(*this, physElemCoords, physSize);
+
+    std::array<unsigned int, dim> nodeIndices;
 
     if (this->getLevel() < m_uiMaxDepth)  // Don't need cancellations if no hanging elements.
     {

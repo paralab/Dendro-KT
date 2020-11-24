@@ -248,6 +248,7 @@ namespace ot {
 
       void appendInteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
       void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList, const ::ibm::DomainDecider &domainDecider) const;
+      void appendCancellationNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
 
       void appendKFaces(CellType<dim> kface, std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const;
 
@@ -328,22 +329,22 @@ namespace ot {
 
   struct GatherMap
   {
-    static void resizeLocalCounts(GatherMap &gm, RankI newLocalCounts, int rProc)
-    {
-      RankI accum = 0;
-      int procIdx = 0;
-      while (procIdx < gm.m_recvProc.size() && gm.m_recvProc[procIdx] < rProc)
-        accum += gm.m_recvCounts[procIdx++];
-      gm.m_locCount = newLocalCounts;
-      /// gm.m_locOffset = accum;   // This will be the same.
-      accum += newLocalCounts;
-      while (procIdx < gm.m_recvProc.size())
-      {
-        gm.m_recvOffsets[procIdx] = accum;
-        accum += gm.m_recvCounts[procIdx++];
-      }
-      gm.m_totalCount = accum;
-    }
+    /// static void resizeLocalCounts(GatherMap &gm, RankI newLocalCounts, int rProc)
+    /// {
+    ///   RankI accum = 0;
+    ///   int procIdx = 0;
+    ///   while (procIdx < gm.m_recvProc.size() && gm.m_recvProc[procIdx] < rProc)
+    ///     accum += gm.m_recvCounts[procIdx++];
+    ///   gm.m_locCount = newLocalCounts;
+    ///   /// gm.m_locOffset = accum;   // This will be the same.
+    ///   accum += newLocalCounts;
+    ///   while (procIdx < gm.m_recvProc.size())
+    ///   {
+    ///     gm.m_recvOffsets[procIdx] = accum;
+    ///     accum += gm.m_recvCounts[procIdx++];
+    ///   }
+    ///   gm.m_totalCount = accum;
+    /// }
 
     std::vector<int> m_recvProc;
     std::vector<RankI> m_recvCounts;
