@@ -179,6 +179,8 @@ namespace ot {
 
       static unsigned int get_nodeRank1D(const TreeNode<T, dim> &hostCell, const TreeNode<T, dim> &tnPoint, unsigned int d, unsigned int polyOrder);
 
+      static std::array<unsigned, dim> get_nodeRanks1D(const TreeNode<T, dim> &hostCell, const TreeNode<T, dim> &tnPoint, unsigned int polyOrder);
+
       static void get_relNodeCoords(const TreeNode<T,dim> &containingSubtree,
                                     const TreeNode<T,dim> &tnPoint,
                                     unsigned int polyOrder,
@@ -242,6 +244,9 @@ namespace ot {
 
       using TreeNode<T,dim>::operator=;
 
+      std::array<T, dim> getNodeX(const std::array<unsigned, dim> &numerators, unsigned polyOrder) const;
+      TNPoint<T, dim>    getNode(const std::array<unsigned, dim> &numerators, unsigned polyOrder) const;
+
       /** @brief Append nodes in lexicographic order. */
       template <typename TN = TNPoint<T,dim>>
       void appendNodes(unsigned int order, std::vector<TN> &nodeList) const;
@@ -251,6 +256,13 @@ namespace ot {
       void appendCancellationNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
 
       void appendKFaces(CellType<dim> kface, std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const;
+
+
+      /** @brief Maps child (this) hanging nodes to parent nodes
+       *         that do not overlap with child nonhanging nodes,
+       *         and acts as identity for child non-hanging nodes. */
+      std::array<unsigned, dim> hanging2ParentIndicesBijection(
+          const std::array<unsigned, dim> &indices, unsigned polyOrder) const;
 
       /**
        * @returns true if the coordinates lie in the element or on the element boundary.
