@@ -62,6 +62,10 @@ namespace ot
   };
 
 
+  template <unsigned int dim, class FrameT>
+  void fillLeafNodeBdry(const FrameT &frame, unsigned int eleOrder, std::vector<bool> &leafNodeBdry);
+
+
   //
   // MatvecBase
   //
@@ -207,7 +211,7 @@ namespace ot
 
         /** isElementBoundary() */
         bool isElementBoundary() const {
-          return treeloop.getCurrentFrame().mySummaryHandle.m_numBdryNodes > 0;
+          return treeloop.getCurrentSubtree().getIsOnTreeBdry();
         }
 
         /** getLeafNodeBdry() */
@@ -245,6 +249,17 @@ namespace ot
           const TreeNode<unsigned int, dim> *begin,
           size_t numNodes);
 
+      static std::vector<bool> getNodeNonhangingIn(const FrameT &frame)
+      {
+        //STUB
+        const size_t numNodes = frame.template getMyInputHandle<0>().size();
+        std::vector<bool> nodeNonhanging(numNodes, true);
+        if (frame.getCurrentSubtree().getLevel() > 0)
+          for (size_t ii = 0; ii < numNodes; ++ii)
+            nodeNonhanging[ii] = (frame.template getMyInputHandle<0>()[ii].getLevel() > 0);
+        return nodeNonhanging;
+      }
+
     protected:
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
       void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
@@ -252,7 +267,17 @@ namespace ot
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
       void fillAccessNodeCoordsFlat();
-      void fillLeafNodeBdry();
+
+      int m_warningCounter = 0;
+      void fillLeafNodeBdry()
+      {
+        if (m_warningCounter++ == 0)
+          fprintf(stderr,
+              "Warning: If MatvecBase::fillLeafNodeBdry() is not updated "
+              "to match sfcTreeLoop_matvec_io.h, then it is probably inaccurate.\n");
+
+        ::ot::fillLeafNodeBdry<MatvecBase, dim>(BaseT::getCurrentFrame(), m_eleOrder, m_parentNodeBdry, m_leafNodeBdry);
+      }
 
       unsigned int m_ndofs;
       unsigned int m_eleOrder;
@@ -262,6 +287,7 @@ namespace ot
       std::vector<NodeT> m_leafNodeVals;
       std::vector<NodeT> m_parentNodeVals;
       std::vector<bool> m_leafNodeBdry;
+      std::vector<bool> m_parentNodeBdry;
 
       std::vector<double> m_accessNodeCoordsFlat;
 
@@ -363,6 +389,7 @@ namespace ot
     m_leafNodeCoords.resize(npe, TreeNode<unsigned int, dim>());
     m_leafNodeVals.resize(ndofs * npe, 0);
     m_parentNodeVals.resize(ndofs * npe, 0);
+    m_parentNodeBdry.resize(npe, 0);
   }
 
 
@@ -537,6 +564,7 @@ namespace ot
     //
     // Perform any needed interpolations.
     //
+    std::fill(m_parentNodeBdry.begin(), m_parentNodeBdry.end(), false);
     if (thereAreHangingNodes)
     {
       // Populate parent lexicographic buffer.
@@ -554,6 +582,8 @@ namespace ot
           std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],
                        m_ndofs,
                        &m_parentNodeVals[m_ndofs * nodeRank] );
+
+          m_parentNodeBdry[nodeRank] = parentFrame.template getMyInputHandle<0>()[nIdx].getIsOnTreeBdry();
         }
       }
 
@@ -877,20 +907,79 @@ namespace ot
   }
 
 
-  // fillLeafNodeBdry()
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::fillLeafNodeBdry()
+  template <unsigned int dim>
+  std::bitset<(1u << dim)> vertexBoundary(const std::vector<bool> &nodeBdry, unsigned int eleOrder)
   {
-    const FrameT &frame = BaseT::getCurrentFrame();
+    constexpr size_t numVertices = 1u << dim;
+    std::bitset<numVertices> vertexBoundary;  // defaults to all false.
+    for (int v = 0; v < numVertices; ++v)
+    {
+      unsigned int vertexNidx = 0;
+      unsigned int stride = 1;
+      for (int d = 0; d < dim; ++d)
+      {
+        vertexNidx += (bool(v & (1u << d)) * eleOrder) * stride;
+        stride *= (eleOrder + 1);
+      }
+      vertexBoundary[v] = nodeBdry[vertexNidx];
+    }
+
+    return vertexBoundary;
+  }
+
+
+  // fillLeafNodeBdry()
+  template <class TreeLoopT, unsigned int dim, class FrameT>
+  void fillLeafNodeBdry(const FrameT &frame, unsigned int eleOrder, const std::vector<bool> &parentNodeBdry, std::vector<bool> &leafNodeBdry)
+  {
     const size_t numNodes = frame.template getMyInputHandle<0>().size();
     const TreeNode<unsigned int, dim> *nodeCoords = &(*frame.template getMyInputHandle<0>().cbegin());
-    const TreeNode<unsigned int, dim> &subtree = BaseT::getCurrentSubtree();
+    const TreeNode<unsigned int, dim> &subtree = frame.getCurrentSubtree();
     const unsigned int curLev = subtree.getLevel();
 
-    m_leafNodeBdry.resize(dim * numNodes);
+    leafNodeBdry.resize(0);
+    leafNodeBdry.resize(numNodes, false);
+
+    const std::vector<bool> nodeNonhanging = TreeLoopT::getNodeNonhangingIn(frame);
+
+    constexpr size_t numVertices = 1u << dim;
+    const std::bitset<numVertices> parentVertexBdry =
+        vertexBoundary<dim>(parentNodeBdry, eleOrder);
+
+    std::array<char, dim> nodeIndices;
+    nodeIndices.fill(0);
+
+    std::array<char, dim> nodeIndexOrigin;
+    for (int d = 0; d < dim; ++d)
+      nodeIndexOrigin[d] = bool(subtree.getX(d) - subtree.getParent().getX(d)) * (eleOrder);
 
     for (size_t nIdx = 0; nIdx < numNodes; nIdx++)
-      m_leafNodeBdry[nIdx] = nodeCoords[nIdx].getIsOnTreeBdry();
+    {
+      if (nodeNonhanging[nIdx])
+        leafNodeBdry[nIdx] = nodeCoords[nIdx].getIsOnTreeBdry();
+
+      else
+      {
+        // Assign boundary flag (true/false) to the node.
+        // This method does not cover all cases correctly,
+        // but it does prevent faces from becoming _partially_ boundary faces.
+        std::bitset<numVertices> vertexTestBoundary;
+        vertexTestBoundary[0] = true;
+        for (int d = 0; d < dim; ++d)
+          if (0 == nodeIndices[d] + nodeIndexOrigin[d])
+            vertexTestBoundary = vertexTestBoundary;
+          else if (0 < nodeIndices[d] + nodeIndexOrigin[d] && nodeIndices[d] + nodeIndexOrigin[d] < 2*eleOrder)
+            vertexTestBoundary |= vertexTestBoundary << (1u << d);
+          else if (nodeIndices[d] + nodeIndexOrigin[d] == 2*eleOrder)
+            vertexTestBoundary = vertexTestBoundary << (1u << d);
+
+        // Tag a node if and only if all vertices on the face are boundary nodes.
+        const bool isBoundaryNode = ((parentVertexBdry & vertexTestBoundary) == vertexTestBoundary);
+        leafNodeBdry[nIdx] = isBoundaryNode;
+      }
+
+      incrementBaseB<char, dim>(nodeIndices, eleOrder+1);
+    }
   }
 
 

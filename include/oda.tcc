@@ -116,12 +116,7 @@ namespace ot
       // =========================
       // * Generate tree in Morton order.
       // * Partition tree using sfc_tol
-      // * Store front/back tree elements, discard tree.
-      //
-      // * Generate all the nodes in Morton order.
-      // * Partition the nodes to agree with tree splitters.
-      //
-      // * Compute scatter/gather maps (other overload of construct()).
+      // * DA construction.
       // =========================
 
       constexpr unsigned int NUM_CHILDREN = 1u << dim;
@@ -236,7 +231,7 @@ namespace ot
       if (nProc == 1)
       {
         if(printDebug) std::cerr << rankPrefix << "Single processor policy.\n";
-        std::copy_n(srcLocal, dstDA.getLocalNodalSz(), dstLocal);
+        std::copy_n(srcLocal, ndofs * dstDA.getLocalNodalSz(), dstLocal);
         return;
       }
 
