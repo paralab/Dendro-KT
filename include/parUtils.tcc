@@ -749,6 +749,60 @@ namespace par {
     }
 
 
+    template <typename T>
+    std::vector<T> sendAll(const std::vector<T> &sdata, const std::vector<int> &sdest, MPI_Comm comm)
+    {
+      if (sdata.size() != sdest.size())
+        throw std::logic_error("sdata and sdest must have the same size.");
+
+      int rProc, nProc;
+      MPI_Comm_size(comm, &nProc);
+      MPI_Comm_rank(comm, &rProc);
+
+      std::vector<int> sendCounts(nProc, 0);
+      for (int dest : sdest)
+        sendCounts[dest]++;
+
+      // Inclusive prefix sum.
+      std::vector<int> sendOffsets;
+      int accumulate = 0;
+      for (int count : sendCounts)
+      {
+        sendOffsets.push_back(accumulate + count);
+        accumulate += count;
+      }
+
+      // Insert from back to front. Converts prefix sum to exclusive.
+      std::vector<T> dataPermuteByDest(sdata.size());
+      for (int revI = 0; revI < sdata.size(); revI++)
+      {
+        const int ii = sdata.size() - 1 - revI;
+        const int dest = sdest[ii];
+        dataPermuteByDest[--sendOffsets[dest]] = sdata[ii];
+      }
+
+      std::vector<int> recvCounts(nProc, 0);
+      Mpi_Alltoall(sendCounts.data(), recvCounts.data(), 1, comm); 
+
+      // Exclusive prefix sum.
+      std::vector<int> recvOffsets;
+      accumulate = 0;
+      for (int count : recvCounts)
+      {
+        recvOffsets.push_back(accumulate);
+        accumulate += count;
+      }
+
+      std::vector<T> rdata(accumulate);
+
+      Mpi_Alltoallv_sparse(dataPermuteByDest.data(), sendCounts.data(), sendOffsets.data(),
+                           rdata.data(), recvCounts.data(), recvOffsets.data(),
+                           comm);
+
+      return rdata;
+    }
+
+
 
 
   template<typename T>
