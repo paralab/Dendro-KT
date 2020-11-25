@@ -77,6 +77,7 @@ int main(int argc, char * argv[])
   const char * resultColor;
   const char * resultName;
 
+/*
   // testInstances
   int result_testInstances, globResult_testInstances;
   switch (inDim)
@@ -91,7 +92,9 @@ int main(int argc, char * argv[])
   resultName = globResult_testInstances ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testInstances](%s%s %d%s)", resultColor, resultName, globResult_testInstances, NRM);
+*/
 
+/*
   // testMatching
   int result_testMatching, globResult_testMatching;
   switch (inDim)
@@ -106,8 +109,8 @@ int main(int argc, char * argv[])
   resultName = globResult_testMatching ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testMatching](%s%s %d%s)", resultColor, resultName, globResult_testMatching, NRM);
+*/
 
-/*
   // testAdaptive
   int result_testAdaptive, globResult_testAdaptive;
   switch (inDim)
@@ -122,7 +125,6 @@ int main(int argc, char * argv[])
   resultName = globResult_testAdaptive ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testAdaptive](%s%s %d%s)", resultColor, resultName, globResult_testAdaptive, NRM);
-*/
 
 /*
   // testEqualSeq
@@ -376,8 +378,9 @@ int testAdaptive(MPI_Comm comm, unsigned int depth, unsigned int order)
   ot::SFC_Tree<unsigned int, dim>::distTreeSort(tree, loadFlexibility, comm);
 
   // Adaptive grid ODA.
-  ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), (unsigned int) tree.size(), comm, order, (unsigned int) tree.size(), loadFlexibility);
-  tree.clear();
+  ot::DistTree<unsigned int, dim> dtree(tree, comm);
+  ot::DA<dim> *octDA = new ot::DA<dim>(dtree, comm, order, (size_t) tree.size(), loadFlexibility);
+  tree = dtree.getTreePartFiltered();
 
   std::vector<double> vecIn, vecOut;
   octDA->createVector(vecIn, false, false, 1);
@@ -403,7 +406,7 @@ int testAdaptive(MPI_Comm comm, unsigned int depth, unsigned int order)
     for (int d = 0; d < dim; d++)
       interxDeg -= ((bool)(gridMask & nodeCoords[ii].getX(d)) || !(bool)(domMask & nodeCoords[ii].getX(d)));
 
-    testResult += !(fabs(vecOut[ii] - (1u << interxDeg)) < 0.0001 || fabs(vecOut[ii] - 5.0) < 0.0001);
+    testResult += !(fabs(vecOut[ii] - (1u << interxDeg)) < 0.0001 || fabs(vecOut[ii] - 6.0) < 0.0001);
     /// testResult += !(vecOut[ii] == (1u << interxDeg)*(globNodeRank++));
   }
 
