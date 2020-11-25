@@ -259,6 +259,14 @@ inline void TreeNode<T,dim>::setX(int d, T coord) {
   m_uiCoords[d] = coord;
 }
 
+template <typename T, unsigned int dim>
+inline void TreeNode<T,dim>::setX(const std::array<T, dim> &coords)
+{
+  for (int d = 0; d < dim; ++d)
+    this->setX(d, coords[d]);
+}
+
+
 
 template <typename T, unsigned int dim>
 inline bool TreeNode<T, dim>::getIsOnTreeBdry() const

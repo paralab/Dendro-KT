@@ -132,6 +132,8 @@ namespace ot {
       /**@brief set the coordinate in the dth dimension*/
       void setX(int d, T coord);
 
+      void setX(const std::array<T, dim> &coords);
+
       /**@brief get the coordinates of the octant
        * @param[out]: coppied coordinates*/
       int getAnchor(std::array<T,dim> &xyz) const;

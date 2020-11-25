@@ -77,6 +77,7 @@ int main(int argc, char * argv[])
   const char * resultColor;
   const char * resultName;
 
+/*
   // testInstances
   int result_testInstances, globResult_testInstances;
   switch (inDim)
@@ -91,7 +92,9 @@ int main(int argc, char * argv[])
   resultName = globResult_testInstances ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testInstances](%s%s %d%s)", resultColor, resultName, globResult_testInstances, NRM);
+*/
 
+/*
   // testMatching
   int result_testMatching, globResult_testMatching;
   switch (inDim)
@@ -106,6 +109,7 @@ int main(int argc, char * argv[])
   resultName = globResult_testMatching ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testMatching](%s%s %d%s)", resultColor, resultName, globResult_testMatching, NRM);
+*/
 
 /*
   // testAdaptive
@@ -124,7 +128,6 @@ int main(int argc, char * argv[])
     printf("\t[testAdaptive](%s%s %d%s)", resultColor, resultName, globResult_testAdaptive, NRM);
 */
 
-/*
   // testEqualSeq
   int result_testEqualSeq, globResult_testEqualSeq;
   switch (inDim)
@@ -139,7 +142,6 @@ int main(int argc, char * argv[])
   resultName = globResult_testEqualSeq ? "FAILURE" : "success";
   if (!rProc)
     printf("\t[testEqualSeq](%s%s %d%s)", resultColor, resultName, globResult_testEqualSeq, NRM);
-*/
 
 /*
   // testNodeRank
@@ -376,8 +378,9 @@ int testAdaptive(MPI_Comm comm, unsigned int depth, unsigned int order)
   ot::SFC_Tree<unsigned int, dim>::distTreeSort(tree, loadFlexibility, comm);
 
   // Adaptive grid ODA.
-  ot::DA<dim> *octDA = new ot::DA<dim>(&(*tree.cbegin()), (unsigned int) tree.size(), comm, order, (unsigned int) tree.size(), loadFlexibility);
-  tree.clear();
+  ot::DistTree<unsigned int, dim> dtree(tree, comm);
+  ot::DA<dim> *octDA = new ot::DA<dim>(dtree, comm, order, (size_t) tree.size(), loadFlexibility);
+  tree = dtree.getTreePartFiltered();
 
   std::vector<double> vecIn, vecOut;
   octDA->createVector(vecIn, false, false, 1);
@@ -403,7 +406,7 @@ int testAdaptive(MPI_Comm comm, unsigned int depth, unsigned int order)
     for (int d = 0; d < dim; d++)
       interxDeg -= ((bool)(gridMask & nodeCoords[ii].getX(d)) || !(bool)(domMask & nodeCoords[ii].getX(d)));
 
-    testResult += !(fabs(vecOut[ii] - (1u << interxDeg)) < 0.0001 || fabs(vecOut[ii] - 5.0) < 0.0001);
+    testResult += !(fabs(vecOut[ii] - (1u << interxDeg)) < 0.0001 || fabs(vecOut[ii] - 6.0) < 0.0001);
     /// testResult += !(vecOut[ii] == (1u << interxDeg)*(globNodeRank++));
   }
 
@@ -464,7 +467,6 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 
   std::vector<TN> sources;
   std::vector<TN> tree;
-  TN treeFront, treeBack;
 
   const unsigned long mersenneSeed = 5;
   std::mt19937 twister(mersenneSeed);
@@ -503,48 +505,32 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   locTreeSz = tree.size();
   par::Mpi_Reduce(&locTreeSz, &globTreeSz, 1, MPI_SUM, 0, comm);
 
-  // Get the front and back of the tree onto proc 0 for sequential matvec.
-  // In case some procs are empty, need to find out where front and back live.
-  // Make MPI do this for us by splitting the communicator.
-  MPI_Comm nonemptys;
-  MPI_Comm_split(comm, (tree.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
-  MPI_Status statusFront, statusBack;
-  if (tree.size() > 0)
+  std::vector<TN> tree0;
+  std::vector<int> treeCounts;
+  if (rProc == 0)
   {
-    int nNE, rNE;
-    MPI_Comm_rank(nonemptys, &rNE);
-    MPI_Comm_size(nonemptys, &nNE);
-
-    if (rNE == 0)  // Need to send or acquire treeFront.
-    {
-      if (rProc != 0)
-        MPI_Send(&tree.front(), 1, par::Mpi_datatype<TN>::value(), 0, 0, comm);
-      else
-        treeFront = tree.front();
-    }
-
-    if (rNE == nNE-1)  // Need to send or acquire treeBack.
-    {
-      if (rProc != 0)
-        MPI_Send(&tree.back(), 1, par::Mpi_datatype<TN>::value(), 0, 1, comm);
-      else
-        treeBack = tree.back();
-    }
-
-    if (rProc == 0 && rNE < nNE-1)  // Need to receive back.
-      MPI_Recv(&treeBack, 1, par::Mpi_datatype<TN>::value(), MPI_ANY_SOURCE, 1, comm, &statusBack);
-  }
-  else if (rProc == 0)  // Must receive front and back.
-  {
-    MPI_Recv(&treeFront, 1, par::Mpi_datatype<TN>::value(), MPI_ANY_SOURCE, 0, comm, &statusFront);
-    MPI_Recv(&treeBack, 1, par::Mpi_datatype<TN>::value(), MPI_ANY_SOURCE, 1, comm, &statusBack);
+    tree0.resize(globTreeSz);
+    treeCounts.resize(nProc);
   }
 
+  const int locTreeSzInt = locTreeSz;
+  par::Mpi_Gather(&locTreeSzInt, &treeCounts[0], 1, 0, comm);
+  std::vector<int> treeOffsets;
+  size_t treeAccumulate = 0;
+  for (int c : treeCounts)
+  {
+    treeOffsets.push_back(treeAccumulate);
+    treeAccumulate += c;
+  }
+  MPI_Gatherv(&tree[0], locTreeSz, par::Mpi_datatype<TN>::value(),
+      &tree0[0], &treeCounts[0], &treeOffsets[0], par::Mpi_datatype<TN>::value(),
+      0, comm);
 
   //
   // Matvec.
   //
 
+  const std::vector<TN> treeCopy = tree;
   ot::DA<dim> *octDA = new ot::DA<dim>(tree, comm, order, (unsigned int) tree.size(), loadFlexibility);
 
   /// const unsigned int block = (1u << m_uiMaxDepth - 3);
@@ -569,8 +555,14 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   unsigned long myNodeRank = octDA->getGlobalRankBegin();
   unsigned long globNumNodes = octDA->getGlobalNodeSz();
 
-  /// fprintf(stdout, "[%d/%d] myNodeSz==%lu / %lu, ghostedNodeSz==%lu\n",
-  ///     rProc, nProc, myNodeSz, globNumNodes, ghostedNodeSz);
+  /// fprintf(stdout, "[%d/%d] locTreeSz==%lu, myNodeSz==%d / %lu, ghostedNodeSz==%d\n",
+  ///     rProc, nProc, locTreeSz, myNodeSz, globNumNodes, ghostedNodeSz);
+  /// std::stringstream ss;
+  /// ss << "[rank " << rProc << "]:";
+  /// ss << "sm==" << octDA->m_sm << "\n";
+  /// ss << "gm==" << octDA->m_gm << "\n";
+  /// ss << "\n\n";
+  /// std::cout << ss.str();
 
   /// //DEBUG  nodes
   /// for (int nIdx = 0; nIdx < myNodeSz; nIdx++)
@@ -591,9 +583,14 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 
   // Distributed matvec.
   /// if (!rProc) fprintf(stderr, "[dbg] Starting distributed matvec.\n");
-  myConcreteFeMatrix<dim> mat(octDA, &tree, 1);
+  myConcreteFeMatrix<dim> mat(octDA, &treeCopy, 1);
+
+  fprintf(stderr, "rank %d --- BEFORE distributed matvec!\n", rProc);
+
   mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
   /// if (!rProc) fprintf(stderr, "[dbg] Finished distributed matvec.\n");
+
+  fprintf(stderr, "rank %d --- AFTER distributed matvec!\n", rProc);
 
   // Set up communication to compare result to sequential run.
   std::vector<double> vecInSeqCopy;
@@ -628,6 +625,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
       0, comm);
 
 
+
   // Sequential matvec and comparison.
   if (!rProc)
   {
@@ -639,8 +637,8 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
         std::bind(&myConcreteFeMatrix<dim>::elementalMatVec, &mat, _1, _2, _3, _4, _5, _6);
     fem::matvec(&(*vecInSeqCopy.cbegin()), &(*vecOutSeq.begin()), 1, &(*tnCoordsSeqCopy.cbegin()),
         globNumNodes,
-        &(*tree.cbegin()), tree.size(),
-        treeFront, treeBack, eleOp, 1.0, octDA->getReferenceElement());
+        &(*tree0.cbegin()), tree0.size(),
+        tree0.front(), tree0.back(), eleOp, 1.0, octDA->getReferenceElement());
     /// fprintf(stderr, "[dbg] Finished sequential matvec.\n");
 
     // Compare outputs of global and sequential matvec.

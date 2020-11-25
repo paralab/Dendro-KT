@@ -4,6 +4,8 @@
  * @date: 2019-01-11
  */
 
+#include <numeric>
+
 namespace ot
 {
 
@@ -84,14 +86,16 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
 // locTreeSort() (with parallel companion array)
 //
 template<typename T, unsigned int D>
-template <class KeyFun, typename PointType, typename KeyType, typename Companion, bool useCompanions>
+template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
 void
-SFC_Tree<T,D>:: locTreeSort(PointType *points, Companion *companions,
+SFC_Tree<T,D>:: locTreeSort(PointType *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
                           RotI pRot,
-                          KeyFun keyfun)
+                          KeyFun keyfun,
+                          Companion* ... companions
+                          )
 {
   //// Recursive Depth-first, similar to Most Significant Digit First. ////
 
@@ -103,11 +107,13 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points, Companion *companions,
   // Reorder the buckets on sLev (current level).
   std::array<RankI, numChildren+1> tempSplitters;
   RankI ancStart, ancEnd;
-  SFC_bucketing_general<KeyFun, PointType, KeyType, Companion, useCompanions>(
-      points, companions, begin, end, sLev, pRot,
+  SFC_bucketing_general<KeyFun, PointType, KeyType, useCompanions, Companion...>(
+      points, begin, end, sLev, pRot,
       keyfun, true, true,
       tempSplitters,
-      ancStart, ancEnd);
+      ancStart, ancEnd,
+      companions...
+      );
 
   // The array `tempSplitters' has numChildren+1 slots, which includes the
   // beginning, middles, and end of the range of children.
@@ -135,21 +141,25 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points, Companion *companions,
 
       if (sLev > 0)
       {
-        locTreeSort<KeyFun, PointType, KeyType, Companion, useCompanions>
-            (points, companions,
+        locTreeSort<KeyFun, PointType, KeyType, useCompanions, Companion...>
+            (points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
             cRot,                         // This branch uses cRot.
-            keyfun);
+            keyfun,
+            companions...
+            );
       }
       else   // Special handling if we have to consider the domain boundary.
       {
-        locTreeSort<KeyFun, PointType, KeyType, Companion, useCompanions>
-            (points, companions,
+        locTreeSort<KeyFun, PointType, KeyType, useCompanions, Companion...>
+            (points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
             pRot,                         // This branch uses pRot.
-            keyfun);
+            keyfun,
+            companions...
+            );
       }
     }
   }
@@ -174,11 +184,13 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
                           RankI &outAncEnd)
 {
   // Call the "companion" implementation without giving or using companions.
-  SFC_bucketing_general<KeyFun, PointType, KeyType, int, false>(
-      points, nullptr,
+  SFC_Tree<T,D>::template SFC_bucketing_general<KeyFun, PointType, KeyType, false, int>(
+      points,
       begin, end, lev, pRot,
       keyfun, separateAncestors, ancestorsFirst,
-      outSplitters, outAncStart, outAncEnd);
+      outSplitters, outAncStart, outAncEnd,
+      (int*) nullptr
+      );
 }
 
 
@@ -186,9 +198,9 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
 // SFC_bucketing_general()
 //
 template <typename T, unsigned int D>
-template <class KeyFun, typename PointType, typename KeyType, typename Companion, bool useCompanions>
+template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
 void
-SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points, Companion* companions,
+SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
                           RotI pRot,
@@ -197,7 +209,9 @@ SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points, Companion* companions,
                           bool ancestorsFirst,
                           std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
                           RankI &outAncStart,
-                          RankI &outAncEnd)
+                          RankI &outAncEnd,
+                          Companion* ... companions
+                          )
 {
   using TreeNode = TreeNode<T,D>;
   constexpr char numChildren = TreeNode::numChildren;
@@ -223,7 +237,7 @@ SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points, Companion* companions,
 
   // -- Movement phase. -- //
   std::array<PointType, numChildren+1> unsortedBuffer;
-  std::array<Companion, numChildren+1> unsortedBufferComp;
+  std::array<std::tuple<Companion...>, numChildren+1> unsortedBufferComp;
   int bufferSize = 0;
 
   for (char bucketId = 0; bucketId <= numChildren; bucketId++)
@@ -232,7 +246,7 @@ SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points, Companion* companions,
     {
       unsortedBuffer[bufferSize]     = points[offsets[bucketId]];  // Copy TreeNode.
       if (useCompanions)
-        unsortedBufferComp[bufferSize] = companions[offsets[bucketId]];  // Copy companion.
+        unsortedBufferComp[bufferSize] = std::make_tuple((companions[offsets[bucketId]])...);  // Copy companion.
       bufferSize++;
     }
   }
@@ -240,7 +254,7 @@ SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points, Companion* companions,
   while (bufferSize > 0)
   {
     PointType *bufferTop     = &unsortedBuffer[bufferSize-1];
-    Companion *bufferTopComp;
+    std::tuple<Companion...> *bufferTopComp;
     if (useCompanions)
       bufferTopComp = &unsortedBufferComp[bufferSize-1];
     unsigned char destBucket
@@ -250,14 +264,14 @@ SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points, Companion* companions,
 
     points[offsets[destBucket]]     = *bufferTop;  // Set down the TreeNode.
     if (useCompanions)
-      companions[offsets[destBucket]] = *bufferTopComp;  // Set down the companion.
+      std::tie((companions[offsets[destBucket]])...) = *bufferTopComp;  // Set down the companion.
     offsets[destBucket]++;
 
     if (offsets[destBucket] < bucketEnds[destBucket])
     {
       *bufferTop     = points[offsets[destBucket]];    // Copy TreeNode.
       if (useCompanions)
-        *bufferTopComp = companions[offsets[destBucket]];    // Copy companion.
+        *bufferTopComp = std::make_tuple((companions[offsets[destBucket]])...);    // Copy companion.
     }
     else
       bufferSize--;
@@ -403,6 +417,77 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::dist_bcastSplitters(
 
   return activeSplitters;
 }
+
+
+
+
+
+//
+// treeNode2PartitionRank()  -- relative to active splitters
+//
+template <typename T, unsigned int dim>
+std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
+    const std::vector<TreeNode<T, dim>> &treeNodes,
+    const std::vector<TreeNode<T, dim>> &partitionFrontSplitters)
+{
+  // Result
+  std::vector<int> rankIds(treeNodes.size(), -1);
+
+  // Concatenate [elements | splitters]
+  std::vector<TreeNode<T, dim>> keys;
+  keys.insert(keys.end(), treeNodes.cbegin(), treeNodes.cend());
+  keys.insert(keys.end(), partitionFrontSplitters.cbegin(), partitionFrontSplitters.cend());
+
+  // Indices into result, which we use after sorting. [indices | {-1,...-1}]
+  std::vector<size_t> indices(treeNodes.size());
+  std::iota(indices.begin(), indices.end(), 0);
+  std::fill_n(std::back_inserter(indices), partitionFrontSplitters.size(), -1);
+
+  int rank = -1;
+
+  SFC_Tree<T, dim>::locTreeSort(keys, indices);
+  size_t next_ii = 0;
+  for (size_t ii = 0; ii < keys.size(); ii = next_ii)
+  {
+    bool hasFrontSplitter = (indices[ii] == -1);
+    next_ii = ii + 1;
+    while (next_ii < keys.size() && keys[next_ii].getX() == keys[ii].getX())
+    {
+      hasFrontSplitter |= (indices[next_ii] == -1);
+      next_ii++;
+    }
+
+    if (hasFrontSplitter)
+      rank++;
+
+    for (size_t jj = ii; jj < next_ii; ++jj)
+      if (indices[jj] != -1)
+        rankIds[indices[jj]] = rank;
+  }
+
+  return rankIds;
+}
+
+
+//
+// treeNode2PartitionRank()  -- mapped to global rank ids
+//
+template <typename T, unsigned int dim>
+std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
+    const std::vector<TreeNode<T, dim>> &treeNodes,
+    const std::vector<TreeNode<T, dim>> &partitionFrontSplitters,
+    const std::vector<int> &partitionActiveList)
+{
+  std::vector<int> rankIds = SFC_Tree<T, dim>::treeNode2PartitionRank(
+      treeNodes, partitionFrontSplitters);
+
+  for (int &id : rankIds)
+    id = partitionActiveList[id];
+
+  return rankIds;
+}
+
+
 
 
 } // end namespace ot
