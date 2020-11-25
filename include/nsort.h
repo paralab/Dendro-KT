@@ -368,6 +368,9 @@ namespace ot {
   };
 
 
+  std::ostream & operator<<(std::ostream &out, const ScatterMap &sm);
+  std::ostream & operator<<(std::ostream &out, const GatherMap &gm);
+
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
