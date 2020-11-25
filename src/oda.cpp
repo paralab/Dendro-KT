@@ -257,6 +257,10 @@ namespace ot
 
       if (isActive)
       {
+        int nProcActive, rProcActive;
+        MPI_Comm_size(activeComm, &nProcActive);
+        MPI_Comm_rank(activeComm, &rProcActive);
+
         // Splitters for distributed exchanges.
         treePartFront = distTree.getTreePartFront(stratum);
         treePartBack = distTree.getTreePartBack(stratum);
@@ -313,7 +317,7 @@ namespace ot
           combinedElems.push_back(elem);
         }
 
-        if (nProc > 1)
+        if (nProcActive > 1)
           distPartitionEdges(combinedNodes, combinedElems, sfc_tol, activeComm);
         SFC_Tree<C, dim>::locTreeSortMaxDepth(combinedNodes, combinedElems);
 
@@ -368,7 +372,7 @@ namespace ot
         combinedNodes.clear();
         combinedElems.clear();
 
-        if (nProc > 1)
+        if (nProcActive > 1)
           distPartitionEdges(convertedNodes, convertedElems, sfc_tol, activeComm);
         SFC_Tree<C, dim>::locTreeSortMaxDepth(convertedNodes, convertedElems);
 
@@ -414,6 +418,9 @@ namespace ot
             const int owner = sharingRanks[bestRepId];
             TNPoint<C, dim> node = convertedNodes[bestRepId];
             node.set_owner(owner);
+
+            assert(ranksOfNode.find(owner) != ranksOfNode.end());
+
             for (int borrower : ranksOfNode)
               if (borrower != owner)
               {
@@ -433,20 +440,20 @@ namespace ot
 
         ownShareNodes = par::sendAll(ownShareNodes, ownShareDestRank, activeComm);
         ownShareDestRank.clear();
-        /// SFC_Tree<C, dim>::locTreeSortMaxDepth(ownShareNodes);
+        SFC_Tree<C, dim>::locTreeSortMaxDepth(ownShareNodes);
 
 
         // The information for scattermap and gathermap is jumbled together.
         // Sort them out.
-        std::vector<std::vector<RankI>> scatterSets(nProc);
-        std::vector<std::vector<TreeNode<C, dim>>> gatherSets(nProc);
+        std::vector<std::vector<RankI>> scatterSets(nProcActive);
+        std::vector<std::vector<TreeNode<C, dim>>> gatherSets(nProcActive);
         {
           size_t nextId;
           for (size_t edgeId = 0; edgeId < ownShareNodes.size(); edgeId = nextId)
           {
             bool isOwned = false;
             nextId = forEachInNodeGroup(&ownShareNodes[0], edgeId, ownShareNodes.size(), [&](size_t ii) {
-              isOwned |= (ownShareNodes[ii].get_owner() == rProc);
+              isOwned |= (ownShareNodes[ii].get_owner() == rProcActive);
             });
             if (isOwned)
             {
@@ -455,7 +462,7 @@ namespace ot
 
               // Contribute to scattermap.
               for (size_t deferentId = edgeId; deferentId < nextId; ++deferentId)
-                if (ownShareNodes[deferentId].get_owner() != rProc)
+                if (ownShareNodes[deferentId].get_owner() != rProcActive)
                   scatterSets[ownShareNodes[deferentId].get_owner()].push_back(localRank);
             }
             else
@@ -493,7 +500,7 @@ namespace ot
         }
 
         RankI gmapRecvOffset = 0;
-        for (int r = 0; r < rProc; ++r)
+        for (int r = 0; r < rProcActive; ++r)
         {
           if (gatherSets[r].size() > 0)
           {
@@ -506,7 +513,7 @@ namespace ot
         gatherMap.m_locCount = myTNCoords.size();
         gatherMap.m_locOffset = gmapRecvOffset;
         gmapRecvOffset += myTNCoords.size();
-        for (int r = rProc+1; r < gatherSets.size(); ++r)
+        for (int r = rProcActive+1; r < gatherSets.size(); ++r)
         {
           if (gatherSets[r].size() > 0)
           {
@@ -580,6 +587,7 @@ namespace ot
 
       TNPoint<C, dim> parentPointKeepProperties = tnpoint;
       parentPointKeepProperties.setX(parentPoint.getX());
+      parentPointKeepProperties.setLevel(parentPoint.getLevel());
 
       return parentPointKeepProperties;
     }
@@ -596,7 +604,7 @@ namespace ot
       std::vector<TreeNode<C, dim>> keys;
       for (const auto &pt : nodesInOut)
       {
-        const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), pt.getLevel());
+        const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
         keys.push_back(key);
       }
 
