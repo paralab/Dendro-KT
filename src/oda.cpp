@@ -348,10 +348,13 @@ namespace ot
             {
               for (size_t ii = edgeId; ii < nextEdgeId; ++ii)
               {
-                TNPoint<C, dim> parentNode = hangingBijection(elems[ii], nodes[ii], order);
-                parentNode.setIsCancellation(false);
-                convertedNodes.push_back(parentNode);
-                convertedElems.push_back(elems[ii]);
+                if (!nodes[ii].getIsCancellation())
+                {
+                  TNPoint<C, dim> parentNode = hangingBijection(elems[ii], nodes[ii], order);
+                  parentNode.setIsCancellation(false);
+                  convertedNodes.push_back(parentNode);
+                  convertedElems.push_back(elems[ii]);
+                }
               }
             }
             else if (isOrdinary)
