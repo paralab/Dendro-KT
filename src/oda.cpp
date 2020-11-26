@@ -42,42 +42,42 @@ namespace ot
     }
 
 
-    /**@brief: Constructor for the DA data structures
-      * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-     * */
-    template <unsigned int dim>
-    DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-        : m_refel{dim, order}
-    {
-        ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
-        inTree = distTree.getTreePartFiltered();       // Give back a copy of the in tree.
-        construct(distTree, comm, order, grainSz, sfc_tol);
-        //TODO (need straightforward interface for tree/DistTree)
-        //     Without a change to the interface, we can avoid copying
-        //     if we give back the DistTree instead, and let the user
-        //     get a const ref to the tree partition.
-    }
+    /// /**@brief: Constructor for the DA data structures
+    ///   * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
+    ///   * @param [in] comm: MPI global communicator for mesh generation.
+    ///   * @param [in] order: order of the element.
+    ///  * */
+    /// template <unsigned int dim>
+    /// DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    ///     : m_refel{dim, order}
+    /// {
+    ///     ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
+    ///     inTree = distTree.getTreePartFiltered();       // Give back a copy of the in tree.
+    ///     construct(distTree, comm, order, grainSz, sfc_tol);
+    ///     //TODO (need straightforward interface for tree/DistTree)
+    ///     //     Without a change to the interface, we can avoid copying
+    ///     //     if we give back the DistTree instead, and let the user
+    ///     //     get a const ref to the tree partition.
+    /// }
 
 
-    /**@brief: Constructor for the DA data structures
-      * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-     * */
-    template <unsigned int dim>
-    DA<dim>::DA(const std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-        : m_refel{dim, order}
-    {
-        std::vector<ot::TreeNode<C,dim>> inTreeCopy = inTree;  // Use a copy of the in tree.
-        ot::DistTree<C, dim> distTree(inTreeCopy, comm);       // Uses default domain decider.
-        construct(distTree, comm, order, grainSz, sfc_tol);
-        //TODO (need straightforward interface for tree/DistTree)
-        //     Without a change to the interface, we can avoid copying
-        //     if we give back the DistTree instead, and let the user
-        //     get a const ref to the tree partition.
-    }
+    /// /**@brief: Constructor for the DA data structures
+    ///   * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
+    ///   * @param [in] comm: MPI global communicator for mesh generation.
+    ///   * @param [in] order: order of the element.
+    ///  * */
+    /// template <unsigned int dim>
+    /// DA<dim>::DA(const std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    ///     : m_refel{dim, order}
+    /// {
+    ///     std::vector<ot::TreeNode<C,dim>> inTreeCopy = inTree;  // Use a copy of the in tree.
+    ///     ot::DistTree<C, dim> distTree(inTreeCopy, comm);       // Uses default domain decider.
+    ///     construct(distTree, comm, order, grainSz, sfc_tol);
+    ///     //TODO (need straightforward interface for tree/DistTree)
+    ///     //     Without a change to the interface, we can avoid copying
+    ///     //     if we give back the DistTree instead, and let the user
+    ///     //     get a const ref to the tree partition.
+    /// }
 
 
     /**@brief: Constructor for the DA data structures
