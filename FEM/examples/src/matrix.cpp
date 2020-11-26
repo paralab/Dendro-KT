@@ -47,13 +47,13 @@ int main(int argc, char *argv[]) {
     std::vector<ot::TreeNode<unsigned int, DIM>> treePart;
     ot::createRegularOctree(treePart, 3, MPI_COMM_WORLD);
 
-    ot::DA<DIM> *newDA = new ot::DA<DIM>(treePart, MPI_COMM_WORLD, eleOrder);
+    ot::DA<DIM> *newDA = new ot::DA<DIM>(ot::DistTree<DENDRITE_UINT, DIM>(treePart, MPI_COMM_WORLD), MPI_COMM_WORLD, eleOrder);
     {
         std::vector<ot::OCT_FLAGS::Refine> octFlags;
         generateRefinementFlags(newDA, treePart, octFlags);
         ot::SFC_Tree<DENDRITE_UINT, DIM>::distRemeshWholeDomain(treePart, octFlags, newTree, surrTree, 0.3,
                                                                 MPI_COMM_WORLD);
-        ot::DA<DIM> *octDA = new ot::DA<DIM>(newTree, MPI_COMM_WORLD, eleOrder, 100, 0.3);
+        ot::DA<DIM> *octDA = new ot::DA<DIM>(ot::DistTree<DENDRITE_UINT, DIM>(newTree, MPI_COMM_WORLD), MPI_COMM_WORLD, eleOrder, 100, 0.3);
         std::swap(octDA, newDA);
         std::swap(newTree,treePart);
         delete octDA;

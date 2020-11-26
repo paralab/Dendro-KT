@@ -690,6 +690,98 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
 }
 
 
+template <typename T, unsigned int dim, typename NodeT>
+std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
+                          const ot::TreeNode<T, dim> *coordEnd,
+                          const NodeT *valBegin,
+                          const char **colors,
+                          unsigned int order = 1,
+                          std::ostream & out = std::cout)
+{
+  ot::TreeNode<T, dim> subdomain;
+  unsigned int deepestLev = 0;
+  const unsigned int numNodes = coordEnd - coordBegin;
+  using YXVC = std::pair<std::pair<T,T>, std::pair<NodeT, const char *>>;
+  const T top = 1u << m_uiMaxDepth;
+  std::vector<YXVC> zipped;
+  /// if (numNodes)
+  ///   subdomain = *coordBegin;
+  for (unsigned int ii = 0; ii < numNodes; ii++)
+  {
+    /// while (!(Element<T,dim>(subdomain).isIncident(coordBegin[ii])))
+    ///   subdomain = subdomain.getParent();
+
+    if (coordBegin[ii].getLevel() > deepestLev)
+      deepestLev = coordBegin[ii].getLevel();
+
+    zipped.push_back(YXVC{{top - coordBegin[ii].getX(1), coordBegin[ii].getX(0)}, {valBegin[ii], colors[ii]}});
+  }
+  subdomain = ot::TreeNode<T, dim>();
+  const T origin[2] = {subdomain.getX(0), top - subdomain.getX(1)};
+
+  // Increase resolution for order.
+  order--;
+  while (order)
+  {
+    deepestLev++;
+    order >>= 1;
+  }
+
+  std::sort(zipped.begin(), zipped.end());
+
+  const unsigned int numTiles1D = (1u << int(deepestLev) - int(subdomain.getLevel())) + 1;
+  /// const unsigned int charBound = (numTiles1D * 10 + 4)*numTiles1D + 2;
+  const unsigned int charBound = (numTiles1D * 20 + 4)*numTiles1D + 2;
+  /// std::vector<char> charBuffer(charBound + 10, '\0');
+  std::vector<char> charBuffer(charBound + 20, '\0');
+  char * s = charBuffer.data();
+  /// const char * bufEnd = &(*charBuffer.end()) - 10;
+  const char * bufEnd = &(*charBuffer.end()) - 20;
+
+  T cursorY = 0, cursorX = 0;
+  cursorY = origin[1];
+  for (unsigned int ii = 0; ii < numNodes;)
+  {
+    cursorY = zipped[ii].first.first;
+    cursorX = origin[0];
+
+    while (ii < numNodes && zipped[ii].first.first == cursorY)
+    {
+      T x = zipped[ii].first.second;
+      NodeT val = zipped[ii].second.first;
+      const char *color = zipped[ii].second.second;
+
+      while (cursorX < x)
+      {
+        s += snprintf(s, bufEnd-s, "    \t");
+        cursorX += (1u << m_uiMaxDepth - deepestLev);
+      }
+      s += snprintf(s, bufEnd-s, "%s%01.2f%s\t", color, val, NRM);
+      cursorX += (1u << m_uiMaxDepth - deepestLev);
+      ii++;
+    }
+
+    if (ii < numNodes)
+    {
+      T nextY = zipped[ii].first.first;
+      while (cursorY < nextY)
+      {
+        s += snprintf(s, bufEnd-s, "\n\n\n");
+        cursorY += (1u << m_uiMaxDepth - deepestLev);
+      }
+    }
+  }
+  s += snprintf(s, bufEnd-s, "\n");
+
+  out << charBuffer.data();
+
+  return out;
+}
+
+
+
+
+
 
 /**
  * @author Masado Ishii

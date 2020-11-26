@@ -103,7 +103,7 @@ int main(int argc, char * argv[]){
 
   if (printTreeOn)
     printTree(newTree, level+1);
-  ot::DA<DIM> * newDA =new ot::DA<DIM>(newTree,MPI_COMM_WORLD,eleOrder,100,0.3);
+  ot::DA<DIM> * newDA =new ot::DA<DIM>(newDistTree,MPI_COMM_WORLD,eleOrder,100,0.3);
   printMaxCoords(*newDA, newDistTree.getTreePartFiltered());
 
   std::swap(octDA, newDA);

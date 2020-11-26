@@ -42,42 +42,42 @@ namespace ot
     }
 
 
-    /**@brief: Constructor for the DA data structures
-      * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-     * */
-    template <unsigned int dim>
-    DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-        : m_refel{dim, order}
-    {
-        ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
-        inTree = distTree.getTreePartFiltered();       // Give back a copy of the in tree.
-        construct(distTree, comm, order, grainSz, sfc_tol);
-        //TODO (need straightforward interface for tree/DistTree)
-        //     Without a change to the interface, we can avoid copying
-        //     if we give back the DistTree instead, and let the user
-        //     get a const ref to the tree partition.
-    }
+    /// /**@brief: Constructor for the DA data structures
+    ///   * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
+    ///   * @param [in] comm: MPI global communicator for mesh generation.
+    ///   * @param [in] order: order of the element.
+    ///  * */
+    /// template <unsigned int dim>
+    /// DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    ///     : m_refel{dim, order}
+    /// {
+    ///     ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
+    ///     inTree = distTree.getTreePartFiltered();       // Give back a copy of the in tree.
+    ///     construct(distTree, comm, order, grainSz, sfc_tol);
+    ///     //TODO (need straightforward interface for tree/DistTree)
+    ///     //     Without a change to the interface, we can avoid copying
+    ///     //     if we give back the DistTree instead, and let the user
+    ///     //     get a const ref to the tree partition.
+    /// }
 
 
-    /**@brief: Constructor for the DA data structures
-      * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-     * */
-    template <unsigned int dim>
-    DA<dim>::DA(const std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-        : m_refel{dim, order}
-    {
-        std::vector<ot::TreeNode<C,dim>> inTreeCopy = inTree;  // Use a copy of the in tree.
-        ot::DistTree<C, dim> distTree(inTreeCopy, comm);       // Uses default domain decider.
-        construct(distTree, comm, order, grainSz, sfc_tol);
-        //TODO (need straightforward interface for tree/DistTree)
-        //     Without a change to the interface, we can avoid copying
-        //     if we give back the DistTree instead, and let the user
-        //     get a const ref to the tree partition.
-    }
+    /// /**@brief: Constructor for the DA data structures
+    ///   * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
+    ///   * @param [in] comm: MPI global communicator for mesh generation.
+    ///   * @param [in] order: order of the element.
+    ///  * */
+    /// template <unsigned int dim>
+    /// DA<dim>::DA(const std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    ///     : m_refel{dim, order}
+    /// {
+    ///     std::vector<ot::TreeNode<C,dim>> inTreeCopy = inTree;  // Use a copy of the in tree.
+    ///     ot::DistTree<C, dim> distTree(inTreeCopy, comm);       // Uses default domain decider.
+    ///     construct(distTree, comm, order, grainSz, sfc_tol);
+    ///     //TODO (need straightforward interface for tree/DistTree)
+    ///     //     Without a change to the interface, we can avoid copying
+    ///     //     if we give back the DistTree instead, and let the user
+    ///     //     get a const ref to the tree partition.
+    /// }
 
 
     /**@brief: Constructor for the DA data structures
@@ -89,7 +89,7 @@ namespace ot
       * @note If you have a custom domain decider function, use this overload.
      * */
     template <unsigned int dim>
-    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
       construct(inDistTree, stratum, comm, order, grainSz, sfc_tol);
@@ -105,7 +105,7 @@ namespace ot
      * */
 
     template <unsigned int dim>
-    DA<dim>::DA(ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : DA(inDistTree, 0, comm, order, grainSz, sfc_tol)
     {
       // Do NOT destroyTree. Let user decide.
@@ -131,7 +131,7 @@ namespace ot
      */
     template <unsigned int dim>
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-    void DA<dim>::construct(ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::construct(const ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
       construct(distTree, 0, comm, order, grainSz, sfc_tol);
     }
@@ -179,7 +179,7 @@ namespace ot
      */
     template <unsigned int dim>
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-    void DA<dim>::construct(DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::construct(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
       // TODO remove grainSz parameter from ODA, which must respect the tree!
 
@@ -293,11 +293,11 @@ namespace ot
         std::vector<TNPoint<C,dim>> tmpList;
         std::vector<TreeNode<C,dim>> tmpElemList;
 
-        // Compact local exterior node list.
-        sortUniqXPreferCoarser(exteriorNodeList, exteriorNodeElements, tmpList, tmpElemList);
+        /// // Compact local exterior node list.
+        /// sortUniqXPreferCoarser(exteriorNodeList, exteriorNodeElements, tmpList, tmpElemList);
 
-        // Compact local cancellation node list.
-        sortUniqXPreferCoarser(cancelNodeList, cancelNodeElements, tmpList, tmpElemList);
+        /// // Compact local cancellation node list.
+        /// sortUniqXPreferCoarser(cancelNodeList, cancelNodeElements, tmpList, tmpElemList);
 
         // Create a combined list of edges to be sorted.
         std::vector<TNPoint<C, dim>> combinedNodes;
@@ -348,10 +348,13 @@ namespace ot
             {
               for (size_t ii = edgeId; ii < nextEdgeId; ++ii)
               {
-                TNPoint<C, dim> parentNode = hangingBijection(elems[ii], nodes[ii], order);
-                parentNode.setIsCancellation(false);
-                convertedNodes.push_back(parentNode);
-                convertedElems.push_back(elems[ii]);
+                if (!nodes[ii].getIsCancellation())
+                {
+                  TNPoint<C, dim> parentNode = hangingBijection(elems[ii], nodes[ii], order);
+                  parentNode.setIsCancellation(false);
+                  convertedNodes.push_back(parentNode);
+                  convertedElems.push_back(elems[ii]);
+                }
               }
             }
             else if (isOrdinary)

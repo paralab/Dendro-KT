@@ -243,7 +243,7 @@ bool testMatvecBaseCoords()
 
   // DA to get nodal vector for test.
   MPI_Comm comm = MPI_COMM_WORLD;
-  ot::DA<dim> octda(tree, comm, eleOrder);
+  ot::DA<dim> octda(ot::DistTree<C, dim>(tree, comm), comm, eleOrder);
   assert(tree.size() > 0);
 
   const ot::TreeNode<C, dim> *nodesPtr = octda.getTNCoords();

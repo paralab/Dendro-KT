@@ -108,7 +108,7 @@ namespace bench
 
                 // Generate DA from balanced tree.
                 t_adaptive_oda.start();
-                ot::DA<dim> oda(tree, comm, eleOrder, numPts, loadFlexibility);
+                ot::DA<dim> oda(ot::DistTree<T,dim>(tree, comm), comm, eleOrder, numPts, loadFlexibility);
                 t_adaptive_oda.stop();
             }
         }

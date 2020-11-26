@@ -302,6 +302,7 @@ namespace ot
 
     get_m_treePartFiltered().clear();
     std::swap(get_m_treePartFiltered(), treePart);  // Steal the tree vector.
+    treePart = get_m_treePartFiltered();            // Return a copy of the transformed tree vector.
 
     this->filterTree(DistTree::defaultDomainDecider);
   }
