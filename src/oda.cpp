@@ -293,11 +293,11 @@ namespace ot
         std::vector<TNPoint<C,dim>> tmpList;
         std::vector<TreeNode<C,dim>> tmpElemList;
 
-        // Compact local exterior node list.
-        sortUniqXPreferCoarser(exteriorNodeList, exteriorNodeElements, tmpList, tmpElemList);
+        /// // Compact local exterior node list.
+        /// sortUniqXPreferCoarser(exteriorNodeList, exteriorNodeElements, tmpList, tmpElemList);
 
-        // Compact local cancellation node list.
-        sortUniqXPreferCoarser(cancelNodeList, cancelNodeElements, tmpList, tmpElemList);
+        /// // Compact local cancellation node list.
+        /// sortUniqXPreferCoarser(cancelNodeList, cancelNodeElements, tmpList, tmpElemList);
 
         // Create a combined list of edges to be sorted.
         std::vector<TNPoint<C, dim>> combinedNodes;
