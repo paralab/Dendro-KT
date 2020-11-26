@@ -449,11 +449,13 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
   size_t next_ii = 0;
   for (size_t ii = 0; ii < keys.size(); ii = next_ii)
   {
-    bool hasFrontSplitter = (indices[ii] == -1);
-    next_ii = ii + 1;
+    bool hasFrontSplitter = false;
+    next_ii = ii;
     while (next_ii < keys.size() && keys[next_ii].getX() == keys[ii].getX())
     {
-      hasFrontSplitter |= (indices[next_ii] == -1);
+      const bool isFrontSplitter = (indices[next_ii] == -1);
+      hasFrontSplitter |= isFrontSplitter;
+
       next_ii++;
     }
 
