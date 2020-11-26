@@ -530,8 +530,8 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   // Matvec.
   //
 
-  const std::vector<TN> treeCopy = tree;
-  ot::DA<dim> *octDA = new ot::DA<dim>(tree, comm, order, (unsigned int) tree.size(), loadFlexibility);
+  ot::DistTree<unsigned, dim> distTree(tree, comm);  // Transforms tree.
+  ot::DA<dim> *octDA = new ot::DA<dim>(distTree, comm, order, (unsigned int) tree.size(), loadFlexibility);
 
   /// const unsigned int block = (1u << m_uiMaxDepth - 3);
 
@@ -583,14 +583,10 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
 
   // Distributed matvec.
   /// if (!rProc) fprintf(stderr, "[dbg] Starting distributed matvec.\n");
-  myConcreteFeMatrix<dim> mat(octDA, &treeCopy, 1);
-
-  fprintf(stderr, "rank %d --- BEFORE distributed matvec!\n", rProc);
+  myConcreteFeMatrix<dim> mat(octDA, &tree, 1);
 
   mat.matVec(&(*vecIn.cbegin()), &(*vecOut.begin()), 1.0);
   /// if (!rProc) fprintf(stderr, "[dbg] Finished distributed matvec.\n");
-
-  fprintf(stderr, "rank %d --- AFTER distributed matvec!\n", rProc);
 
   // Set up communication to compare result to sequential run.
   std::vector<double> vecInSeqCopy;
@@ -629,7 +625,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
   // Sequential matvec and comparison.
   if (!rProc)
   {
-    std::vector<double> vecOutSeq(globNumNodes);
+    std::vector<double> vecOutSeq(globNumNodes, 0);
 
     /// fprintf(stderr, "[dbg] Starting sequential matvec.\n");
     using namespace std::placeholders;   // Convenience for std::bind().
