@@ -469,14 +469,14 @@ class DA
          * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
          */
         template <typename T>
-        void writeToGhostsBegin(T *vec, unsigned int dof = 1);
+        void writeToGhostsBegin(T *vec, unsigned int dof = 1, const char * isDirtyOut = nullptr);
 
         /**
          * @brief Sync accumilation across ghost elements
          * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
          */
         template <typename T>
-        void writeToGhostsEnd(T *vec, unsigned int dof = 1);
+        void writeToGhostsEnd(T *vec, unsigned int dof = 1, bool useAccumulation = true, const char * isDirtyOut = nullptr);
 
         /**
              * @brief convert nodal local vector with ghosted buffer regions.

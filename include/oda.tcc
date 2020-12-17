@@ -840,7 +840,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof)
+    void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof, const char * isDirtyOut)
     {
         // The same as readFromGhosts, but roles reversed:
         // Send to upstream, recv from downstream.
@@ -854,11 +854,22 @@ namespace ot
           T* dnstB = NULL;
           T* upstB = NULL;
 
+          char* dnstB_dirty = NULL;
+          const char* upstB_dirty = NULL;
+
           // 1. Prepare asynchronous exchange context.
           const unsigned int nUpstProcs = m_gm.m_recvProc.size();
           const unsigned int nDnstProcs = m_sm.m_sendProc.size();
+          m_uiMPIContexts.reserve(m_uiMPIContexts.size() + 2);
           m_uiMPIContexts.emplace_back(vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs);
           AsyncExchangeContex &ctx = m_uiMPIContexts.back();
+
+          AsyncExchangeContex *ctx_dirty = nullptr;
+          if (isDirtyOut)
+          {
+            m_uiMPIContexts.emplace_back(isDirtyOut, typeid(char).hash_code(), nUpstProcs, nDnstProcs);
+            ctx_dirty = &m_uiMPIContexts.back();
+          }
 
           const size_t upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
           const size_t dnstBSz = m_sm.m_map.size();
@@ -877,6 +888,21 @@ namespace ot
               size_t dnstProc = m_sm.m_sendProc[dnstIdx];
               par::Mpi_Irecv(dnstProcStart, dnstCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
             }
+
+            if (isDirtyOut)
+            {
+              ctx_dirty->allocateSendBuffer(sizeof(char)*dnstBSz*1);  // Re-use the send buffer for receiving.
+              dnstB_dirty = (char*) ctx_dirty->getSendBuffer();
+              MPI_Request *reql = ctx_dirty->getDnstRequestList();
+
+              for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
+              {
+                char *dnstProcStart = dnstB_dirty + 1 * m_sm.m_sendOffsets[dnstIdx];
+                size_t dnstCount = 1*m_sm.m_sendCounts[dnstIdx];
+                size_t dnstProc = m_sm.m_sendProc[dnstIdx];
+                par::Mpi_Irecv(dnstProcStart, dnstCount, dnstProc, m_uiCommTag+1, m_uiActiveComm, &reql[dnstIdx]);
+              }
+            }
           }
 
           // 3. Send data. Since vec is collated [abc abc], ghosts can be sent directly from vec.
@@ -894,16 +920,31 @@ namespace ot
               size_t upstProc = m_gm.m_recvProc[upstIdx];
               par::Mpi_Isend(upstProcStart, upstCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
             }
+
+            if (isDirtyOut)
+            {
+              upstB_dirty = isDirtyOut;
+              MPI_Request *reql = ctx_dirty->getUpstRequestList();
+
+              for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
+              {
+                const char *upstProcStart = upstB_dirty + 1*m_gm.m_recvOffsets[upstIdx];
+                size_t upstCount = 1*m_gm.m_recvCounts[upstIdx];
+                size_t upstProc = m_gm.m_recvProc[upstIdx];
+                par::Mpi_Isend(upstProcStart, upstCount, upstProc, m_uiCommTag+1, m_uiActiveComm, &reql[upstIdx]);
+              }
+            }
           }
         }
 
         m_uiCommTag++;   // inactive procs also advance tag.
+        m_uiCommTag += bool(isDirtyOut);
     }
 
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof)
+    void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof, bool useAccumulation, const char * isDirtyOut)
     {
         // The same as readFromGhosts, but roles reversed:
         // Send to upstream, recv from downstream.
@@ -915,6 +956,8 @@ namespace ot
             return;
 
         T* dnstB = NULL;
+
+        char* dnstB_dirty = NULL;
 
         // 1. Find asynchronous exchange context.
         MPI_Request *reql;
@@ -928,6 +971,17 @@ namespace ot
 
         dnstB = (T*) ctxPtr->getSendBuffer();
 
+
+        auto ctx_dirty = m_uiMPIContexts.begin();
+        if (isDirtyOut)
+        {
+          ctx_dirty = std::find_if(
+              m_uiMPIContexts.begin(), m_uiMPIContexts.end(),
+              [isDirtyOut](const AsyncExchangeContex &c){ return ((char*) c.getBuffer()) == isDirtyOut; });
+          assert(ctx_dirty->getBufferType() == typeid(char).hash_code());
+          dnstB_dirty = (char*) ctx_dirty->getSendBuffer();
+        }
+
         const unsigned int nUpstProcs = m_gm.m_recvProc.size();
         const unsigned int nDnstProcs = m_sm.m_sendProc.size();
         const size_t dnstBSz = m_sm.m_map.size();
@@ -937,14 +991,27 @@ namespace ot
         for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
           MPI_Wait(&reql[dnstIdx], &status);
 
+        if (isDirtyOut)
+        {
+          reql = ctx_dirty->getDnstRequestList();
+          for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
+            MPI_Wait(&reql[dnstIdx], &status);
+        }
+
         // 3. "De-stage" the received downstream data.
         for (size_t k = 0; k < dnstBSz; k++)
         {
-          // Instead of simply copying from the downstream data, we need to accumulate it.
-          const T *nodeSrc = dnstB + dof * k;
-          /// std::copy(nodeSrc, nodeSrc + dof, vec + dof * m_sm.m_map[k]);
-          for (unsigned int v = 0; v < dof; v++)
-            vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] += nodeSrc[v];
+          if (isDirtyOut == nullptr || dnstB_dirty[k])
+          {
+            // Instead of simply copying from the downstream data, we need to accumulate it.
+            const T *nodeSrc = dnstB + dof * k;
+            /// std::copy(nodeSrc, nodeSrc + dof, vec + dof * m_sm.m_map[k]);
+            for (unsigned int v = 0; v < dof; v++)
+              if (useAccumulation)
+                vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] += nodeSrc[v];
+              else
+                vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] = nodeSrc[v];
+          }
         }
 
         // 4. Wait on sends.
@@ -952,10 +1019,23 @@ namespace ot
         for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
           MPI_Wait(&reql[upstIdx], &status);
 
+        if (isDirtyOut)
+        {
+          reql = ctx_dirty->getUpstRequestList();
+          for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
+            MPI_Wait(&reql[upstIdx], &status);
+        }
+
         // 5. Release the asynchronous exchange context.
         /// ctxPtr->deAllocateRecvBuffer();
         ctxPtr->deAllocateSendBuffer();
         m_uiMPIContexts.erase(ctxPtr);
+
+        if (isDirtyOut)
+        {
+          ctx_dirty->deAllocateSendBuffer();
+          m_uiMPIContexts.erase(ctx_dirty);
+        }
     }
 
     template <unsigned int dim>

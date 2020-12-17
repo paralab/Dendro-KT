@@ -53,7 +53,8 @@ namespace fem
                          unsigned int ndofs,
                          /// EleOpT<DofT> eleOp,
                          /// double scale,
-                         const RefElement *refElement)
+                         const RefElement *refElement,
+                         char * isDirtyOut = nullptr)
   {
 #warning "locIntergridTransfer() needs to give refElement to MatvecBaseIn/Out"
     if (in.sz == 0 && out.sz == 0)
@@ -77,6 +78,12 @@ namespace fem
     ot::MatvecBaseIn<dim, DofT> treeLoopIn(in.sz, ndofs, eleOrder, visitEmpty, padlevel, in.coords, in.vecIn, in.treePartPtr, in.treePartSz, in.partFront, in.partBack);
     ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(out.sz, ndofs, eleOrder, visitEmpty, padlevel, out.coords, out.treePartPtr, out.treePartSz, out.partFront, out.partBack);
 
+    ot::MatvecBaseOut<dim, char, false> * treeLoopDirty = nullptr;
+    if (isDirtyOut != nullptr)
+      treeLoopDirty = new ot::MatvecBaseOut<dim, char, false> (out.sz, 1, eleOrder, visitEmpty, padlevel, out.coords, out.treePartPtr, out.treePartSz, out.partFront, out.partBack);
+
+    const std::vector<char> leafOnes(npe, 1);
+
     /// size_t totalNumNodes = 0;
     /// size_t numNodesUsed = 0;
 
@@ -94,6 +101,9 @@ namespace fem
       {
         treeLoopIn.next();
         treeLoopOut.next();
+
+        if (treeLoopDirty != nullptr)
+          treeLoopDirty->next();
       }
       else if (treeLoopIn.isPre() && treeLoopOut.isPre())
       {
@@ -104,6 +114,9 @@ namespace fem
         {
           treeLoopIn.step();
           treeLoopOut.step();
+
+          if (treeLoopDirty != nullptr)
+            treeLoopDirty->step();
         }
 
         // Both leafs, can directly transfer.
@@ -137,6 +150,9 @@ namespace fem
 
           treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*leafResult.cbegin()));
 
+          if (treeLoopDirty != nullptr)
+            treeLoopDirty->subtreeInfo().overwriteNodeValsOut(&(*leafOnes.cbegin()));
+
           //NOTE (2020-10-29):
           //  At time of writing the MatvecBaseOut uses accumulation in c2p
           //  ONLY IF the template argument UseAccumulation is set to true.
@@ -151,6 +167,9 @@ namespace fem
 
           treeLoopIn.next();
           treeLoopOut.next();
+
+          if (treeLoopDirty != nullptr)
+            treeLoopDirty->next();
         }
       }
       else
@@ -161,8 +180,13 @@ namespace fem
     }
 
     size_t writtenSz = treeLoopOut.finalize(out.vecOut);
+    if (isDirtyOut != nullptr && treeLoopDirty != nullptr)
+      treeLoopDirty->finalize(isDirtyOut);
 
     /// std::cout << "locIntergridTransfer(): Used " << numNodesUsed << " of " << totalNumNodes << " nodes.\n";
+
+    if (treeLoopDirty != nullptr)
+      delete treeLoopDirty;
 
     if (out.sz > 0 && writtenSz == 0)
       std::cerr << "Warning: locIntergridTransfer did not write any data! Loop misconfigured?\n";

@@ -817,9 +817,11 @@ bool testLinear(int argc, char * argv[]){
                *newDA->getTreePartFront(),
                *newDA->getTreePartBack() };
     const RefElement * refel = newDA->getReferenceElement();
-    fem::locIntergridTransfer(inctx, outctx, ndof, refel);
-    newDA->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndof);
-    newDA->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndof);
+    std::vector<char> outDirty(newDA->getTotalNodalSz(), 0);
+    fem::locIntergridTransfer(inctx, outctx, ndof, refel, &(*outDirty.begin()));
+    // The outDirty array is needed when useAccumulation==false (hack).
+    newDA->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndof, &(*outDirty.cbegin()));
+    newDA->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndof, false, &(*outDirty.cbegin()));
     double *newDAVec;
     newDA->createVector(newDAVec,false,false,ndof);
     newDA->template ghostedNodalToNodalVec<VECType>(fineGhostedPtr, newDAVec, true, ndof);
