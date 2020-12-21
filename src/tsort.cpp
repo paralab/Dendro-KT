@@ -195,6 +195,39 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  if (nProc == 1)
+    return;
+
+  par::SendRecvSchedule sched = distTreePartitionSchedule(points, noSplitThresh, loadFlexibility, comm);
+
+  std::vector<TreeNode<T,D>> origPoints = points;   // Sendbuffer is a copy.
+
+  size_t sizeNew = sched.rdispls.back() + sched.rcounts.back();
+  points.resize(sizeNew);
+
+  par::Mpi_Alltoallv<TreeNode<T,D>>(
+      &origPoints[0], &sched.scounts[0], &sched.sdispls[0],
+      &points[0],     &sched.rcounts[0], &sched.rdispls[0],
+      comm);
+
+  //TODO figure out the 'staged' part with k-parameter.
+
+  // After this process, distTreeSort or distTreeConstruction
+  // picks up with a local sorting or construction operation.
+  // TODO Need to have the global buckets for that to work.
+}
+
+template<typename T, unsigned int D>
+par::SendRecvSchedule
+SFC_Tree<T,D>:: distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
+                          unsigned int noSplitThresh,
+                          double loadFlexibility,
+                          MPI_Comm comm)
+{
 
   // -- Don't worry about K splitters for now, we'll add that later. --
 
@@ -222,7 +255,7 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
     // which is a no-op with nProc==1.
 
     /// locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
-    return;
+    return par::SendRecvSchedule{};
   }
 
   using TreeNode = TreeNode<T,D>;
@@ -388,8 +421,8 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
   //
   // All to all exchange of the points arrays.
     
-  std::vector<unsigned int> sendCnt, sendDspl;
-  std::vector<unsigned int> recvCnt(splitters.size()), recvDspl;
+  std::vector<int> sendCnt, sendDspl;
+  std::vector<int> recvCnt(splitters.size()), recvDspl;
   sendCnt.reserve(splitters.size());
   sendDspl.reserve(splitters.size());
   recvDspl.reserve(splitters.size());
@@ -412,34 +445,25 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
     sendCnt.push_back(s - sPrev);
     sPrev = s;
   }
-  par::Mpi_Alltoall<unsigned int>(&(*sendCnt.begin()), &(*recvCnt.begin()), 1, comm);
+  par::Mpi_Alltoall<int>(&(*sendCnt.begin()), &(*recvCnt.begin()), 1, comm);
   sPrev = 0;
   for (RankI c : recvCnt)       // Sequential scan.
   {
     recvDspl.push_back(sPrev);
     sPrev += c;
   }
-  unsigned int sizeNew = sPrev;
 
-  std::vector<TreeNode> origPoints = points;   // Sendbuffer is a copy.
+  par::SendRecvSchedule sched;
+  sched.scounts = sendCnt;
+  sched.sdispls = sendDspl;
+  sched.rcounts = recvCnt;
+  sched.rdispls = recvDspl;
 
-  if (sizeNew > sizeL)
-    points.resize(sizeNew);
+  return sched;
 
-  par::Mpi_Alltoallv<TreeNode>(
-      &(*origPoints.begin()), (int*) &(*sendCnt.begin()), (int*) &(*sendDspl.begin()),
-      &(*points.begin()), (int*) &(*recvCnt.begin()), (int*) &(*recvDspl.begin()),
-      comm);
-
-  points.resize(sizeNew);
-
-
-  //TODO figure out the 'staged' part with k-parameter.
-
-  // After this process, distTreeSort or distTreeConstruction
-  // picks up with a local sorting or construction operation.
-  // TODO Need to have the global buckets for that to work.
 }
+
+
 
 
 template <typename T, unsigned int D>

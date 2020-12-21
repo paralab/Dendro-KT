@@ -268,7 +268,7 @@ namespace ot
       //----
       // Instead: Simple. Upfront Allgather, locally make pairs, point-to-point.
 
-      constexpr bool printDebug = false;
+      constexpr bool printDebug = true;
 
       MPI_Comm comm = srcDA.getGlobalComm();
       int rProc, nProc;
@@ -307,6 +307,12 @@ namespace ot
         return;
       }
 
+
+      // TODO TODO TODO
+      //   Somehow send nodes and/or check sorting order
+      //   so that nodes end up in right order.
+
+
       const DendroIntL mySrcGlobBegin = srcDA.getGlobalRankBegin();
       const DendroIntL myDstGlobBegin = dstDA.getGlobalRankBegin();
       const DendroIntL mySrcGlobEnd = mySrcGlobBegin + srcDA.getLocalNodalSz();
@@ -323,6 +329,20 @@ namespace ot
 
       const bool isActiveSrc = srcDA.isActive();
       const bool isActiveDst = dstDA.isActive();
+
+      if (printDebug && rProc == 0)
+      {
+        std::stringstream ss;
+        ss << "allSrcSplit == ";
+        for (DendroIntL split : allSrcSplit)
+          ss << " " << split;
+        ss << "\n";
+        ss << "allDstSplit == ";
+        for (DendroIntL split : allDstSplit)
+          ss << " " << split;
+        ss << "\n";
+        fprintf(stderr, "\n%s\n", ss.str().c_str());
+      }
 
       if (!isActiveSrc && !isActiveDst)
       {
@@ -361,18 +381,18 @@ namespace ot
       dst_r0 = r_lb;
 
       if(printDebug) std::cerr << rankPrefix << "Begin binary search (#2)\n";
-      // Search for last rank : dstBegin[rank] < mySrcEnd
+      // Search for first rank after dst_r0: mySrcEnd <= dstEnd[rank]
       r_ub = nProc - 1;
       { while (r_lb < r_ub)
         {
-          const int test = (r_lb + r_ub + 1)/2;
-          if (allDstSplit[test + bSplit] < mySrcGlobEnd)
+          const int test = (r_lb + r_ub)/2;
+          if (mySrcGlobEnd <= allDstSplit[test + eSplit])
           {
-            r_lb = test;
+            r_ub = test;
           }
           else
           {
-            r_ub = test - 1;
+            r_lb = test + 1;
           }
         }
       }
@@ -397,18 +417,18 @@ namespace ot
       src_r0 = r_lb;
 
       if(printDebug) std::cerr << rankPrefix << "Begin binary search (#4)\n";
-      // Search for last rank : srcBegin[rank] < myDstEnd
+      // Search for first rank after src_r0: myDstEnd <= srcEnd[rank]
       r_ub = nProc - 1;
       { while (r_lb < r_ub)
         {
-          const int test = (r_lb + r_ub + 1)/2;
-          if (allSrcSplit[test + bSplit] < myDstGlobEnd)
+          const int test = (r_lb + r_ub)/2;
+          if (myDstGlobEnd <= allSrcSplit[test + eSplit])
           {
-            r_lb = test;
+            r_ub = test;
           }
           else
           {
-            r_ub = test - 1;
+            r_lb = test + 1;
           }
         }
       }
@@ -419,16 +439,32 @@ namespace ot
       // The binary search should automaticallly take care of the case
       // that some ranks are not active, but if it doesn't, give error.
       if (!(
-            !(allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin) &&
-            !(allDstSplit[dst_r1+1 + bSplit] < mySrcGlobEnd) &&
-            !(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin) &&
-            !(allSrcSplit[src_r1+1 + bSplit] < myDstGlobEnd)
+            !(dst_r0+1 < nProc   && allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin) &&
+            !(dst_r1-1 >= dst_r0 && allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd) &&
+            !(src_r0+1 < nProc   && allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin) &&
+            !(src_r1-1 >= src_r0 && allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd)
            ))
       {
-        assert(!(allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
-        assert(!(allDstSplit[dst_r1+1 + bSplit] < mySrcGlobEnd));
-        assert(!(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
-        assert(!(allSrcSplit[src_r1+1 + bSplit] < myDstGlobEnd));
+        fprintf(stderr, "%s:\n"
+                        "  mySrcGlobBegin--End == %llu--%llu\n"
+                        "  myDstGlobBegin--End == %llu--%llu\n"
+                        "  dst_r0+1 + bSplit == %u    -->   allDstSplit[] == %llu\n"
+                        "  dst_r1-1 + eSplit == %u    -->   allDstSplit[] == %llu\n"
+                        "  src_r0+1 + bSplit == %u    -->   allSrcSplit[] == %llu\n"
+                        "  src_r1-1 + eSplit == %u    -->   allSrcSplit[] == %llu\n",
+                        rankPrefix.c_str(),
+                        mySrcGlobBegin, mySrcGlobEnd,
+                        myDstGlobBegin, myDstGlobEnd,
+                        dst_r0+1 + bSplit, allDstSplit[dst_r0+1 + bSplit],
+                        dst_r1-1 + eSplit, allDstSplit[dst_r1-1 + eSplit],
+                        src_r0+1 + bSplit, allSrcSplit[src_r0+1 + bSplit],
+                        src_r1-1 + eSplit, allSrcSplit[src_r1-1 + eSplit]
+            );
+
+        assert(!(dst_r0+1 < nProc   && allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
+        assert(!(dst_r1-1 >= dst_r0 && allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd));
+        assert(!(src_r0+1 < nProc   && allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
+        assert(!(src_r1-1 >= src_r0 && allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd));
       }
 
       std::string dstRangeStr, srcRangeStr;
@@ -535,7 +571,7 @@ namespace ot
       // Empty self-sends/recvs don't count.
       if (selfSrcI != -1 && srcCount[selfSrcI] == 0)
         selfSrcI = -1;
-      if (selfDstI != -1 && srcCount[selfDstI] == 0)
+      if (selfDstI != -1 && dstCount[selfDstI] == 0)
         selfDstI = -1;
 
       const bool selfConsistentSendRecv = (selfSrcI != -1) == (selfDstI != -1);

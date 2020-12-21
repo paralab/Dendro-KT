@@ -135,6 +135,62 @@ namespace ot
       construct(distTree, 0, comm, order, grainSz, sfc_tol);
     }
 
+
+
+
+    template <typename C, unsigned dim>
+    void globallySortNodes(std::vector<TNPoint<C, dim>> &nodesInOut,
+                           double sfc_tol,
+                           MPI_Comm comm)
+    {
+      // distTreePartition only works on TreeNode inside the unit cube, not TNPoint.
+      // Create a key for each tnpoint.
+      std::vector<TreeNode<C, dim>> keys;
+      for (const auto &pt : nodesInOut)
+      {
+        const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
+        keys.push_back(key);
+      }
+
+      // To use the schedule the TNPoints have to be locally sorted
+      // in the order of the keys.
+      SFC_Tree<C, dim>::locTreeSort(keys, nodesInOut);
+
+      const std::vector<TNPoint<C, dim>> nodesIn = nodesInOut;
+      std::vector<TNPoint<C, dim>> &nodesOut = nodesInOut;
+
+      // To sort the TNPoints, get a schedule based on the TreeNodes.
+      par::SendRecvSchedule sched = SFC_Tree<C, dim>::distTreePartitionSchedule(
+          keys, 0, sfc_tol, comm);
+
+      if (sched.scounts.size() > 0)
+      {
+        nodesOut.clear();
+        nodesOut.resize(sched.rdispls.back() + sched.rcounts.back());
+
+        par::Mpi_Alltoallv_sparse<TNPoint<C, dim>>(
+            &nodesIn[0],  &sched.scounts[0], &sched.sdispls[0],
+            &nodesOut[0], &sched.rcounts[0], &sched.rdispls[0],
+            comm);
+
+        // Locally sort the TNPoints again by keys.
+        keys.clear();
+        for (const auto &pt : nodesOut)
+        {
+          const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
+          keys.push_back(key);
+        }
+        SFC_Tree<C, dim>::locTreeSort(keys, nodesOut);
+      }
+    }
+
+
+
+
+
+
+
+
     /**
      * @param distTree contains a vector of TreeNode (will be drained),
      *        and a domain decider function.
@@ -188,6 +244,8 @@ namespace ot
         size_t intNodeIdx = nodeList.size();
         for (const TreeNode<C, dim> &elem : inTreeFiltered)
             ot::Element<C,dim>(elem).appendInteriorNodes(order, nodeList);
+
+        globallySortNodes(nodeList, sfc_tol, activeComm);
       }
 
       // Finish constructing.
@@ -263,8 +321,6 @@ namespace ot
 
         m_treePartFront = *treePartFront;
         m_treePartBack = *treePartBack;
-
-        //TODO locally sort our partition of the DA.
 
         unsigned long long locNodeSz = ownedNodes.size();
         unsigned long long globNodeSz = 0;

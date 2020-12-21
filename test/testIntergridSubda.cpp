@@ -8,6 +8,7 @@
 #include <sfcTreeLoop_matvec_io.h>
 #include <octUtils.h>
 #include <intergridTransfer.h>
+#include <algorithm>
 static constexpr unsigned int DIM = 2;
 typedef ot::TreeNode<unsigned int, DIM> TREENODE;
 typedef ot::DistTree<unsigned int, DIM> DistTREE;
@@ -219,10 +220,49 @@ int main(int argc, char *argv[]) {
     const RefElement * refel = newDA->getReferenceElement();
     double *newDAVec;
 
+    if (oldDA->getLocalNodalSz() > 0)
+    {
+      std::stringstream ss;
+      /// ss << std::fixed << std::setprecision(1);
+      /// for (auto val : coarseVec)
+      ///   ss << "[" << val << "]";
+      /// const int txtSz = 5;
+      std::for_each(oldDA->getTNCoords() + oldDA->getLocalNodeBegin(),
+                    oldDA->getTNCoords() + oldDA->getLocalNodeBegin() + oldDA->getLocalNodalSz(),
+                    [&](const ot::TreeNode<unsigned, DIM> &tn)
+      {
+        ss << "[" << (int)tn.getMortonIndex(0) << (int)tn.getMortonIndex(1) << (int)tn.getMortonIndex(2) << (int)tn.getMortonIndex(3) << "]";
+      });
+      const int txtSz = 6;
+      fprintf(stderr, "[old| rank%d]  %*s%s\n", rank, int(oldDA->getGlobalRankBegin() * txtSz), "", ss.str().c_str());
+    }
+
     // 1. Copy input data to ghosted buffer.
     ot::distShiftNodes(*oldDA,   coarseVec.data(),
                        *surrDA,     surrGhostedPtr + ndof * surrDA->getLocalNodeBegin(),
                        ndof);
+
+    if (surrDA->getLocalNodalSz() > 0)
+    {
+      std::stringstream ss;
+      /// ss << std::fixed << std::setprecision(1);
+      /// std::for_each(surrGhostedPtr + ndof * surrDA->getLocalNodeBegin(),
+      ///               surrGhostedPtr + ndof * (surrDA->getLocalNodeBegin() + surrDA->getLocalNodalSz()),
+      ///               [&](const double &val)
+      /// {
+      ///   ss << "[" << val << "]";
+      /// });
+      /// const int txtSz = 5;
+      std::for_each(surrDA->getTNCoords() + surrDA->getLocalNodeBegin(),
+                    surrDA->getTNCoords() + surrDA->getLocalNodeBegin() + surrDA->getLocalNodalSz(),
+                    [&](const ot::TreeNode<unsigned, DIM> &tn)
+      {
+        ss << "[" << (int)tn.getMortonIndex(0) << (int)tn.getMortonIndex(1) << (int)tn.getMortonIndex(2) << (int)tn.getMortonIndex(3) << "]";
+      });
+      const int txtSz = 6;
+
+      fprintf(stderr, "[surr|rank%d]  %*s%s\n", rank, int(surrDA->getGlobalRankBegin() * txtSz), "", ss.str().c_str());
+    }
 
     surrDA->template readFromGhostBegin<VECType>(surrGhostedPtr, ndof);
     surrDA->template readFromGhostEnd<VECType>(surrGhostedPtr, ndof);

@@ -278,6 +278,12 @@ struct SFC_Tree
                            double loadFlexibility,
                            MPI_Comm comm);
 
+  static par::SendRecvSchedule
+    distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
+                           unsigned int noSplitThresh,
+                           double loadFlexibility,
+                           MPI_Comm comm);
+
   //
   // treeBFTNextLevel()
   //   Takes the queue of BucketInfo in a breadth-first traversal, and finishes
