@@ -268,7 +268,7 @@ namespace ot
       //----
       // Instead: Simple. Upfront Allgather, locally make pairs, point-to-point.
 
-      constexpr bool printDebug = true;
+      constexpr bool printDebug = false;
 
       MPI_Comm comm = srcDA.getGlobalComm();
       int rProc, nProc;

@@ -177,7 +177,7 @@ int main(int argc, char *argv[]) {
                                                           comm);
     const std::vector<ot::TreeNode<unsigned int, DIM>> &treePart = oldDistTree.getTreePartFiltered();
     ot::DA<DIM> *oldDA = new ot::DA<DIM>(oldDistTree, comm, eleOrder);
-    std::cout << oldDA->getLocalElementSz() << "\n";
+    /// std::cout << oldDA->getLocalElementSz() << "\n";
     std::vector<VECType> coarseVec;
     const int ndof = 1;
     oldDA->template createVector<VECType>(coarseVec,false,false,ndof);
@@ -210,6 +210,10 @@ int main(int argc, char *argv[]) {
       << newDA->getLocalElementSz() << "/"
       << newDA->getLocalNodalSz()   << "\n";
 
+    /// quadTreeToGnuplot(oldDistTree.getTreePartFiltered(), level+1, "oldTree", comm);
+    /// quadTreeToGnuplot(surrDistTree.getTreePartFiltered(), level+1, "surrTree", comm);
+    /// quadTreeToGnuplot(newDistTree.getTreePartFiltered(), level+1, "newTree", comm);
+
     /// Intergrid Transfer
     static std::vector<VECType> fineGhosted, surrGhosted;
     newDA->template createVector<VECType>(fineGhosted, false, true, ndof);
@@ -220,49 +224,10 @@ int main(int argc, char *argv[]) {
     const RefElement * refel = newDA->getReferenceElement();
     double *newDAVec;
 
-    if (oldDA->getLocalNodalSz() > 0)
-    {
-      std::stringstream ss;
-      /// ss << std::fixed << std::setprecision(1);
-      /// for (auto val : coarseVec)
-      ///   ss << "[" << val << "]";
-      /// const int txtSz = 5;
-      std::for_each(oldDA->getTNCoords() + oldDA->getLocalNodeBegin(),
-                    oldDA->getTNCoords() + oldDA->getLocalNodeBegin() + oldDA->getLocalNodalSz(),
-                    [&](const ot::TreeNode<unsigned, DIM> &tn)
-      {
-        ss << "[" << (int)tn.getMortonIndex(0) << (int)tn.getMortonIndex(1) << (int)tn.getMortonIndex(2) << (int)tn.getMortonIndex(3) << "]";
-      });
-      const int txtSz = 6;
-      fprintf(stderr, "[old| rank%d]  %*s%s\n", rank, int(oldDA->getGlobalRankBegin() * txtSz), "", ss.str().c_str());
-    }
-
     // 1. Copy input data to ghosted buffer.
     ot::distShiftNodes(*oldDA,   coarseVec.data(),
                        *surrDA,     surrGhostedPtr + ndof * surrDA->getLocalNodeBegin(),
                        ndof);
-
-    if (surrDA->getLocalNodalSz() > 0)
-    {
-      std::stringstream ss;
-      /// ss << std::fixed << std::setprecision(1);
-      /// std::for_each(surrGhostedPtr + ndof * surrDA->getLocalNodeBegin(),
-      ///               surrGhostedPtr + ndof * (surrDA->getLocalNodeBegin() + surrDA->getLocalNodalSz()),
-      ///               [&](const double &val)
-      /// {
-      ///   ss << "[" << val << "]";
-      /// });
-      /// const int txtSz = 5;
-      std::for_each(surrDA->getTNCoords() + surrDA->getLocalNodeBegin(),
-                    surrDA->getTNCoords() + surrDA->getLocalNodeBegin() + surrDA->getLocalNodalSz(),
-                    [&](const ot::TreeNode<unsigned, DIM> &tn)
-      {
-        ss << "[" << (int)tn.getMortonIndex(0) << (int)tn.getMortonIndex(1) << (int)tn.getMortonIndex(2) << (int)tn.getMortonIndex(3) << "]";
-      });
-      const int txtSz = 6;
-
-      fprintf(stderr, "[surr|rank%d]  %*s%s\n", rank, int(surrDA->getGlobalRankBegin() * txtSz), "", ss.str().c_str());
-    }
 
     surrDA->template readFromGhostBegin<VECType>(surrGhostedPtr, ndof);
     surrDA->template readFromGhostEnd<VECType>(surrGhostedPtr, ndof);
@@ -284,6 +249,7 @@ int main(int argc, char *argv[]) {
                *newDA->getTreePartFront(),
                *newDA->getTreePartBack() };
 
+    // See below notes about outDirty hack.
     std::vector<char> outDirty;
     newDA->template createVector<char>(outDirty, false, true, 1);
     newDA->setVectorByScalar(&(*outDirty.begin()), (std::array<char,1>{0}).data(), false, true, 1);

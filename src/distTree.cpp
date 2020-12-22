@@ -100,7 +100,7 @@ namespace ot
         inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, comm);
 
     DistTree outTree(outTreeVec, comm);
-    DistTree surrogateTree(surrogateTreeVec, comm);
+    DistTree surrogateTree(surrogateTreeVec, comm, NoCoalesce);
 
     outTree.filterTree(inTree.getDomainDecider());
     surrogateTree.filterTree(inTree.getDomainDecider());

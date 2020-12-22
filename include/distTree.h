@@ -41,10 +41,12 @@ namespace ot
   class DistTree
   {
     public:
+      enum CoalesceOption : bool { NoCoalesce = false, Coalesce = true };
+
       // Member functions.
       //
       DistTree();
-      DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm);
+      DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm, CoalesceOption coalesceSiblings = Coalesce);
       DistTree(const DistTree &other) { this->operator=(other); }
       DistTree & operator=(const DistTree &other);
 
@@ -279,7 +281,7 @@ namespace ot
   // DistTree() - constructor
   //
   template <typename T, unsigned int dim>
-  DistTree<T, dim>::DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm)
+  DistTree<T, dim>::DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm, CoalesceOption coalesceSiblings)
   : m_comm(comm),
     m_gridStrata(m_uiMaxDepth+1),
     m_tpFrontStrata(m_uiMaxDepth+1),
@@ -288,7 +290,7 @@ namespace ot
     m_filteredTreePartSz(m_uiMaxDepth+1, 0),
     m_numStrata(1)
   {
-    if (comm != MPI_COMM_NULL)
+    if (coalesceSiblings == Coalesce && comm != MPI_COMM_NULL)
       SFC_Tree<T, dim>::distCoalesceSiblings(treePart, comm);
 
     m_originalTreePartSz[0] = treePart.size();
