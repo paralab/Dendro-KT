@@ -774,8 +774,14 @@ bool testLinear(int argc, char * argv[]){
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> surrTree;
         ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(oldDistTree.getTreePartFiltered(), octFlags, newTree, surrTree, 0.3, comm);
         newDistTree = ot::DistTree<unsigned int, DIM>(newTree, comm);
-        surrDistTree = ot::DistTree<unsigned int, DIM>(surrTree, comm);
+        surrDistTree = ot::DistTree<unsigned int, DIM>(surrTree, comm, ot::DistTree<unsigned, DIM>::NoCoalesce);
     }
+
+    /// int level = 3;
+    /// quadTreeToGnuplot(oldDistTree.getTreePartFiltered(), level+1, "oldTree", comm);
+    /// quadTreeToGnuplot(surrDistTree.getTreePartFiltered(), level+1, "surrTree", comm);
+    /// quadTreeToGnuplot(newDistTree.getTreePartFiltered(), level+1, "newTree", comm);
+
     ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder);
     std::cout << "Number of elements / nodes in OldDA == "
       << oldDA->getLocalElementSz() << " / "

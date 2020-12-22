@@ -995,7 +995,9 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
 
   if (rProc == 0)
   {
-    std::ofstream rootFile(fileprefix + "_root.txt");
+    const std::string rootfile = fileprefix + "_root.txt";
+    std::ofstream rootFile(rootfile);
+    rootFile << "set title \"" << fileprefix << "\"\n";
     for (int r = 0; r < nProc; ++r)
       rootFile << "load \"" << fileprefix << "_" << r << ".txt\"\n";
     rootFile << "set key off\n";
@@ -1004,6 +1006,8 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
     rootFile << "plot 0\n";
     rootFile << "pause mouse keypress\n";
     rootFile.close();
+
+    fprintf(stderr, "Run `gnuplot %s`\n", rootfile.c_str());
   }
 
   std::stringstream filename;
