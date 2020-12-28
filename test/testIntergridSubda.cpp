@@ -29,7 +29,7 @@ void generateRefinementFlags(ot::DA<DIM> * octDA, std::vector<ot::OCT_FLAGS::Ref
     while(!loop.isFinished()){
         if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
             bool boundaryOctant = loop.subtreeInfo().isElementBoundary();
-            if(not(boundaryOctant)){
+            if(boundaryOctant){
                 refineFlags[counter]=ot::OCT_FLAGS::Refine::OCT_REFINE;
             }
             else{
@@ -152,7 +152,7 @@ void checkIntergridTransfer(MPI_Comm comm, const double *array, ot::DA<DIM> * oc
 
 const auto DomainDecider2 =
     (typename ot::DistTree<unsigned int, DIM>::BoxDecider)(
-        std::array<double, DIM>({0.5, 1.0}));
+        std::array<double, DIM>({0.4, 1.0}));
 
 int main(int argc, char *argv[]) {
     typedef unsigned int DENDRITE_UINT;
