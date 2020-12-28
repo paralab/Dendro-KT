@@ -139,6 +139,14 @@ namespace ot
           return treeloop.getCurrentSubtree();
         }
 
+        /** getSfcChildNum() */
+        ChildI getSfcChildNum() const {
+          return treeloop.getCurrentFrame().getSfcChildNum();
+        }
+
+        /** getNumTreeElements() */
+        size_t getNumTreeElements() const { return treeloop.getCurrentFrame().getNumLowerTreeElements() + this->isLeaf(); }
+
         /** isLeaf() */
         bool isLeaf() const {
           return treeloop.isLeaf();
@@ -298,6 +306,14 @@ namespace ot
         const TreeNode<unsigned int, dim> & getCurrentSubtree() const {
           return treeloop.getCurrentSubtree();
         }
+
+        /** getSfcChildNum() */
+        ChildI getSfcChildNum() const {
+          return treeloop.getCurrentFrame().getSfcChildNum();
+        }
+
+        /** getNumTreeElements() */
+        size_t getNumTreeElements() const { return treeloop.getCurrentFrame().getNumLowerTreeElements() + this->isLeaf(); }
 
         /** isLeaf() */
         bool isLeaf() const {
@@ -483,6 +499,14 @@ namespace ot
           return treeloop.getCurrentSubtree();
         }
 
+        /** getSfcChildNum() */
+        ChildI getSfcChildNum() const {
+          return treeloop.getCurrentFrame().getSfcChildNum();
+        }
+
+        /** getNumTreeElements() */
+        size_t getNumTreeElements() const { return treeloop.getCurrentFrame().getNumLowerTreeElements() + this->isLeaf(); }
+
         /** isLeaf() */
         bool isLeaf() const {
           return treeloop.isLeaf();
@@ -528,6 +552,15 @@ namespace ot
           treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
           std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
                       treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
+        }
+
+        /** overwriteNodeValsOutScalar() */
+        void overwriteNodeValsOutScalar(const NodeT *newDofs) {
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
+          size_t ii = 0;
+          for (size_t nodeIdx = 0; nodeIdx < getNumNodesIn(); ++nodeIdx)
+            for (size_t dofIdx = 0; dofIdx < treeloop.m_ndofs; ++dofIdx)
+              treeloop.getCurrentFrame().template getMyOutputHandle<0>()[ii++] = newDofs[dofIdx];
         }
 
 

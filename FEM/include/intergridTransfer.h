@@ -71,6 +71,7 @@ namespace fem
     const unsigned int npe = intPow(eleOrder+1, dim);
 
     std::vector<DofT> leafResult(ndofs*npe, 0.0);
+    std::vector<DofT> dofsZero(ndofs, 0.0);
 
     const bool visitEmpty = true;
     const unsigned int padlevel = 1;
@@ -83,6 +84,8 @@ namespace fem
       treeLoopDirty = new ot::MatvecBaseOut<dim, char, false> (out.sz, 1, eleOrder, visitEmpty, padlevel, out.coords, out.treePartPtr, out.treePartSz, out.partFront, out.partBack);
 
     const std::vector<char> leafOnes(npe, 1);
+    const char charZero[1] = {0};
+    const char charOne[1] = {1};
 
     /// size_t totalNumNodes = 0;
     /// size_t numNodesUsed = 0;
@@ -92,12 +95,32 @@ namespace fem
       const TN subtreeIn = treeLoopIn.getCurrentSubtree();
       const TN subtreeOut = treeLoopOut.getCurrentSubtree();
 
-      if (!(subtreeIn == subtreeOut))
+      // Skip extra input elements.
+      if (subtreeIn.getLevel() > subtreeOut.getLevel()
+          || subtreeIn.getLevel() == subtreeOut.getLevel()
+          && treeLoopIn.subtreeInfo().getSfcChildNum()
+             < treeLoopOut.subtreeInfo().getSfcChildNum())
       {
-        assert(!"MatvecBaseIn/Out subtree mismatch!");
+        treeLoopIn.next();
       }
 
-      if (!treeLoopIn.isPre() && !treeLoopOut.isPre())
+      // Skip extra output elements, write out 0s in spurious nodes.
+      else if (subtreeOut.getLevel() > subtreeIn.getLevel()
+               || subtreeOut.getLevel() == subtreeIn.getLevel()
+               && treeLoopOut.subtreeInfo().getSfcChildNum()
+                  < treeLoopIn.subtreeInfo().getSfcChildNum())
+      {
+        treeLoopOut.subtreeInfo().overwriteNodeValsOutScalar(&dofsZero[0]);
+        treeLoopOut.next();
+
+        if (treeLoopDirty != nullptr)
+        {
+          treeLoopDirty->subtreeInfo().overwriteNodeValsOutScalar(charOne);
+          treeLoopDirty->next();
+        }
+      }
+
+      else if (!treeLoopIn.isPre() && !treeLoopOut.isPre())
       {
         treeLoopIn.next();
         treeLoopOut.next();
@@ -107,11 +130,17 @@ namespace fem
       }
       else if (treeLoopIn.isPre() && treeLoopOut.isPre())
       {
+
         // At least one tree not at leaf, need to descend.
         // If one is but not the other, the interpolations are handled by tree loop.
         if (!treeLoopIn.subtreeInfo().isLeafOrLower() ||
-            !treeLoopOut.subtreeInfo().isLeafOrLower())
+                 !treeLoopOut.subtreeInfo().isLeafOrLower())
         {
+          if (!(subtreeIn == subtreeOut))
+          {
+            std::cout << "MatvecBaseIn/Out subtree mismatch! (in nonleaf)\n";
+          }
+
           treeLoopIn.step();
           treeLoopOut.step();
 
@@ -122,6 +151,11 @@ namespace fem
         // Both leafs, can directly transfer.
         else
         {
+          if (!(subtreeIn == subtreeOut))
+          {
+            std::cout << "MatvecBaseIn/Out subtree mismatch! (in leaf x leaf)\n";
+          }
+
           // Intermediate buffer, in case we need to clear out some nodes.
           std::copy_n( treeLoopIn.subtreeInfo().readNodeValsIn(),  ndofs * npe,
                        leafResult.begin() );
@@ -174,7 +208,7 @@ namespace fem
       }
       else
       {
-        std::cerr << "Error: locIntergridTransfer() traversals out of sync." << std::endl;
+        std::cerr << "Error: locIntergridTransfer() traversals out of sync (one is pre and other is post)." << std::endl;
         assert(false);
       }
     }
