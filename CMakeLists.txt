@@ -207,6 +207,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   FEM/src/tensor_special_longlong.cpp
                   FEM/src/tensor_special_int.cpp
                   FEM/src/tensor_special_unsigned.cpp
+                  FEM/src/tensor_special_char.cpp
                   FEM/src/refel.cpp
                   FEM/src/basis.cpp
                   )
