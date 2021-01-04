@@ -74,7 +74,7 @@ namespace bench
 
 
     template <unsigned int dim>
-    void bench_kernel(unsigned int numPts, unsigned int numWarmup, unsigned int numRuns, unsigned int eleOrder, int lengthPower2, MPI_Comm comm)
+    void bench_kernel(unsigned int numPts, unsigned int numTreeRuns, unsigned int numWarmup, unsigned int numRuns, unsigned int eleOrder, int lengthPower2, MPI_Comm comm)
     {
         // numWarmup affects number of matVec warmup runs.
         // numRuns affects number of matVec runs.
@@ -118,7 +118,7 @@ namespace bench
             //
 
             // Time sorting.
-            for (int ii = 0; ii < numRuns; ii++)
+            for (int ii = 0; ii < numTreeRuns; ii++)
             {
               points_copy = points;
               tree.clear();
@@ -129,7 +129,7 @@ namespace bench
             gRptSz.b1_treeSortSz = points_copy.size();
 
             // Time construction.
-            for (int ii = 0; ii < numRuns; ii++)
+            for (int ii = 0; ii < numTreeRuns; ii++)
             {
               points_copy = points;
               tree.clear();
@@ -140,7 +140,7 @@ namespace bench
             gRptSz.b1_treeConstructionSz = tree.size();
 
             // Time balanced construction.
-            for (int ii = 0; ii < numRuns; ii++)
+            for (int ii = 0; ii < numTreeRuns; ii++)
             {
               points_copy = points;
               tree.clear();
@@ -154,7 +154,7 @@ namespace bench
             dtree.filterTree(boxDecider);
 
             // Generate DA from balanced tree.
-            for (int ii = 0; ii < numRuns; ii++)
+            for (int ii = 0; ii < numTreeRuns; ii++)
             {
               t_adaptive_oda.start();
               ot::DA<dim> oda(dtree, comm, eleOrder, numPts, loadFlexibility);
@@ -374,9 +374,10 @@ int main(int argc, char** argv)
 
     _InitializeHcurve(dim);
 
-    const unsigned int numWarmup = 10;
-    const unsigned int numRuns = 10;
-    bench::bench_kernel<dim>(pts_per_core, numWarmup, numRuns, eleOrder, lengthPower2,comm);
+    const unsigned int numTreeRuns = 1;
+    const unsigned int numWarmup = 5;
+    const unsigned int numRuns = 100;
+    bench::bench_kernel<dim>(pts_per_core, numTreeRuns, numWarmup, numRuns, eleOrder, lengthPower2,comm);
 
 
     const char * param_names[] = {
