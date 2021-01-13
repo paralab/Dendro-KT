@@ -4,6 +4,10 @@
 
 #include "intergridTransfer.h"
 
+#include "point.h"
+#include "refel.h"
+#include "tensor.h"
+
 #include <iostream>
 
 
@@ -25,6 +29,10 @@ class ConstMeshPointers
         m_distTree(distTree),
         m_da(da)
     {}
+
+    // Copy constructor and copy assignment.
+    ConstMeshPointers(const ConstMeshPointers &other) = default;
+    ConstMeshPointers & operator=(const ConstMeshPointers &other) = default;
 
     // distTree()
     const ot::DistTree<unsigned int, dim> * distTree() const { return m_distTree; }
@@ -52,6 +60,7 @@ class Vector
     std::vector<ValT> m_data;
     bool m_isGhosted;
     size_t m_ndofs = 1;
+    unsigned long long m_globalNodeRankBegin = 0;
 
   public:
     // Vector constructor
@@ -60,6 +69,7 @@ class Vector
     : m_isGhosted(isGhosted), m_ndofs(ndofs)
     {
       mesh.da()->createVector(m_data, false, isGhosted, ndofs);
+      m_globalNodeRankBegin = mesh.da()->getGlobalRankBegin();
     }
 
     // data()
@@ -71,6 +81,16 @@ class Vector
 
     // ndofs()
     size_t ndofs() const { return m_ndofs; }
+
+    // ptr()
+    ValT * ptr() { return m_data.data(); }
+    const ValT * ptr() const { return m_data.data(); }
+
+    // size()
+    size_t size() const { return m_data.size(); }
+
+    // globalRankBegin();
+    unsigned long long globalRankBegin() const { return m_globalNodeRankBegin; }
 };
 
 
@@ -96,10 +116,96 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
                         const ConstMeshPointers<dim> &coarseMesh,
                         Vector<ValT> &coarseOut);
 
+
+template <unsigned int dim>
+class InnerProduct
+{
+  public:
+    InnerProduct(const ConstMeshPointers<dim> &mesh)
+      : m_mesh(mesh)
+    {
+      setProblemDimensions(Point<dim>(0.0), Point<dim>(1.0));
+    }
+
+    // setProblemDimensions()
+    inline void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max)
+    {
+      m_uiPtMin = pt_min;
+      m_uiPtMax = pt_max;
+    }
+
+    // compute()
+    template <typename ValT>
+    ValT compute(const Vector<ValT> &vecA,
+                 const Vector<ValT> &vecB);
+
+  protected:
+    // elementalInnerProduct()
+    template <typename ValT>
+    ValT elementalInnerProduct(const ValT *vecA,
+                               const ValT *vecB,
+                               unsigned int ndofs,
+                               const double *coords,
+                               double scale,
+                               bool isElementBoundary);
+
+    // doubleBufferPipeline()
+    template <typename ValT>
+    static void doubleBufferPipeline(const ValT * fromPtrs[], ValT * toPtrs[], const ValT *in, ValT *out, ValT * tmp1, ValT * tmp2 = nullptr);
+
+
+    // gridX_to_X()  (single axis)
+    double gridX_to_X(unsigned int d, double x) const
+    {
+      double Rg=1.0;
+      return (((x)/(Rg))*((m_uiPtMax.x(d)-m_uiPtMin.x(d)))+m_uiPtMin.x(d));
+    }
+
+    // gridX_to_X()  (multi-dimensional point)
+    Point<dim> gridX_to_X(Point<dim> x) const
+    {
+      double newCoords[dim];
+      for (unsigned int d = 0; d < dim; d++)
+        newCoords[d] = gridX_to_X(d, x.x(d));
+      return Point<dim>(newCoords);
+    }
+
+  protected:
+    const ConstMeshPointers<dim> m_mesh;
+    Point<dim> m_uiPtMin;
+    Point<dim> m_uiPtMax;
+};
+
+
+//
+// ElementLoopIn  (wrapper)
+//
 template <unsigned int dim, typename ValT>
-static ValT innerProduct(const ConstMeshPointers<dim> &mesh,
-                         const Vector<ValT> &vecA,
-                         const Vector<ValT> &vecB);
+class ElementLoopIn
+{
+  private:
+    ot::MatvecBaseIn<dim, ValT> m_loop;
+
+  public:
+    ot::MatvecBaseIn<dim, ValT> & loop() { return m_loop; }
+
+    ElementLoopIn(const ConstMeshPointers<dim> &mesh,
+                  const Vector<ValT> &ghostedVec)
+      :
+        m_loop(mesh.da()->getTotalNodalSz(),
+               ghostedVec.ndofs(),
+               mesh.da()->getElementOrder(),
+               false,
+               0,
+               mesh.da()->getTNCoords(),
+               ghostedVec.ptr(),
+               mesh.distTree()->getTreePartFiltered().data(),
+               mesh.distTree()->getTreePartFiltered().size(),
+               *mesh.da()->getTreePartFront(),
+               *mesh.da()->getTreePartBack())
+    { }
+};
+
 
 
 constexpr unsigned int dim = 4;
@@ -162,11 +268,12 @@ int main(int argc, char * argv[])
 
   // Compute prolongation and restriction.
   prolongation(coarseMesh, coarseU, surrogateMesh, fineMesh, Pu);
-  restriction(fineMesh, fineV, surrogateMesh, coarseMesh, Rv);
+  /// restriction(fineMesh, fineV, surrogateMesh, coarseMesh, Rv);
 
   // Assert equality of inner products.
-  const val_t inner_product_Pu_v = innerProduct(fineMesh, Pu, fineV);
-  const val_t inner_product_u_Rv = innerProduct(coarseMesh, coarseU, Rv);
+  const val_t inner_product_Pu_v = InnerProduct<dim>(fineMesh).compute(Pu, fineV);
+  /// const val_t inner_product_u_Rv = InnerProduct<dim>(coarseMesh).compute(coarseU, Rv);
+  const val_t inner_product_u_Rv = 0.0f;
   const bool matching = (inner_product_Pu_v == inner_product_u_Rv);
   fprintf(stdout, "%s%s: %f %s %f%s\n",
       (matching ? GRN : RED),
@@ -218,6 +325,7 @@ template <typename ValT>
 static void initialize(Vector<ValT> &vec, ValT begin)
 {
   const size_t size = vec.data().size();
+  begin += vec.ndofs() * vec.globalRankBegin();
   for (size_t ii = 0; ii < size; ++ii)
     vec.data()[ii] = (begin++);
 }
@@ -302,15 +410,165 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
 }
 
 
+
+//
+// doubleBufferPipeline()
+//
+template <unsigned int dim>
+template <typename ValT>
+void InnerProduct<dim>::doubleBufferPipeline(const ValT * fromPtrs[], ValT * toPtrs[], const ValT *in, ValT *out, ValT * tmp1, ValT * tmp2)
+{
+  // There are (dim) operations, hence (dim) edges.
+  //   in -> ... -> tmp1 -> ... -> tmp2 -> out.
+  // Make tmp2 the final buffer before out.
+
+  if (tmp2 == nullptr)
+  {
+    tmp2 = tmp1;
+    tmp1 = out;
+  }
+
+  // Create edges last to first. Connect edges by swapping "to" and "from".
+  fromPtrs[dim-1] = tmp2;
+  toPtrs[dim-1] = tmp1;
+  for (int d = dim-1; d > 0; --d)
+  {
+    fromPtrs[d-1] = toPtrs[d];
+    toPtrs[d-1] = (fromPtrs[d-1] == tmp1 ? tmp2 : tmp1);
+  }
+
+  // Override "from" of first edge and "to" of last edge.
+  fromPtrs[0] = in;
+  toPtrs[dim-1] = out;
+}
+
+
+//
+// elementalInnerProduct
+//
+template <unsigned int dim>
+template <typename ValT>
+ValT InnerProduct<dim>::elementalInnerProduct(const ValT *vecA, const ValT *vecB, unsigned int ndofs, const double *coords, double scale, bool isElementBoundary)
+{
+  // Compute the following from right to left:
+  //   vecB^T Q^T W Q vecA
+
+  const RefElement* refEl = this->m_mesh.da()->getReferenceElement();
+  const unsigned int eleOrder = refEl->getOrder();
+  const unsigned int nrp = eleOrder+1;
+  const unsigned int nPe = intPow(eleOrder+1, dim);
+
+  static std::vector<ValT> intraOpBuffer;
+  intraOpBuffer.clear();
+  intraOpBuffer.resize(ndofs * nPe, 0.0f);
+
+  static std::vector<ValT> interOpBuffer;
+  interOpBuffer.clear();
+  interOpBuffer.resize(ndofs * nPe, 0.0f);
+
+  // Fill with chain of matrices acting on 1 axis at a time.
+  const double * mat1dPtrs[dim];
+
+  // Fill with chain of intermediate variables.
+  const ValT * imFromPtrs[dim];
+  ValT * imToPtrs[dim];
+
+  // Interpolate vecA to quadrature points.  (LMult by Q)
+  doubleBufferPipeline(imFromPtrs, imToPtrs, vecA, interOpBuffer.data(), intraOpBuffer.data());
+  for (unsigned int d = 0; d < dim; d++)
+    mat1dPtrs[d] = refEl->getQ1d();
+  KroneckerProduct<dim, ValT, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs, ndofs);
+
+  // Integration weights and Jacobian.  (LMult by W)
+  // To integrate in reference space must multiply by Jacobian.
+  const Point<dim> eleMin(&coords[0 * dim]);
+  const Point<dim> eleMax(&coords[(nPe-1) * dim]);
+  const Point<dim> sz = gridX_to_X(eleMax) - gridX_to_X(eleMin);
+  const double refElSz=refEl->getElementSz();
+  const Point<dim> J = sz * (1.0 / refElSz);
+  double J_product = 1.0;
+  for (unsigned int d = 0; d < dim; d++)
+    J_product *= J.x(d);
+  SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, interOpBuffer.data(), refEl->getWgq(), J_product);
+
+  // Transpose of interpolation-to-quadrature-points.  (LMult by Q^T)
+  doubleBufferPipeline(imFromPtrs, imToPtrs, interOpBuffer.data(), interOpBuffer.data(), intraOpBuffer.data());
+  for (unsigned int d = 0; d < dim; d++)
+    mat1dPtrs[d] = refEl->getQT1d();  // transpose
+  KroneckerProduct<dim, ValT, true>(nrp, mat1dPtrs, imFromPtrs, imToPtrs, ndofs);
+
+  // Product with vecB.  (LMult by vecB^T)
+  ValT product = 0;
+  for (size_t node_dof = 0; node_dof < ndofs * nPe; ++node_dof)
+    product += vecB[node_dof] * interOpBuffer[node_dof];
+
+  return product;
+}
+
+
 //
 // innerProduct()
 //
-template <unsigned int dim, typename ValT>
-static ValT innerProduct(const ConstMeshPointers<dim> &mesh,
-                         const Vector<ValT> &vecA,
-                         const Vector<ValT> &vecB)
+template <unsigned int dim>
+template <typename ValT>
+ValT InnerProduct<dim>::compute(const Vector<ValT> &vecA,
+                                const Vector<ValT> &vecB)
 {
-  throw std::logic_error("innerProduct() not implemented!");
+  const size_t ndofs = vecA.ndofs();
+
+  // Read from ghosts.
+  static Vector<ValT> ghostedA(this->m_mesh, true, ndofs);
+  static Vector<ValT> ghostedB(this->m_mesh, true, ndofs);
+
+  this->m_mesh.da()->nodalVecToGhostedNodal(vecA.data(), ghostedA.data(), true, ndofs);
+  this->m_mesh.da()->readFromGhostBegin(ghostedA.data().data(), ndofs);
+  this->m_mesh.da()->readFromGhostEnd(ghostedA.data().data(), ndofs);
+
+  this->m_mesh.da()->nodalVecToGhostedNodal(vecB.data(), ghostedB.data(), true, ndofs);
+  this->m_mesh.da()->readFromGhostBegin(ghostedB.data().data(), ndofs);
+  this->m_mesh.da()->readFromGhostEnd(ghostedB.data().data(), ndofs);
+
+  // Integrate in local element loop.
+  ValT localIntegration = 0;
+  if (this->m_mesh.da()->getLocalNodalSz() > 0)
+  {
+    // TODO what determines the scale parameter?
+    const double scale = 1.0;
+
+    ElementLoopIn<dim, ValT> loopA(this->m_mesh, ghostedA);
+    ElementLoopIn<dim, ValT> loopB(this->m_mesh, ghostedB);
+
+    while (!loopA.loop().isFinished())
+    {
+      if (loopA.loop().isPre() && loopA.loop().subtreeInfo().isLeaf())
+      {
+        const double * nodeCoordsFlat = loopA.loop().subtreeInfo().getNodeCoords();
+        const ValT * valsAFlat = loopA.loop().subtreeInfo().readNodeValsIn();
+        const ValT * valsBFlat = loopB.loop().subtreeInfo().readNodeValsIn();
+
+        localIntegration += this->elementalInnerProduct(valsAFlat,
+                                                        valsBFlat,
+                                                        ndofs,
+                                                        nodeCoordsFlat,
+                                                        scale,
+                               loopA.loop().subtreeInfo().isElementBoundary());
+        loopA.loop().next();
+        loopB.loop().next();
+      }
+      else
+      {
+        loopA.loop().step();
+        loopB.loop().step();
+      }
+    }
+  }
+
+  // Allreduce.
+  ValT globalIntegration = 0;
+  MPI_Comm comm = this->m_mesh.da()->getGlobalComm();
+  par::Mpi_Allreduce(&localIntegration, &globalIntegration, 1, MPI_SUM, comm);
+
+  return globalIntegration;
 }
 
 
