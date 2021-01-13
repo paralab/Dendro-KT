@@ -365,6 +365,11 @@ add_executable(tstIntergridSubda ${SRC_FILES})
 target_include_directories(tstIntergridSubda PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstIntergridSubda dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRestriction.cpp)
+add_executable(tstRestriction ${SRC_FILES})
+target_include_directories(tstRestriction PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstRestriction dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRemesh.cpp)
 add_executable(tstRemesh ${SRC_FILES})
 target_include_directories(tstRemesh PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
