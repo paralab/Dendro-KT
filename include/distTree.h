@@ -116,7 +116,7 @@ namespace ot
       TreeNode<T, dim> getTreePartBack(int stratum = 0) const;
 
 
-      int getNumStrata() { return m_numStrata; }
+      int getNumStrata() const { return m_numStrata; }
 
 
       // These deciders can be called directly.
