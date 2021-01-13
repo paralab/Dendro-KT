@@ -765,11 +765,40 @@ namespace ot
         std::copy(srcStart, srcStart + dof*m_uiLocalNodalSz, local);
     }
 
+    template <unsigned int dim>
+    template<typename T>
+    void DA<dim>::nodalVecToGhostedNodal(const std::vector<T> &in, std::vector<T> &out,bool isAllocated,unsigned int dof) const
+    {
+        if(!(m_uiIsActive))
+            return;
+
+        if(!isAllocated)
+            createVector<T>(out,false,true,dof);
+
+        // Assumes layout [abc][abc][...], so just need single shift.
+        std::copy(in.cbegin(), in.cend(), out.begin() + dof*m_uiLocalNodeBegin);
+    }
+
+    template <unsigned int dim>
+    template<typename T>
+    void DA<dim>::ghostedNodalToNodalVec(const std::vector<T> gVec, std::vector<T> &local,bool isAllocated,unsigned int dof) const
+    {
+        if(!(m_uiIsActive))
+            return;
+
+        if(!isAllocated)
+            createVector(local,false,false,dof);
+
+        // Assumes layout [abc][abc][...], so just need single shift.
+        typename std::vector<T>::const_iterator srcStart = gVec.cbegin() + dof*m_uiLocalNodeBegin;
+        std::copy(srcStart, srcStart + dof*m_uiLocalNodalSz, local.begin());
+    }
+
 
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::readFromGhostBegin(T* vec,unsigned int dof)
+    void DA<dim>::readFromGhostBegin(T* vec,unsigned int dof) const
     {
         // Send to downstream, recv from upstream.
 
@@ -838,7 +867,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::readFromGhostEnd(T *vec,unsigned int dof)
+    void DA<dim>::readFromGhostEnd(T *vec,unsigned int dof) const
     {
         if (m_uiGlobalNpes==1)
             return;
@@ -876,7 +905,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof, const char * isDirtyOut)
+    void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof, const char * isDirtyOut) const
     {
         // The same as readFromGhosts, but roles reversed:
         // Send to upstream, recv from downstream.
@@ -980,7 +1009,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof, bool useAccumulation, const char * isDirtyOut)
+    void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof, bool useAccumulation, const char * isDirtyOut) const
     {
         // The same as readFromGhosts, but roles reversed:
         // Send to upstream, recv from downstream.

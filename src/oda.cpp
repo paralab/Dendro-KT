@@ -777,7 +777,7 @@ namespace ot
 
 
     template <unsigned int dim>
-    void DA<dim>::petscReadFromGhostBegin(PetscScalar* vecArry, unsigned int dof) 
+    void DA<dim>::petscReadFromGhostBegin(PetscScalar* vecArry, unsigned int dof) const
     {
         if(!m_uiIsActive)
             return;
@@ -788,7 +788,7 @@ namespace ot
     }
 
     template <unsigned int dim>
-    void DA<dim>::petscReadFromGhostEnd(PetscScalar* vecArry, unsigned int dof) 
+    void DA<dim>::petscReadFromGhostEnd(PetscScalar* vecArry, unsigned int dof) const
     {
         if(!m_uiIsActive)
             return;

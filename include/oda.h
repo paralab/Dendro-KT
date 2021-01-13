@@ -208,10 +208,10 @@ class DA
     GatherMap m_gm;
 
     /**@brief contexts for async data transfers*/
-    std::vector<AsyncExchangeContex> m_uiMPIContexts;
+    mutable std::vector<AsyncExchangeContex> m_uiMPIContexts;
 
     /**@brief: mpi tags*/
-    unsigned int m_uiCommTag;
+    mutable unsigned int m_uiCommTag;
 
     /**@brief: total number of nodes accross all the processes*/
     DendroIntL m_uiGlobalNodeSz;
@@ -455,28 +455,28 @@ class DA
           * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
           * */
         template <typename T>
-        void readFromGhostBegin(T *vec, unsigned int dof = 1);
+        void readFromGhostBegin(T *vec, unsigned int dof = 1) const;
 
         /**
           * @brief Sync the ghost element exchange
           * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
           * */
         template <typename T>
-        void readFromGhostEnd(T *vec, unsigned int dof = 1);
+        void readFromGhostEnd(T *vec, unsigned int dof = 1) const;
 
         /**
          * @brief Initiate accumilation across ghost elements
          * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
          */
         template <typename T>
-        void writeToGhostsBegin(T *vec, unsigned int dof = 1, const char * isDirtyOut = nullptr);
+        void writeToGhostsBegin(T *vec, unsigned int dof = 1, const char * isDirtyOut = nullptr) const;
 
         /**
          * @brief Sync accumilation across ghost elements
          * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
          */
         template <typename T>
-        void writeToGhostsEnd(T *vec, unsigned int dof = 1, bool useAccumulation = true, const char * isDirtyOut = nullptr);
+        void writeToGhostsEnd(T *vec, unsigned int dof = 1, bool useAccumulation = true, const char * isDirtyOut = nullptr) const;
 
         /**
              * @brief convert nodal local vector with ghosted buffer regions.
@@ -498,6 +498,15 @@ class DA
 
         template <typename T>
         void ghostedNodalToNodalVec(const T *gVec, T *&local, bool isAllocated = false, unsigned int dof = 1) const;
+
+
+        // std::vector versions
+        template<typename T>
+        void nodalVecToGhostedNodal(const std::vector<T> &in, std::vector<T> &out,bool isAllocated = false,unsigned int dof = 1) const;
+
+        template<typename T>
+        void ghostedNodalToNodalVec(const std::vector<T> gVec, std::vector<T> &local,bool isAllocated = false,unsigned int dof = 1) const;
+
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
@@ -672,7 +681,7 @@ class DA
              * @param[in] dof: Degrees of freedoms
              * */
 
-        void petscReadFromGhostBegin(PetscScalar *vecArry, unsigned int dof = 1);
+        void petscReadFromGhostBegin(PetscScalar *vecArry, unsigned int dof = 1) const;
 
         /**
              * @brief Sync the ghost element exchange
@@ -680,7 +689,7 @@ class DA
              * @param[in] vecArry: pointer to from the VecGetArray()
              * @param[in] dof: Degrees of freedoms
              * */
-        void petscReadFromGhostEnd(PetscScalar *vecArry, unsigned int dof = 1);
+        void petscReadFromGhostEnd(PetscScalar *vecArry, unsigned int dof = 1) const;
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
