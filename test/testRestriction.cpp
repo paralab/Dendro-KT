@@ -208,7 +208,7 @@ class ElementLoopIn
 
 
 
-constexpr unsigned int dim = 4;
+constexpr unsigned int dim = 2;
 using uint = unsigned int;
 using val_t = double;
 
@@ -231,7 +231,7 @@ int main(int argc, char * argv[])
   //
   // Define coarse grid.
   //
-  const int coarseLev = 2;
+  const int coarseLev = 1;
   const DTree_t coarseDTree = DTree_t::constructSubdomainDistTree(
       coarseLev, comm, sfc_tol);
   const DA_t * coarseDA = new DA_t(coarseDTree, comm, eleOrder);
@@ -263,18 +263,19 @@ int main(int argc, char * argv[])
   Vector<val_t> Pu(fineMesh, isGhosted, ndofs);
   Vector<val_t> Rv(coarseMesh, isGhosted, ndofs);
 
-  initialize(coarseU, val_t(10));
-  initialize(fineV, val_t(101));
+  /// initialize(coarseU, val_t(10));
+  /// initialize(fineV, val_t(101));
+  initialize(coarseU, val_t(1));
+  initialize(fineV, val_t(1));
 
   // Compute prolongation and restriction.
   prolongation(coarseMesh, coarseU, surrogateMesh, fineMesh, Pu);
-  /// restriction(fineMesh, fineV, surrogateMesh, coarseMesh, Rv);
+  restriction(fineMesh, fineV, surrogateMesh, coarseMesh, Rv);
 
   // Assert equality of inner products.
   const val_t inner_product_Pu_v = InnerProduct<dim>(fineMesh).compute(Pu, fineV);
-  /// const val_t inner_product_u_Rv = InnerProduct<dim>(coarseMesh).compute(coarseU, Rv);
-  const val_t inner_product_u_Rv = 0.0f;
-  const bool matching = (inner_product_Pu_v == inner_product_u_Rv);
+  const val_t inner_product_u_Rv = InnerProduct<dim>(coarseMesh).compute(coarseU, Rv);
+  const bool matching = fabs(inner_product_Pu_v - inner_product_u_Rv) < 1e-5;
   fprintf(stdout, "%s%s: %f %s %f%s\n",
       (matching ? GRN : RED),
       (matching ? "success" : "failure"),
@@ -324,10 +325,14 @@ static std::vector<ot::OCT_FLAGS::Refine> flagRefineBoundary(
 template <typename ValT>
 static void initialize(Vector<ValT> &vec, ValT begin)
 {
+  /// const long long m = 100;
   const size_t size = vec.data().size();
   begin += vec.ndofs() * vec.globalRankBegin();
   for (size_t ii = 0; ii < size; ++ii)
-    vec.data()[ii] = (begin++);
+  {
+    /// vec.data()[ii] = ((long long)(begin++)) % m;
+    vec.data()[ii] = 1.0f;
+  }
 }
 
 
@@ -365,6 +370,17 @@ static void prolongation(const ConstMeshPointers<dim> &coarseMesh,
                      ndofs);
   surrogateMesh.da()->readFromGhostBegin(surrogateGhosted.data().data(), ndofs);
   surrogateMesh.da()->readFromGhostEnd(surrogateGhosted.data().data(), ndofs);
+  // Note that depending on whether the fine grid was generated from the
+  // coarse grid, or whether the coarse grid was generated from the
+  // fine grid, will change the relative ordering of
+  // distShiftNodes, readFromGhost, and writeToGhost.
+  // -   If fine=generateFrom(coarse), then
+  //     *   |surrogate_nodes| == |coarse_nodes|, and
+  //     *   partition_{by_surrogate} == partition_{by_fine}.
+  //
+  // -   If coarse=generateFrom(fine), then
+  //     *   |surrogate_nodes| == |fine_nodes|, and
+  //     *   partition_{by_surrogate} == partition_{by_coarse}.
 
   // Local intergrid transfer.
   using TreeNodeT = ot::TreeNode<unsigned int, dim>;
@@ -406,7 +422,97 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
                         const ConstMeshPointers<dim> &coarseMesh,
                         Vector<ValT> &coarseOut)
 {
-  throw std::logic_error("restriction() not implemented!");
+  const size_t ndofs = fineIn.ndofs();
+  const unsigned int eleOrder = fineMesh.da()->getElementOrder();
+
+  // Input fine, output coarse.
+  // Depending how grids were generated, fine may need to be moved or not.
+  // (If fine==generateFrom(coarse), then surrogate is partitioned by fine.)
+
+  std::cout << "restriction()\n";
+
+  // Ghosted array for input.
+  static Vector<ValT> fineInGhosted(fineMesh, true, ndofs);
+  fineMesh.da()->nodalVecToGhostedNodal(fineIn.data(), fineInGhosted.data(), true, ndofs);
+
+  // Temporary surrogate array (also ghosted).
+  static Vector<ValT> surrogateGhosted(surrogateMesh, true, ndofs);
+  std::fill(surrogateGhosted.data().begin(), surrogateGhosted.data().end(), 0);
+
+  // Basically intergrid transfer. Main things are:
+  // - Coarse UseAccumulation=true;
+  // - Fine hanging nodes are wiped out before transfer.
+
+  if (fineMesh.da()->getLocalNodalSz() > 0)
+  {
+    ot::MatvecBaseIn<dim, ValT> loopFine(fineMesh.da()->getTotalNodalSz(),
+                                         ndofs,
+                                         eleOrder,
+                                         false,
+                                         0,
+                                         fineMesh.da()->getTNCoords(),
+                                         fineInGhosted.ptr(),
+                                         fineMesh.distTree()->getTreePartFiltered().data(),
+                                         fineMesh.distTree()->getTreePartFiltered().size(),
+                                         *fineMesh.da()->getTreePartFront(),
+                                         *fineMesh.da()->getTreePartBack());
+    const bool acc = true;
+    ot::MatvecBaseOut<dim, ValT, acc> loopCoarse(surrogateMesh.da()->getTotalNodalSz(),
+                                                 ndofs,
+                                                 eleOrder,
+                                                 true,
+                                                 1,
+                                                 surrogateMesh.da()->getTNCoords(),
+                                                 surrogateMesh.distTree()->getTreePartFiltered().data(),
+                                                 surrogateMesh.distTree()->getTreePartFiltered().size(),
+                                                 *surrogateMesh.da()->getTreePartFront(),
+                                                 *surrogateMesh.da()->getTreePartBack());
+
+    const unsigned int nPe = intPow(eleOrder+1, dim);
+    std::vector<ValT> leafBuffer(ndofs * nPe, 0.0);
+
+    while (!loopFine.isFinished())
+    {
+      // Depth controlled by fine.
+      if (loopFine.isPre() && loopFine.subtreeInfo().isLeaf())
+      {
+        const ValT * fineLeafIn = loopFine.subtreeInfo().readNodeValsIn();
+        for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+        {
+          if (loopFine.subtreeInfo().readNodeNonhangingIn()[nIdx])
+            for (int dof = 0; dof < ndofs; ++dof)
+              leafBuffer[ndofs * nIdx + dof] = fineLeafIn[ndofs * nIdx + dof];
+          else
+            for (int dof = 0; dof < ndofs; ++dof)
+              leafBuffer[ndofs * nIdx + dof] = 0.0f;
+        }
+
+        loopCoarse.subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
+
+        loopFine.next();
+        loopCoarse.next();
+      }
+      else
+      {
+        loopFine.step();
+        loopCoarse.step();
+      }
+    }
+    const size_t writtenSz = loopCoarse.finalize(surrogateGhosted.ptr());
+  }
+
+  // writeToGhost before distShiftNodes(),
+  // because distShiftNodes() ignores information in ghost segments.
+  surrogateMesh.da()->writeToGhostsBegin(surrogateGhosted.ptr(), ndofs);
+  surrogateMesh.da()->writeToGhostsEnd(surrogateGhosted.ptr(), ndofs);
+
+  // Align from the fine grid partition local nodes to coarse local nodes.
+  const size_t surrogateLocalOffset = ndofs * surrogateMesh.da()->getLocalNodeBegin();
+  ot::distShiftNodes(*surrogateMesh.da(),
+                     surrogateGhosted.ptr() + surrogateLocalOffset,
+                     *coarseMesh.da(),
+                     coarseOut.ptr(),
+                     ndofs);
 }
 
 
