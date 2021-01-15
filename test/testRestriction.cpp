@@ -196,6 +196,18 @@ ValT coordinateProduct(const ConstMeshPointers<dim> &mesh,
   return globalProduct;
 }
 
+template <unsigned int dim, typename ValT>
+void printNodes(const ConstMeshPointers<dim> &mesh,
+                const Vector<ValT> &vec)
+{
+  ot::printNodes(mesh.da()->getTNCoords(),
+                 mesh.da()->getTNCoords() + mesh.da()->getLocalNodalSz(),
+                 vec.ptr(),
+                 mesh.da()->getElementOrder(),
+                 std::cout);
+}
+
+
 
 //
 // ElementLoopIn  (wrapper)
@@ -226,6 +238,37 @@ class ElementLoopIn
     { }
 };
 
+//
+// ElementLoopOut  (wrapper)
+//
+template <unsigned int dim, typename ValT>
+class ElementLoopOut
+{
+  private:
+    ot::MatvecBaseOut<dim, ValT, true> m_loop;
+
+  public:
+    ot::MatvecBaseOut<dim, ValT, true> & loop() { return m_loop; }
+
+    ElementLoopOut(const ConstMeshPointers<dim> &mesh, unsigned int ndofs)
+      :
+        m_loop(mesh.da()->getTotalNodalSz(),
+               ndofs,
+               mesh.da()->getElementOrder(),
+               false,
+               0,
+               mesh.da()->getTNCoords(),
+               mesh.distTree()->getTreePartFiltered().data(),
+               mesh.distTree()->getTreePartFiltered().size(),
+               *mesh.da()->getTreePartFront(),
+               *mesh.da()->getTreePartBack())
+    { }
+};
+
+
+using InstanceT = int;
+template <unsigned int dim>
+static Vector<InstanceT> countInstances(const ConstMeshPointers<dim> &mesh);
 
 
 constexpr unsigned int dim = 2;
@@ -291,6 +334,8 @@ int main(int argc, char * argv[])
   // Compute prolongation and restriction.
   prolongation(coarseMesh, coarseU, surrogateMesh, fineMesh, Pu);
   restriction(fineMesh, fineV, surrogateMesh, coarseMesh, Rv);
+
+  // printNodes(coarseMesh, Rv); //DEBUG
 
   // Assert equality of inner products.
   /// const val_t inner_product_Pu_v = InnerProduct<dim>(fineMesh).compute(Pu, fineV);
@@ -445,6 +490,53 @@ static void prolongation(const ConstMeshPointers<dim> &coarseMesh,
 }
 
 
+
+//
+// countInstances()
+//
+template <unsigned int dim>
+static Vector<InstanceT> countInstances(const ConstMeshPointers<dim> &mesh)
+{
+  // TODO count the number of instances during DA construction, store there.
+
+  Vector<InstanceT> ghostedInstances(mesh, true, 1);
+  std::fill(ghostedInstances.data().begin(), ghostedInstances.data().end(), 0);
+
+  const unsigned int eleOrder = mesh.da()->getElementOrder();
+  const unsigned int nPe = intPow(eleOrder+1, dim);
+
+  ElementLoopOut<dim, InstanceT> elementLoop(mesh, 1);
+  std::vector<InstanceT> leafBuffer(nPe, 0);
+  while (!elementLoop.loop().isFinished())
+  {
+    if (elementLoop.loop().isPre()
+        && elementLoop.loop().subtreeInfo().isLeaf())
+    {
+      for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+        if (elementLoop.loop().subtreeInfo().readNodeNonhangingIn()[nIdx])
+          leafBuffer[nIdx] = 1;
+        else
+          leafBuffer[nIdx] = 0.0f;
+
+      elementLoop.loop().subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
+
+      elementLoop.loop().next();
+    }
+    else
+      elementLoop.loop().step();
+  }
+  const size_t writtenSz = elementLoop.loop().finalize(ghostedInstances.ptr());
+
+  mesh.da()->writeToGhostsBegin(ghostedInstances.ptr(), 1);
+  mesh.da()->writeToGhostsEnd(ghostedInstances.ptr(), 1);
+
+  Vector<InstanceT> localInstances(mesh, false, 1);
+  mesh.da()->ghostedNodalToNodalVec(ghostedInstances.data(), localInstances.data(), true, 1);
+
+  return localInstances;
+}
+
+
 //
 // restriction()
 //
@@ -464,6 +556,8 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
 
   std::cout << "restriction()\n";
 
+  Vector<InstanceT> numInstances = countInstances(fineMesh);
+
   // Ghosted array for input.
   static Vector<ValT> fineInGhosted(fineMesh, true, ndofs);
   fineMesh.da()->nodalVecToGhostedNodal(fineIn.data(), fineInGhosted.data(), true, ndofs);
@@ -472,9 +566,21 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
   static Vector<ValT> surrogateGhosted(surrogateMesh, true, ndofs);
   std::fill(surrogateGhosted.data().begin(), surrogateGhosted.data().end(), 0);
 
-  // Basically intergrid transfer. Main things are:
-  // - Coarse UseAccumulation=true;
-  // - Fine hanging nodes are wiped out before transfer.
+  // Basically intergrid transfer.
+
+  // -- Don't count hanging nodes from the fine grid.
+  // -- Don't count instances separately.
+  //    -- Count a node to itself just once.
+  //    -- Count dependent child nodes from all children,
+  //         but each dependent node just once.
+  //         -- Note that separate dependent child nodes
+  //            may get mapped to different instances of the
+  //            same parent node, if the parent node
+  //            falls on a coarser-level grid line.
+  // -- The easiest way to avoid double-counting
+  //    is to do accumulation but divide by the number of instances.
+
+  ElementLoopIn<dim, InstanceT> loopInstances(fineMesh, numInstances);
 
   if (fineMesh.da()->getLocalNodalSz() > 0)
   {
@@ -510,25 +616,33 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
       if (loopFine.isPre() && loopFine.subtreeInfo().isLeaf())
       {
         const ValT * fineLeafIn = loopFine.subtreeInfo().readNodeValsIn();
+        const InstanceT * fineInstances = loopInstances.loop().subtreeInfo().readNodeValsIn();
         for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
         {
           if (loopFine.subtreeInfo().readNodeNonhangingIn()[nIdx])
+          {
             for (int dof = 0; dof < ndofs; ++dof)
-              leafBuffer[ndofs * nIdx + dof] = fineLeafIn[ndofs * nIdx + dof];
+              leafBuffer[ndofs * nIdx + dof] =
+                  fineLeafIn[ndofs * nIdx + dof] / double(fineInstances[nIdx]);
+          }
           else
+          {
             for (int dof = 0; dof < ndofs; ++dof)
               leafBuffer[ndofs * nIdx + dof] = 0.0f;
+          }
         }
 
         loopCoarse.subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
 
         loopFine.next();
         loopCoarse.next();
+        loopInstances.loop().next();
       }
       else
       {
         loopFine.step();
         loopCoarse.step();
+        loopInstances.loop().step();
       }
     }
     const size_t writtenSz = loopCoarse.finalize(surrogateGhosted.ptr());
