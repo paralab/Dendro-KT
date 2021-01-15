@@ -177,6 +177,26 @@ class InnerProduct
 };
 
 
+
+template <unsigned int dim, typename ValT>
+ValT coordinateProduct(const ConstMeshPointers<dim> &mesh,
+                       const Vector<ValT> &vecA,
+                       const Vector<ValT> &vecB)
+{
+  const size_t localSize = vecA.ndofs() * mesh.da()->getLocalNodalSz();
+
+  ValT localProduct = 0.0f;
+  for (size_t ii = 0; ii < localSize; ++ii)
+    localProduct += vecA.ptr()[ii] * vecB.ptr()[ii];
+
+  MPI_Comm comm = mesh.da()->getGlobalComm();
+  ValT globalProduct = 0.0f;
+  par::Mpi_Allreduce(&localProduct, &globalProduct, 1, MPI_SUM, comm);
+
+  return globalProduct;
+}
+
+
 //
 // ElementLoopIn  (wrapper)
 //
@@ -265,22 +285,35 @@ int main(int argc, char * argv[])
 
   /// initialize(coarseU, val_t(10));
   /// initialize(fineV, val_t(101));
-  initialize(coarseU, val_t(1));
-  initialize(fineV, val_t(1));
+  initialize(coarseU, val_t(1));    // coordinate of function
+  initialize(fineV, val_t(1));      // coordinate of functional
 
   // Compute prolongation and restriction.
   prolongation(coarseMesh, coarseU, surrogateMesh, fineMesh, Pu);
   restriction(fineMesh, fineV, surrogateMesh, coarseMesh, Rv);
 
   // Assert equality of inner products.
-  const val_t inner_product_Pu_v = InnerProduct<dim>(fineMesh).compute(Pu, fineV);
-  const val_t inner_product_u_Rv = InnerProduct<dim>(coarseMesh).compute(coarseU, Rv);
+  /// const val_t inner_product_Pu_v = InnerProduct<dim>(fineMesh).compute(Pu, fineV);
+  /// const val_t inner_product_u_Rv = InnerProduct<dim>(coarseMesh).compute(coarseU, Rv);
+
+  // These aren't really inner products, but
+  // the Natural Pairings of function spaces with their duals.
+  // The basis used in the dual space happens to be the
+  // set of coordinate-extraction functionals.
+  // Therefore, to evaluate the natural pairing of a
+  // function and a functional, simply take the
+  // dot product of their coordinate vectors.
+  const val_t inner_product_Pu_v = coordinateProduct(fineMesh, Pu, fineV);
+  const val_t inner_product_u_Rv = coordinateProduct(coarseMesh, coarseU, Rv);
+
   const bool matching = fabs(inner_product_Pu_v - inner_product_u_Rv) < 1e-5;
-  fprintf(stdout, "%s%s: %f %s %f%s\n",
+  fprintf(stdout, "%s%s%s: [Pu, v]: %f %s%s [u, Rv]: %f%s\n",
       (matching ? GRN : RED),
       (matching ? "success" : "failure"),
+      NRM,
       inner_product_Pu_v,
       (matching ? "==" : "!="),
+      (matching ? GRN : RED),
       inner_product_u_Rv,
       NRM);
 
