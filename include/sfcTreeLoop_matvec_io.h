@@ -1722,7 +1722,8 @@ namespace ot
           auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
           const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
           if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe
-              && childOutput.size() > 0)
+              && childOutput.size() > 0
+              || m_visitEmpty)
           {
             // Has hanging nodes. Interpolation-transpose.
             constexpr bool transposeTrue = true;
