@@ -217,7 +217,6 @@ namespace bench
             Point<dim> domain_min(-0.5,-0.5,-0.5);
             Point<dim> domain_max(0.5,0.5,0.5);
 
-            assert(tree.size() > 0);
             PoissonEq::PoissonMat<dim> myPoissonMat(octDA, &tree,DOF);
             myPoissonMat.setProblemDimensions(domain_min,domain_max);
 

@@ -361,8 +361,11 @@ namespace ot
     rootFrame.mySummaryHandle = generate_node_summary(allNodeCoords, allNodeCoords + numNodes);
     rootFrame.mySummaryHandle.m_segmentByFirstElement = false;
     rootFrame.mySummaryHandle.m_segmentByLastElement = false;
-    rootFrame.mySummaryHandle.m_firstElement = firstElement;
-    rootFrame.mySummaryHandle.m_lastElement = lastElement;
+    if (treePartSz > 0)
+    {
+      rootFrame.mySummaryHandle.m_firstElement = firstElement;
+      rootFrame.mySummaryHandle.m_lastElement = lastElement;
+    }
 
     //TODO extend the invariant that a leaf subtree has all nodes
     //  in lexicographic order
