@@ -660,7 +660,7 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
     while (ii < numNodes && zipped[ii].first.first == cursorY)
     {
       T x = zipped[ii].first.second;
-      NodeT val = zipped[ii].second;
+      double val = zipped[ii].second;
 
       while (cursorX < x)
       {

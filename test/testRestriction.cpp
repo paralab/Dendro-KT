@@ -197,11 +197,22 @@ ValT coordinateProduct(const ConstMeshPointers<dim> &mesh,
 }
 
 template <unsigned int dim, typename ValT>
-void printNodes(const ConstMeshPointers<dim> &mesh,
+void printLocalNodes(const ConstMeshPointers<dim> &mesh,
+                const Vector<ValT> &vec)
+{
+  ot::printNodes(mesh.da()->getTNCoords() + mesh.da()->getLocalNodeBegin(),
+                 mesh.da()->getTNCoords() + mesh.da()->getLocalNodeBegin() + mesh.da()->getLocalNodalSz(),
+                 vec.ptr(),
+                 mesh.da()->getElementOrder(),
+                 std::cout);
+}
+
+template <unsigned int dim, typename ValT>
+void printGhostedNodes(const ConstMeshPointers<dim> &mesh,
                 const Vector<ValT> &vec)
 {
   ot::printNodes(mesh.da()->getTNCoords(),
-                 mesh.da()->getTNCoords() + mesh.da()->getLocalNodalSz(),
+                 mesh.da()->getTNCoords() + mesh.da()->getTotalNodalSz(),
                  vec.ptr(),
                  mesh.da()->getElementOrder(),
                  std::cout);
@@ -265,10 +276,41 @@ class ElementLoopOut
     { }
 };
 
+//
+// ElementLoopOutOverwrite  (wrapper)
+//
+template <unsigned int dim, typename ValT>
+class ElementLoopOutOverwrite
+{
+  private:
+    ot::MatvecBaseOut<dim, ValT, false> m_loop;
+
+  public:
+    ot::MatvecBaseOut<dim, ValT, false> & loop() { return m_loop; }
+
+    ElementLoopOutOverwrite(const ConstMeshPointers<dim> &mesh, unsigned int ndofs)
+      :
+        m_loop(mesh.da()->getTotalNodalSz(),
+               ndofs,
+               mesh.da()->getElementOrder(),
+               false,
+               0,
+               mesh.da()->getTNCoords(),
+               mesh.distTree()->getTreePartFiltered().data(),
+               mesh.distTree()->getTreePartFiltered().size(),
+               *mesh.da()->getTreePartFront(),
+               *mesh.da()->getTreePartBack())
+    { }
+};
+
 
 using InstanceT = int;
 template <unsigned int dim>
 static Vector<InstanceT> countInstances(const ConstMeshPointers<dim> &mesh);
+
+using OwnershipT = DendroIntL;
+template <unsigned int dim>
+static Vector<OwnershipT> getOwnership(const ConstMeshPointers<dim> &mesh, OwnershipT &globElBegin);
 
 
 constexpr unsigned int dim = 2;
@@ -335,7 +377,8 @@ int main(int argc, char * argv[])
   prolongation(coarseMesh, coarseU, surrogateMesh, fineMesh, Pu);
   restriction(fineMesh, fineV, surrogateMesh, coarseMesh, Rv);
 
-  // printNodes(coarseMesh, Rv); //DEBUG
+  /// printLocalNodes(coarseMesh, Rv); //DEBUG
+  /// printLocalNodes(fineMesh, Pu); //DEBUG
 
   // Assert equality of inner products.
   /// const val_t inner_product_Pu_v = InnerProduct<dim>(fineMesh).compute(Pu, fineV);
@@ -538,6 +581,91 @@ static Vector<InstanceT> countInstances(const ConstMeshPointers<dim> &mesh)
 
 
 //
+// getOwnership()
+//
+
+template <unsigned int dim>
+static Vector<OwnershipT> getOwnership(const ConstMeshPointers<dim> &mesh, OwnershipT &globElBegin)
+{
+  DendroIntL globElementBegin = 0;
+  DendroIntL elementCount = mesh.numElements();
+  par::Mpi_Scan(&elementCount, &globElementBegin, 1, MPI_SUM, mesh.da()->getGlobalComm());
+  globElementBegin -= elementCount;
+
+  globElBegin = globElementBegin;  // return info to caller
+
+  DendroIntL globElementId = globElementBegin;  // enumerate elements in loop.
+
+  Vector<OwnershipT> ghostedOwners(mesh, true, 1);
+  std::fill(ghostedOwners.data().begin(), ghostedOwners.data().end(), 0);
+
+  using DirtyT = char;
+  Vector<DirtyT> ghostedDirty(mesh, true, 1);
+  std::fill(ghostedDirty.data().begin(), ghostedDirty.data().end(), 0);
+
+  const unsigned int eleOrder = mesh.da()->getElementOrder();
+  const unsigned int nPe = intPow(eleOrder+1, dim);
+
+  ElementLoopOutOverwrite<dim, OwnershipT> elementLoop(mesh, 1);
+  ElementLoopOut<dim, DirtyT> dirtyLoop(mesh, 1);
+  std::vector<OwnershipT> leafBuffer(nPe, 0);
+  std::vector<DirtyT> leafDirty(nPe, 0);
+  while (!elementLoop.loop().isFinished())
+  {
+    if (elementLoop.loop().isPre()
+        && elementLoop.loop().subtreeInfo().isLeaf())
+    {
+      for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+        if (elementLoop.loop().subtreeInfo().readNodeNonhangingIn()[nIdx])
+        {
+          leafBuffer[nIdx] = globElementId;
+          leafDirty[nIdx] = 1;
+        }
+        else
+        {
+          leafBuffer[nIdx] = 0;
+          leafDirty[nIdx] = 0;
+        }
+
+      elementLoop.loop().subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
+      dirtyLoop.loop().subtreeInfo().overwriteNodeValsOut(leafDirty.data());
+
+      elementLoop.loop().next();
+      dirtyLoop.loop().next();
+
+      globElementId++;
+    }
+    else
+    {
+      elementLoop.loop().step();
+      dirtyLoop.loop().step();
+    }
+  }
+  const size_t writtenSz = elementLoop.loop().finalize(ghostedOwners.ptr());
+  dirtyLoop.loop().finalize(ghostedDirty.ptr());
+
+  mesh.da()->writeToGhostsBegin(ghostedOwners.ptr(), 1, ghostedDirty.ptr());
+  mesh.da()->writeToGhostsEnd(ghostedOwners.ptr(), 1, false, ghostedDirty.ptr()); // overwrite mode
+
+  Vector<OwnershipT> localOwners(mesh, false, 1);
+  mesh.da()->ghostedNodalToNodalVec(ghostedOwners.data(), localOwners.data(), true, 1);
+
+  //DEBUG -- every node should be consistently owned by a neighboring element.
+  /// Vector<OwnershipT> ghostedTest(mesh, true, 1);
+  /// std::fill(ghostedTest.data().begin(), ghostedTest.data().end(), -1);
+  /// mesh.da()->nodalVecToGhostedNodal(localOwners.data(), ghostedTest.data(), true, 1);
+  /// mesh.da()->readFromGhostBegin(ghostedTest.data().data(), 1);
+  /// mesh.da()->readFromGhostEnd(ghostedTest.data().data(), 1);
+  /// std::cout << "========================================================\n";
+  /// printGhostedNodes(mesh, ghostedTest);
+  /// std::cout << "========================================================\n";
+
+  return localOwners;
+}
+
+
+
+//
 // restriction()
 //
 template <unsigned int dim, typename ValT>
@@ -556,11 +684,11 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
 
   std::cout << "restriction()\n";
 
-  Vector<InstanceT> numInstances = countInstances(fineMesh);
-
   // Ghosted array for input.
   static Vector<ValT> fineInGhosted(fineMesh, true, ndofs);
   fineMesh.da()->nodalVecToGhostedNodal(fineIn.data(), fineInGhosted.data(), true, ndofs);
+  fineMesh.da()->readFromGhostBegin(fineInGhosted.ptr(), fineInGhosted.ndofs());
+  fineMesh.da()->readFromGhostEnd(fineInGhosted.ptr(), fineInGhosted.ndofs());
 
   // Temporary surrogate array (also ghosted).
   static Vector<ValT> surrogateGhosted(surrogateMesh, true, ndofs);
@@ -577,10 +705,17 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
   //            may get mapped to different instances of the
   //            same parent node, if the parent node
   //            falls on a coarser-level grid line.
-  // -- The easiest way to avoid double-counting
-  //    is to do accumulation but divide by the number of instances.
+  // -- Enforce single-counting by establishing node ownership
+  //    (for now this is a hack, but we should build this into DA & traversals)
 
-  ElementLoopIn<dim, InstanceT> loopInstances(fineMesh, numInstances);
+  OwnershipT globElementBegin;
+  Vector<OwnershipT> owners = getOwnership(fineMesh, globElementBegin);
+  static Vector<OwnershipT> ownersGhosted(fineMesh, true, ndofs);
+  fineMesh.da()->nodalVecToGhostedNodal(owners.data(), ownersGhosted.data(), true, 1);
+  fineMesh.da()->readFromGhostBegin(ownersGhosted.ptr(), ownersGhosted.ndofs());
+  fineMesh.da()->readFromGhostEnd(ownersGhosted.ptr(), ownersGhosted.ndofs());
+  ElementLoopIn<dim, OwnershipT> loopOwners(fineMesh, ownersGhosted);
+  OwnershipT globElementId = globElementBegin;
 
   if (fineMesh.da()->getLocalNodalSz() > 0)
   {
@@ -616,14 +751,21 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
       if (loopFine.isPre() && loopFine.subtreeInfo().isLeaf())
       {
         const ValT * fineLeafIn = loopFine.subtreeInfo().readNodeValsIn();
-        const InstanceT * fineInstances = loopInstances.loop().subtreeInfo().readNodeValsIn();
+        const OwnershipT * fineOwners = loopOwners.loop().subtreeInfo().readNodeValsIn();
         for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
         {
           if (loopFine.subtreeInfo().readNodeNonhangingIn()[nIdx])
           {
-            for (int dof = 0; dof < ndofs; ++dof)
-              leafBuffer[ndofs * nIdx + dof] =
-                  fineLeafIn[ndofs * nIdx + dof] / double(fineInstances[nIdx]);
+            if (fineOwners[nIdx] == globElementId)
+            {
+              for (int dof = 0; dof < ndofs; ++dof)
+                leafBuffer[ndofs * nIdx + dof] = fineLeafIn[ndofs * nIdx + dof];
+            }
+            else
+            {
+              for (int dof = 0; dof < ndofs; ++dof)
+                leafBuffer[ndofs * nIdx + dof] = 0;
+            }
           }
           else
           {
@@ -636,13 +778,15 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
 
         loopFine.next();
         loopCoarse.next();
-        loopInstances.loop().next();
+        loopOwners.loop().next();
+
+        globElementId++;
       }
       else
       {
         loopFine.step();
         loopCoarse.step();
-        loopInstances.loop().step();
+        loopOwners.loop().step();
       }
     }
     const size_t writtenSz = loopCoarse.finalize(surrogateGhosted.ptr());
@@ -652,6 +796,9 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
   // because distShiftNodes() ignores information in ghost segments.
   surrogateMesh.da()->writeToGhostsBegin(surrogateGhosted.ptr(), ndofs);
   surrogateMesh.da()->writeToGhostsEnd(surrogateGhosted.ptr(), ndofs);
+
+  /// ot::quadTreeToGnuplot(fineMesh.distTree()->getTreePartFiltered(), 3, "fineGrid", fineMesh.da()->getGlobalComm());
+  /// ot::quadTreeToGnuplot(surrogateMesh.distTree()->getTreePartFiltered(), 2, "surrogateGrid", surrogateMesh.da()->getGlobalComm());
 
   // Align from the fine grid partition local nodes to coarse local nodes.
   const size_t surrogateLocalOffset = ndofs * surrogateMesh.da()->getLocalNodeBegin();

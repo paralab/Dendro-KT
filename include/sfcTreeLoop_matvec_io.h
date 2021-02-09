@@ -1673,9 +1673,13 @@ namespace ot
             for (int dof = 0; dof < m_ndofs; dof++)
             {
               if (UseAccumulation)
+              {
                 myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
+              }
               else
+              {
                 myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
+              }
             }
 
             // Zero out the values after they are transferred.
@@ -1734,7 +1738,9 @@ namespace ot
                 child_m);
 
             for (int nIdxDof = 0; nIdxDof < m_ndofs * npe; nIdxDof++)
+            {
               parentNodeVals[nIdxDof] += parentFrame.template getChildOutput<0>(child_sfc)[nIdxDof];
+            }
           }
         }
 
@@ -1755,6 +1761,9 @@ namespace ot
                   += m_parentNodeVals[m_ndofs * nodeRank + dof];
             }
           }
+        }
+        else
+        {
         }
       }
     }
