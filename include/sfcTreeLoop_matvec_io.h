@@ -454,19 +454,19 @@ namespace ot
   template <unsigned int dim, typename NodeT, bool UseAccumulation>
   class MatvecBaseOut : public SFC_TreeLoop<dim,
                                          Inputs<TreeNode<unsigned int, dim>, bool>,  // bool for is nonhanging, almost always true
-                                         Outputs<NodeT>,
+                                         Outputs<NodeT, char>,  // char for isDirty -- false in bottomUp for nodes not touching a leaf.
                                          MatvecBaseSummary<dim>,
                                          MatvecBaseOut<dim, NodeT, UseAccumulation>>
   {
     using BaseT = SFC_TreeLoop<dim,
                                Inputs<TreeNode<unsigned int, dim>, bool>,
-                               Outputs<NodeT>,
+                               Outputs<NodeT, char>,
                                MatvecBaseSummary<dim>,
                                MatvecBaseOut<dim, NodeT, UseAccumulation>>;
     friend BaseT;
 
     public:
-      using FrameT = Frame<dim, Inputs<TreeNode<unsigned int, dim>, bool>, Outputs<NodeT>, MatvecBaseSummary<dim>, MatvecBaseOut>;
+      using FrameT = Frame<dim, Inputs<TreeNode<unsigned int, dim>, bool>, Outputs<NodeT, char>, MatvecBaseSummary<dim>, MatvecBaseOut>;
 
       static constexpr unsigned int NumChildren = 1u << dim;
 
@@ -552,6 +552,9 @@ namespace ot
           treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
           std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
                       treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
+
+          treeloop.getCurrentFrame().template getMyOutputHandle<1>().clear();
+          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(getNumNodesIn(), true);
         }
 
         /** overwriteNodeValsOutScalar() */
@@ -561,6 +564,9 @@ namespace ot
           for (size_t nodeIdx = 0; nodeIdx < getNumNodesIn(); ++nodeIdx)
             for (size_t dofIdx = 0; dofIdx < treeloop.m_ndofs; ++dofIdx)
               treeloop.getCurrentFrame().template getMyOutputHandle<0>()[ii++] = newDofs[dofIdx];
+
+          treeloop.getCurrentFrame().template getMyOutputHandle<1>().clear();
+          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(getNumNodesIn(), true);
         }
 
 
@@ -655,6 +661,7 @@ namespace ot
       std::vector<double> m_accessNodeCoordsFlat;
 
       InterpMatrices<dim, NodeT> m_interp_matrices;
+      InterpMatrices<dim, char> m_interp_matrices_logical;
   };
 
 
@@ -789,7 +796,8 @@ namespace ot
     m_ndofs(ndofs),
     m_eleOrder(eleOrder),
     m_visitEmpty(visitEmpty),
-    m_interp_matrices(eleOrder)
+    m_interp_matrices(eleOrder),
+    m_interp_matrices_logical(eleOrder)
   {
     typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
 
@@ -844,7 +852,12 @@ namespace ot
                 << actualSize << ") does not match number of nodes in input ("
                 << numInputNodes << "nodes * " << m_ndofs << " dofs).\n";
 
-    std::copy_n(rootFrame.template getMyOutputHandle<0>().begin(), actualSize, outputNodeVals);
+    const auto & rootVals = rootFrame.template getMyOutputHandle<0>();
+    const auto & isDirty = rootFrame.template getMyOutputHandle<1>();
+    for (size_t nIdx = 0; nIdx < actualSize / m_ndofs; ++nIdx)
+      if (isDirty[nIdx])
+        for (int dof = 0; dof < m_ndofs; ++dof)
+          outputNodeVals[nIdx * m_ndofs + dof] = rootVals[nIdx * m_ndofs + dof];
 
     return actualSize / m_ndofs;
   }
@@ -1622,8 +1635,11 @@ namespace ot
     const size_t numParentNodes = myNodes.size();
 
     std::vector<NodeT> &myOutNodeValues = parentFrame.template getMyOutputHandle<0>();
+    std::vector<char> &myOutIsDirty = parentFrame.template getMyOutputHandle<1>();
     myOutNodeValues.clear();
     myOutNodeValues.resize(m_ndofs * numParentNodes, zero);
+    myOutIsDirty.clear();
+    myOutIsDirty.resize(numParentNodes, false);
 
     std::array<TreeNode<unsigned int, dim>, NumChildren> childSubtreesSFC;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
@@ -1646,16 +1662,22 @@ namespace ot
       const size_t childOffset = childNodeOffsets[child_sfc];
 
       auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
+      auto &childOutIsDirty = parentFrame.template getChildOutput<1>(child_sfc);
       if (childOutput.size() > 0)
       {
         if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
         {
-          // Nodal values.
-          for (int dof = 0; dof < m_ndofs; dof++)
-            if (UseAccumulation)
-              myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * childOffset + dof];
-            else
-              myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * childOffset + dof];
+          if (childOutIsDirty[childOffset])
+          {
+            // Nodal values.
+            for (int dof = 0; dof < m_ndofs; dof++)
+              if (UseAccumulation)
+                myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * childOffset + dof];
+              else
+                myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * childOffset + dof];
+
+            myOutIsDirty[nIdx] |= bool(childOutIsDirty[childOffset]);
+          }
 
           childNodeOffsets[child_sfc]++;
         }
@@ -1666,26 +1688,30 @@ namespace ot
                   myNodes[nIdx],
                   m_eleOrder );
 
-          // Don't move nonhanging nodes that are on a hanging face.
-          if (!UseAccumulation || !thereAreHangingNodes || myNodes[nIdx].getLevel() > parSubtree.getLevel())
+          if (childOutIsDirty[nodeRank])
           {
-            // Nodal values.
-            for (int dof = 0; dof < m_ndofs; dof++)
+            // Don't move nonhanging nodes that are on a hanging face.
+            if (!UseAccumulation || !thereAreHangingNodes || myNodes[nIdx].getLevel() > parSubtree.getLevel())
             {
-              if (UseAccumulation)
+              // Nodal values.
+              for (int dof = 0; dof < m_ndofs; dof++)
               {
-                myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
+                if (UseAccumulation)
+                {
+                  myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
+                }
+                else
+                  myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
               }
-              else
-              {
-                myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
-              }
+
+              myOutIsDirty[nIdx] |= bool(childOutIsDirty[nodeRank]);
             }
 
             // Zero out the values after they are transferred.
             // This is necessary so that later linear transforms are not contaminated.
             std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
                          m_ndofs, zero );
+            childOutIsDirty[nodeRank] = false;
           }
         }
       }
@@ -1721,6 +1747,10 @@ namespace ot
       // Use transpose of interpolation operator on each hanging child.
       if (UseAccumulation)
       {
+        static std::vector<char> parentIPT_IsDirty;
+        parentIPT_IsDirty.clear();
+        parentIPT_IsDirty.resize(npe, false);
+
         for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
         {
           auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
@@ -1737,10 +1767,20 @@ namespace ot
                 m_ndofs,
                 child_m);
 
-            for (int nIdxDof = 0; nIdxDof < m_ndofs * npe; nIdxDof++)
-            {
-              parentNodeVals[nIdxDof] += parentFrame.template getChildOutput<0>(child_sfc)[nIdxDof];
-            }
+            auto &childOutIsDirty = parentFrame.template getChildOutput<1>(child_sfc);
+            m_interp_matrices_logical.template IKD_ParentChildInterpolation<transposeTrue>(
+                &(*childOutIsDirty.begin()),
+                &(*childOutIsDirty.begin()),
+                1,
+                child_m);
+
+            for (int nIdx = 0; nIdx < npe; ++nIdx)
+              if (childOutIsDirty[nIdx])
+              {
+                for (int dof = 0; dof < m_ndofs; ++dof)
+                  parentNodeVals[nIdx * m_ndofs + dof] += childOutput[nIdx * m_ndofs + dof];
+                parentIPT_IsDirty[nIdx] |= bool(childOutIsDirty[nIdx]);
+              }
           }
         }
 
@@ -1765,12 +1805,36 @@ namespace ot
         else
         {
         }
+
+        if (parentNonleaf)
+        {
+          // Accumulate from intermediate parent lex buffer to parent output.
+          for (size_t nIdx = 0; nIdx < numParentNodes; nIdx++)
+          {
+            if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
+            {
+              const unsigned int nodeRank =
+                  TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
+                                                               myNodes[nIdx],
+                                                               m_eleOrder );
+              myOutIsDirty[nIdx] |= bool(parentIPT_IsDirty[nodeRank]);
+            }
+          }
+        }
+        else
+        {
+          for (int nIdx = 0; nIdx < npe; ++nIdx)
+            myOutIsDirty[nIdx] |= bool(parentIPT_IsDirty[nIdx]);
+        }
       }
     }
 
     // Clean slate for next iteration, and detect nothing written by overwriteNodeValsOut.
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+    {
       parentFrame.template getChildOutput<0>(child_sfc).resize(0);
+      parentFrame.template getChildOutput<1>(child_sfc).resize(0);
+    }
   }
 
 
