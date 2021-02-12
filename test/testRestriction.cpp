@@ -336,7 +336,7 @@ int main(int argc, char * argv[])
   //
   // Define coarse grid.
   //
-  const int coarseLev = 1;
+  const int coarseLev = 2;
   const DTree_t coarseDTree = DTree_t::constructSubdomainDistTree(
       coarseLev, comm, sfc_tol);
   const DA_t * coarseDA = new DA_t(coarseDTree, comm, eleOrder);
@@ -710,6 +710,7 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
 
   OwnershipT globElementBegin;
   Vector<OwnershipT> owners = getOwnership(fineMesh, globElementBegin);
+
   static Vector<OwnershipT> ownersGhosted(fineMesh, true, ndofs);
   fineMesh.da()->nodalVecToGhostedNodal(owners.data(), ownersGhosted.data(), true, 1);
   fineMesh.da()->readFromGhostBegin(ownersGhosted.ptr(), ownersGhosted.ndofs());
@@ -798,6 +799,7 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
   surrogateMesh.da()->writeToGhostsEnd(surrogateGhosted.ptr(), ndofs);
 
   /// ot::quadTreeToGnuplot(fineMesh.distTree()->getTreePartFiltered(), 3, "fineGrid", fineMesh.da()->getGlobalComm());
+  /// ot::quadTreeToGnuplot(coarseMesh.distTree()->getTreePartFiltered(), 3, "coarseGrid", coarseMesh.da()->getGlobalComm());
   /// ot::quadTreeToGnuplot(surrogateMesh.distTree()->getTreePartFiltered(), 2, "surrogateGrid", surrogateMesh.da()->getGlobalComm());
 
   // Align from the fine grid partition local nodes to coarse local nodes.
