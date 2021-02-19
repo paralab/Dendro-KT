@@ -195,8 +195,11 @@ class DA
     /**@brief: post ghost end*/ 
     size_t m_uiPostNodeEnd;
 
-    /**@brief: position of local segment in the distributed array. */
+    /**@brief: position of local nodal segment in the distributed array. */
     DendroIntL m_uiGlobalRankBegin;
+
+    /**@brief: position of local elements segment in the distributed array. */
+    DendroIntL m_uiGlobalElementBegin;
 
     /**@brief: map, size of ghosted node array, gives global node indices.*/
     std::vector<RankI> m_uiLocalToGlobalNodalMap;
@@ -310,13 +313,14 @@ class DA
          * @brief does the work for the constructors.
          */
         /// void construct(const TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
-        void construct(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
+        void constructStratum(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
         void construct(const DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
 
         /** @brief The latter part of construct() if already have ownedNodes. */
-        void construct(std::vector<TNPoint<C,dim>> &ownedNodes,
+        void _constructInner(
+                       std::vector<TNPoint<C,dim>> &ownedNodes,
                        unsigned int eleOrder,
                        const TreeNode<C,dim> *treePartFront,
                        const TreeNode<C,dim> *treePartBack,
@@ -347,6 +351,8 @@ class DA
 
         /**@brief returns the rank of the begining of local segment among all processors. */
         inline RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
+
+        inline DendroIntL getGlobalElementBegin() const { return m_uiGlobalElementBegin; }
 
         inline const std::vector<RankI> & getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
 

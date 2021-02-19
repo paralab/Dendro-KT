@@ -91,7 +91,7 @@ namespace ot
     DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
-      construct(inDistTree, stratum, comm, order, grainSz, sfc_tol);
+      constructStratum(inDistTree, stratum, comm, order, grainSz, sfc_tol);
     }
 
     /**@brief: Constructor for the DA data structures
@@ -118,7 +118,7 @@ namespace ot
       const int numStrata = inDistTree.getNumStrata();
       std::vector<DA> daPerStratum(numStrata);
       for (int l = 0; l < numStrata; ++l)
-        daPerStratum[l].construct(inDistTree, l, comm, order, grainSz, sfc_tol);
+        daPerStratum[l].constructStratum(inDistTree, l, comm, order, grainSz, sfc_tol);
       std::swap(outDAPerStratum, daPerStratum);
       // Do NOT destroyTree. Let user decide.
     }
@@ -132,7 +132,7 @@ namespace ot
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     void DA<dim>::construct(const ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
-      construct(distTree, 0, comm, order, grainSz, sfc_tol);
+      constructStratum(distTree, 0, comm, order, grainSz, sfc_tol);
     }
 
 
@@ -197,7 +197,7 @@ namespace ot
      */
     template <unsigned int dim>
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-    void DA<dim>::construct(const ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::constructStratum(const ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
       // TODO remove grainSz parameter from ODA, which must respect the tree!
 
@@ -249,7 +249,7 @@ namespace ot
       }
 
       // Finish constructing.
-      construct(nodeList, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+      this->_constructInner(nodeList, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
     }
 
 
@@ -257,7 +257,7 @@ namespace ot
     // construct() - given the partition of owned points.
     //
     template <unsigned int dim>
-    void DA<dim>::construct(std::vector<TNPoint<C,dim>> &ownedNodes,
+    void DA<dim>::_constructInner(std::vector<TNPoint<C,dim>> &ownedNodes,
                             unsigned int eleOrder,
                             const TreeNode<C,dim> *treePartFront,
                             const TreeNode<C,dim> *treePartBack,
@@ -363,6 +363,10 @@ namespace ot
       DendroIntL locSz = m_uiLocalNodalSz;
       par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiGlobalComm);
       m_uiGlobalRankBegin -= locSz;
+
+      DendroIntL elementCount = m_uiLocalElementSz;
+      par::Mpi_Scan(&elementCount, &m_uiGlobalElementBegin, 1, MPI_SUM, m_uiGlobalComm);
+      m_uiGlobalElementBegin -= elementCount;
 
       if (m_uiIsActive)
       {
