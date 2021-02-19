@@ -258,6 +258,9 @@ class DA
     /**@brief: coordinates of nodes in the vector. */
     std::vector<TreeNode<C,dim>> m_tnCoords;
 
+    /**@brief: for each (ghosted) node, the global element id of owning element. */
+    std::vector<DendroIntL> m_ghostedNodeOwnerElements;
+
     //TODO I don't think RefElement member belongs in DA (distributed array),
     //  but it has to go somewhere that the polyOrder is known.
     //
@@ -413,6 +416,9 @@ class DA
 
         /**@brief: get pointer to the (ghosted) array of nodal coordinates. */
         inline const TreeNode<C,dim> * getTNCoords() const { return &(*m_tnCoords.cbegin()); }
+
+        /**@brief get pointer to the (ghosted) array of owning elements. */
+        inline const DendroIntL * getNodeOwnerElements() const { return &(*m_ghostedNodeOwnerElements.cbegin()); }
 
         /**@brief: get first treeNode of the local partition of the tree (front splitter). */
         inline const TreeNode<C,dim> * getTreePartFront() const { return &m_treePartFront; }

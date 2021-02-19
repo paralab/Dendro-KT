@@ -95,6 +95,19 @@ namespace ot
   //    }
 
   template <unsigned int dim>
+  const TreeNode<unsigned int, dim> & nullOctant()
+  {
+    return *(TreeNode<unsigned int, dim> *) nullptr;
+  }
+
+  template <unsigned int dim>
+  const TreeNode<unsigned int, dim> & dummyOctant()
+  {
+    static TreeNode<unsigned int, dim> dummy;
+    return dummy;
+  }
+
+  template <unsigned int dim>
   class MatvecBaseCoords : public SFC_TreeLoop<dim,
                                          Inputs<TreeNode<unsigned int, dim>, bool>,  // input bool tells nonhanging, which is almost always true
                                          Outputs<>,
@@ -482,7 +495,7 @@ namespace ot
                  const TreeNode<unsigned int, dim> &firstElement,
                  const TreeNode<unsigned int, dim> &lastElement );
 
-      size_t finalize(NodeT * outputNodeVals) const;
+      size_t finalize(NodeT * outputNodeVals, char * outputIsDirty = nullptr) const;
 
       struct AccessSubtree
       {
@@ -555,6 +568,16 @@ namespace ot
 
           treeloop.getCurrentFrame().template getMyOutputHandle<1>().clear();
           treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(getNumNodesIn(), true);
+        }
+
+        /** overwriteNodeValsOut() with isDirty flags (#flags == #nodes) */
+        void overwriteNodeValsOut(const NodeT *newVals, const char *isDirty) {
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
+          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(getNumNodesIn());
+          std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
+                      treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
+          std::copy_n(isDirty,  1 * getNumNodesIn(),
+                      treeloop.getCurrentFrame().template getMyOutputHandle<1>().begin());
         }
 
         /** overwriteNodeValsOutScalar() */
@@ -840,7 +863,7 @@ namespace ot
   // Returns the number of nodes copied.
   // This represents in total (m_ndofs * return_value) data items.
   template <unsigned int dim, typename NodeT, bool UseAccumulation>
-  size_t MatvecBaseOut<dim, NodeT, UseAccumulation>::finalize(NodeT * outputNodeVals) const
+  size_t MatvecBaseOut<dim, NodeT, UseAccumulation>::finalize(NodeT * outputNodeVals, char * outputIsDirty) const
   {
     const typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
 
@@ -854,10 +877,16 @@ namespace ot
 
     const auto & rootVals = rootFrame.template getMyOutputHandle<0>();
     const auto & isDirty = rootFrame.template getMyOutputHandle<1>();
+
+    if (outputIsDirty != nullptr)
+      std::copy_n(isDirty.begin(), (actualSize / m_ndofs), outputIsDirty);
+
     for (size_t nIdx = 0; nIdx < actualSize / m_ndofs; ++nIdx)
+    {
       if (isDirty[nIdx])
         for (int dof = 0; dof < m_ndofs; ++dof)
           outputNodeVals[nIdx * m_ndofs + dof] = rootVals[nIdx * m_ndofs + dof];
+    }
 
     return actualSize / m_ndofs;
   }

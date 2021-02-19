@@ -8,6 +8,7 @@
 
 #include "oda.h"
 #include "meshLoop.h"
+#include "sfcTreeLoop_matvec_io.h"
 
 #include <algorithm>
 
@@ -185,8 +186,75 @@ namespace ot
     }
 
 
+    //
+    // getNodeElementOwnership()
+    //
+    template <unsigned int dim>
+    std::vector<DendroIntL> getNodeElementOwnership(
+        DendroIntL globElementBegin,
+        const std::vector<TreeNode<unsigned int, dim>> &octList,
+        const std::vector<TreeNode<unsigned int, dim>> &ghostedNodeList,
+        const unsigned int eleOrder,
+        const DA<dim> &ghostExchange)  //TODO factor part as class GhostExchange
+    {
+      using OwnershipT = DendroIntL;
+      using DirtyT = char;
 
+      OwnershipT globElementId = globElementBegin;  // enumerate elements in loop.
 
+      const unsigned int nPe = intPow(eleOrder+1, dim);
+
+      MatvecBaseOut<dim, OwnershipT, false> elementLoop(
+          ghostedNodeList.size(),
+          1,
+          eleOrder,
+          false,
+          0,
+          ghostedNodeList.data(),
+          octList.data(),
+          octList.size(),
+          (octList.size() ? octList.front() : dummyOctant<dim>()),
+          (octList.size() ? octList.back() : dummyOctant<dim>())
+          );
+
+      std::vector<OwnershipT> leafBuffer(nPe, 0);
+      std::vector<DirtyT> leafDirty(nPe, 0);
+      while (!elementLoop.isFinished())
+      {
+        if (elementLoop.isPre() && elementLoop.subtreeInfo().isLeaf())
+        {
+          for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+            if (elementLoop.subtreeInfo().readNodeNonhangingIn()[nIdx])
+            {
+              leafBuffer[nIdx] = globElementId;
+              leafDirty[nIdx] = true;
+            }
+            else
+            {
+              leafBuffer[nIdx] = 0;
+              leafDirty[nIdx] = true;
+            }
+
+          elementLoop.subtreeInfo().overwriteNodeValsOut(leafBuffer.data(), leafDirty.data());
+          elementLoop.next();
+          globElementId++;
+        }
+        else
+          elementLoop.step();
+      }
+
+      std::vector<OwnershipT> ghostedOwners(ghostedNodeList.size(), 0);
+      std::vector<DirtyT> ghostedDirty(ghostedNodeList.size(), 0);
+
+      const size_t writtenSz = elementLoop.finalize(ghostedOwners.data(), ghostedDirty.data());
+
+      ghostExchange.writeToGhostsBegin(ghostedOwners.data(), 1, ghostedDirty.data());
+      ghostExchange.writeToGhostsEnd(ghostedOwners.data(), 1, false, ghostedDirty.data()); // overwrite mode
+      ghostExchange.readFromGhostBegin(ghostedOwners.data(), 1);
+      ghostExchange.readFromGhostEnd(ghostedOwners.data(), 1);
+
+      return ghostedOwners;
+    }
 
 
 
@@ -250,6 +318,16 @@ namespace ot
 
       // Finish constructing.
       this->_constructInner(nodeList, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+
+      // TODO for cleaner code, factor the scattermap/gatthermap as GhostExchange
+      // for now, use the DA interface for ghost exchange.
+      const DA<dim> &ghostExchange = *this;
+      m_ghostedNodeOwnerElements = getNodeElementOwnership(
+          m_uiGlobalElementBegin,
+          distTree.getTreePartFiltered(stratum),
+          m_tnCoords,
+          order,
+          ghostExchange); //need ghost maps
     }
 
 

@@ -65,10 +65,12 @@ class Vector
   public:
     // Vector constructor
     template <unsigned int dim>
-    Vector(const ConstMeshPointers<dim> &mesh, bool isGhosted, size_t ndofs)
+    Vector(const ConstMeshPointers<dim> &mesh, bool isGhosted, size_t ndofs, const ValT *input = nullptr)
     : m_isGhosted(isGhosted), m_ndofs(ndofs)
     {
       mesh.da()->createVector(m_data, false, isGhosted, ndofs);
+      if (input != nullptr)
+        std::copy_n(input, m_data.size(), m_data.begin());
       m_globalNodeRankBegin = mesh.da()->getGlobalRankBegin();
     }
 
@@ -198,24 +200,38 @@ ValT coordinateProduct(const ConstMeshPointers<dim> &mesh,
 
 template <unsigned int dim, typename ValT>
 void printLocalNodes(const ConstMeshPointers<dim> &mesh,
-                const Vector<ValT> &vec)
+                const Vector<ValT> &vec,
+                std::ostream &out = std::cout)
 {
   ot::printNodes(mesh.da()->getTNCoords() + mesh.da()->getLocalNodeBegin(),
                  mesh.da()->getTNCoords() + mesh.da()->getLocalNodeBegin() + mesh.da()->getLocalNodalSz(),
                  vec.ptr(),
                  mesh.da()->getElementOrder(),
-                 std::cout);
+                 out);
 }
 
 template <unsigned int dim, typename ValT>
 void printGhostedNodes(const ConstMeshPointers<dim> &mesh,
-                const Vector<ValT> &vec)
+                const Vector<ValT> &vec,
+                std::ostream &out = std::cout)
 {
   ot::printNodes(mesh.da()->getTNCoords(),
                  mesh.da()->getTNCoords() + mesh.da()->getTotalNodalSz(),
                  vec.ptr(),
                  mesh.da()->getElementOrder(),
-                 std::cout);
+                 out);
+}
+
+template <unsigned int dim, typename ValT>
+void printGhostedNodes(const ConstMeshPointers<dim> &mesh,
+                const ValT *vec,
+                std::ostream &out = std::cout)
+{
+  ot::printNodes(mesh.da()->getTNCoords(),
+                 mesh.da()->getTNCoords() + mesh.da()->getTotalNodalSz(),
+                 vec,
+                 mesh.da()->getElementOrder(),
+                 out);
 }
 
 
@@ -310,10 +326,10 @@ static Vector<InstanceT> countInstances(const ConstMeshPointers<dim> &mesh);
 
 using OwnershipT = DendroIntL;
 template <unsigned int dim>
-static Vector<OwnershipT> getOwnership(const ConstMeshPointers<dim> &mesh, OwnershipT &globElBegin);
+static bool testOwnership(const ConstMeshPointers<dim> &mesh);
 
 
-constexpr unsigned int dim = 2;
+constexpr unsigned int dim = 3;
 using uint = unsigned int;
 using val_t = double;
 
@@ -336,7 +352,7 @@ int main(int argc, char * argv[])
   //
   // Define coarse grid.
   //
-  const int coarseLev = 2;
+  const int coarseLev = 3;
   const DTree_t coarseDTree = DTree_t::constructSubdomainDistTree(
       coarseLev, comm, sfc_tol);
   const DA_t * coarseDA = new DA_t(coarseDTree, comm, eleOrder);
@@ -581,18 +597,16 @@ static Vector<InstanceT> countInstances(const ConstMeshPointers<dim> &mesh)
 
 
 //
-// getOwnership()
+// testOwnership()
 //
 
 template <unsigned int dim>
-static Vector<OwnershipT> getOwnership(const ConstMeshPointers<dim> &mesh, OwnershipT &globElBegin)
+static bool testOwnership(const ConstMeshPointers<dim> &mesh)
 {
   DendroIntL globElementBegin = 0;
   DendroIntL elementCount = mesh.numElements();
   par::Mpi_Scan(&elementCount, &globElementBegin, 1, MPI_SUM, mesh.da()->getGlobalComm());
   globElementBegin -= elementCount;
-
-  globElBegin = globElementBegin;  // return info to caller
 
   DendroIntL globElementId = globElementBegin;  // enumerate elements in loop.
 
@@ -647,20 +661,31 @@ static Vector<OwnershipT> getOwnership(const ConstMeshPointers<dim> &mesh, Owner
   mesh.da()->writeToGhostsBegin(ghostedOwners.ptr(), 1, ghostedDirty.ptr());
   mesh.da()->writeToGhostsEnd(ghostedOwners.ptr(), 1, false, ghostedDirty.ptr()); // overwrite mode
 
+  // Ghosted writers fight to end up in owned copy.
   Vector<OwnershipT> localOwners(mesh, false, 1);
   mesh.da()->ghostedNodalToNodalVec(ghostedOwners.data(), localOwners.data(), true, 1);
 
-  //DEBUG -- every node should be consistently owned by a neighboring element.
-  /// Vector<OwnershipT> ghostedTest(mesh, true, 1);
-  /// std::fill(ghostedTest.data().begin(), ghostedTest.data().end(), -1);
-  /// mesh.da()->nodalVecToGhostedNodal(localOwners.data(), ghostedTest.data(), true, 1);
-  /// mesh.da()->readFromGhostBegin(ghostedTest.data().data(), 1);
-  /// mesh.da()->readFromGhostEnd(ghostedTest.data().data(), 1);
-  /// std::cout << "========================================================\n";
-  /// printGhostedNodes(mesh, ghostedTest);
-  /// std::cout << "========================================================\n";
+  // The owned copy is the definitive value.
+  mesh.da()->nodalVecToGhostedNodal(localOwners.data(), ghostedOwners.data(), true, 1);
+  mesh.da()->readFromGhostBegin(ghostedOwners.ptr(), ghostedOwners.ndofs());
+  mesh.da()->readFromGhostEnd(ghostedOwners.ptr(), ghostedOwners.ndofs());
 
-  return localOwners;
+  // Now test the DA implementation result.
+  bool matching = true;
+  const size_t ghostedSize = ghostedOwners.size();
+  const DendroIntL * daGhostedOwners = mesh.da()->getNodeOwnerElements();
+  for (size_t ii = 0; ii < ghostedSize; ++ii)
+    if (daGhostedOwners[ii] != ghostedOwners.data()[ii])
+      matching = false;
+
+  if (!matching)
+  {
+    Vector<int> mismatches(mesh, true, 1);
+    for (size_t ii = 0; ii < ghostedSize; ++ii)
+      mismatches.data()[ii] = (daGhostedOwners[ii] == ghostedOwners.data()[ii] ? 0 : 10);
+  }
+
+  return matching;
 }
 
 
@@ -708,13 +733,14 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
   // -- Enforce single-counting by establishing node ownership
   //    (for now this is a hack, but we should build this into DA & traversals)
 
-  OwnershipT globElementBegin;
-  Vector<OwnershipT> owners = getOwnership(fineMesh, globElementBegin);
+  /// const bool daOwnersMatch = testOwnership(fineMesh);
+  /// fprintf(stdout, "daOwnersMatch == %s\n",
+  ///     daOwnersMatch ? (GRN "true" NRM) : (RED "false" NRM));
 
-  static Vector<OwnershipT> ownersGhosted(fineMesh, true, ndofs);
-  fineMesh.da()->nodalVecToGhostedNodal(owners.data(), ownersGhosted.data(), true, 1);
-  fineMesh.da()->readFromGhostBegin(ownersGhosted.ptr(), ownersGhosted.ndofs());
-  fineMesh.da()->readFromGhostEnd(ownersGhosted.ptr(), ownersGhosted.ndofs());
+  static Vector<OwnershipT> ownersGhosted(fineMesh, true, 1,
+      fineMesh.da()->getNodeOwnerElements());
+  OwnershipT globElementBegin = fineMesh.da()->getGlobalElementBegin();
+
   ElementLoopIn<dim, OwnershipT> loopOwners(fineMesh, ownersGhosted);
   OwnershipT globElementId = globElementBegin;
 
