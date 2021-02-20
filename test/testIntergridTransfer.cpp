@@ -79,9 +79,9 @@ int main(int argc, char *argv[])
 
   /// success &= testNull<dim>(argc, argv);
   /// success &= testMultiDA<dim>(argc, argv);
-  /// success &= testUniform2(argc, argv);
+  success &= testUniform2(argc, argv);
 
-  success &= testLinear<dim>(argc, argv);
+  /// success &= testLinear<dim>(argc, argv);
 
   _DestroyHcurve();
   MPI_Finalize();
@@ -180,6 +180,7 @@ bool testUniform2(int argc, char * argv[])
   /// ot::DistTree<unsigned int, dim> dtree(coarseTree);
   ot::DistTree<unsigned int, dim> surrDTree
     = dtree.generateGridHierarchyDown(nGrids, partition_tol);
+  const GridAlignment gridAlignment = GridAlignment::CoarseByFine;
 
   // Create DAs
   if (!rProc && outputStatus)
@@ -206,7 +207,7 @@ bool testUniform2(int argc, char * argv[])
   {
     std::cout << "Creating gmgMat object for restriction() and prolongation().\n" << std::flush;
   }
-  gmgMat<dim> gmgMatObj(&multiDA, &surrMultiDA, singleDof);
+  gmgMat<dim> gmgMatObj(&dtree, &multiDA, &surrDTree, &surrMultiDA, gridAlignment, singleDof);
 
 
   //

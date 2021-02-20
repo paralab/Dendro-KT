@@ -52,8 +52,13 @@ namespace PoissonEq
     using BaseT::m_uiPtMax;
 
     public:
-      PoissonGMGMat(ot::MultiDA<dim> *mda, ot::MultiDA<dim> *smda, unsigned int ndofs)
-        : BaseT(mda, smda, ndofs)
+      PoissonGMGMat(const ot::DistTree<unsigned, dim> *distTree,
+                    ot::MultiDA<dim> *mda,
+                    const ot::DistTree<unsigned, dim> *surrDistTree,
+                    ot::MultiDA<dim> *smda,
+                    GridAlignment gridAlignment,
+                    unsigned int ndofs)
+        : BaseT(distTree, mda, surrDistTree, smda, gridAlignment, ndofs)
       {
         m_gridOperators.resize(m_numStrata);
         for (int s = 0; s < m_numStrata; ++s)
@@ -222,6 +227,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
     ot::DistTree<unsigned int, dim> surrDTree
       = dtree.generateGridHierarchyDown(nGrids, partition_tol);
     ot::MultiDA<dim> multiDA, surrMultiDA;
+    const GridAlignment gridAlignment = GridAlignment::CoarseByFine;
 
     if (!rProc && outputStatus)
       std::cout << "Creating multilevel ODA.\n" << std::flush;
@@ -237,7 +243,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
       std::cout << "Creating poissonGMG wrapper.\n" << std::flush;
     }
 
-    PoissonEq::PoissonGMGMat<dim> poissonGMG(&multiDA, &surrMultiDA, 1);
+    PoissonEq::PoissonGMGMat<dim> poissonGMG(&dtree, &multiDA, &surrDTree, &surrMultiDA, gridAlignment, 1);
+    // Note that we own the DistTree's and DA's (gmg mat does not own),
+    // so these data structures must stay in scope.
 
     if (!rProc && outputStatus)
       std::cout << "Setting up problem.\n" << std::flush;
