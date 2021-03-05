@@ -9,7 +9,7 @@ namespace PoissonEq
 {
 
 template <unsigned int dim>
-PoissonMat<dim>::PoissonMat(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof) : feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
+PoissonMat<dim>::PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof) : feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)

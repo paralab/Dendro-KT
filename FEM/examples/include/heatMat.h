@@ -21,7 +21,6 @@ namespace HeatEq
         double* Qy;
         double* Qz;
 
-        ot::DA<dim> * &m_uiOctDA = feMat<dim>::m_uiOctDA;
         Point<dim> &m_uiPtMin = feMat<dim>::m_uiPtMin;
         Point<dim> &m_uiPtMax = feMat<dim>::m_uiPtMax;
 

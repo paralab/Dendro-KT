@@ -44,7 +44,7 @@ namespace PoissonEq
   {
     // References to base class members for convenience.
     using BaseT = gmgMat<dim, PoissonGMGMat<dim>>;
-    ot::MultiDA<dim> * & m_multiDA = BaseT::m_multiDA;
+    const ot::MultiDA<dim> * & m_multiDA = BaseT::m_multiDA;
     /// ot::MultiDA<dim> * & m_surrogateMultiDA = BaseT::m_surrogateMultiDA;
     unsigned int & m_numStrata = BaseT::m_numStrata;
     unsigned int & m_ndofs = BaseT::m_ndofs;
@@ -126,7 +126,7 @@ namespace PoissonEq
       std::vector<std::vector<VECType>> m_rcp_diags;
 
       // Convenience protected accessor
-      inline ot::MultiDA<dim> & getMDA() { return *m_multiDA; }
+      inline const ot::MultiDA<dim> & getMDA() { return *m_multiDA; }
   };
 
 }//namespace PoissonEq

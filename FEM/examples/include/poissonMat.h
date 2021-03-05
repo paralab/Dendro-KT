@@ -22,7 +22,7 @@ namespace PoissonEq
         double * ematBuf; // Needed for assembly.
 
         // References for convenient access to base class members.
-        ot::DA<dim> * &m_uiOctDA = feMat<dim>::m_uiOctDA;
+        const ot::DA<dim> * &m_uiOctDA = feMat<dim>::m_uiOctDA;
         Point<dim> &m_uiPtMin = feMat<dim>::m_uiPtMin;
         Point<dim> &m_uiPtMax = feMat<dim>::m_uiPtMax;
 
@@ -41,7 +41,7 @@ namespace PoissonEq
 
     public:
         /**@brief: constructor. Matrix-free matrix depends on spatial structure represented by ODA.*/
-        PoissonMat(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
+        PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
 
         /**@brief default destructor*/
         ~PoissonMat();

@@ -40,7 +40,7 @@ protected:
          * @brief constructs an FEM stiffness matrix class.
          * @param[in] da: octree DA
          * */
-        feMatrix(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
+        feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
 
         feMatrix(feMatrix &&other);
 
@@ -212,7 +212,7 @@ protected:
 };
 
 template <typename LeafT, unsigned int dim>
-feMatrix<LeafT,dim>::feMatrix(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof)
+feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof)
   : feMat<dim>(da, octList)
 {
     m_uiDof=dof;
@@ -259,7 +259,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   using namespace std::placeholders;   // Convenience for std::bind().
 
   // Shorter way to refer to our member DA.
-  ot::DA<dim> * &m_oda = feMat<dim>::m_uiOctDA;
+  const ot::DA<dim> * m_oda = this->da();
 
   // Static buffers for ghosting. Check/increase size.
   static std::vector<VECType> inGhosted, outGhosted;
@@ -334,7 +334,7 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
   using namespace std::placeholders;   // Convenience for std::bind().
 
   // Shorter way to refer to our member DA.
-  ot::DA<dim> * &m_oda = feMat<dim>::m_uiOctDA;
+  const ot::DA<dim> * m_oda = this->da();
 
   // Static buffers for ghosting. Check/increase size.
   static std::vector<VECType> outGhosted;
@@ -546,7 +546,7 @@ class SubMatView
 template <typename LeafT, unsigned int dim>
 ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
 {
-  const ot::DA<dim> &m_oda = *feMat<dim>::m_uiOctDA;
+  const ot::DA<dim> &m_oda = *this->da();
   const unsigned int eleOrder = m_oda.getElementOrder();
   const unsigned int nPe = m_oda.getNumNodesPerElement();
   ot::MatCompactRows matRowChunks(nPe, m_uiDof);
