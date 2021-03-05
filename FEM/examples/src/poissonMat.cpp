@@ -181,6 +181,23 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 }
 
 
+
+/*
+template<unsigned int dim>
+void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale)
+{
+  static std::vector<ot::MatRecord> records;
+  records.clear();
+  this->getElementalMatrix(records, coords, false);
+  #warning elementalSetDiag should also accept isElementBoundary
+  for (const ot::MatRecord &rec : records)
+    if (rec.getRowID() == rec.getColID() && rec.getRowDim() == rec.getColDim())
+      out[ndofs * rec.getRowID() + rec.getRowDim()] = rec.getMatVal();
+}
+*/
+
+
+
 template <unsigned int dim>
 void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale)
 {

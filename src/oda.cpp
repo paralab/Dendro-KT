@@ -33,6 +33,7 @@ namespace ot
         m_uiPostNodeEnd = 0;
         m_uiCommTag = 0;
         m_uiGlobalNodeSz = 0;
+        m_uiGlobalElementSz = 0;
         m_uiElementOrder = order;
         m_uiNpE = 0;
         m_uiActiveNpes = 0;
@@ -403,12 +404,7 @@ namespace ot
         m_treePartFront = *treePartFront;
         m_treePartBack = *treePartBack;
 
-        unsigned long long locNodeSz = ownedNodes.size();
-        unsigned long long globNodeSz = 0;
-        par::Mpi_Allreduce(&locNodeSz, &globNodeSz, 1, MPI_SUM, activeComm);
-
-        m_uiLocalNodalSz = locNodeSz;
-        m_uiGlobalNodeSz = globNodeSz;
+        m_uiLocalNodalSz = ownedNodes.size();
 
         // Create scatter/gather maps. Scatter map reflects whatever ordering is in ownedNodes.
         m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(ownedNodes, &m_treePartFront, m_uiActiveComm);
@@ -429,8 +425,6 @@ namespace ot
       else
       {
         m_uiLocalNodalSz = 0;
-        m_uiGlobalNodeSz = 0;
-
         m_uiTotalNodalSz   = 0;
         m_uiPreNodeBegin   = 0;
         m_uiPreNodeEnd     = 0;
@@ -440,12 +434,15 @@ namespace ot
         m_uiPostNodeEnd    = 0;
       }
 
+
       // Find offset into the global array.  All ranks take part.
       DendroIntL locSz = m_uiLocalNodalSz;
+      par::Mpi_Allreduce(&locSz, &m_uiGlobalNodeSz, 1, MPI_SUM, m_uiGlobalComm);
       par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiGlobalComm);
       m_uiGlobalRankBegin -= locSz;
 
       DendroIntL elementCount = m_uiLocalElementSz;
+      par::Mpi_Allreduce(&elementCount, &m_uiGlobalElementSz, 1, MPI_SUM, m_uiGlobalComm);
       par::Mpi_Scan(&elementCount, &m_uiGlobalElementBegin, 1, MPI_SUM, m_uiGlobalComm);
       m_uiGlobalElementBegin -= elementCount;
 

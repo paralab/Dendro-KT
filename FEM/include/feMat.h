@@ -66,7 +66,11 @@ public:
 
     }
 
+    // da()
     const ot::DA<dim> * da() const { return m_uiOctDA; }
+
+    // octList()
+    const std::vector<ot::TreeNode<unsigned int, dim>> * octList() const { return m_octList; }
 
     /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
      * @param [in] in input vector u

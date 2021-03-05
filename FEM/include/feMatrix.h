@@ -338,7 +338,9 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
 
   // Static buffers for ghosting. Check/increase size.
   static std::vector<VECType> outGhosted;
+  /// static std::vector<char> outDirty;
   m_oda->template createVector<VECType>(outGhosted, false, true, m_uiDof);
+  /// m_oda->template createVector<char>(outDirty, false, true, 1);
   std::fill(outGhosted.begin(), outGhosted.end(), 0);
   VECType *outGhostedPtr = outGhosted.data();
 
@@ -350,9 +352,10 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_matvec.start();
 #endif
-  fem::locSetDiag(outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),
+  fem::locSetDiag(outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(), this->octList(),
       *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
       eleSet, scale, m_oda->getReferenceElement());
+      /// outDirty.data());
 
 #ifdef DENRO_KT_GMG_BENCH_H
   bench::t_matvec.stop();
@@ -366,6 +369,8 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
   // Downstream->Upstream ghost exchange.
   m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof);
   m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, m_uiDof);
+  /// m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof, outDirty.data());
+  /// m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, m_uiDof, false, outDirty.data());
 
 #ifdef DENRO_KT_GMG_BENCH_H
   bench::t_ghostexchange.stop();

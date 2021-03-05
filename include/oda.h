@@ -219,6 +219,9 @@ class DA
     /**@brief: total number of nodes accross all the processes*/
     DendroIntL m_uiGlobalNodeSz;
 
+    /**@brief: total number of elements across all processes*/
+    DendroIntL m_uiGlobalElementSz;
+
     /**@brief: Global mpi communicator */ 
     MPI_Comm m_uiGlobalComm; 
 
@@ -359,6 +362,8 @@ class DA
 
         /**@brief returns the rank of the begining of local segment among all processors. */
         inline RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
+
+        inline DendroIntL getGlobalElementSz() const { return m_uiGlobalElementSz; }
 
         inline DendroIntL getGlobalElementBegin() const { return m_uiGlobalElementBegin; }
 

@@ -36,6 +36,26 @@ struct Parameters
 // =======================================================
 
 
+template <unsigned int dim, typename ValT>
+void printLocalNodes(const ot::DA<dim> *da, const ValT * vals, std::ostream &out = std::cout)
+{
+  ot::printNodes(da->getTNCoords() + da->getLocalNodeBegin(), da->getTNCoords() + da->getLocalNodeBegin() + da->getLocalNodalSz(),
+                 vals,
+                 da->getElementOrder(),
+                 out);
+}
+
+template <unsigned int dim, typename ValT>
+void printGhostedNodes(const ot::DA<dim> *da, const ValT * vals, std::ostream &out = std::cout)
+{
+  ot::printNodes(da->getTNCoords(), da->getTNCoords() + da->getTotalNodalSz(),
+                 vals,
+                 da->getElementOrder(),
+                 out);
+}
+
+
+
 namespace PoissonEq
 {
 
@@ -63,9 +83,7 @@ namespace PoissonEq
         m_gridOperators.resize(m_numStrata);
         for (int s = 0; s < m_numStrata; ++s)
         {
-          throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
-          const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
-          m_gridOperators[s] = new PoissonMat<dim>(&getMDA()[s], &dummyOctList, ndofs);
+          m_gridOperators[s] = new PoissonMat<dim>(&getMDA()[s], &distTree->getTreePartFiltered(s), ndofs);
           m_gridOperators[s]->setProblemDimensions(m_uiPtMin, m_uiPtMax);
         }
 
@@ -77,6 +95,9 @@ namespace PoissonEq
           const double scale = 1.0;  // Set appropriately.
           m_rcp_diags[s].resize(ndofs * getMDA()[s].getLocalNodalSz(), 0.0);
           m_gridOperators[s]->setDiag(m_rcp_diags[s].data(), scale);
+
+          if (s == 1)
+            printLocalNodes(&(*mda)[s], m_rcp_diags[s].data(), std::cout);
 
           for (auto &a : m_rcp_diags[s])
           {
@@ -173,11 +194,14 @@ int main_ (Parameters &pm, MPI_Comm comm)
     const Point<dim> domain_min(d_min, d_min, d_min);
     const Point<dim> domain_max(d_max, d_max, d_max);
 
-    std::function<void(const double *, double*)> f_rhs = [d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
+    const int _dim = dim;  // workaround: lambda messes up value of template dim
+    std::function<void(const double *, double*)> f_rhs = [_dim, d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
     {
-      var[0] = -dim*4*M_PI*M_PI;
+      var[0] = -_dim*4*M_PI*M_PI;
       for (unsigned int d = 0; d < dim; d++)
+      {
         var[0] *= sin(2*M_PI*(((x[d]-g_min)/Rg)*Rd+d_min));
+      }
     };
     /// std::function<void(const double *, double*)> f_rhs = [d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
     /// {
@@ -230,7 +254,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
     const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
 
     if (!rProc && outputStatus)
-      std::cout << "Creating multilevel ODA.\n" << std::flush;
+      std::cout << "Creating multilevel ODA with " << dtree.getNumStrata() << " strata.\n" << std::flush;
 
     ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, eOrder, 100, partition_tol);
     ot::DA<dim>::multiLevelDA(surrMultiDA, surrDTree, comm, eOrder, 100, partition_tol);
@@ -239,7 +263,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     if (!rProc && outputStatus)
     {
-      std::cout << "Refined DA has " << fineDA.getTotalNodalSz() << " total nodes.\n" << std::flush;
+      std::cout << "Refined DA has "
+        << fineDA.getGlobalElementSz() << " total elements and "
+        << fineDA.getGlobalNodeSz() << " total nodes.\n" << std::flush;
       std::cout << "Creating poissonGMG wrapper.\n" << std::flush;
     }
 
@@ -266,14 +292,14 @@ int main_ (Parameters &pm, MPI_Comm comm)
       fineDA.createVector(_frhs, false, false, 1);
       fineDA.createVector(_Mfrhs, false, false, 1);
 
-      throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
-      const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
-      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dummyOctList, 1);
+      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dtree.getTreePartFiltered(0), 1);
       poissonVec.setProblemDimensions(domain_min,domain_max);
 
       fineDA.setVectorByFunction(_ux.data(),    f_init, false, false, 1);
       fineDA.setVectorByFunction(_Mfrhs.data(), f_init, false, false, 1);
       fineDA.setVectorByFunction(_frhs.data(),  f_rhs, false, false, 1);
+
+      /// printGhostedNodes(&fineDA, _frhs.data(), std::cout);
 
       if (!rProc && outputStatus)
         std::cout << "Computing RHS.\n" << std::flush;
@@ -342,9 +368,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
       /// PoissonEq::PoissonMat<dim> poissonMat(octDA,1);
       /// poissonMat.setProblemDimensions(domain_min,domain_max);
 
-      throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
-      const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
-      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dummyOctList, 1);
+      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dtree.getTreePartFiltered(0), 1);
       poissonVec.setProblemDimensions(domain_min,domain_max);
 
       fineDA.petscSetVectorByFunction(ux, f_init, false, false, 1);

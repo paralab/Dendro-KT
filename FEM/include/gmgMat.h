@@ -32,6 +32,15 @@ struct gmgMatStratumWrapper;
 template <unsigned int dim, class LeafClass>
 class gmgMat;
 
+namespace detail
+{
+  // TODO put in a linear algebra file
+  template <unsigned int dim>
+  VECType vecNormLInf(const ot::DA<dim> *da, const VECType *v);
+
+  template <unsigned int dim>
+  VECType vecDot(const ot::DA<dim> *da, const VECType *v, const VECType *w);
+}
 
 
 // =================================
@@ -241,7 +250,10 @@ public:
         res[i] = rhs[i] - res[i];
         resLInf = fmax(fabs(res[i]), resLInf);
       }
-      return resLInf;
+
+      VECType globResLInf = 0.0f;
+      par::Mpi_Allreduce(&resLInf, &globResLInf, 1, MPI_MAX, (*m_multiDA)[stratum].getGlobalComm());
+      return globResLInf;
     }
 
     // residual()
@@ -288,7 +300,9 @@ public:
       }
       else
       {
-        const int numSteps = smoothToTol(fs, u, rhs, 1e-10, 1.0);
+        // coarse grid solver
+        /// const int numSteps = smoothToTol(fs, u, rhs, 1e-10, 1.0);
+        const int numSteps = this->cgSolver(fs, u, rhs, 1e-10);//TODO use a direct method which also doesn't assume symmetric
       }
     }
 
@@ -311,35 +325,111 @@ public:
       }
     }
 
-    // smooth()
+    // smoothToTol()
     int smoothToTol(unsigned int stratum, VECType * u, const VECType * rhs, double relResErr, double omega = 0.67)
     {
       const double scale = 1.0;//TODO
-      const size_t localSz = (*m_multiDA)[stratum].getLocalNodalSz();
+      const ot::DA<dim> *da = &(*this->m_multiDA)[stratum];
+      const size_t localSz = da->getLocalNodalSz();
       m_stratumWork_R_h[stratum].resize(m_ndofs * localSz);
       m_stratumWork_R_h_prime[stratum].resize(m_ndofs * localSz);
 
-      double normb = 0.0;
-      for (int nidx = 0; nidx < localSz; nidx++)
-        normb = fmax(normb, fabs(rhs[nidx]));
+      const double normb = detail::vecNormLInf(da, rhs);
 
       relResErr = fabs(relResErr);
       double res = normb * (1 + relResErr);
+      VECType iterLInf = 0.0f;
       int step = 0;
-      while (res > relResErr * normb)
+      const int runaway = 50;  // TODO INCREASE MORE
+      while (step < runaway && res > relResErr * normb)
       {
+        fprintf(stdout, "step==%d  res==%e  diff==%e\n", step, res, iterLInf);
+
         res = this->residual(stratum, m_stratumWork_R_h[stratum].data(), u, rhs, scale);
         this->applySmoother(&(*m_stratumWork_R_h[stratum].cbegin()),
                             &(*m_stratumWork_R_h_prime[stratum].begin()),
                             stratum);
+        iterLInf = 0.0f;
         for (size_t i = 0; i < m_ndofs * localSz; i++)
-          u[i] += omega * m_stratumWork_R_h_prime[stratum][i];
+        {
+          const VECType oldU = u[i];
+          const VECType newU = oldU + omega * m_stratumWork_R_h_prime[stratum][i];
+          iterLInf = fmax(fabs(newU - oldU), iterLInf);
+          u[i] = newU;
+        }
 
         step++;
+      }
+      fprintf(stdout, "step==%d  res==%e  change==%e\n", step, res, iterLInf);
+      if (step == runaway) //TODO REMOVE
+        exit(1);
+
+      return step;
+    }
+
+    int cgSolver(unsigned int stratum, VECType * u, const VECType * rhs, double relResErr)//TODO use a direct method which also doesn't assume symmetric
+    {
+      // ---------------------------------------------
+      // DEBUG: Assemble the matrix and check it's SPD
+      // ---------------------------------------------
+      //TODO
+      // ---------------------------------------------
+
+      const double scale = 1.0;
+      const ot::DA<dim> *da = &((*this->m_multiDA)[stratum]);
+      const double normb = detail::vecNormLInf(da, rhs);
+      const double thresh = relResErr * normb;
+      fprintf(stdout, "strat==%d  normb==%e\n", stratum, normb);
+
+      const size_t localSz = da->getLocalNodalSz();
+
+      static std::vector<VECType> r;
+      static std::vector<VECType> p;
+      static std::vector<VECType> Ap;
+      r.resize(localSz);
+      p.resize(localSz);
+      Ap.resize(localSz);
+
+      int step = 0;
+      VECType rmag = this->residual(stratum, r.data(), u, rhs, scale);
+      if (rmag < thresh)
+        return step;
+      VECType rProd = detail::vecDot(da, &(*r.cbegin()), &(*r.cbegin()));
+
+      VECType iterLInf = 0.0f;
+
+      p = r;
+      const int runaway = 150;
+      while (step < runaway)
+      {
+        this->matVec(&(*p.cbegin()), &(*Ap.begin()), stratum, scale);  // Ap
+        const VECType pProd = detail::vecDot(da, &(*p.cbegin()), &(*Ap.cbegin()));
+        /// const VECType rp = detail::vecDot(da, &(*r.cbegin()), &(*Ap.cbegin()));
+
+        const VECType alpha = rProd / pProd;
+        /// const VECType alpha = rProd / rp;
+        iterLInf = alpha * detail::vecNormLInf(da, &(*p.cbegin()));
+        for (size_t ii = 0; ii < localSz; ++ii)
+          u[ii] += alpha * p[ii];
+        ++step;
+
+        const VECType rProdPrev = rProd;
+
+        rmag = this->residual(stratum, r.data(), u, rhs, scale);
+        if (rmag < thresh)
+          return step;
+        rProd = detail::vecDot(da, &(*r.cbegin()), &(*r.cbegin()));
+
+        const VECType beta = rProd / rProdPrev;
+        for (size_t ii = 0; ii < localSz; ++ii)
+          p[ii] = r[ii] + beta * p[ii];
+
+        fprintf(stdout, "strat==%d  step==%d  res==%e  diff==%e  rProd==%e  pProd==%e  a==%e  b==%e\n", stratum, step, rmag, iterLInf, rProd, pProd, alpha, beta);
       }
 
       return step;
     }
+
 
     // --------------------------------
 
@@ -1044,6 +1134,35 @@ void gmgMat<dim, LeafClass>::petscUserMultProlongation(Mat mat, Vec x, Vec y_out
 
 #endif//petsc
 
+
+namespace detail
+{
+  template <unsigned int dim>
+  VECType vecNormLInf(const ot::DA<dim> *da, const VECType *v)
+  {
+    VECType locLInf = 0.0f;
+    for (size_t ii = 0; ii < da->getLocalNodalSz(); ++ii)
+      locLInf = fmax(locLInf, fabs(v[ii]));
+
+    VECType globLInf = 0.0f;
+    par::Mpi_Allreduce(&locLInf, &globLInf, 1, MPI_MAX, da->getGlobalComm());
+
+    return globLInf;
+  }
+
+  template <unsigned int dim>
+  VECType vecDot(const ot::DA<dim> *da, const VECType *v, const VECType *w)
+  {
+    VECType locDot = 0.0f;
+    for (size_t ii = 0; ii < da->getLocalNodalSz(); ++ii)
+      locDot += v[ii] * w[ii];
+
+    VECType globDot = 0.0f;
+    par::Mpi_Allreduce(&locDot, &globDot, 1, MPI_SUM, da->getGlobalComm());
+
+    return globDot;
+  }
+}
 
 
 
