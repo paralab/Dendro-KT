@@ -312,6 +312,11 @@ class DA
          * */
         ~DA();
 
+
+        // move constructor
+        /// DA(DA &&movedDA) = default;
+
+
         /**
          * @brief does the work for the constructors.
          */
@@ -753,7 +758,7 @@ class DA
      
         /**@brief: dealloc the petsc vector
          * */  
-        PetscErrorCode petscDestroyVec(Vec & vec);       
+        PetscErrorCode petscDestroyVec(Vec & vec) const;
 
         #endif
 };

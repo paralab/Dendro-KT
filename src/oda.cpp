@@ -115,9 +115,12 @@ namespace ot
     template <unsigned int dim>
     void DA<dim>::multiLevelDA(std::vector<DA> &outDAPerStratum, const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
-      outDAPerStratum.clear();
       const int numStrata = inDistTree.getNumStrata();
+
+      outDAPerStratum.clear();
+
       std::vector<DA> daPerStratum(numStrata);
+
       for (int l = 0; l < numStrata; ++l)
         daPerStratum[l].constructStratum(inDistTree, l, comm, order, grainSz, sfc_tol);
       std::swap(outDAPerStratum, daPerStratum);
@@ -895,7 +898,7 @@ namespace ot
 
 
     template <unsigned int dim>
-    PetscErrorCode DA<dim>::petscDestroyVec(Vec & vec)
+    PetscErrorCode DA<dim>::petscDestroyVec(Vec & vec) const
     {
             VecDestroy(&vec);
             vec=NULL;

@@ -56,7 +56,7 @@ namespace PoissonEq
                     ot::MultiDA<dim> *mda,
                     const ot::DistTree<unsigned, dim> *surrDistTree,
                     ot::MultiDA<dim> *smda,
-                    GridAlignment gridAlignment,
+                    ot::GridAlignment gridAlignment,
                     unsigned int ndofs)
         : BaseT(distTree, mda, surrDistTree, smda, gridAlignment, ndofs)
       {
@@ -227,7 +227,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
     ot::DistTree<unsigned int, dim> surrDTree
       = dtree.generateGridHierarchyDown(nGrids, partition_tol);
     ot::MultiDA<dim> multiDA, surrMultiDA;
-    const GridAlignment gridAlignment = GridAlignment::CoarseByFine;
+    const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
 
     if (!rProc && outputStatus)
       std::cout << "Creating multilevel ODA.\n" << std::flush;

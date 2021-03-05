@@ -110,6 +110,125 @@ namespace ot
   }
 
 
+  //
+  // insertRefinedGrid()
+  //   - refnFlags must be same length as treePart in finest grid of distTree.
+  //   - refnFlags must not contain OCT_FLAGS::OCT_COARSEN.
+  //   - All strata in distTree and surrDistTree are moved coarser by one.
+  //   - A new grid is defined in stratum 0.
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::insertRefinedGrid(DistTree &distTree,
+                                           DistTree &surrDistTree,
+                                           const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                           GridAlignment gridAlignment,
+                                           double loadFlexibility)
+  {
+    bool hasCoarseningFlag = false;
+    for (auto &f : refnFlags)
+      if (f == OCT_FLAGS::OCT_COARSEN)
+        hasCoarseningFlag = true;
+    if (hasCoarseningFlag)
+      std::cerr << "Coarsening flags are not allowed in insertRefinedGrid().\n";
+
+    MPI_Comm comm = distTree.m_comm;
+
+    if (surrDistTree.getNumStrata() == 0)
+    {
+      std::vector<TreeNode<T, dim>> emptyOctList;
+      surrDistTree = DistTree(emptyOctList, comm, NoCoalesce);
+      surrDistTree.filterTree(distTree.getDomainDecider());
+    }
+
+    const int finestStratum = 0;
+
+    const std::vector<TreeNode<T, dim>> &inTreeVec = distTree.getTreePartFiltered(finestStratum);
+    std::vector<TreeNode<T, dim>> outTreeVec;
+    std::vector<TreeNode<T, dim>> surrogateTreeVec;
+
+    SFC_Tree<T, dim>::distRemeshWholeDomain(
+        inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, comm);
+    if (gridAlignment == GridAlignment::FineByCoarse)
+    {
+      throw std::logic_error("Not implemented: distRemeshWholeDomain to fine with surrogate FineByCoarse.");
+    }
+
+    distTree.insertStratum(finestStratum, outTreeVec);
+    distTree.filterStratum(finestStratum);
+
+    if (gridAlignment == GridAlignment::CoarseByFine)
+    {
+      surrDistTree.insertStratum(finestStratum + 1, surrogateTreeVec);
+      // surrogateTreeVec elements pre-existed, don't need to filter.
+    }
+    else
+    {
+      surrDistTree.insertStratum(finestStratum, surrogateTreeVec);
+      // surrogateTreeVec elements were produced with new fine grid.
+      surrDistTree.filterStratum(finestStratum);
+    }
+  }
+
+
+  //
+  // defineCoarsenedGrid()
+  //   - refnFlags must be same length as treePart in coarsest grid of distTree.
+  //   - refnFlags must not contain OCT_FLAGS::OCT_REFINE.
+  //   - A new grid is defined in (coarsestStratum + 1).
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::defineCoarsenedGrid(DistTree &distTree,
+                                             DistTree &surrDistTree,
+                                             const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                             GridAlignment gridAlignment,
+                                             double loadFlexibility)
+  {
+    bool hasRefiningFlag = false;
+    for (auto &f : refnFlags)
+      if (f == OCT_FLAGS::OCT_REFINE)
+        hasRefiningFlag = true;
+    if (hasRefiningFlag)
+      std::cerr << "Refining flags are not allowed in defineCoarsenedGrid().\n";
+
+    MPI_Comm comm = distTree.m_comm;
+
+    if (surrDistTree.getNumStrata() == 0)
+    {
+      std::vector<TreeNode<T, dim>> emptyOctList;
+      surrDistTree = DistTree(emptyOctList, comm, NoCoalesce);
+      surrDistTree.filterTree(distTree.getDomainDecider());
+    }
+
+    const int oldCoarsestStratum = distTree.getNumStrata() - 1;
+    const int newCoarsestStratum = distTree.getNumStrata();
+
+    const std::vector<TreeNode<T, dim>> &inTreeVec = distTree.getTreePartFiltered(oldCoarsestStratum);
+    std::vector<TreeNode<T, dim>> outTreeVec;
+    std::vector<TreeNode<T, dim>> surrogateTreeVec;
+
+    SFC_Tree<T, dim>::distRemeshWholeDomain(
+        inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, comm);
+    if (gridAlignment == GridAlignment::CoarseByFine)
+    {
+      throw std::logic_error("Not implemented: distRemeshWholeDomain to coarse with surrogate CoarseByFine.");
+    }
+
+    distTree.insertStratum(newCoarsestStratum, outTreeVec);
+    distTree.filterStratum(newCoarsestStratum);
+
+    if (gridAlignment == GridAlignment::CoarseByFine)
+    {
+      surrDistTree.insertStratum(newCoarsestStratum, surrogateTreeVec);
+      // surrogateTreeVec elements were produced with new coarse grid.
+      surrDistTree.filterStratum(newCoarsestStratum);
+    }
+    else
+    {
+      surrDistTree.insertStratum(oldCoarsestStratum, surrogateTreeVec);
+      // surrogateTreeVec elements pre-existed, don't need to filter.
+    }
+  }
+
 
   //
   // generateGridHierarchyUp()

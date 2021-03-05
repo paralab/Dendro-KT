@@ -33,6 +33,8 @@ namespace OCT_FLAGS
   enum Refine {OCT_NO_CHANGE = 0, OCT_REFINE = 1, OCT_COARSEN = 2};
 }
 
+enum GridAlignment { CoarseByFine, FineByCoarse };
+
 //
 // BucketInfo{}
 //

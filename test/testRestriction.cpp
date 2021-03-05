@@ -3,6 +3,7 @@
 #include "oda.h"
 
 #include "intergridTransfer.h"
+#include "gmgMat.h"
 
 #include "point.h"
 #include "refel.h"
@@ -19,15 +20,18 @@ class ConstMeshPointers
 {
   private:
     const ot::DistTree<unsigned int, dim> *m_distTree;
-    const ot::DA<dim> *m_da;
+    const ot::MultiDA<dim> *m_multiDA;
+    const unsigned m_stratum;
 
   public:
     // ConstMeshPointers constructor
     ConstMeshPointers(const ot::DistTree<unsigned int, dim> *distTree,
-                 const ot::DA<dim> *da)
+                      const ot::MultiDA<dim> *multiDA,
+                      unsigned stratum = 0)
       :
         m_distTree(distTree),
-        m_da(da)
+        m_multiDA(multiDA),
+        m_stratum(stratum)
     {}
 
     // Copy constructor and copy assignment.
@@ -40,11 +44,16 @@ class ConstMeshPointers
     // numElements()
     size_t numElements() const
     {
-      return m_distTree->getTreePartFiltered().size();
+      return m_distTree->getTreePartFiltered(m_stratum).size();
     }
 
     // da()
-    const ot::DA<dim> * da() const { return m_da; }
+    const ot::DA<dim> * da() const { return &((*m_multiDA)[m_stratum]); }
+
+    // multiDA()
+    const ot::MultiDA<dim> * multiDA() const { return m_multiDA; }
+
+    unsigned stratum() const { return m_stratum; }
 
     // printSummary()
     std::ostream & printSummary(std::ostream & out, const std::string &pre = "", const std::string &post = "") const;
@@ -99,7 +108,8 @@ class Vector
 
 template <unsigned int dim>
 static std::vector<ot::OCT_FLAGS::Refine> flagRefineBoundary(
-    const ConstMeshPointers<dim> &mesh);
+    const ot::DistTree<unsigned, dim> &dtree);
+
 
 template <typename ValT>
 static void initialize(Vector<ValT> &vec, ValT begin);
@@ -110,6 +120,13 @@ static void prolongation(const ConstMeshPointers<dim> &coarseMesh,
                          const ConstMeshPointers<dim> &surrogateMesh,
                          const ConstMeshPointers<dim> &fineMesh,
                          Vector<ValT> &fineOut);
+
+template <unsigned int dim, typename ValT>
+static void custom_prolongation(const ConstMeshPointers<dim> &coarseMesh,
+                                const Vector<ValT> &coarseIn,
+                                const ConstMeshPointers<dim> &surrogateMesh,
+                                const ConstMeshPointers<dim> &fineMesh,
+                                Vector<ValT> &fineOut);
 
 template <unsigned int dim, typename ValT>
 static void restriction(const ConstMeshPointers<dim> &fineMesh,
@@ -350,25 +367,30 @@ int main(int argc, char * argv[])
   using DA_t = ot::DA<dim>;
 
   //
-  // Define coarse grid.
+  // Define coarse grid and fine grid.
   //
   const int coarseLev = 3;
-  const DTree_t coarseDTree = DTree_t::constructSubdomainDistTree(
+  DTree_t dtree = DTree_t::constructSubdomainDistTree(
       coarseLev, comm, sfc_tol);
-  const DA_t * coarseDA = new DA_t(coarseDTree, comm, eleOrder);
-  const ConstMeshPointers<dim> coarseMesh(&coarseDTree, coarseDA);
-  
-  //
-  // Define fine grid.
-  //
-  std::vector<ot::OCT_FLAGS::Refine> octFlags = flagRefineBoundary(coarseMesh);
-  DTree_t fineDTree;
+  const std::vector<ot::OCT_FLAGS::Refine> octFlags = flagRefineBoundary(dtree);
+
+  const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
   DTree_t surrogateDTree;
-  DTree_t::distRemeshSubdomain(coarseDTree, octFlags, fineDTree, surrogateDTree, sfc_tol);
-  const DA_t * fineDA = new DA_t(fineDTree, comm, eleOrder);
-  const ConstMeshPointers<dim> fineMesh(&fineDTree, fineDA);
-  const DA_t * surrogateDA = new DA_t(surrogateDTree, comm, eleOrder);
-  const ConstMeshPointers<dim> surrogateMesh(&surrogateDTree, surrogateDA);
+  DTree_t::insertRefinedGrid(dtree, surrogateDTree, octFlags, gridAlignment, sfc_tol);
+
+  fprintf(stderr, "coarse grid #elem == %lu\n", dtree.getTreePartFiltered(1).size());
+  fprintf(stderr, "fine grid #elem == %lu\n", dtree.getTreePartFiltered(0).size());
+  fprintf(stderr, "surrogate grid #elem == %lu\n", surrogateDTree.getTreePartFiltered(1).size());
+
+  // Coarse, surrogate, and fine DA
+  ot::MultiDA<dim> octMultiDA;
+  ot::MultiDA<dim> surrMultiDA;
+  ot::DA<dim>::multiLevelDA(octMultiDA, dtree, comm, eleOrder, 100, sfc_tol);
+  ot::DA<dim>::multiLevelDA(surrMultiDA, surrogateDTree, comm, eleOrder, 100, sfc_tol);
+
+  const ConstMeshPointers<dim> coarseMesh(&dtree, &octMultiDA, 1);
+  const ConstMeshPointers<dim> fineMesh(&dtree, &octMultiDA, 0);
+  const ConstMeshPointers<dim> surrogateMesh(&surrogateDTree, &surrMultiDA, 1);
 
   // Print mesh summaries.
   coarseMesh.printSummary(std::cout,    "Coarse grid:    ", "\n");
@@ -421,10 +443,6 @@ int main(int argc, char * argv[])
       inner_product_u_Rv,
       NRM);
 
-  delete coarseDA;
-  delete fineDA;
-  delete surrogateDA;
-
   _DestroyHcurve();
   PetscFinalize();
 
@@ -437,11 +455,11 @@ int main(int argc, char * argv[])
 //
 template <unsigned int dim>
 static std::vector<ot::OCT_FLAGS::Refine> flagRefineBoundary(
-    const ConstMeshPointers<dim> &mesh)
+    const ot::DistTree<unsigned, dim> &dtree)
 {
-  const size_t numElements = mesh.numElements();
   const std::vector<ot::TreeNode<unsigned int, dim>> &elements =
-      mesh.distTree()->getTreePartFiltered();
+      dtree.getTreePartFiltered();
+  const size_t numElements = elements.size();
 
   using RefineFlag = ot::OCT_FLAGS::Refine;
   std::vector<RefineFlag> flags(numElements, RefineFlag::OCT_NO_CHANGE);
@@ -484,11 +502,32 @@ static void prolongation(const ConstMeshPointers<dim> &coarseMesh,
                          const ConstMeshPointers<dim> &fineMesh,
                          Vector<ValT> &fineOut)
 {
+
+  const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
+
+  gmgMat<dim> gmgMatObj(coarseMesh.distTree(), coarseMesh.multiDA(),
+                        surrogateMesh.distTree(), surrogateMesh.multiDA(),
+                        gridAlignment, coarseIn.ndofs());
+
+  gmgMatObj.prolongation(coarseIn.ptr(), fineOut.ptr(), 0);
+}
+
+
+//
+// custom_prolongation()
+//
+template <unsigned int dim, typename ValT>
+static void custom_prolongation(const ConstMeshPointers<dim> &coarseMesh,
+                                const Vector<ValT> &coarseIn,
+                                const ConstMeshPointers<dim> &surrogateMesh,
+                                const ConstMeshPointers<dim> &fineMesh,
+                                Vector<ValT> &fineOut)
+{
   //
   // Intergrid Transfer with Injection.
   //
 
-  std::cout << "prolongation()\n";
+  std::cout << "custom_prolongation()\n";
 
   const size_t ndofs = coarseIn.ndofs();
 
@@ -525,7 +564,7 @@ static void prolongation(const ConstMeshPointers<dim> &coarseMesh,
       inctx{ surrogateGhosted.data().data(),
              surrogateMesh.da()->getTNCoords(),
              (unsigned) surrogateMesh.da()->getTotalNodalSz(),
-             &(*surrogateMesh.distTree()->getTreePartFiltered().cbegin()),
+             &(*surrogateMesh.distTree()->getTreePartFiltered(surrogateMesh.stratum()).cbegin()),
              surrogateMesh.numElements(),
              *surrogateMesh.da()->getTreePartFront(),
              *surrogateMesh.da()->getTreePartBack() };
@@ -689,7 +728,6 @@ static bool testOwnership(const ConstMeshPointers<dim> &mesh)
 }
 
 
-
 //
 // restriction()
 //
@@ -700,6 +738,26 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
                         const ConstMeshPointers<dim> &coarseMesh,
                         Vector<ValT> &coarseOut)
 {
+  const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
+
+  gmgMat<dim> gmgMatObj(coarseMesh.distTree(), coarseMesh.multiDA(),
+                        surrogateMesh.distTree(), surrogateMesh.multiDA(),
+                        gridAlignment, fineIn.ndofs());
+
+  gmgMatObj.restriction(fineIn.ptr(), coarseOut.ptr(), 0);
+}
+
+
+//
+// custom_restriction()
+//
+template <unsigned int dim, typename ValT>
+static void custom_restriction(const ConstMeshPointers<dim> &fineMesh,
+                               const Vector<ValT> &fineIn,
+                               const ConstMeshPointers<dim> &surrogateMesh,
+                               const ConstMeshPointers<dim> &coarseMesh,
+                               Vector<ValT> &coarseOut)
+{
   const size_t ndofs = fineIn.ndofs();
   const unsigned int eleOrder = fineMesh.da()->getElementOrder();
 
@@ -707,7 +765,7 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
   // Depending how grids were generated, fine may need to be moved or not.
   // (If fine==generateFrom(coarse), then surrogate is partitioned by fine.)
 
-  std::cout << "restriction()\n";
+  std::cout << "custom_restriction()\n";
 
   // Ghosted array for input.
   static Vector<ValT> fineInGhosted(fineMesh, true, ndofs);
@@ -764,8 +822,8 @@ static void restriction(const ConstMeshPointers<dim> &fineMesh,
                                                  true,
                                                  1,
                                                  surrogateMesh.da()->getTNCoords(),
-                                                 surrogateMesh.distTree()->getTreePartFiltered().data(),
-                                                 surrogateMesh.distTree()->getTreePartFiltered().size(),
+                                                 surrogateMesh.distTree()->getTreePartFiltered(surrogateMesh.stratum()).data(),
+                                                 surrogateMesh.distTree()->getTreePartFiltered(surrogateMesh.stratum()).size(),
                                                  *surrogateMesh.da()->getTreePartFront(),
                                                  *surrogateMesh.da()->getTreePartBack());
 

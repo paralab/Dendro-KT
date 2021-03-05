@@ -69,8 +69,6 @@ struct EmptyGMGMatLeafClass
 // =================================
 // gmgMat
 // =================================
-enum GridAlignment { CoarseByFine, FineByCoarse };
-
 template <unsigned int dim, class LeafClass=EmptyGMGMatLeafClass<dim>>
 class gmgMat {
 
@@ -78,12 +76,12 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief: pointer to OCT DA*/
-    ot::MultiDA<dim> * m_multiDA;
-    ot::MultiDA<dim> * m_surrogateMultiDA;
+    const ot::MultiDA<dim> * m_multiDA;
+    const ot::MultiDA<dim> * m_surrogateMultiDA;
     const ot::DistTree<unsigned, dim> * m_distTree;
     const ot::DistTree<unsigned, dim> * m_surrogateDistTree;
 
-    GridAlignment m_gridAlignment;
+    ot::GridAlignment m_gridAlignment;
 
     unsigned int m_numStrata;
     unsigned int m_ndofs;
@@ -119,10 +117,10 @@ public:
       * @note Does not own da.
     **/
     gmgMat(const ot::DistTree<unsigned, dim> * distTree,
-           ot::MultiDA<dim>* mda,
+           const ot::MultiDA<dim>* mda,
            const ot::DistTree<unsigned, dim> * surrDistTree,
-           ot::MultiDA<dim> *smda,
-           GridAlignment gridAlignment,
+           const ot::MultiDA<dim> *smda,
+           ot::GridAlignment gridAlignment,
            unsigned int ndofs)
       : m_distTree(distTree),
         m_multiDA(mda),
@@ -446,23 +444,23 @@ namespace detail
 template <unsigned int dim, class LeafClass>
 void gmgMat<dim, LeafClass>::restriction(const VECType *fineResIn, VECType *coarseResOut, unsigned int fineStratum)
 {
-  detail::GridPointers<dim> fineGrid = (m_gridAlignment == CoarseByFine ?
+  detail::GridPointers<dim> fineGrid = (m_gridAlignment == ot::CoarseByFine ?
       detail::GridPointers<dim>{fineStratum, m_distTree, &(*m_multiDA)[fineStratum]} :
       detail::GridPointers<dim>{fineStratum, m_surrogateDistTree, &(*m_surrogateMultiDA)[fineStratum]});
 
-  detail::GridPointers<dim> coarseGrid = (m_gridAlignment == CoarseByFine ?
+  detail::GridPointers<dim> coarseGrid = (m_gridAlignment == ot::CoarseByFine ?
       detail::GridPointers<dim>{fineStratum + 1, m_surrogateDistTree, &(*m_surrogateMultiDA)[fineStratum + 1]} :
       detail::GridPointers<dim>{fineStratum + 1, m_distTree, &(*m_multiDA)[fineStratum + 1]});
 
-  ot::DA<dim> *surrDA = &(*m_surrogateMultiDA)[
-      (m_gridAlignment == CoarseByFine ? fineStratum + 1 : fineStratum) ];
-  ot::DA<dim> *nonSurrDA = &(*m_multiDA)[
-      (m_gridAlignment == CoarseByFine ? fineStratum + 1 : fineStratum) ];
+  const ot::DA<dim> *surrDA = &(*m_surrogateMultiDA)[
+      (m_gridAlignment == ot::CoarseByFine ? fineStratum + 1 : fineStratum) ];
+  const ot::DA<dim> *nonSurrDA = &(*m_multiDA)[
+      (m_gridAlignment == ot::CoarseByFine ? fineStratum + 1 : fineStratum) ];
 
   static std::vector<VECType> surrogateVec;
   surrDA->createVector(surrogateVec, false, false, m_ndofs);
 
-  if (m_gridAlignment == CoarseByFine)
+  if (m_gridAlignment == ot::CoarseByFine)
   {
     detail::restriction(fineGrid, fineResIn, coarseGrid, surrogateVec.data(), m_ndofs);
     ot::distShiftNodes(*surrDA, surrogateVec.data(),
@@ -485,23 +483,23 @@ void gmgMat<dim, LeafClass>::restriction(const VECType *fineResIn, VECType *coar
 template <unsigned int dim, class LeafClass>
 void gmgMat<dim, LeafClass>::prolongation(const VECType *coarseCrxIn, VECType *fineCrxOut, unsigned int fineStratum)
 {
-  detail::GridPointers<dim> fineGrid = (m_gridAlignment == CoarseByFine ?
+  detail::GridPointers<dim> fineGrid = (m_gridAlignment == ot::CoarseByFine ?
       detail::GridPointers<dim>{fineStratum, m_distTree, &(*m_multiDA)[fineStratum]} :
       detail::GridPointers<dim>{fineStratum, m_surrogateDistTree, &(*m_surrogateMultiDA)[fineStratum]});
 
-  detail::GridPointers<dim> coarseGrid = (m_gridAlignment == CoarseByFine ?
+  detail::GridPointers<dim> coarseGrid = (m_gridAlignment == ot::CoarseByFine ?
       detail::GridPointers<dim>{fineStratum + 1, m_surrogateDistTree, &(*m_surrogateMultiDA)[fineStratum + 1]} :
       detail::GridPointers<dim>{fineStratum + 1, m_distTree, &(*m_multiDA)[fineStratum + 1]});
 
-  ot::DA<dim> *surrDA = &(*m_surrogateMultiDA)[
-      (m_gridAlignment == CoarseByFine ? fineStratum + 1 : fineStratum) ];
-  ot::DA<dim> *nonSurrDA = &(*m_multiDA)[
-      (m_gridAlignment == CoarseByFine ? fineStratum + 1 : fineStratum) ];
+  const ot::DA<dim> *surrDA = &(*m_surrogateMultiDA)[
+      (m_gridAlignment == ot::CoarseByFine ? fineStratum + 1 : fineStratum) ];
+  const ot::DA<dim> *nonSurrDA = &(*m_multiDA)[
+      (m_gridAlignment == ot::CoarseByFine ? fineStratum + 1 : fineStratum) ];
 
   static std::vector<VECType> surrogateVec;
   surrDA->createVector(surrogateVec, false, false, m_ndofs);
 
-  if (m_gridAlignment == CoarseByFine)
+  if (m_gridAlignment == ot::CoarseByFine)
   {
     ot::distShiftNodes(*nonSurrDA, coarseCrxIn,
                        *surrDA, surrogateVec.data(),
@@ -530,27 +528,18 @@ void restriction(const GridPointers<dim> &fineGrid, const VECType *fineResLocal,
                  const GridPointers<dim> &coarseGrid, VECType *coarseResLocal,
                  int ndofs)
 {
-  // Static buffers for ghosting. Check/increase size.
-  static std::vector<VECType> fineGhosted, coarseGhosted;
+  // Fine ghosted input.
+  static std::vector<VECType> fineGhosted;
   fineGrid.da->template createVector<VECType>(fineGhosted, false, true, ndofs);
-  coarseGrid.da->template createVector<VECType>(coarseGhosted, false, true, ndofs);
-  std::fill(coarseGhosted.begin(), coarseGhosted.end(), 0);
   VECType *fineGhostedPtr = fineGhosted.data();
-  VECType *coarseGhostedPtr = coarseGhosted.data();
+  fineGrid.da->nodalVecToGhostedNodal(fineResLocal, fineGhostedPtr, true, ndofs);
 
-  // 1. Copy input data to ghosted buffer.
-  fineGrid.da->template nodalVecToGhostedNodal<VECType>(fineResLocal, fineGhostedPtr, true, ndofs);
-
-  using TN = ot::TreeNode<typename ot::DA<dim>::C, dim>;
-
+  // Fine ghost read.
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_ghostexchange.start();
 #endif
-
-  // 2. Upstream->downstream ghost exchange.
-  fineGrid.da->template readFromGhostBegin<VECType>(fineGhostedPtr, ndofs);
-  fineGrid.da->template readFromGhostEnd<VECType>(fineGhostedPtr, ndofs);
-
+  fineGrid.da->readFromGhostBegin(fineGhosted.data(), ndofs);
+  fineGrid.da->readFromGhostEnd(fineGhosted.data(), ndofs);
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_ghostexchange.stop();
 #endif
@@ -559,46 +548,123 @@ void restriction(const GridPointers<dim> &fineGrid, const VECType *fineResLocal,
   bench::t_gmg_loc_restrict.start();
 #endif
 
-  fem::MeshFreeInputContext<VECType, TN>
-      inctx{ fineGhostedPtr,
-             fineGrid.da->getTNCoords(),
-             (unsigned) fineGrid.da->getTotalNodalSz(),
-             fineGrid.dtree->getTreePartFiltered(fineGrid.stratum).data(),
-             fineGrid.dtree->getTreePartFiltered(fineGrid.stratum).size(),
-             *fineGrid.da->getTreePartFront(),
-             *fineGrid.da->getTreePartBack() };
+  // Fine ghosted elemental owners.
+  using OwnershipT = DendroIntL;
+  const OwnershipT * ownersGhostedPtr = fineGrid.da->getNodeOwnerElements();
 
-  fem::MeshFreeOutputContext<VECType, TN>
-      outctx{coarseGhostedPtr,
-             coarseGrid.da->getTNCoords(),
-             (unsigned) coarseGrid.da->getTotalNodalSz(),
-             coarseGrid.dtree->getTreePartFiltered(coarseGrid.stratum).data(),
-             coarseGrid.dtree->getTreePartFiltered(coarseGrid.stratum).size(),
-             *coarseGrid.da->getTreePartFront(),
-             *coarseGrid.da->getTreePartBack() };
+  // Coarse ghosted output (initialized to 0).
+  static std::vector<VECType> coarseGhosted;
+  coarseGrid.da->template createVector<VECType>(coarseGhosted, false, true, ndofs);
+  std::fill(coarseGhosted.begin(), coarseGhosted.end(), 0.0f);
 
-  const RefElement * refel = fineGrid.da->getReferenceElement();
+  if (fineGrid.da->getLocalNodalSz() > 0)
+  {
+    // Index fine grid elements as we loop.
+    OwnershipT globElementId = fineGrid.da->getGlobalElementBegin();
 
-  fem::locIntergridTransfer(inctx, outctx, ndofs, refel);
+    unsigned eleOrder = fineGrid.da->getElementOrder();
 
+    // Set up fine owners and fine dofs loop
+    const bool descendEmptyFine = false;
+    const int descendPadFine = 0;
+
+    ot::MatvecBaseIn<dim, OwnershipT> loopOwners(
+        fineGrid.da->getTotalNodalSz(), ndofs, eleOrder,
+        descendEmptyFine, descendPadFine,
+        fineGrid.da->getTNCoords(), ownersGhostedPtr,
+        fineGrid.dtree->getTreePartFiltered(fineGrid.stratum).data(),
+        fineGrid.dtree->getTreePartFiltered(fineGrid.stratum).size(),
+        *fineGrid.da->getTreePartFront(),
+        *fineGrid.da->getTreePartBack());
+
+    ot::MatvecBaseIn<dim, VECType> loopFine(
+        fineGrid.da->getTotalNodalSz(), ndofs, eleOrder,
+        descendEmptyFine, descendPadFine,
+        fineGrid.da->getTNCoords(), fineGhosted.data(),
+        fineGrid.dtree->getTreePartFiltered(fineGrid.stratum).data(),
+        fineGrid.dtree->getTreePartFiltered(fineGrid.stratum).size(),
+        *fineGrid.da->getTreePartFront(),
+        *fineGrid.da->getTreePartBack());
+
+    // Set up coarse output loop
+    const bool accumulate = true;
+    const bool descendEmptyCoarse = true;
+    const int descendPadCoarse = 1;
+    ot::MatvecBaseOut<dim, VECType, accumulate> loopCoarse(
+        coarseGrid.da->getTotalNodalSz(), ndofs, eleOrder,
+        descendEmptyCoarse, descendPadCoarse,
+        coarseGrid.da->getTNCoords(),
+        coarseGrid.dtree->getTreePartFiltered(coarseGrid.stratum).data(),
+        coarseGrid.dtree->getTreePartFiltered(coarseGrid.stratum).size(),
+        *coarseGrid.da->getTreePartFront(),
+        *coarseGrid.da->getTreePartBack());
+
+    const unsigned int nPe = intPow(eleOrder+1, dim);
+    std::vector<VECType> leafBuffer(ndofs * nPe, 0.0);
+
+    // Traverse fine and coarse grids simultaneously.
+    while (!loopFine.isFinished())
+    {
+      // Depth controlled by fine.
+      if (loopFine.isPre() && loopFine.subtreeInfo().isLeaf())
+      {
+        const VECType * fineLeafIn = loopFine.subtreeInfo().readNodeValsIn();
+        const OwnershipT * fineOwners = loopOwners.subtreeInfo().readNodeValsIn();
+        for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+        {
+          if (loopFine.subtreeInfo().readNodeNonhangingIn()[nIdx])
+          {
+            // Only transfer a node to parent from the owning element.
+            if (fineOwners[nIdx] == globElementId)
+            {
+              for (int dof = 0; dof < ndofs; ++dof)
+                leafBuffer[ndofs * nIdx + dof] = fineLeafIn[ndofs * nIdx + dof];
+            }
+            else
+            {
+              for (int dof = 0; dof < ndofs; ++dof)
+                leafBuffer[ndofs * nIdx + dof] = 0;
+            }
+          }
+          else
+          {
+            for (int dof = 0; dof < ndofs; ++dof)
+              leafBuffer[ndofs * nIdx + dof] = 0.0f;
+          }
+        }
+
+        loopCoarse.subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
+
+        loopFine.next();
+        loopCoarse.next();
+        loopOwners.next();
+
+        globElementId++;
+      }
+      else
+      {
+        loopFine.step();
+        loopCoarse.step();
+        loopOwners.step();
+      }
+    }
+    const size_t writtenSz = loopCoarse.finalize(coarseGhosted.data());
+  }
 #ifdef DENDRO_KT_GMG_BENCH_H
-  bench::t_gmg_loc_restrict.start();
+  bench::t_gmg_loc_restrict.stop();
 #endif
 
-
+  // Coarse ghost write.
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_ghostexchange.start();
 #endif
-
-  // 4. Downstream->Upstream ghost exchange.
-  coarseGrid.da->template writeToGhostsBegin<VECType>(coarseGhostedPtr, ndofs);
-  coarseGrid.da->template writeToGhostsEnd<VECType>(coarseGhostedPtr, ndofs);
-
+  coarseGrid.da->writeToGhostsBegin(coarseGhosted.data(), ndofs);
+  coarseGrid.da->writeToGhostsEnd(coarseGhosted.data(), ndofs);
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_ghostexchange.stop();
 #endif
+  coarseGrid.da->ghostedNodalToNodalVec(coarseGhosted.data(), coarseResLocal, true, ndofs);
 
-  coarseGrid.da->ghostedNodalToNodalVec(coarseGhostedPtr, coarseResLocal, true, ndofs);
 }
 
 
@@ -659,7 +725,9 @@ void prolongation(const GridPointers<dim> &coarseGrid, const VECType *coarseCrxL
 
   const RefElement * refel = fineGrid.da->getReferenceElement();
 
-  fem::locIntergridTransfer(inctx, outctx, ndofs, refel);
+  std::vector<char> outDirty(fineGrid.da->getTotalNodalSz(), 0);
+  fem::locIntergridTransfer(inctx, outctx, ndofs, refel, &(*outDirty.begin()));
+  // The outDirty array is needed when wrwiteToGhosts useAccumulation==false (hack).
 
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_gmg_loc_restrict.start();
@@ -671,8 +739,8 @@ void prolongation(const GridPointers<dim> &coarseGrid, const VECType *coarseCrxL
 #endif
 
   // 4. Downstream->Upstream ghost exchange.
-  fineGrid.da->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndofs);
-  fineGrid.da->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndofs);
+  fineGrid.da->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndofs, &(*outDirty.cbegin()));
+  fineGrid.da->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndofs, false, &(*outDirty.cbegin()));
 
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_ghostexchange.stop();

@@ -1279,6 +1279,8 @@ SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree
   // Create a surrogate tree, which is identical to the inTree,
   // but partitioned to match the outTree.
   surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(inTree, outTree, comm);
+  //TODO add an option to return the other way if needed
+  /// surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(outTree, inTree, comm);
 }
 
 

@@ -180,7 +180,7 @@ bool testUniform2(int argc, char * argv[])
   /// ot::DistTree<unsigned int, dim> dtree(coarseTree);
   ot::DistTree<unsigned int, dim> surrDTree
     = dtree.generateGridHierarchyDown(nGrids, partition_tol);
-  const GridAlignment gridAlignment = GridAlignment::CoarseByFine;
+  const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
 
   // Create DAs
   if (!rProc && outputStatus)
