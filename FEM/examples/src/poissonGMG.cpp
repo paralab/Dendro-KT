@@ -154,6 +154,62 @@ namespace PoissonEq
 
 
 
+
+void printSparseMatrix(const ot::MatCompactRows &matRows, std::ostream &out = std::cout)
+{
+  std::map<size_t, std::vector<size_t>> rowIdxToPos;
+  size_t maxRowIdx = 0;
+  for (size_t r = 0; r < matRows.getNumRows(); ++r)
+  {
+    size_t rowIdx = matRows.getRowIdxs()[r];
+    rowIdxToPos[rowIdx].push_back(r);
+    maxRowIdx = std::max(maxRowIdx, rowIdx);
+  }
+
+  std::map<size_t, VECType> aggRow;
+
+  const size_t chunkSz = matRows.getChunkSize();
+
+  for (size_t rowIdx = 0; rowIdx <= maxRowIdx; ++rowIdx)
+  {
+    // Find the row.
+    const auto &searchRowIdx = rowIdxToPos.find(rowIdx);
+    if (searchRowIdx != rowIdxToPos.end())
+    {
+      aggRow.clear();
+
+      // Aggregate all chunks in the row.
+      size_t maxColIdx = 0;
+      for (size_t chunk : rowIdxToPos[rowIdx])
+      {
+        for (size_t cPos = 0; cPos < chunkSz; ++cPos)
+        {
+          const size_t colIdx = matRows.getColIdxs()[chunk * chunkSz + cPos];
+          const VECType colVal = matRows.getColVals()[chunk * chunkSz + cPos];
+          aggRow[colIdx] += colVal;
+          maxColIdx = std::max(maxColIdx, colIdx);
+        }
+      }
+
+      // Print the row
+      for (size_t colIdx = 0; colIdx <= maxColIdx; ++colIdx)
+      {
+        char entryBuf[20];
+        const auto &searchColIdx = aggRow.find(colIdx);
+        if (searchColIdx != aggRow.end())
+          sprintf(entryBuf, " %5.2f", aggRow[colIdx]);
+        else
+          sprintf(entryBuf, "      ");
+        out << entryBuf;
+      }
+    }
+    out << "\n";
+  }
+}
+
+
+
+
 // ==============================================================
 // main_(): Implementation after parsing, getting dimension, etc.
 // ==============================================================
@@ -284,6 +340,46 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       const int smoothStepsPerCycle = 1;
       const double relaxationFactor = 0.67;
+
+
+      //  DEBUG check coarse grid solver
+      {
+        std::cout << "Begin coarse grid assessment.\n";
+
+        ot::DA<dim> *coarseDA = &(multiDA[1]);
+        std::vector<VECType> ux, rhs, Mrhs;
+        coarseDA->createVector(ux, false, false, 1);
+        coarseDA->createVector(rhs, false, false, 1);
+        coarseDA->createVector(Mrhs, false, false, 1);
+
+        PoissonEq::PoissonVec<dim> poissonVec(coarseDA, &dtree.getTreePartFiltered(1), 1);
+        poissonVec.setProblemDimensions(domain_min, domain_max);
+
+        coarseDA->setVectorByFunction(ux.data(), f_init, false, false, 1);
+        coarseDA->setVectorByFunction(Mrhs.data(), f_init, false, false, 1);
+        coarseDA->setVectorByFunction(rhs.data(), f_rhs, false, false, 1);
+
+        /// std::cout << "rhs:\n";
+        /// printLocalNodes(coarseDA, rhs.data(), std::cout);
+
+        std::cout << "\nComputing RHS... ";
+        poissonVec.computeVec(&(*rhs.cbegin()), &(*Mrhs.begin()), 1.0);
+        std::cout << "Done.\n\n";
+
+        /// std::cout << "Mrhs:\n";
+        /// printLocalNodes(coarseDA, Mrhs.data(), std::cout);
+
+        std::cout << "Checking assembly\n";
+
+        PoissonEq::PoissonMat<dim> poissonMat(coarseDA, &dtree.getTreePartFiltered(1), 1);
+        ot::MatCompactRows matRows = poissonMat.collectMatrixEntries();
+
+        printSparseMatrix(matRows);
+
+
+        std::cout << "End coarse grid assessment.\n";
+        exit(1);
+      }
 
       // - - - - - - - - - - -
 
