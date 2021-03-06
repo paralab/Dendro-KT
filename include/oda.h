@@ -442,6 +442,9 @@ class DA
         /**@brief replaces bdyIndex with a copy of the boundary node indices. */
         inline void getBoundaryNodeIndices(std::vector<size_t> &bdyIndex) const { bdyIndex = m_uiBdyNodeIds; }
 
+        /**@brief returns a const ref to boundary node indices. */
+        inline const std::vector<size_t> & getBoundaryNodeIndices() const { return m_uiBdyNodeIds; }
+
         /**
           * @brief Creates a ODA vector
           * @param [in] local : VecType pointer

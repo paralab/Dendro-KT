@@ -96,9 +96,6 @@ namespace PoissonEq
           m_rcp_diags[s].resize(ndofs * getMDA()[s].getLocalNodalSz(), 0.0);
           m_gridOperators[s]->setDiag(m_rcp_diags[s].data(), scale);
 
-          if (s == 1)
-            printLocalNodes(&(*mda)[s], m_rcp_diags[s].data(), std::cout);
-
           for (auto &a : m_rcp_diags[s])
           {
             a = 1.0f / a;
@@ -140,6 +137,41 @@ namespace PoissonEq
         for (int ndIdx = 0; ndIdx < m_ndofs * nNodes; ++ndIdx)
           resLeft[ndIdx] = res[ndIdx] * rcp_diag[ndIdx];
       }
+
+      void leafPreRestriction(const VECType* in, VECType* out, double scale, unsigned int fineStratum)
+      {
+        for (size_t bidx : getMDA()[fineStratum].getBoundaryNodeIndices())
+          for (int dof = 0; dof < this->getNdofs(); ++dof)
+            out[bidx * this->getNdofs() + dof] = 0;
+      }
+
+      /** @brief Apply post-restriction condition to coarse residual. */
+      void leafPostRestriction(const VECType* in, VECType* out, double scale, unsigned int fineStratum)
+      {
+        for (size_t bidx : getMDA()[fineStratum + 1].getBoundaryNodeIndices())
+          for (int dof = 0; dof < this->getNdofs(); ++dof)
+            out[bidx * this->getNdofs() + dof] = 0;
+      }
+
+      /** @brief Apply pre-prolongation condition to coarse error. */
+      void leafPreProlongation(const VECType* in, VECType* out, double scale, unsigned int fineStratum)
+      {
+        for (size_t bidx : getMDA()[fineStratum + 1].getBoundaryNodeIndices())
+          for (int dof = 0; dof < this->getNdofs(); ++dof)
+            out[bidx * this->getNdofs() + dof] = 0;
+      }
+
+      /** @brief Apply post-prolongation condition to fine error. */
+      void leafPostProlongation(const VECType* in, VECType* out, double scale, unsigned int fineStratum)
+      {
+        for (size_t bidx : getMDA()[fineStratum].getBoundaryNodeIndices())
+          for (int dof = 0; dof < this->getNdofs(); ++dof)
+            out[bidx * this->getNdofs() + dof] = 0;
+      }
+
+
+
+
 
     protected:
       std::vector<PoissonMat<dim> *> m_gridOperators;
@@ -206,6 +238,18 @@ void printSparseMatrix(const ot::MatCompactRows &matRows, std::ostream &out = st
     out << "\n";
   }
 }
+
+
+namespace debug
+{
+  template <unsigned int dim, typename feMatType>
+  VECType residual(const ot::DA<dim> *da, feMatrix<feMatType, dim> *mat, VECType * res, const VECType * u, const VECType * rhs, double scale = 1.0);
+
+  template <unsigned int dim, typename feMatType>
+  int cgSolver(const ot::DA<dim> *da, feMatrix<feMatType, dim> *mat, VECType * u, const VECType * rhs, double relResErr);
+}
+
+
 
 
 
@@ -341,46 +385,6 @@ int main_ (Parameters &pm, MPI_Comm comm)
       const int smoothStepsPerCycle = 1;
       const double relaxationFactor = 0.67;
 
-
-      //  DEBUG check coarse grid solver
-      {
-        std::cout << "Begin coarse grid assessment.\n";
-
-        ot::DA<dim> *coarseDA = &(multiDA[1]);
-        std::vector<VECType> ux, rhs, Mrhs;
-        coarseDA->createVector(ux, false, false, 1);
-        coarseDA->createVector(rhs, false, false, 1);
-        coarseDA->createVector(Mrhs, false, false, 1);
-
-        PoissonEq::PoissonVec<dim> poissonVec(coarseDA, &dtree.getTreePartFiltered(1), 1);
-        poissonVec.setProblemDimensions(domain_min, domain_max);
-
-        coarseDA->setVectorByFunction(ux.data(), f_init, false, false, 1);
-        coarseDA->setVectorByFunction(Mrhs.data(), f_init, false, false, 1);
-        coarseDA->setVectorByFunction(rhs.data(), f_rhs, false, false, 1);
-
-        /// std::cout << "rhs:\n";
-        /// printLocalNodes(coarseDA, rhs.data(), std::cout);
-
-        std::cout << "\nComputing RHS... ";
-        poissonVec.computeVec(&(*rhs.cbegin()), &(*Mrhs.begin()), 1.0);
-        std::cout << "Done.\n\n";
-
-        /// std::cout << "Mrhs:\n";
-        /// printLocalNodes(coarseDA, Mrhs.data(), std::cout);
-
-        std::cout << "Checking assembly\n";
-
-        PoissonEq::PoissonMat<dim> poissonMat(coarseDA, &dtree.getTreePartFiltered(1), 1);
-        ot::MatCompactRows matRows = poissonMat.collectMatrixEntries();
-
-        printSparseMatrix(matRows);
-
-
-        std::cout << "End coarse grid assessment.\n";
-        exit(1);
-      }
-
       // - - - - - - - - - - -
 
       std::vector<VECType> _ux, _frhs, _Mfrhs;
@@ -413,7 +417,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       // - - - - - - - - - - -
 
-      double tol=1e-6;
+      double tol=1e-10;
       unsigned int max_iter=30;
 
       if (!rProc && outputStatus)
@@ -422,6 +426,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
         std::cout << "    numStrata ==           " << poissonGMG.getNumStrata() << "\n";
         std::cout << "    smoothStepsPerCycle == " << smoothStepsPerCycle << "\n";
         std::cout << "    relaxationFactor ==    " << relaxationFactor << "\n";
+        std::cout << "    residual abs tol ==    " << tol << "\n";
       }
 
       unsigned int countIter = 0;
@@ -650,3 +655,89 @@ int main(int argc, char * argv[])
 
   return returnCode;
 }
+
+
+
+
+
+namespace debug
+{
+
+  // residual()
+  template <unsigned int dim, typename feMatType>
+  VECType residual(const ot::DA<dim> *da, feMatrix<feMatType, dim> *mat, VECType * res, const VECType * u, const VECType * rhs, double scale)
+  {
+    const unsigned ndofs = 1;
+    const size_t localSz = da->getLocalNodalSz();
+    mat->matVec(u, res, scale);
+    VECType resLInf = 0.0f;
+    for (size_t i = 0; i < ndofs * localSz; i++)
+    {
+      res[i] = rhs[i] - res[i];
+      resLInf = fmax(fabs(res[i]), resLInf);
+    }
+
+    VECType globResLInf = 0.0f;
+    par::Mpi_Allreduce(&resLInf, &globResLInf, 1, MPI_MAX, da->getGlobalComm());
+    return globResLInf;
+  }
+
+  // cgSolver()
+  template <unsigned int dim, typename feMatType>
+  int cgSolver(const ot::DA<dim> *da, feMatrix<feMatType, dim> *mat, VECType * u, const VECType * rhs, double relResErr)
+  {
+    const double scale = 1.0;
+    const double normb = detail::vecNormLInf(da, rhs);
+    const double thresh = relResErr * normb;
+
+    const size_t localSz = da->getLocalNodalSz();
+
+    static std::vector<VECType> r;
+    static std::vector<VECType> p;
+    static std::vector<VECType> Ap;
+    r.resize(localSz);
+    p.resize(localSz);
+    Ap.resize(localSz);
+
+    int step = 0;
+    VECType rmag = residual(da, mat, r.data(), u, rhs, scale);
+    fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+    if (rmag < thresh)
+      return step;
+    VECType rProd = detail::vecDot(da, &(*r.cbegin()), &(*r.cbegin()));
+
+    VECType iterLInf = 0.0f;
+
+    p = r;
+    const int runaway = 150;
+    while (step < runaway)
+    {
+      mat->matVec(&(*p.cbegin()), &(*Ap.begin()), scale);  // Ap
+      const VECType pProd = detail::vecDot(da, &(*p.cbegin()), &(*Ap.cbegin()));
+
+      const VECType alpha = rProd / pProd;
+      iterLInf = alpha * detail::vecNormLInf(da, &(*p.cbegin()));
+      for (size_t ii = 0; ii < localSz; ++ii)
+        u[ii] += alpha * p[ii];
+      ++step;
+
+      const VECType rProdPrev = rProd;
+
+      rmag = residual(da, mat, r.data(), u, rhs, scale);
+      if (rmag < thresh)
+        break;
+      rProd = detail::vecDot(da, &(*r.cbegin()), &(*r.cbegin()));
+
+      const VECType beta = rProd / rProdPrev;
+      for (size_t ii = 0; ii < localSz; ++ii)
+        p[ii] = r[ii] + beta * p[ii];
+
+      fprintf(stdout, "step==%d  res==%e  diff==%e  rProd==%e  pProd==%e  a==%e  b==%e\n", step, rmag, iterLInf, rProd, pProd, alpha, beta);
+    }
+    fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+
+    return step;
+  }
+
+}
+

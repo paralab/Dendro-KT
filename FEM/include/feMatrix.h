@@ -46,6 +46,8 @@ protected:
 
         ~feMatrix();
 
+        unsigned ndofs() const { return m_uiDof; }
+
         /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
           * @param [in] in input vector u
           * @param [out] out output vector Ku
@@ -127,6 +129,7 @@ protected:
          * @param[in] scale: scalaing factror
          **/
 
+        //TODO Output channel of preMatVec may be unexpected, should clarify use case.
         bool preMatVec(const VECType* in, VECType* out,double scale=1.0) {
             // If this is asLeaf().preMatVec(), i.e. there is not an override, don't recurse.
             static bool entered = false;
@@ -147,6 +150,7 @@ protected:
          * @param[in] scale: scalaing factror
          * */
 
+        //TODO Input channel of postMatVec may be unexpected, should clarify use case.
         bool postMatVec(const VECType* in, VECType* out,double scale=1.0) {
             // If this is asLeaf().postMatVec(), i.e. there is not an override, don't recurse.
             static bool entered = false;
@@ -273,7 +277,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   m_oda->template nodalVecToGhostedNodal<VECType>(in, inGhostedPtr, true, m_uiDof);
 
   // 1.a. Override input data with pre-matvec initialization.
-  preMatVec(in, inGhostedPtr + m_oda->getLocalNodeBegin(), scale);
+  preMatVec(in, inGhostedPtr + this->ndofs() * m_oda->getLocalNodeBegin(), scale);
   // TODO what is the return value supposed to represent?
 
 #ifdef DENDRO_KT_MATVEC_BENCH_H
@@ -323,7 +327,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, m_uiDof);
 
   // 5.a. Override output data with post-matvec re-initialization.
-  postMatVec(outGhostedPtr + m_oda->getLocalNodeBegin(), out, scale);
+  postMatVec(outGhostedPtr + this->ndofs() * m_oda->getLocalNodeBegin(), out, scale);
   // TODO what is the return value supposed to represent?
 }
 
