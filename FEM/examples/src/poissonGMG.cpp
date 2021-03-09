@@ -131,9 +131,11 @@ namespace PoissonEq
 
       void leafApplySmoother(const VECType *res, VECType *resLeft, unsigned int stratum)
       {
+        fprintf(stdout, "Jacobi %d\n", int(stratum));
         const size_t nNodes = getMDA()[stratum].getLocalNodalSz();
         const VECType * rcp_diag = m_rcp_diags[stratum].data();
 
+        // Jacobi
         for (int ndIdx = 0; ndIdx < m_ndofs * nNodes; ++ndIdx)
           resLeft[ndIdx] = res[ndIdx] * rcp_diag[ndIdx];
       }

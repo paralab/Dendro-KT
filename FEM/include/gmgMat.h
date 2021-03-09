@@ -399,6 +399,7 @@ public:
 
     int cgSolver(unsigned int stratum, VECType * u, const VECType * rhs, double relResErr)
     {
+      fprintf(stdout, "cgSolve %d\n", int(stratum));
       const double scale = 1.0;
       const ot::DA<dim> *da = &((*this->m_multiDA)[stratum]);
       const double normb = detail::vecNormLInf(da, rhs);
