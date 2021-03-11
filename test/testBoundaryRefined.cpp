@@ -249,7 +249,7 @@ for(int i = 0; i < 7; i++) {
 
   // distRemeshSubdomain()
   ot::DistTree<unsigned int, DIM> newDistTree, surrDistTree;
-  ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, 0.3);
+  ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, ot::RemeshPartition::SurrogateInByOut, 0.3);
   // =======================================================================
   // Currently the boundary is detected from applying the carving function.
   // The boundary is not detected based solely on the existence of TreeNodes

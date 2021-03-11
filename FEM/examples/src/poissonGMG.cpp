@@ -355,6 +355,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
     ot::MultiDA<dim> multiDA, surrMultiDA;
     const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
 
+
     if (!rProc && outputStatus)
       std::cout << "Creating multilevel ODA with " << dtree.getNumStrata() << " strata.\n" << std::flush;
 

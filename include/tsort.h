@@ -34,6 +34,8 @@ namespace OCT_FLAGS
 }
 
 enum GridAlignment { CoarseByFine, FineByCoarse };
+enum RemeshPartition { SurrogateOutByIn, SurrogateInByOut };
+
 
 //
 // BucketInfo{}
@@ -398,11 +400,18 @@ struct SFC_Tree
   static std::vector<TreeNode<T, D>> locRemesh( const std::vector<TreeNode<T, D>> &inTree,
                                                 const std::vector<OCT_FLAGS::Refine> &refnFlags );
 
+  /**
+   * @note Whichever of the input and output grids is controlling partitioning
+   *       of the surrogate grid, it is assumed to either
+   *       be coarser or have coalesced siblings.
+   *       Old default was SurrogateInByOut .
+   */
   static void distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
                                      const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                      std::vector<TreeNode<T, D>> &outTree,
                                      std::vector<TreeNode<T, D>> &surrogateTree,
                                      double loadFlexibility,
+                                     RemeshPartition remeshPartition,
                                      MPI_Comm comm );
 
   static std::vector<TreeNode<T, D>> getSurrogateGrid( const std::vector<TreeNode<T, D>> &replicateGrid,

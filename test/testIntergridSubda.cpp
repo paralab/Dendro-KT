@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
     {
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> newTree;
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> surrTree;
-        DistTREE::distRemeshSubdomain(oldDistTree, octFlags, newDistTree, surrDistTree, 0.3);
+        DistTREE::distRemeshSubdomain(oldDistTree, octFlags, newDistTree, surrDistTree, ot::RemeshPartition::SurrogateInByOut, 0.3);
     }
     ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder);
     ot::DA<DIM> *surrDA = new ot::DA<DIM>(surrDistTree, comm, eleOrder);

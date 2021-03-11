@@ -78,6 +78,7 @@ namespace ot
                                        const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                        DistTree &outTree,
                                        DistTree &surrogateTree,
+                                       RemeshPartition remeshPartition,
                                        double loadFlexibility );
 
       // insertRefinedGrid()
@@ -99,8 +100,7 @@ namespace ot
 
 
       // generateGridHierarchyUp()
-      //   TODO should return surrogate DistTree
-      void generateGridHierarchyUp(bool isFixedNumStrata,
+      DistTree generateGridHierarchyUp(bool isFixedNumStrata,
                                  unsigned int lev,
                                  double loadFlexibility);
 
@@ -277,6 +277,10 @@ namespace ot
         return m_domainDecider(physCoords, 0.0);
       }
 
+    private:
+      void generateGridHierarchyUp_tooClevertoVerify(bool isFixedNumStrata,
+                                                     unsigned int lev,
+                                                     double loadFlexibility);
   };
 
 

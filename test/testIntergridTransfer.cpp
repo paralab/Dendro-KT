@@ -773,7 +773,7 @@ bool testLinear(int argc, char * argv[]){
     {
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> newTree;
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> surrTree;
-        ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(oldDistTree.getTreePartFiltered(), octFlags, newTree, surrTree, 0.3, comm);
+        ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(oldDistTree.getTreePartFiltered(), octFlags, newTree, surrTree, 0.3, ot::RemeshPartition::SurrogateInByOut, comm);
         newDistTree = ot::DistTree<unsigned int, DIM>(newTree, comm);
         surrDistTree = ot::DistTree<unsigned int, DIM>(surrTree, comm, ot::DistTree<unsigned, DIM>::NoCoalesce);
     }

@@ -88,6 +88,7 @@ namespace ot
                                               const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                               DistTree &_outTree,
                                               DistTree &_surrogateTree,
+                                              RemeshPartition remeshPartition,
                                               double loadFlexibility)
   {
     MPI_Comm comm = inTree.m_comm;
@@ -97,7 +98,7 @@ namespace ot
     std::vector<TreeNode<T, dim>> surrogateTreeVec;
 
     SFC_Tree<T, dim>::distRemeshWholeDomain(
-        inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, comm);
+        inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, remeshPartition, comm);
 
     DistTree outTree(outTreeVec, comm);
     DistTree surrogateTree(surrogateTreeVec, comm, NoCoalesce);
@@ -146,12 +147,20 @@ namespace ot
     std::vector<TreeNode<T, dim>> outTreeVec;
     std::vector<TreeNode<T, dim>> surrogateTreeVec;
 
-    SFC_Tree<T, dim>::distRemeshWholeDomain(
-        inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, comm);
-    if (gridAlignment == GridAlignment::FineByCoarse)
-    {
-      throw std::logic_error("Not implemented: distRemeshWholeDomain to fine with surrogate FineByCoarse.");
-    }
+    if (gridAlignment == GridAlignment::CoarseByFine)
+      SFC_Tree<T, dim>::distRemeshWholeDomain(
+          inTreeVec, refnFlags,
+          outTreeVec, surrogateTreeVec,
+          loadFlexibility,
+          RemeshPartition::SurrogateInByOut,
+          comm);
+    else
+      SFC_Tree<T, dim>::distRemeshWholeDomain(
+          inTreeVec, refnFlags,
+          outTreeVec, surrogateTreeVec,
+          loadFlexibility,
+          RemeshPartition::SurrogateOutByIn,
+          comm);
 
     distTree.insertStratum(finestStratum, outTreeVec);
     distTree.filterStratum(finestStratum);
@@ -206,12 +215,20 @@ namespace ot
     std::vector<TreeNode<T, dim>> outTreeVec;
     std::vector<TreeNode<T, dim>> surrogateTreeVec;
 
-    SFC_Tree<T, dim>::distRemeshWholeDomain(
-        inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, comm);
-    if (gridAlignment == GridAlignment::CoarseByFine)
-    {
-      throw std::logic_error("Not implemented: distRemeshWholeDomain to coarse with surrogate CoarseByFine.");
-    }
+    if (gridAlignment == GridAlignment::FineByCoarse)
+      SFC_Tree<T, dim>::distRemeshWholeDomain(
+          inTreeVec, refnFlags,
+          outTreeVec, surrogateTreeVec,
+          loadFlexibility,
+          RemeshPartition::SurrogateInByOut,
+          comm);
+    else
+      SFC_Tree<T, dim>::distRemeshWholeDomain(
+          inTreeVec, refnFlags,
+          outTreeVec, surrogateTreeVec,
+          loadFlexibility,
+          RemeshPartition::SurrogateOutByIn,
+          comm);
 
     distTree.insertStratum(newCoarsestStratum, outTreeVec);
     distTree.filterStratum(newCoarsestStratum);
@@ -234,13 +251,75 @@ namespace ot
   // generateGridHierarchyUp()
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::generateGridHierarchyUp(bool isFixedNumStrata,
-                                               unsigned int lev,
-                                               double loadFlexibility)
+  DistTree<T, dim> DistTree<T, dim>::generateGridHierarchyUp(bool isFixedNumStrata,
+                                                             unsigned int lev,
+                                                             double loadFlexibility)
+  {
+    DistTree<T, dim> surrogateCoarseByFine;
+
+    // Determine the number of grids in the desired grid hierarchy.
+    int targetNumStrata = 1;
+    {
+      int nProc, rProc;
+      MPI_Comm_size(m_comm, &nProc);
+      MPI_Comm_rank(m_comm, &rProc);
+      MPI_Comm activeComm = m_comm;
+      int nProcActive = nProc;
+      int rProcActive = rProc;
+
+      if (isFixedNumStrata) // interpret lev as desired number of strata.
+        targetNumStrata = lev;
+      else
+      {  // interpret lev as the desired finest level in the coarsest grid.
+        LevI observedMaxDepth_loc = 0, observedMaxDepth_glob = 0;
+        for (const TreeNode<T, dim> & tn : m_gridStrata[0])
+          if (observedMaxDepth_loc < tn.getLevel())
+            observedMaxDepth_loc = tn.getLevel();
+
+        par::Mpi_Allreduce<LevI>(&observedMaxDepth_loc, &observedMaxDepth_glob, 1, MPI_MAX, m_comm);
+
+        targetNumStrata = 1 + (observedMaxDepth_glob - lev);
+      }
+    }
+
+    // Successively coarsen.
+    std::vector<OCT_FLAGS::Refine> refineFlags;
+    while (this->getNumStrata() < targetNumStrata)
+    {
+      // Try to coarsen everything.
+      refineFlags.clear();
+      refineFlags.resize(
+          this->getTreePartFiltered(this->getNumStrata() - 1).size(),
+          OCT_FLAGS::OCT_COARSEN);
+
+      // Add a new grid to this distTree and the surrogate.
+      DistTree<T, dim>::defineCoarsenedGrid(*this,
+                                            surrogateCoarseByFine,
+                                            refineFlags,
+                                            GridAlignment::CoarseByFine,
+                                            loadFlexibility);
+    }
+
+    return surrogateCoarseByFine;
+  }
+
+  //
+  // generateGridHierarchyUp()
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::generateGridHierarchyUp_tooClevertoVerify(bool isFixedNumStrata,
+                                                                   unsigned int lev,
+                                                                   double loadFlexibility)
   {
     /**
      * @author Masado Ishii
      * @date 2020-02-21 -- 2020-03-21
+     */
+
+    /** @note 2021-03-10
+     *   Before making this the preferred implementation over the simple one:
+     *    - Verify that it returns the same results.
+     *    - Check how much more or less efficient it is.
      */
 
     // /////////////////////////////////////////////////////////////////////

@@ -140,7 +140,7 @@ int main(int argc, char * argv[]){
   std::vector<ot::OCT_FLAGS::Refine> refineFlags;
   generateRefinementFlags(octDA, treePart,refineFlags);
   ot::DistTree<unsigned int, DIM> newDistTree, surrDistTree;
-  ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, 0.3);
+  ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, ot::RemeshPartition::SurrogateInByOut, 0.3);
   const std::vector<ot::TreeNode<unsigned int, DIM>> &newTreePart = newDistTree.getTreePartFiltered();
   ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder, 100, 0.3); //DistTree overload
 
