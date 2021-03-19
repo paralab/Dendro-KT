@@ -232,6 +232,16 @@ public:
     }
 
 
+    /**
+     * @note from maksbh:
+     *   Boundary condition for
+     *   leafPreRestriction/leafPreProlongation/leafPostRestriction/leafPostProlongation
+     *   should all be 0 for Dirichlet nodes
+     *   (irrespective of Dirichlet values that are imposed)
+     *   since we are computing Ae = r and e = 0 on Dirichlet nodes.
+     *
+     *   Initial guess must contain Dirichlet boundary conditions.
+     */
 
 
     /** @brief Apply pre-restriction condition to fine residual. */
