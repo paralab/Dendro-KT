@@ -27,13 +27,19 @@
 #include <algorithm>
 #include <cstring>
 
-
 #ifdef BUILD_WITH_PETSC
-#include "petsc.h"
-#include "petscvec.h"
-#include "petscmat.h"
-#include "petscdmda.h"
+    #include "petsc.h"
+    #include "petscvec.h"
+    #include "petscmat.h"
+    #include "petscdmda.h"
 #endif
+
+
+#ifdef BUILD_WITH_AMAT
+    #include "../external/aMat/include/aMatBased.hpp"
+    #include "../external/aMat/include/aMatFree.hpp"
+#endif
+
 
 #define VECType DendroScalar
 #define MATType DendroScalar
@@ -445,6 +451,9 @@ class DA
         /**@brief returns a const ref to boundary node indices. */
         inline const std::vector<size_t> & getBoundaryNodeIndices() const { return m_uiBdyNodeIds; }
 
+        /**@brief Compute ghosted node ids of nodes on each element. */
+        std::vector<size_t> createE2NMapping(const std::vector<TreeNode<unsigned, dim>> &octList) const;
+
         /**
           * @brief Creates a ODA vector
           * @param [in] local : VecType pointer
@@ -769,6 +778,50 @@ class DA
         PetscErrorCode petscDestroyVec(Vec & vec) const;
 
         #endif
+
+
+
+    #ifdef BUILD_WITH_AMAT
+
+        /**
+         * @brief creates a aMat map object from Dendro maps.
+         *
+         * @tparam DT data type
+         * @tparam GI global id type
+         * @tparam LI local id type
+         * @param meshMaps mesh maps
+         * @param dof
+         */
+        template<typename DT,typename GI,typename LI>
+        void allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps, const std::vector<TreeNode<unsigned, dim>> &octList, unsigned int dof=1);
+
+        template<typename DT,typename GI,typename LI>
+        void deallocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,unsigned int dof=1);
+
+        /**
+         * @brief creates an aMat object. (matrix based)
+         * @param[in/out] aMat: pointer to aMap object.
+         * @param[in/out] meshMaps: pointer to mesh maps.
+         */
+        template<typename DT,typename GI,typename LI>
+        void createAMat(par::aMat<par::aMatBased<DT, GI, LI>, DT, GI, LI> *& aMat, par::Maps<DT, GI, LI>*& meshMaps) const;
+
+        /**
+         * @brief creates an aMat object. (matrix free)
+         * @param[in/out] aMat: pointer to aMap object.
+         * @param[in/out] meshMaps: pointer to mesh maps.
+         */
+        template<typename DT,typename LI,typename GI>
+        void createAMat(par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI> *& aMat,par::Maps<DT, GI, LI>*& meshMaps) const;
+
+        template<typename DT,typename LI,typename GI>
+        void destroyAMat(par::aMat<par::aMatBased<DT, GI, LI>, DT, GI, LI> *& aMat) const;
+
+        template<typename DT,typename LI,typename GI>
+        void destroyAMat(par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI> *& aMat) const;
+
+    #endif//BUILD_WITH_AMAT
+
 };
 
 
@@ -776,6 +829,172 @@ class DA
 
 
 #include "oda.tcc"
+
+
+#ifdef BUILD_WITH_AMAT
+namespace ot
+{
+  /**
+   * @brief creates a aMat map object from Dendro maps.
+   *
+   * @tparam DT data type
+   * @tparam GI global id type
+   * @tparam LI local id type
+   * @param meshMaps mesh maps
+   * @param dof
+   */
+  template <unsigned int dim>
+  template<typename DT,typename GI,typename LI>
+  void DA<dim>::allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps, const std::vector<TreeNode<unsigned, dim>> &octList, unsigned int dof)
+  {
+    if(this->isActive())
+    {
+      MPI_Comm acomm = this->getCommActive();
+
+      assert(octList.size() == this->getLocalElementSz());//octList must match construction
+      const std::vector<size_t> e2n_cg  = this->createE2NMapping(octList);
+
+      const unsigned int cgSz = this->getTotalNodalSz();
+      const LI localElems = this->getLocalElementSz();
+      const unsigned int nPe = this->getNumNodesPerElement();
+      LI dofPe = nPe*dof; // dof per elem
+
+      LI * dof_per_elem = new LI[localElems];
+      for (unsigned int i = 0; i < localElems; ++i)
+       dof_per_elem[i] = dofPe;
+
+      // Create dofmap_local ([element][element dof] --> ghosted vec dof),
+      // and sm_ghost_id (set of ghost nodes incicent on local elements).
+      LI** dofmap_local = new LI*[localElems];
+      for(unsigned int i=0; i < localElems; i++)
+          dofmap_local[i]=new LI[dof_per_elem[i]];
+
+      std::vector<unsigned int> sm_ghost_id;
+      for(unsigned int ele=0; ele < this->getLocalElementSz(); ++ele)
+      {
+        for(unsigned int node=0; node < nPe; node++)
+        {
+          const unsigned int cgindx = e2n_cg[ele*nPe + node];
+
+          if (cgindx < this->getLocalNodeBegin()
+              || cgindx > this->getLocalNodeBegin() + this->getLocalNodalSz())
+            sm_ghost_id.push_back(cgindx);
+
+          for(unsigned int v=0; v < dof; v++)
+            dofmap_local[ele][dof*node+v]= dof * cgindx + v;
+        }
+      }
+
+      std::sort(sm_ghost_id.begin(),sm_ghost_id.end());
+      sm_ghost_id.erase(std::unique(sm_ghost_id.begin(),sm_ghost_id.end()),sm_ghost_id.end());
+      const unsigned int valid_local_dof = (this->getLocalNodalSz() + sm_ghost_id.size())*dof;
+
+
+      // Create local_to_global_dofM
+      // (extension of LocalToGlobalMap to dofs)
+      const std::vector<RankI> & da_local2global = this->getNodeLocalToGlobalMap();
+      std::vector<GI> local_to_global_dofM(cgSz*dof);
+      for (size_t ghosted_nIdx = 0; ghosted_nIdx < cgSz; ++ghosted_nIdx)
+        for (unsigned v = 0; v < dof; ++v)
+          local_to_global_dofM[dof * ghosted_nIdx + v]
+            = dof * da_local2global[ghosted_nIdx] + v;
+      GI dof_start_global = da_local2global[this->getLocalNodeBegin()]*dof;
+      GI dof_end_global   = da_local2global[this->getLocalNodeBegin()+this->getLocalNodalSz()-1]*dof + (dof-1);
+      GI total_dof_global = this->getGlobalNodeSz() * dof;
+
+
+      // Define output meshMaps.
+      meshMaps = new par::Maps<DT,GI,LI>(acomm);
+
+      meshMaps->set_map(localElems,
+          dofmap_local,
+          dof_per_elem,
+          valid_local_dof,
+          local_to_global_dofM.data(),
+          dof_start_global,
+          dof_end_global,
+          total_dof_global);
+
+      //meshMaps->set_bdr_map(bdy_dof_global,bdy_dof_val,0);
+      meshMaps->set_bdr_map(NULL,NULL,0);//TODO ask @Milinda about boundary nodes
+
+      // cleanup.
+      for(unsigned int i=0; i < localElems; i++)
+          delete [] dofmap_local[i];
+      delete [] dofmap_local;
+    }
+
+    return;
+  }
+
+  template <unsigned int dim>
+  template<typename DT,typename GI,typename LI>
+  void DA<dim>::deallocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,unsigned int dof)
+  {
+    delete [] meshMaps->get_DofsPerElem();
+  }
+
+
+  /**
+   * @brief creates an aMat object. (matrix based)
+   * @param[in/out] aMat: pointer to aMap object.
+   * @param[in/out] meshMaps: pointer to mesh maps.
+   */
+  template <unsigned int dim>
+  template<typename DT,typename GI,typename LI>
+  void DA<dim>::createAMat(par::aMat<par::aMatBased<DT, GI, LI>, DT, GI, LI> *& aMat, par::Maps<DT, GI, LI>*& meshMaps) const
+  {
+      aMat=NULL;
+      if(this->isActive())
+      {
+          assert(meshMaps!=NULL);
+          aMat = new par::aMatBased<DT, GI, LI>((*meshMaps), par::BC_METH::BC_IMATRIX);
+      }
+
+      return;
+
+  }
+
+  /**
+   * @brief creates an aMat object. (matrix free)
+   * @param[in/out] aMat: pointer to aMap object.
+   * @param[in/out] meshMaps: pointer to mesh maps.
+   */
+  template <unsigned int dim>
+  template<typename DT,typename LI,typename GI>
+  void DA<dim>::createAMat(par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI> *& aMat,par::Maps<DT, GI, LI>*& meshMaps) const
+  {
+      aMat=NULL;
+      if(this->isActive())
+      {
+          assert(meshMaps!=NULL);
+          meshMaps->buildScatterMap();
+          aMat = new par::aMatFree<DT, GI, LI>((*meshMaps),par::BC_METH::BC_IMATRIX);
+      }
+
+      return;
+
+  }
+
+  template <unsigned int dim>
+  template<typename DT,typename LI,typename GI>
+  void DA<dim>::destroyAMat(par::aMat<par::aMatBased<DT, GI, LI>, DT, GI, LI> *& aMat) const
+  {
+      delete aMat;
+      aMat=NULL;
+  }
+
+  template <unsigned int dim>
+  template<typename DT,typename LI,typename GI>
+  void DA<dim>::destroyAMat(par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI> *& aMat) const
+  {
+      delete aMat;
+      aMat=NULL;
+  }
+
+
+}
+#endif//BUILD_WITH_AMAT
 
 
 #endif // end of DENDRO_KT_ODA_H

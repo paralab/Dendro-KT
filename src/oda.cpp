@@ -704,7 +704,51 @@ namespace ot
     }
 
 
+    //
+    // createE2NMapping()
+    //
+    template <unsigned dim>
+    std::vector<size_t> DA<dim>::createE2NMapping(
+        const std::vector<TreeNode<unsigned, dim>> &octList) const
+    {
+      std::vector<unsigned> iota(this->getTotalNodalSz());
+      std::iota(iota.begin(), iota.end(), 0);
 
+      const int nPe = this->getNumNodesPerElement();
+      const int singleDof = 1;
+
+      MatvecBaseIn<dim, unsigned> eleLoop(
+          this->getTotalNodalSz(),
+          singleDof,
+          this->getElementOrder(),
+          false, 0, 
+          this->getTNCoords(),
+          iota.data(),
+          octList.data(),
+          octList.size(),
+          *this->getTreePartFront(),
+          *this->getTreePartBack());
+
+      std::vector<size_t> e2nMapping;
+
+      while (!eleLoop.isFinished())
+      {
+        // For each element...
+        if (eleLoop.isPre() && eleLoop.subtreeInfo().isLeaf())
+        {
+          const unsigned *ghostedNodeIds = eleLoop.subtreeInfo().readNodeValsIn();
+
+          // For each node on the element...
+          for (unsigned ii = 0; ii < nPe; ++ii)
+            e2nMapping.push_back(ghostedNodeIds[ii]);  // set the node id.
+          eleLoop.next();
+        }
+        else
+          eleLoop.step();
+      }
+
+      return e2nMapping;
+    }
 
 
 

@@ -7,8 +7,8 @@
 */
 //
 
-#ifndef DENDRO_KT_PROFILER_H
-#define DENDRO_KT_PROFILER_H
+#ifndef SFCSORTBENCH_DENDRO_PROFILER_H
+#define SFCSORTBENCH_DENDRO_PROFILER_H
 
 #include "mpi.h"
 #include <iostream>
@@ -54,4 +54,4 @@ class profiler_t
 
 
 
-#endif //DENDRO_KT_PROFILER_H
+#endif //SFCSORTBENCH_DENDRO_PROFILER_H

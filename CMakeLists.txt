@@ -37,6 +37,7 @@ option(DENDRO_VTK_ZLIB_COMPRES "write vtk/vtu files in binary mode with zlib com
 option(BUILD_WITH_PETSC " build dendro with PETSC " ON)
 option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" OFF)
 option(BUILD_EXAMPLES "build example programs" ON)
+option(BUILD_WITH_AMAT "build with aMat support" ON)
 
 set(KWAY 128 CACHE INT 128)
 set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
@@ -46,6 +47,43 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING
             "Choose the type of build, options are: Debug Release " FORCE)
 endif()
+
+if(BUILD_WITH_AMAT)
+    ## GET AMAT Code.
+    find_package(Git REQUIRED)
+    if(${GIT_FOUND})
+    message("git found: ${GIT_EXECUTABLE}")
+    else()
+    set(GIT_EXECUTABLE git)
+    endif()
+
+    set(EXTERNAL_AMAT_LOCATION  ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat)
+    set(GOT_AMAT False)
+
+    if(EXISTS ${EXTERNAL_AMAT_LOCATION})
+        message("Pull changes from aMat")
+        execute_process(
+        COMMAND             ${GIT_EXECUTABLE} pull origin AMatDendro
+        #COMMAND             ${GIT_EXECUTABLE} submodule update --remote
+        WORKING_DIRECTORY   ${EXTERNAL_AMAT_LOCATION}
+        RESULT_VARIABLE     ${GOT_AMAT}
+        )
+
+    else()
+        message("Cloning aMat ${GIT_EXECUTABLE}")
+        execute_process(
+        COMMAND             ${GIT_EXECUTABLE} clone git@github.com:paralab/aMat.git -b AMatDendro
+        #COMMAND             ${GIT_EXECUTABLE} submodule update --remote
+        WORKING_DIRECTORY   ${CMAKE_CURRENT_SOURCE_DIR}/external
+        RESULT_VARIABLE     ${GOT_AMAT}
+        )
+    endif()
+
+    add_definitions(-DBUILD_WITH_AMAT)
+    message("aMAT requires PETSc, trying to detect petsc")
+    set(BUILD_WITH_PETSC "ON")
+endif()
+
 
 if (WITH_BLAS_LAPACK)
     add_definitions(-DWITH_BLAS_LAPACK)
@@ -239,6 +277,11 @@ if(BUILD_WITH_PETSC)
     target_link_libraries(dendroKT ${PETSC_LIBRARIES})
 endif()
 
+if(BUILD_WITH_AMAT)
+    target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat)
+    target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/include)
+endif()
+
 if(HILBERT_ORDERING)
   add_definitions(-DHILBERT_ORDERING)
 endif()
@@ -427,6 +470,19 @@ add_executable(tstMatAssembly ${SRC_FILES})
 set_property(TARGET tstMatAssembly PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
 target_include_directories(tstMatAssembly PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
 target_link_libraries(tstMatAssembly dendroKT ${MPI_LIBRARIES} m)
+
+
+if(BUILD_WITH_AMAT)
+  set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testAmat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp)
+  add_executable(tstAmat ${SRC_FILES})
+  target_include_directories(tstAmat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+  target_include_directories(tstAmat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+  target_link_libraries(tstAmat dendroKT ${MPI_LIBRARIES} m)
+endif()
+
+
 
 
 ## tsort_bench (./tsortBench)

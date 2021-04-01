@@ -90,7 +90,7 @@ protected:
          * 
          * If you need to do a few rows at a time, use this method as a pattern.
          */
-        ot::MatCompactRows collectMatrixEntries();
+        ot::MatCompactRows collectMatrixEntries(unsigned char * elementNonzero = nullptr);
 
 
 #ifdef BUILD_WITH_PETSC
@@ -114,6 +114,11 @@ protected:
         virtual bool getAssembledMatrix(Mat *J, MatType mtype);
 
 
+#endif
+
+#ifdef BUILD_WITH_AMAT
+        template<typename AMATType>
+        bool getAssembledAMat(AMATType* J);
 #endif
 
 
@@ -553,7 +558,7 @@ class SubMatView
 
 
 template <typename LeafT, unsigned int dim>
-ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
+ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries(unsigned char * elementNonzero)
 {
   const ot::DA<dim> &m_oda = *this->da();
   const unsigned int eleOrder = m_oda.getElementOrder();
@@ -583,6 +588,11 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
     std::vector<ScalarT> wksp_col(nPe*m_uiDof);
     std::vector<ScalarT> wksp_mat((nPe*m_uiDof) * (nPe*m_uiDof));
 
+    if (elementNonzero != nullptr)
+      for (size_t elemIdx = 0; elemIdx < this->m_octList->size(); ++elemIdx)
+        elementNonzero[elemIdx] = false;
+
+    size_t elemIdx = 0;
     const bool visitEmpty = false;
     const unsigned int padLevel = 0;
     ot::MatvecBaseIn<dim, RankI, false> treeLoopIn(ghostedNodalSz,
@@ -776,7 +786,11 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
                                      &colIdxBuffer[r * nPe * m_uiDof],
                                      &colValBuffer[r * nPe * m_uiDof]);
           }
+
+          if (elementNonzero != nullptr)
+            elementNonzero[elemIdx] = true;
         }
+        elemIdx++;
       }
       treeLoopIn.step();
     }
@@ -848,6 +862,65 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 
 #endif
 
+
+#ifdef BUILD_WITH_AMAT
+    template <typename LeafT, unsigned int dim>
+    template<typename AMATType>
+    bool feMatrix<LeafT, dim>::getAssembledAMat(AMATType* J)
+    {
+      using DT = typename AMATType::DTType;
+      using GI = typename AMATType::GIType;
+      using LI = typename AMATType::LIType;
+
+      if(this->m_uiOctDA->isActive())
+      {
+        const size_t numLocElem = this->m_uiOctDA->getLocalElementSz();
+
+        preMat();
+        std::vector<unsigned char> elemNonzero(numLocElem, false);
+        ot::MatCompactRows matCompactRows = this->collectMatrixEntries(elemNonzero.data());
+        postMat();
+
+        const unsigned ndofs = matCompactRows.getNdofs();
+        const unsigned nPe = matCompactRows.getNpe();
+        const std::vector<ot::MatCompactRows::ScalarT> & entryVals = matCompactRows.getColVals();
+
+        typedef Eigen::Matrix<PetscScalar, Eigen::Dynamic, Eigen::Dynamic> EigenMat;
+        EigenMat* eMat[2] = {nullptr, nullptr};
+        eMat[0] = new EigenMat();
+        eMat[0]->resize(ndofs*nPe, ndofs*nPe);
+        const EigenMat * read_eMat[2] = {eMat[0], eMat[1]};
+
+        unsigned aggRow = 0;
+        for (unsigned int eid = 0; eid < numLocElem; ++eid)
+        {
+          if (elemNonzero[eid])
+          {
+            // Clear elemental matrix.
+            for(unsigned int r = 0; r < (nPe*ndofs); ++r)
+              for(unsigned int c = 0; c < (nPe*ndofs); ++c)
+                (*(eMat[0]))(r,c) = 0;
+
+            // Overwrite elemental matrix.
+            for (unsigned int r = 0; r < (nPe*ndofs); ++r)
+            {
+              for (unsigned int c = 0; c < (nPe*ndofs); ++c)
+                (*(eMat[0]))(r,c) = entryVals[aggRow * (nPe*ndofs) + c];
+              aggRow++;
+            }
+
+            LI n_i[1]={0};
+            LI n_j[1]={0};
+            J->set_element_matrix(eid, n_i, n_j, read_eMat, 1u);
+            // note that read_eMat[0] points to the same memory as eMat[0].
+          }
+        }
+
+        delete eMat[0];
+      }
+      PetscFunctionReturn(0);
+    }
+#endif
 
 
 #endif //DENDRO_KT_FEMATRIX_H
