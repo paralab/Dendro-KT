@@ -625,6 +625,64 @@ namespace par {
 
 
 
+  template <typename T>
+  struct MinMeanMax
+  {
+    T m_glob_min;
+    double m_glob_mean;
+    T m_glob_max;
+  };
+
+  template <typename T>
+  MinMeanMax<T> Mpi_ReduceMinMeanMax(T localData, MPI_Comm comm)
+  {
+    MinMeanMax<T> g;
+    double localDataFloat = localData;
+
+    Mpi_Reduce(&localData, &g.m_glob_min,  1, MPI_MIN, 0, comm);
+    Mpi_Reduce(&localDataFloat, &g.m_glob_mean, 1, MPI_SUM, 0, comm);
+    Mpi_Reduce(&localData, &g.m_glob_max,  1, MPI_MAX, 0, comm);
+
+    int npes, rank;
+    MPI_Comm_size(comm, &npes);
+    MPI_Comm_rank(comm, &rank);
+
+    g.m_glob_mean /= double(npes);
+
+    if (rank != 0)
+    {
+      g.m_glob_min = 0;
+      g.m_glob_mean = 0;
+      g.m_glob_max = 0;
+    }
+
+    return g;
+  }
+
+  template <typename T>
+  MinMeanMax<T> Mpi_AllreduceMinMeanMax(T localData, MPI_Comm comm)
+  {
+    MinMeanMax<T> g;
+    double localDataFloat = localData;
+
+    Mpi_Allreduce(&localData, &g.m_glob_min,  1, MPI_MIN, comm);
+    Mpi_Allreduce(&localDataFloat, &g.m_glob_mean, 1, MPI_SUM, comm);
+    Mpi_Allreduce(&localData, &g.m_glob_max,  1, MPI_MAX, comm);
+
+    int npes, rank;
+    MPI_Comm_size(comm, &npes);
+    MPI_Comm_rank(comm, &rank);
+
+    g.m_glob_mean /= double(npes);
+
+    return g;
+  }
+
+
+
+
+
+
 }//end namespace
 
 #ifdef USE_OLD_SORT
