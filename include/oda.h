@@ -216,6 +216,9 @@ class DA
     /**@brief: internal gather map. */
     GatherMap m_gm;
 
+    size_t m_totalSendSz;
+    size_t m_totalRecvSz;
+
     /**@brief contexts for async data transfers*/
     mutable std::vector<AsyncExchangeContex> m_uiMPIContexts;
 
@@ -381,6 +384,9 @@ class DA
         int getNumOutboundRanks() const { return m_sm.m_sendProc.size(); }
 
         int getNumInboundRanks() const { return m_gm.m_recvProc.size(); }
+
+        size_t getTotalSendSz() const { return m_totalSendSz; }
+        size_t getTotalRecvSz() const { return m_totalRecvSz; }
 
         /**@brief get number of nodes per element*/
         inline unsigned int getNumNodesPerElement() const { return m_uiNpE; }

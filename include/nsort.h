@@ -354,6 +354,20 @@ namespace ot {
     RankI m_locOffset;
   };
 
+  inline size_t computeTotalSendSz(const ScatterMap &sm)
+  {
+    size_t total = 0;
+    for (RankI sendCount : sm.m_sendCounts)
+      total += sendCount;
+    return total;
+  }
+
+  inline size_t totalRecvSz(const GatherMap &gm)
+  {
+    return gm.m_totalCount;
+  }
+
+
 
   template <typename T, unsigned int dim>
   struct SFC_NodeSort

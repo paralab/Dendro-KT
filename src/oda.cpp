@@ -322,6 +322,8 @@ namespace ot
 
       // Finish constructing.
       this->_constructInner(nodeList, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+      m_totalSendSz = computeTotalSendSz(m_sm);
+      m_totalRecvSz = totalRecvSz(m_gm);
 
       // TODO for cleaner code, factor the scattermap/gatthermap as GhostExchange
       // for now, use the DA interface for ghost exchange.
