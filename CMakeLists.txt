@@ -569,6 +569,7 @@ if(BUILD_EXAMPLES)
   ## Poisson equation with gmg.
   set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonGMG.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonGMG.cpp)
@@ -576,6 +577,25 @@ if(BUILD_EXAMPLES)
   set_property(TARGET exPoissonGMG PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
   target_include_directories(exPoissonGMG PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
   target_link_libraries(exPoissonGMG dendroKT ${MPI_LIBRARIES} m)
+
+
+  if(BUILD_WITH_AMAT)
+    ## Poisson equation with gmg and aMat.
+    set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonGMG.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/ke_matrix.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/fe_vector.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonGMG_amat.cpp)
+    add_executable(exPoissonGMG_amat ${SRC_FILES})
+    set_property(TARGET exPoissonGMG_amat PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+    target_include_directories(exPoissonGMG_amat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+    target_include_directories(exPoissonGMG_amat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/include)
+    target_link_libraries(exPoissonGMG_amat dendroKT ${MPI_LIBRARIES} m)
+  endif()
+
 
   ## Test the poisson elemental operators are consistent.
   set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h

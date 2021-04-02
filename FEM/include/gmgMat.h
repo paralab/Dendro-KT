@@ -540,7 +540,68 @@ public:
 
 #endif
 
+#ifdef BUILD_WITH_AMAT
+    template<typename DT,typename GI,typename LI>
+    void allocAMatMapsStrata(par::Maps<DT, GI, LI>* * & meshMaps) const;
+
+    template<typename DT,typename GI,typename LI>
+    void deallocAMatMapsStrata(par::Maps<DT, GI, LI>* * & meshMaps) const;
+
+    template<typename DT,typename GI,typename LI, typename AMATType>
+    void createAMatStrata(AMATType* * &aMat_strata, par::Maps<DT, GI, LI>* * meshMaps_strata) const;
+
+    template<typename AMATType>
+    void destroyAMatStrata(AMATType* * &aMat_strata) const;
+#endif
+
 };//gmgMat
+
+
+
+#ifdef BUILD_WITH_AMAT
+    // allocAMatMapsStrata()
+    template <unsigned int dim, class LeafClass>
+    template<typename DT,typename GI,typename LI>
+    void gmgMat<dim, LeafClass>::allocAMatMapsStrata(par::Maps<DT, GI, LI>* * & meshMaps) const
+    {
+      meshMaps = new par::Maps<DT, GI, LI>*[this->getNumStrata()];
+      for (int ii = 0; ii < this->getNumStrata(); ++ii)
+        (*m_multiDA)[ii].allocAMatMaps(meshMaps[ii], m_distTree->getTreePartFiltered(ii), m_ndofs);
+    }
+
+    // deallocAMatMapsStrata()
+    template <unsigned int dim, class LeafClass>
+    template<typename DT,typename GI,typename LI>
+    void gmgMat<dim, LeafClass>::deallocAMatMapsStrata(par::Maps<DT, GI, LI>* * & meshMaps) const
+    {
+      for (int ii = 0; ii < this->getNumStrata(); ++ii)
+        (*m_multiDA)[ii].deallocAMatMaps(meshMaps[ii], m_ndofs);
+      delete meshMaps;
+      meshMaps = nullptr;
+    }
+
+    // createAMatStrata()
+    template <unsigned int dim, class LeafClass>
+    template<typename DT,typename GI,typename LI, typename AMATType>
+    void gmgMat<dim, LeafClass>::createAMatStrata(AMATType* * &aMat_strata, par::Maps<DT, GI, LI>* * meshMaps_strata) const
+    {
+      aMat_strata = new AMATType * [this->getNumStrata()];
+      for (int ii = 0; ii < this->getNumStrata(); ++ii)
+        (*m_multiDA)[ii].createAMat(aMat_strata[ii], meshMaps_strata[ii]);
+    }
+
+    template <unsigned int dim, class LeafClass>
+    template<typename AMATType>
+    void gmgMat<dim, LeafClass>::destroyAMatStrata(AMATType* * &aMat_strata) const
+    {
+      for (int ii = 0; ii < this->getNumStrata(); ++ii)
+        (*m_multiDA)[ii].destroyAMat(aMat_strata[ii]);
+      delete aMat_strata;
+      aMat_strata = nullptr;
+    }
+#endif
+
+
 
 
 template <unsigned int dim>

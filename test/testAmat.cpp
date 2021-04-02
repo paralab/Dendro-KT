@@ -22,6 +22,7 @@
 #include <iostream>
 
 constexpr int dim = 2;
+using uint = unsigned int;
 
 //
 // main()

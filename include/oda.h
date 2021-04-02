@@ -793,10 +793,10 @@ class DA
          * @param dof
          */
         template<typename DT,typename GI,typename LI>
-        void allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps, const std::vector<TreeNode<unsigned, dim>> &octList, unsigned int dof=1);
+        void allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps, const std::vector<TreeNode<unsigned, dim>> &octList, unsigned int dof=1) const;
 
         template<typename DT,typename GI,typename LI>
-        void deallocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,unsigned int dof=1);
+        void deallocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,unsigned int dof=1) const;
 
         /**
          * @brief creates an aMat object. (matrix based)
@@ -845,7 +845,7 @@ namespace ot
    */
   template <unsigned int dim>
   template<typename DT,typename GI,typename LI>
-  void DA<dim>::allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps, const std::vector<TreeNode<unsigned, dim>> &octList, unsigned int dof)
+  void DA<dim>::allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps, const std::vector<TreeNode<unsigned, dim>> &octList, unsigned int dof) const
   {
     if(this->isActive())
     {
@@ -929,7 +929,7 @@ namespace ot
 
   template <unsigned int dim>
   template<typename DT,typename GI,typename LI>
-  void DA<dim>::deallocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,unsigned int dof)
+  void DA<dim>::deallocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,unsigned int dof) const
   {
     delete [] meshMaps->get_DofsPerElem();
   }
