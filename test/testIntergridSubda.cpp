@@ -8,6 +8,7 @@
 #include <sfcTreeLoop_matvec_io.h>
 #include <octUtils.h>
 #include <intergridTransfer.h>
+#include <algorithm>
 static constexpr unsigned int DIM = 2;
 typedef ot::TreeNode<unsigned int, DIM> TREENODE;
 typedef ot::DistTree<unsigned int, DIM> DistTREE;
@@ -28,7 +29,7 @@ void generateRefinementFlags(ot::DA<DIM> * octDA, std::vector<ot::OCT_FLAGS::Ref
     while(!loop.isFinished()){
         if (loop.isPre() && loop.subtreeInfo().isLeaf()) {
             bool boundaryOctant = loop.subtreeInfo().isElementBoundary();
-            if(not(boundaryOctant)){
+            if(boundaryOctant){
                 refineFlags[counter]=ot::OCT_FLAGS::Refine::OCT_REFINE;
             }
             else{
@@ -42,7 +43,11 @@ void generateRefinementFlags(ot::DA<DIM> * octDA, std::vector<ot::OCT_FLAGS::Ref
         }
     }
 }
-void checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA,const ot::DistTree<unsigned int, DIM> &distTree, const unsigned int ndof){
+void checkIntergridTransfer(MPI_Comm comm, const double *array, ot::DA<DIM> * octDA,const ot::DistTree<unsigned int, DIM> &distTree, const unsigned int ndof){
+    int nProc, rProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
     double *ghostedArray;
     octDA->nodalVecToGhostedNodal(array,ghostedArray, false,ndof);
     octDA->readFromGhostBegin(ghostedArray,ndof);
@@ -55,7 +60,7 @@ void checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA,const ot::D
     ot::MatvecBase<DIM, PetscScalar> treeloop(sz, ndof, octDA->getElementOrder(), tnCoords, ghostedArray, &(*distTree.getTreePartFiltered().cbegin()), distTree.getTreePartFiltered().size(), *partFront, *partBack);
     bool testPassed = true;
 
-    const bool useTreeLoop = true;
+    const bool useTreeLoop = false;
 
     if (useTreeLoop)
     {
@@ -73,7 +78,7 @@ void checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA,const ot::D
                   for(int dof = 0; dof < ndof; dof++) {
                       double interpolatedValue = nodeValsFlat[i * ndof + dof];
                       if (fabs(interpolatedValue - correctValue) > 1E-6) {
-                          std::cout << "Value at (" << nodeCoordsFlat[DIM * i + 0] << " ," << nodeCoordsFlat[DIM * i + 1]
+                          std::cout << "Value at (" << nodeCoordsFlat[DIM * i + 0] << ", " << nodeCoordsFlat[DIM * i + 1]
                                     << ") = " << interpolatedValue << "\n";
                           testPassed = false;
                       }
@@ -88,7 +93,12 @@ void checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA,const ot::D
 
     else  // ghosted points individually without element context.
     {
-      for (size_t ii = 0; ii < octDA->getTotalNodalSz(); ++ii)
+      const size_t ghostedBegin = 0;
+      const size_t localBegin = octDA->getLocalNodeBegin();
+      const size_t localEnd = localBegin + octDA->getLocalNodalSz();
+      const size_t ghostedEnd = octDA->getTotalNodalSz();
+
+      for (size_t ii = localBegin; ii < localEnd; ++ii)
       {
         double physCoords[DIM];
         ot::treeNode2Physical(octDA->getTNCoords()[ii], octDA->getElementOrder(), physCoords);
@@ -101,18 +111,19 @@ void checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA,const ot::D
 
         if (fabs(interpolatedValue - correctValue) > 1E-6)
         {
-          std::cout << "Value at (" << physCoords[0] << " ," << physCoords[1]
-                    << ") = " << interpolatedValue << "\n";
+          fprintf(stdout, "[rank %d] Value at (%.3f, %.3f) = %.3f\n",
+              rProc,
+              physCoords[0], physCoords[1], interpolatedValue);
           testPassed = false;
         }
       }
     }
 
     if(testPassed){
-        std::cout << GRN << "TEST passed" << NRM << "\n";
+      fprintf(stdout, GRN "[rank %d] TEST passed\n" NRM, rProc);
     }
     else{
-        std::cout << RED << "TEST failed" << NRM << "\n";
+      fprintf(stdout, RED "[rank %d] TEST failed\n" NRM, rProc);
     }
 }
 
@@ -141,7 +152,7 @@ void checkIntergridTransfer(const double *array, ot::DA<DIM> * octDA,const ot::D
 
 const auto DomainDecider2 =
     (typename ot::DistTree<unsigned int, DIM>::BoxDecider)(
-        std::array<double, DIM>({0.5, 1.0}));
+        std::array<double, DIM>({0.4, 1.0}));
 
 int main(int argc, char *argv[]) {
     typedef unsigned int DENDRITE_UINT;
@@ -166,7 +177,7 @@ int main(int argc, char *argv[]) {
                                                           comm);
     const std::vector<ot::TreeNode<unsigned int, DIM>> &treePart = oldDistTree.getTreePartFiltered();
     ot::DA<DIM> *oldDA = new ot::DA<DIM>(oldDistTree, comm, eleOrder);
-    std::cout << oldDA->getLocalElementSz() << "\n";
+    /// std::cout << oldDA->getLocalElementSz() << "\n";
     std::vector<VECType> coarseVec;
     const int ndof = 1;
     oldDA->template createVector<VECType>(coarseVec,false,false,ndof);
@@ -188,7 +199,7 @@ int main(int argc, char *argv[]) {
     {
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> newTree;
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> surrTree;
-        DistTREE::distRemeshSubdomain(oldDistTree, octFlags, newDistTree, surrDistTree, 0.3);
+        DistTREE::distRemeshSubdomain(oldDistTree, octFlags, newDistTree, surrDistTree, ot::RemeshPartition::SurrogateInByOut, 0.3);
     }
     ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder);
     ot::DA<DIM> *surrDA = new ot::DA<DIM>(surrDistTree, comm, eleOrder);
@@ -198,6 +209,10 @@ int main(int argc, char *argv[]) {
     std::cout << "Number of elements/nodes in NewDA "
       << newDA->getLocalElementSz() << "/"
       << newDA->getLocalNodalSz()   << "\n";
+
+    /// quadTreeToGnuplot(oldDistTree.getTreePartFiltered(), level+1, "oldTree", comm);
+    /// quadTreeToGnuplot(surrDistTree.getTreePartFiltered(), level+1, "surrTree", comm);
+    /// quadTreeToGnuplot(newDistTree.getTreePartFiltered(), level+1, "newTree", comm);
 
     /// Intergrid Transfer
     static std::vector<VECType> fineGhosted, surrGhosted;
@@ -233,14 +248,27 @@ int main(int argc, char *argv[]) {
                newDistTree.getTreePartFiltered().size(),
                *newDA->getTreePartFront(),
                *newDA->getTreePartBack() };
-    fem::locIntergridTransfer(inctx, outctx, ndof, refel);
 
-    newDA->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndof);
-    newDA->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndof);
+    // See below notes about outDirty hack.
+    std::vector<char> outDirty;
+    newDA->template createVector<char>(outDirty, false, true, 1);
+    newDA->setVectorByScalar(&(*outDirty.begin()), (std::array<char,1>{0}).data(), false, true, 1);
+
+    fem::locIntergridTransfer(inctx, outctx, ndof, refel, &(*outDirty.begin()));
+    // If the outDirty array is passed to locIntergridTransfer(),
+    // then the array will be populated with 1 on each node that
+    // is written to by the traversal.
+
+    // The outDirty array is needed by writeToGhostsBegin() / writeToGhostsEnd()
+    // when useAccumulation==false. This is especially true with subda.
+    // (hack)
+    // If outDirty is not provided, then some nodes may get zeroed out.
+    newDA->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndof, &(*outDirty.cbegin()));
+    newDA->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndof, false, &(*outDirty.cbegin()));
     newDA->createVector(newDAVec,false,false,ndof);
     newDA->template ghostedNodalToNodalVec<VECType>(fineGhostedPtr, newDAVec, true, ndof);
 
-    checkIntergridTransfer(newDAVec,newDA,newDistTree,ndof);
+    checkIntergridTransfer(comm, newDAVec,newDA,newDistTree,ndof);
 
     /// Bunch of stuff to delete
     PetscFinalize();

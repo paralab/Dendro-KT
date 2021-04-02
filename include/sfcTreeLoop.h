@@ -525,6 +525,7 @@ namespace ot
           mySummaryHandle(rootSummary),
           m_parentFrame(nullptr),
           m_currentSubtree(),
+          m_sfcChildNum(0),
           m_treePartPtr(treePartPtr),
           m_treeSplitters(rootTreeSplitters)
       {
@@ -552,6 +553,7 @@ namespace ot
           mySummaryHandle(parentFrame->childSummaries[child]),
           m_parentFrame(parentFrame),
           m_currentSubtree(subtree),
+          m_sfcChildNum(child),
           m_pRot(pRot)
       {
         m_isPre = true;
@@ -651,8 +653,14 @@ namespace ot
       // getCurrentSubtree()
       const TreeNode<C,dim> &getCurrentSubtree() const { return m_currentSubtree; }
 
+      // getSfcChildNum()
+      ChildI getSfcChildNum() const { return m_sfcChildNum; }
+
       // getTreeSplitters()
       const std::array<RankI, NumChildren+1> & getTreeSplitters() const { return m_treeSplitters; }
+
+      // getNumTreeLowerElements()
+      size_t getNumLowerTreeElements() const { return m_treeSplitters[NumChildren] - m_treeSplitters[0]; }
 
       // getExtantTreeChildrenMorton()  -- based on tree splitters nonzero
       ExtantCellFlagT getExtantTreeChildrenMorton() const
@@ -680,6 +688,7 @@ namespace ot
     private:
       Frame *m_parentFrame;
       TreeNode<C,dim> m_currentSubtree;
+      ChildI m_sfcChildNum;
       bool m_isPre;
       RotI m_pRot;
       unsigned int m_numExtantChildren;

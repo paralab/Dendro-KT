@@ -11,7 +11,7 @@ namespace HeatEq
 template <unsigned int dim>
 HeatMat<dim>::HeatMat(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof) : feMatrix<HeatMat<dim>,dim>(da,octList, dof)
 {
-    const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
+    const unsigned int nPe=this->da()->getNumNodesPerElement();
     imV1=new double[nPe];
     imV2=new double[nPe];
 
@@ -47,7 +47,7 @@ void HeatMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int 
 {
   //TODO use ndofs
 
-    const RefElement* refEl=m_uiOctDA->getReferenceElement();
+    const RefElement* refEl=this->da()->getReferenceElement();
 
     const double * Q1d=refEl->getQ1d();
     const double * QT1d=refEl->getQT1d();
@@ -122,7 +122,7 @@ bool HeatMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 {
     // apply boundary conditions.
     std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    this->da()->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -135,7 +135,7 @@ bool HeatMat<dim>::postMatVec(const VECType* in,VECType* out,double scale) {
 
     // apply boundary conditions.
     std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    this->da()->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -172,17 +172,17 @@ int HeatMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,unsig
     double resid,alpha,beta,rho,rho_1;
     int status=1; // 0 indicates it has solved the system within the specified max_iter, 1 otherwise.
 
-    const unsigned int local_dof=m_uiOctDA->getLocalNodalSz();
+    const unsigned int local_dof=this->da()->getLocalNodalSz();
 
-    MPI_Comm globalComm=m_uiOctDA->getGlobalComm();
+    MPI_Comm globalComm=this->da()->getGlobalComm();
 
-    if(m_uiOctDA->isActive())
+    if(this->da()->isActive())
     {
 
-        int activeRank=m_uiOctDA->getRankActive();
-        int activeNpes=m_uiOctDA->getNpesActive();
+        int activeRank=this->da()->getRankActive();
+        int activeNpes=this->da()->getNpesActive();
 
-        MPI_Comm activeComm=m_uiOctDA->getCommActive();
+        MPI_Comm activeComm=this->da()->getCommActive();
 
         double* p;
         double* z;
@@ -192,14 +192,14 @@ int HeatMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,unsig
         double* r0;
         double* r1;
 
-        m_uiOctDA->createVector(p);
-        m_uiOctDA->createVector(z);
-        m_uiOctDA->createVector(q);
+        this->da()->createVector(p);
+        this->da()->createVector(z);
+        this->da()->createVector(q);
 
-        m_uiOctDA->createVector(Ax);
-        m_uiOctDA->createVector(Ap);
-        m_uiOctDA->createVector(r0);
-        m_uiOctDA->createVector(r1);
+        this->da()->createVector(Ax);
+        this->da()->createVector(Ap);
+        this->da()->createVector(r0);
+        this->da()->createVector(r1);
 
         double normb = normLInfty(b,local_dof,activeComm);
         par::Mpi_Bcast(&normb,1,0,activeComm);
@@ -233,14 +233,14 @@ int HeatMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,unsig
             tol = resid;
             max_iter = 0;
 
-            m_uiOctDA->destroyVector(p);
-            m_uiOctDA->destroyVector(z);
-            m_uiOctDA->destroyVector(q);
+            this->da()->destroyVector(p);
+            this->da()->destroyVector(z);
+            this->da()->destroyVector(q);
 
-            m_uiOctDA->destroyVector(Ax);
-            m_uiOctDA->destroyVector(Ap);
-            m_uiOctDA->destroyVector(r0);
-            m_uiOctDA->destroyVector(r1);
+            this->da()->destroyVector(Ax);
+            this->da()->destroyVector(Ap);
+            this->da()->destroyVector(r0);
+            this->da()->destroyVector(r1);
 
             status=0;
         }
@@ -272,14 +272,14 @@ int HeatMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,unsig
 
                     if((!activeRank)) std::cout<<" iteration : "<<i<<" residual : "<<resid<<std::endl;
                     tol = resid;
-                    m_uiOctDA->destroyVector(p);
-                    m_uiOctDA->destroyVector(z);
-                    m_uiOctDA->destroyVector(q);
+                    this->da()->destroyVector(p);
+                    this->da()->destroyVector(z);
+                    this->da()->destroyVector(q);
 
-                    m_uiOctDA->destroyVector(Ax);
-                    m_uiOctDA->destroyVector(Ap);
-                    m_uiOctDA->destroyVector(r0);
-                    m_uiOctDA->destroyVector(r1);
+                    this->da()->destroyVector(Ax);
+                    this->da()->destroyVector(Ap);
+                    this->da()->destroyVector(r0);
+                    this->da()->destroyVector(r1);
 
                     status=0;
                     break;
@@ -304,14 +304,14 @@ int HeatMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,unsig
             if(status!=0)
             {
                 tol = resid;
-                m_uiOctDA->destroyVector(p);
-                m_uiOctDA->destroyVector(z);
-                m_uiOctDA->destroyVector(q);
+                this->da()->destroyVector(p);
+                this->da()->destroyVector(z);
+                this->da()->destroyVector(q);
 
-                m_uiOctDA->destroyVector(Ax);
-                m_uiOctDA->destroyVector(Ap);
-                m_uiOctDA->destroyVector(r0);
-                m_uiOctDA->destroyVector(r1);
+                this->da()->destroyVector(Ax);
+                this->da()->destroyVector(Ap);
+                this->da()->destroyVector(r0);
+                this->da()->destroyVector(r1);
                 status=1;
 
             }

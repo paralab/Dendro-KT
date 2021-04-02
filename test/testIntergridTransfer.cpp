@@ -79,9 +79,9 @@ int main(int argc, char *argv[])
 
   /// success &= testNull<dim>(argc, argv);
   /// success &= testMultiDA<dim>(argc, argv);
-  /// success &= testUniform2(argc, argv);
+  success &= testUniform2(argc, argv);
 
-  success &= testLinear<dim>(argc, argv);
+  /// success &= testLinear<dim>(argc, argv);
 
   _DestroyHcurve();
   MPI_Finalize();
@@ -180,6 +180,7 @@ bool testUniform2(int argc, char * argv[])
   /// ot::DistTree<unsigned int, dim> dtree(coarseTree);
   ot::DistTree<unsigned int, dim> surrDTree
     = dtree.generateGridHierarchyDown(nGrids, partition_tol);
+  const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
 
   // Create DAs
   if (!rProc && outputStatus)
@@ -206,7 +207,7 @@ bool testUniform2(int argc, char * argv[])
   {
     std::cout << "Creating gmgMat object for restriction() and prolongation().\n" << std::flush;
   }
-  gmgMat<dim> gmgMatObj(&multiDA, &surrMultiDA, singleDof);
+  gmgMat<dim> gmgMatObj(&dtree, &multiDA, &surrDTree, &surrMultiDA, gridAlignment, singleDof);
 
 
   //
@@ -772,10 +773,16 @@ bool testLinear(int argc, char * argv[]){
     {
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> newTree;
         std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> surrTree;
-        ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(oldDistTree.getTreePartFiltered(), octFlags, newTree, surrTree, 0.3, comm);
+        ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(oldDistTree.getTreePartFiltered(), octFlags, newTree, surrTree, 0.3, ot::RemeshPartition::SurrogateInByOut, comm);
         newDistTree = ot::DistTree<unsigned int, DIM>(newTree, comm);
-        surrDistTree = ot::DistTree<unsigned int, DIM>(surrTree, comm);
+        surrDistTree = ot::DistTree<unsigned int, DIM>(surrTree, comm, ot::DistTree<unsigned, DIM>::NoCoalesce);
     }
+
+    /// int level = 3;
+    /// quadTreeToGnuplot(oldDistTree.getTreePartFiltered(), level+1, "oldTree", comm);
+    /// quadTreeToGnuplot(surrDistTree.getTreePartFiltered(), level+1, "surrTree", comm);
+    /// quadTreeToGnuplot(newDistTree.getTreePartFiltered(), level+1, "newTree", comm);
+
     ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder);
     std::cout << "Number of elements / nodes in OldDA == "
       << oldDA->getLocalElementSz() << " / "
@@ -817,9 +824,11 @@ bool testLinear(int argc, char * argv[]){
                *newDA->getTreePartFront(),
                *newDA->getTreePartBack() };
     const RefElement * refel = newDA->getReferenceElement();
-    fem::locIntergridTransfer(inctx, outctx, ndof, refel);
-    newDA->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndof);
-    newDA->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndof);
+    std::vector<char> outDirty(newDA->getTotalNodalSz(), 0);
+    fem::locIntergridTransfer(inctx, outctx, ndof, refel, &(*outDirty.begin()));
+    // The outDirty array is needed when useAccumulation==false (hack).
+    newDA->template writeToGhostsBegin<VECType>(fineGhostedPtr, ndof, &(*outDirty.cbegin()));
+    newDA->template writeToGhostsEnd<VECType>(fineGhostedPtr, ndof, false, &(*outDirty.cbegin()));
     double *newDAVec;
     newDA->createVector(newDAVec,false,false,ndof);
     newDA->template ghostedNodalToNodalVec<VECType>(fineGhostedPtr, newDAVec, true, ndof);

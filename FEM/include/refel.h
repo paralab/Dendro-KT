@@ -658,6 +658,45 @@ class RefElement
 };
 
 
+namespace detail
+{
+  template <typename NodeT>
+  struct VectorCast
+  {
+    template <typename InputT>
+    static
+    std::vector<NodeT> create(const InputT *begin, size_t size)
+    {
+      std::vector<NodeT> result(begin, begin + size);
+      return result;
+    }
+  };
+
+  template <typename NodeT>
+  struct VectorTest
+  {
+    template <typename InputT>
+    static
+    std::vector<NodeT> create(const InputT *begin, size_t size)
+    {
+      std::vector<NodeT> result;
+      for (size_t ii = 0; ii < size; ++ii)
+        result.push_back(fabs(begin[ii]) > 1e-5);
+      return result;
+    }
+  };
+
+  template <typename NodeT>
+  struct CastFloatsTestInts : public VectorTest<NodeT> { };
+
+  template <>
+  struct CastFloatsTestInts<float> : public VectorCast<float> { };
+  template <>
+  struct CastFloatsTestInts<double> : public VectorCast<double> { };
+  template <>
+  struct CastFloatsTestInts<long double> : public VectorCast<long double> { };
+}
+
 template <unsigned int dim, typename NodeT>
 struct InterpMatrices
 {
@@ -677,8 +716,8 @@ struct InterpMatrices
 
     const unsigned int ipMatSz = (eleOrder+1)*(eleOrder+1);
     RefElement tempRefEl(dim, eleOrder);
-    m_ip_1D[0] = std::vector<NodeT>(tempRefEl.getIMChild0(), tempRefEl.getIMChild0() + ipMatSz);
-    m_ip_1D[1] = std::vector<NodeT>(tempRefEl.getIMChild1(), tempRefEl.getIMChild1() + ipMatSz);
+    m_ip_1D[0] = detail::CastFloatsTestInts<NodeT>::create(tempRefEl.getIMChild0(), ipMatSz);
+    m_ip_1D[1] = detail::CastFloatsTestInts<NodeT>::create(tempRefEl.getIMChild1(), ipMatSz);
     m_ipT_1D[0].resize(ipMatSz);
     m_ipT_1D[1].resize(ipMatSz);
     for (int ii = 0; ii < eleOrder+1; ii++)     // Transpose

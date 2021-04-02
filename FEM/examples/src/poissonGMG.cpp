@@ -36,6 +36,26 @@ struct Parameters
 // =======================================================
 
 
+template <unsigned int dim, typename ValT>
+void printLocalNodes(const ot::DA<dim> *da, const ValT * vals, std::ostream &out = std::cout)
+{
+  ot::printNodes(da->getTNCoords() + da->getLocalNodeBegin(), da->getTNCoords() + da->getLocalNodeBegin() + da->getLocalNodalSz(),
+                 vals,
+                 da->getElementOrder(),
+                 out);
+}
+
+template <unsigned int dim, typename ValT>
+void printGhostedNodes(const ot::DA<dim> *da, const ValT * vals, std::ostream &out = std::cout)
+{
+  ot::printNodes(da->getTNCoords(), da->getTNCoords() + da->getTotalNodalSz(),
+                 vals,
+                 da->getElementOrder(),
+                 out);
+}
+
+
+
 namespace PoissonEq
 {
 
@@ -44,7 +64,7 @@ namespace PoissonEq
   {
     // References to base class members for convenience.
     using BaseT = gmgMat<dim, PoissonGMGMat<dim>>;
-    ot::MultiDA<dim> * & m_multiDA = BaseT::m_multiDA;
+    const ot::MultiDA<dim> * & m_multiDA = BaseT::m_multiDA;
     /// ot::MultiDA<dim> * & m_surrogateMultiDA = BaseT::m_surrogateMultiDA;
     unsigned int & m_numStrata = BaseT::m_numStrata;
     unsigned int & m_ndofs = BaseT::m_ndofs;
@@ -52,15 +72,18 @@ namespace PoissonEq
     using BaseT::m_uiPtMax;
 
     public:
-      PoissonGMGMat(ot::MultiDA<dim> *mda, ot::MultiDA<dim> *smda, unsigned int ndofs)
-        : BaseT(mda, smda, ndofs)
+      PoissonGMGMat(const ot::DistTree<unsigned, dim> *distTree,
+                    ot::MultiDA<dim> *mda,
+                    const ot::DistTree<unsigned, dim> *surrDistTree,
+                    ot::MultiDA<dim> *smda,
+                    ot::GridAlignment gridAlignment,
+                    unsigned int ndofs)
+        : BaseT(distTree, mda, surrDistTree, smda, gridAlignment, ndofs)
       {
         m_gridOperators.resize(m_numStrata);
         for (int s = 0; s < m_numStrata; ++s)
         {
-          throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
-          const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
-          m_gridOperators[s] = new PoissonMat<dim>(&getMDA()[s], &dummyOctList, ndofs);
+          m_gridOperators[s] = new PoissonMat<dim>(&getMDA()[s], &distTree->getTreePartFiltered(s), ndofs);
           m_gridOperators[s]->setProblemDimensions(m_uiPtMin, m_uiPtMax);
         }
 
@@ -108,12 +131,49 @@ namespace PoissonEq
 
       void leafApplySmoother(const VECType *res, VECType *resLeft, unsigned int stratum)
       {
+        fprintf(stdout, "Jacobi %d\n", int(stratum));
         const size_t nNodes = getMDA()[stratum].getLocalNodalSz();
         const VECType * rcp_diag = m_rcp_diags[stratum].data();
 
+        // Jacobi
         for (int ndIdx = 0; ndIdx < m_ndofs * nNodes; ++ndIdx)
           resLeft[ndIdx] = res[ndIdx] * rcp_diag[ndIdx];
       }
+
+      void leafPreRestriction(const VECType* in, VECType* out, double scale, unsigned int fineStratum)
+      {
+        for (size_t bidx : getMDA()[fineStratum].getBoundaryNodeIndices())
+          for (int dof = 0; dof < this->getNdofs(); ++dof)
+            out[bidx * this->getNdofs() + dof] = 0;
+      }
+
+      /** @brief Apply post-restriction condition to coarse residual. */
+      void leafPostRestriction(const VECType* in, VECType* out, double scale, unsigned int fineStratum)
+      {
+        for (size_t bidx : getMDA()[fineStratum + 1].getBoundaryNodeIndices())
+          for (int dof = 0; dof < this->getNdofs(); ++dof)
+            out[bidx * this->getNdofs() + dof] = 0;
+      }
+
+      /** @brief Apply pre-prolongation condition to coarse error. */
+      void leafPreProlongation(const VECType* in, VECType* out, double scale, unsigned int fineStratum)
+      {
+        for (size_t bidx : getMDA()[fineStratum + 1].getBoundaryNodeIndices())
+          for (int dof = 0; dof < this->getNdofs(); ++dof)
+            out[bidx * this->getNdofs() + dof] = 0;
+      }
+
+      /** @brief Apply post-prolongation condition to fine error. */
+      void leafPostProlongation(const VECType* in, VECType* out, double scale, unsigned int fineStratum)
+      {
+        for (size_t bidx : getMDA()[fineStratum].getBoundaryNodeIndices())
+          for (int dof = 0; dof < this->getNdofs(); ++dof)
+            out[bidx * this->getNdofs() + dof] = 0;
+      }
+
+
+
+
 
     protected:
       std::vector<PoissonMat<dim> *> m_gridOperators;
@@ -121,10 +181,78 @@ namespace PoissonEq
       std::vector<std::vector<VECType>> m_rcp_diags;
 
       // Convenience protected accessor
-      inline ot::MultiDA<dim> & getMDA() { return *m_multiDA; }
+      inline const ot::MultiDA<dim> & getMDA() { return *m_multiDA; }
   };
 
 }//namespace PoissonEq
+
+
+
+
+void printSparseMatrix(const ot::MatCompactRows &matRows, std::ostream &out = std::cout)
+{
+  std::map<size_t, std::vector<size_t>> rowIdxToPos;
+  size_t maxRowIdx = 0;
+  for (size_t r = 0; r < matRows.getNumRows(); ++r)
+  {
+    size_t rowIdx = matRows.getRowIdxs()[r];
+    rowIdxToPos[rowIdx].push_back(r);
+    maxRowIdx = std::max(maxRowIdx, rowIdx);
+  }
+
+  std::map<size_t, VECType> aggRow;
+
+  const size_t chunkSz = matRows.getChunkSize();
+
+  for (size_t rowIdx = 0; rowIdx <= maxRowIdx; ++rowIdx)
+  {
+    // Find the row.
+    const auto &searchRowIdx = rowIdxToPos.find(rowIdx);
+    if (searchRowIdx != rowIdxToPos.end())
+    {
+      aggRow.clear();
+
+      // Aggregate all chunks in the row.
+      size_t maxColIdx = 0;
+      for (size_t chunk : rowIdxToPos[rowIdx])
+      {
+        for (size_t cPos = 0; cPos < chunkSz; ++cPos)
+        {
+          const size_t colIdx = matRows.getColIdxs()[chunk * chunkSz + cPos];
+          const VECType colVal = matRows.getColVals()[chunk * chunkSz + cPos];
+          aggRow[colIdx] += colVal;
+          maxColIdx = std::max(maxColIdx, colIdx);
+        }
+      }
+
+      // Print the row
+      for (size_t colIdx = 0; colIdx <= maxColIdx; ++colIdx)
+      {
+        char entryBuf[20];
+        const auto &searchColIdx = aggRow.find(colIdx);
+        if (searchColIdx != aggRow.end())
+          sprintf(entryBuf, " %5.2f", aggRow[colIdx]);
+        else
+          sprintf(entryBuf, "      ");
+        out << entryBuf;
+      }
+    }
+    out << "\n";
+  }
+}
+
+
+namespace debug
+{
+  template <unsigned int dim, typename feMatType>
+  VECType residual(const ot::DA<dim> *da, feMatrix<feMatType, dim> *mat, VECType * res, const VECType * u, const VECType * rhs, double scale = 1.0);
+
+  template <unsigned int dim, typename feMatType>
+  int cgSolver(const ot::DA<dim> *da, feMatrix<feMatType, dim> *mat, VECType * u, const VECType * rhs, double relResErr);
+}
+
+
+
 
 
 
@@ -168,11 +296,14 @@ int main_ (Parameters &pm, MPI_Comm comm)
     const Point<dim> domain_min(d_min, d_min, d_min);
     const Point<dim> domain_max(d_max, d_max, d_max);
 
-    std::function<void(const double *, double*)> f_rhs = [d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
+    const int _dim = dim;  // workaround: lambda messes up value of template dim
+    std::function<void(const double *, double*)> f_rhs = [_dim, d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
     {
-      var[0] = -dim*4*M_PI*M_PI;
+      var[0] = -_dim*4*M_PI*M_PI;
       for (unsigned int d = 0; d < dim; d++)
+      {
         var[0] *= sin(2*M_PI*(((x[d]-g_min)/Rg)*Rd+d_min));
+      }
     };
     /// std::function<void(const double *, double*)> f_rhs = [d_min, d_max, g_min, g_max, Rg, Rd](const double *x, double *var)
     /// {
@@ -222,9 +353,11 @@ int main_ (Parameters &pm, MPI_Comm comm)
     ot::DistTree<unsigned int, dim> surrDTree
       = dtree.generateGridHierarchyDown(nGrids, partition_tol);
     ot::MultiDA<dim> multiDA, surrMultiDA;
+    const ot::GridAlignment gridAlignment = ot::GridAlignment::CoarseByFine;
+
 
     if (!rProc && outputStatus)
-      std::cout << "Creating multilevel ODA.\n" << std::flush;
+      std::cout << "Creating multilevel ODA with " << dtree.getNumStrata() << " strata.\n" << std::flush;
 
     ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, eOrder, 100, partition_tol);
     ot::DA<dim>::multiLevelDA(surrMultiDA, surrDTree, comm, eOrder, 100, partition_tol);
@@ -233,11 +366,15 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     if (!rProc && outputStatus)
     {
-      std::cout << "Refined DA has " << fineDA.getTotalNodalSz() << " total nodes.\n" << std::flush;
+      std::cout << "Refined DA has "
+        << fineDA.getGlobalElementSz() << " total elements and "
+        << fineDA.getGlobalNodeSz() << " total nodes.\n" << std::flush;
       std::cout << "Creating poissonGMG wrapper.\n" << std::flush;
     }
 
-    PoissonEq::PoissonGMGMat<dim> poissonGMG(&multiDA, &surrMultiDA, 1);
+    PoissonEq::PoissonGMGMat<dim> poissonGMG(&dtree, &multiDA, &surrDTree, &surrMultiDA, gridAlignment, 1);
+    // Note that we own the DistTree's and DA's (gmg mat does not own),
+    // so these data structures must stay in scope.
 
     if (!rProc && outputStatus)
       std::cout << "Setting up problem.\n" << std::flush;
@@ -258,14 +395,14 @@ int main_ (Parameters &pm, MPI_Comm comm)
       fineDA.createVector(_frhs, false, false, 1);
       fineDA.createVector(_Mfrhs, false, false, 1);
 
-      throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
-      const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
-      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dummyOctList, 1);
+      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dtree.getTreePartFiltered(0), 1);
       poissonVec.setProblemDimensions(domain_min,domain_max);
 
       fineDA.setVectorByFunction(_ux.data(),    f_init, false, false, 1);
       fineDA.setVectorByFunction(_Mfrhs.data(), f_init, false, false, 1);
       fineDA.setVectorByFunction(_frhs.data(),  f_rhs, false, false, 1);
+
+      /// printGhostedNodes(&fineDA, _frhs.data(), std::cout);
 
       if (!rProc && outputStatus)
         std::cout << "Computing RHS.\n" << std::flush;
@@ -283,7 +420,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       // - - - - - - - - - - -
 
-      double tol=1e-6;
+      double tol=1e-10;
       unsigned int max_iter=30;
 
       if (!rProc && outputStatus)
@@ -292,6 +429,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
         std::cout << "    numStrata ==           " << poissonGMG.getNumStrata() << "\n";
         std::cout << "    smoothStepsPerCycle == " << smoothStepsPerCycle << "\n";
         std::cout << "    relaxationFactor ==    " << relaxationFactor << "\n";
+        std::cout << "    residual abs tol ==    " << tol << "\n";
       }
 
       unsigned int countIter = 0;
@@ -334,9 +472,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
       /// PoissonEq::PoissonMat<dim> poissonMat(octDA,1);
       /// poissonMat.setProblemDimensions(domain_min,domain_max);
 
-      throw std::logic_error("Not fully implemented. Must provide DistTree::getTreePartFiltered().");
-      const std::vector<ot::TreeNode<unsigned, dim>> dummyOctList;
-      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dummyOctList, 1);
+      PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dtree.getTreePartFiltered(0), 1);
       poissonVec.setProblemDimensions(domain_min,domain_max);
 
       fineDA.petscSetVectorByFunction(ux, f_init, false, false, 1);
@@ -522,3 +658,89 @@ int main(int argc, char * argv[])
 
   return returnCode;
 }
+
+
+
+
+
+namespace debug
+{
+
+  // residual()
+  template <unsigned int dim, typename feMatType>
+  VECType residual(const ot::DA<dim> *da, feMatrix<feMatType, dim> *mat, VECType * res, const VECType * u, const VECType * rhs, double scale)
+  {
+    const unsigned ndofs = 1;
+    const size_t localSz = da->getLocalNodalSz();
+    mat->matVec(u, res, scale);
+    VECType resLInf = 0.0f;
+    for (size_t i = 0; i < ndofs * localSz; i++)
+    {
+      res[i] = rhs[i] - res[i];
+      resLInf = fmax(fabs(res[i]), resLInf);
+    }
+
+    VECType globResLInf = 0.0f;
+    par::Mpi_Allreduce(&resLInf, &globResLInf, 1, MPI_MAX, da->getGlobalComm());
+    return globResLInf;
+  }
+
+  // cgSolver()
+  template <unsigned int dim, typename feMatType>
+  int cgSolver(const ot::DA<dim> *da, feMatrix<feMatType, dim> *mat, VECType * u, const VECType * rhs, double relResErr)
+  {
+    const double scale = 1.0;
+    const double normb = detail::vecNormLInf(da, rhs);
+    const double thresh = relResErr * normb;
+
+    const size_t localSz = da->getLocalNodalSz();
+
+    static std::vector<VECType> r;
+    static std::vector<VECType> p;
+    static std::vector<VECType> Ap;
+    r.resize(localSz);
+    p.resize(localSz);
+    Ap.resize(localSz);
+
+    int step = 0;
+    VECType rmag = residual(da, mat, r.data(), u, rhs, scale);
+    fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+    if (rmag < thresh)
+      return step;
+    VECType rProd = detail::vecDot(da, &(*r.cbegin()), &(*r.cbegin()));
+
+    VECType iterLInf = 0.0f;
+
+    p = r;
+    const int runaway = 150;
+    while (step < runaway)
+    {
+      mat->matVec(&(*p.cbegin()), &(*Ap.begin()), scale);  // Ap
+      const VECType pProd = detail::vecDot(da, &(*p.cbegin()), &(*Ap.cbegin()));
+
+      const VECType alpha = rProd / pProd;
+      iterLInf = alpha * detail::vecNormLInf(da, &(*p.cbegin()));
+      for (size_t ii = 0; ii < localSz; ++ii)
+        u[ii] += alpha * p[ii];
+      ++step;
+
+      const VECType rProdPrev = rProd;
+
+      rmag = residual(da, mat, r.data(), u, rhs, scale);
+      if (rmag < thresh)
+        break;
+      rProd = detail::vecDot(da, &(*r.cbegin()), &(*r.cbegin()));
+
+      const VECType beta = rProd / rProdPrev;
+      for (size_t ii = 0; ii < localSz; ++ii)
+        p[ii] = r[ii] + beta * p[ii];
+
+      fprintf(stdout, "step==%d  res==%e  diff==%e  rProd==%e  pProd==%e  a==%e  b==%e\n", step, rmag, iterLInf, rProd, pProd, alpha, beta);
+    }
+    fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+
+    return step;
+  }
+
+}
+

@@ -52,6 +52,7 @@ int main(int argc, char *argv[]) {
         std::vector<ot::OCT_FLAGS::Refine> octFlags;
         generateRefinementFlags(newDA, treePart, octFlags);
         ot::SFC_Tree<DENDRITE_UINT, DIM>::distRemeshWholeDomain(treePart, octFlags, newTree, surrTree, 0.3,
+                                                                ot::RemeshPartition::SurrogateInByOut,
                                                                 MPI_COMM_WORLD);
         ot::DA<DIM> *octDA = new ot::DA<DIM>(newTree, MPI_COMM_WORLD, eleOrder, 100, 0.3);
         std::swap(octDA, newDA);

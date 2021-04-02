@@ -660,7 +660,7 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
     while (ii < numNodes && zipped[ii].first.first == cursorY)
     {
       T x = zipped[ii].first.second;
-      NodeT val = zipped[ii].second;
+      double val = zipped[ii].second;
 
       while (cursorX < x)
       {
@@ -978,6 +978,73 @@ void keepSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm 
     MPI_Wait(&requestSCount, &status);
     MPI_Wait(&requestSPayload, &status);
   }
+}
+
+
+template <typename T, unsigned int dim>
+void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int fineLev, const std::string &fileprefix, MPI_Comm comm)
+{
+  int rProc, nProc;
+  MPI_Comm_size(comm, &nProc);
+  MPI_Comm_rank(comm, &rProc);
+
+  const long long unsigned locSz = treePart.size();
+  long long unsigned elemIndex = 0;
+  par::Mpi_Scan(&locSz, &elemIndex, 1, MPI_SUM, comm);
+  elemIndex -= locSz;
+
+  if (rProc == 0)
+  {
+    const std::string rootfile = fileprefix + "_root.txt";
+    std::ofstream rootFile(rootfile);
+    rootFile << "set title \"" << fileprefix << "\"\n";
+    for (int r = 0; r < nProc; ++r)
+      rootFile << "load \"" << fileprefix << "_" << r << ".txt\"\n";
+    rootFile << "set key off\n";
+    rootFile << "set xrange [0:" << (1u << fineLev) << "]\n";
+    rootFile << "set yrange [0:" << (1u << fineLev) << "]\n";
+    rootFile << "plot 0\n";
+    rootFile << "pause mouse keypress\n";
+    rootFile.close();
+
+    fprintf(stderr, "Run `gnuplot %s`\n", rootfile.c_str());
+  }
+
+  std::stringstream filename;
+  filename << fileprefix << "_" << rProc << ".txt";
+
+  const char * const palette[8] = {"#E41A1C",
+                                   "#377EB8",
+                                   "#4DAF4A",
+                                   "#984EA3",
+                                   "#FF7F00",
+                                   "#FFFF33",
+                                   "#A65628",
+                                   "#F781BF"};
+
+  std::ofstream treePartFile(filename.str());
+  elemIndex++;
+  for (const TreeNode<T, dim> quad : treePart)
+  {
+    const T minX = quad.minX(0) >> (m_uiMaxDepth - fineLev);
+    const T minY = quad.minX(1) >> (m_uiMaxDepth - fineLev);
+    const T maxX = quad.maxX(0) >> (m_uiMaxDepth - fineLev);
+    const T maxY = quad.maxX(1) >> (m_uiMaxDepth - fineLev);
+
+    const double centerX = 0.5 * (double(minX) + double(maxX));
+    const double centerY = 0.5 * (double(minY) + double(maxY));
+
+    treePartFile << "set object " << elemIndex << " rect from "
+                 << minX << "," << minY << " to "
+                 << maxX << "," << maxY
+                 << " back"
+                 << " fillcolor rgb \"" << palette[rProc] << "\""
+                 << " linewidth 1"
+                 << "\n";
+
+    elemIndex++;
+  }
+  treePartFile.close();
 }
 
 

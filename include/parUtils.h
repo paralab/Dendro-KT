@@ -253,6 +253,35 @@ PetscFunctionReturn(0);
   */
 namespace par {
 
+
+  struct SendRecvSchedule
+  {
+    std::vector<int> scounts;
+    std::vector<int> sdispls;
+    std::vector<int> rcounts;
+    std::vector<int> rdispls;
+
+    SendRecvSchedule() = default;
+    SendRecvSchedule(const SendRecvSchedule &) = default;
+
+    void clear()
+    {
+      scounts.clear();
+      sdispls.clear();
+      rcounts.clear();
+      rdispls.clear();
+    }
+
+    void resize(int npes)
+    {
+      scounts.resize(npes, 0);
+      sdispls.resize(npes, 0);
+      rcounts.resize(npes, 0);
+      rdispls.resize(npes, 0);
+    }
+  };
+
+
   template <typename T>
     int Mpi_Isend(const T* buf, int count, int dest, int tag, MPI_Comm comm, MPI_Request* request);
 
@@ -341,6 +370,10 @@ namespace par {
     int Mpi_Alltoallv_Kway(const T* sbuff_, int* s_cnt_, int* sdisp_,
                            T* rbuff_, int* r_cnt_, int* rdisp_, MPI_Comm c);
 
+
+
+    template <typename T>
+    std::vector<T> sendAll(const std::vector<T> &sdata, const std::vector<int> &sdest, MPI_Comm comm);
 
 
   /**
