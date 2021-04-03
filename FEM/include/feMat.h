@@ -22,7 +22,7 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief: pointer to OCT DA*/
-    ot::DA<dim>* m_uiOctDA;
+    const ot::DA<dim>* m_uiOctDA;
 
     const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList;
 
@@ -46,7 +46,7 @@ public:
       * @par[in] daType: type of the DA
       * @note Does not own da.
     **/
-    feMat(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList)
+    feMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList)
       : m_uiOctDA(da),
         m_octList(octList)
     {
@@ -65,6 +65,12 @@ public:
     {
 
     }
+
+    // da()
+    const ot::DA<dim> * da() const { return m_uiOctDA; }
+
+    // octList()
+    const std::vector<ot::TreeNode<unsigned int, dim>> * octList() const { return m_octList; }
 
     /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
      * @param [in] in input vector u

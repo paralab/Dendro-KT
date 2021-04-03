@@ -9,7 +9,7 @@ namespace PoissonEq
 {
 
 template <unsigned int dim>
-PoissonMat<dim>::PoissonMat(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof) : feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
+PoissonMat<dim>::PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof) : feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)
@@ -179,6 +179,23 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
         out[i]+=Qx[d][i];
     }
 }
+
+
+
+/*
+template<unsigned int dim>
+void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale)
+{
+  static std::vector<ot::MatRecord> records;
+  records.clear();
+  this->getElementalMatrix(records, coords, false);
+  #warning elementalSetDiag should also accept isElementBoundary
+  for (const ot::MatRecord &rec : records)
+    if (rec.getRowID() == rec.getColID() && rec.getRowDim() == rec.getColDim())
+      out[ndofs * rec.getRowID() + rec.getRowDim()] = rec.getMatVal();
+}
+*/
+
 
 
 template <unsigned int dim>

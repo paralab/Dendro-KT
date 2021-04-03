@@ -805,6 +805,7 @@ namespace par {
 
 
 
+
   template<typename T>
   unsigned int defaultWeight(const T *a) {
     return 1;

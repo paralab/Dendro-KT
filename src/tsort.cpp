@@ -460,7 +460,6 @@ SFC_Tree<T,D>:: distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
   sched.rdispls = recvDspl;
 
   return sched;
-
 }
 
 
@@ -1232,6 +1231,7 @@ SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree
                                        std::vector<TreeNode<T, D>> &outTree,
                                        std::vector<TreeNode<T, D>> &surrogateTree,
                                        double loadFlexibility,
+                                       RemeshPartition remeshPartition,
                                        MPI_Comm comm )
 {
   constexpr ChildI NumChildren = 1u << D;
@@ -1274,9 +1274,18 @@ SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree
   SFC_Tree<T, D>::distTreeBalancing(seed, outTree, 1, loadFlexibility, comm);
   SFC_Tree<T, D>::distCoalesceSiblings(outTree, comm);
 
-  // Create a surrogate tree, which is identical to the inTree,
-  // but partitioned to match the outTree.
-  surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(inTree, outTree, comm);
+  if (remeshPartition == SurrogateInByOut)  // old default
+  {
+    // Create a surrogate tree, which is identical to the inTree,
+    // but partitioned to match the outTree.
+    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(inTree, outTree, comm);
+  }
+  else
+  {
+    // Create a surrogate tree, which is identical to the outTree,
+    // but partitioned to match the inTree.
+    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(outTree, inTree, comm);
+  }
 }
 
 

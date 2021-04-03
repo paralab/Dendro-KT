@@ -14,7 +14,8 @@ namespace fem
 
 
   template <typename DofT, typename TN, typename RE>
-  void locSetDiag(DofT* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleSetT<DofT> eleSet, double scale, const RE* refElement)
+  void locSetDiag(DofT* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const std::vector<TN> *octList, const TN &partFront, const TN &partBack, EleSetT<DofT> eleSet, double scale, const RE* refElement)
+                  /// char * dirtyOut = nullptr)
   {
     // Initialize output vector to 0.
     std::fill(vecOut, vecOut + ndofs*sz, 0);
@@ -27,10 +28,10 @@ namespace fem
     std::vector<DofT> leafResult(ndofs*npe, 0.0);
 
     constexpr bool noVisitEmpty = false;
-    throw std::logic_error("Not implemented fully. Add octList to interface for iteration.");
-    const TN *treePartPtr = nullptr;  // &(*octList->cbegin());
-    const size_t treePartSz = -314;   // octList->size();
-    ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, treePartPtr, treePartSz, partFront, partBack);
+    const TN *treePartPtr = &(*octList->cbegin());
+    const size_t treePartSz = octList->size();
+    /// ot::MatvecBaseOut<dim, DofT, false> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, treePartPtr, treePartSz, partFront, partBack);
+    ot::MatvecBaseOut<dim, DofT, true> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, treePartPtr, treePartSz, partFront, partBack);
 
     while (!treeLoopOut.isFinished())
     {
@@ -48,6 +49,7 @@ namespace fem
         treeLoopOut.step();
     }
 
+    /// size_t writtenSz = treeLoopOut.finalize(vecOut, dirtyOut);
     size_t writtenSz = treeLoopOut.finalize(vecOut);
 
     if (sz > 0 && writtenSz == 0)

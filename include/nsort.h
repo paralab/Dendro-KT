@@ -367,6 +367,20 @@ namespace ot {
     RankI m_locOffset;
   };
 
+  inline size_t computeTotalSendSz(const ScatterMap &sm)
+  {
+    size_t total = 0;
+    for (RankI sendCount : sm.m_sendCounts)
+      total += sendCount;
+    return total;
+  }
+
+  inline size_t totalRecvSz(const GatherMap &gm)
+  {
+    return gm.m_totalCount - gm.m_locCount;
+  }
+
+
 
   std::ostream & operator<<(std::ostream &out, const ScatterMap &sm);
   std::ostream & operator<<(std::ostream &out, const GatherMap &gm);

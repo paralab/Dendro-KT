@@ -8,6 +8,7 @@
 
 #include "oda.h"
 #include "meshLoop.h"
+#include "sfcTreeLoop_matvec_io.h"
 
 #include <algorithm>
 #include <set>
@@ -33,6 +34,7 @@ namespace ot
         m_uiPostNodeEnd = 0;
         m_uiCommTag = 0;
         m_uiGlobalNodeSz = 0;
+        m_uiGlobalElementSz = 0;
         m_uiElementOrder = order;
         m_uiNpE = 0;
         m_uiActiveNpes = 0;
@@ -92,7 +94,7 @@ namespace ot
     DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
-      construct(inDistTree, stratum, comm, order, grainSz, sfc_tol);
+      constructStratum(inDistTree, stratum, comm, order, grainSz, sfc_tol);
     }
 
     /**@brief: Constructor for the DA data structures
@@ -113,13 +115,16 @@ namespace ot
 
     // Construct multiple DA for multigrid.
     template <unsigned int dim>
-    void DA<dim>::multiLevelDA(std::vector<DA> &outDAPerStratum, DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::multiLevelDA(std::vector<DA> &outDAPerStratum, const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
-      outDAPerStratum.clear();
       const int numStrata = inDistTree.getNumStrata();
+
+      outDAPerStratum.clear();
+
       std::vector<DA> daPerStratum(numStrata);
+
       for (int l = 0; l < numStrata; ++l)
-        daPerStratum[l].construct(inDistTree, l, comm, order, grainSz, sfc_tol);
+        daPerStratum[l].constructStratum(inDistTree, l, comm, order, grainSz, sfc_tol);
       std::swap(outDAPerStratum, daPerStratum);
       // Do NOT destroyTree. Let user decide.
     }
@@ -133,7 +138,127 @@ namespace ot
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     void DA<dim>::construct(const ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
-      construct(distTree, 0, comm, order, grainSz, sfc_tol);
+      constructStratum(distTree, 0, comm, order, grainSz, sfc_tol);
+    }
+
+
+
+
+    template <typename C, unsigned dim>
+    void globallySortNodes(std::vector<TNPoint<C, dim>> &nodesInOut,
+                           double sfc_tol,
+                           MPI_Comm comm)
+    {
+      // distTreePartition only works on TreeNode inside the unit cube, not TNPoint.
+      // Create a key for each tnpoint.
+      std::vector<TreeNode<C, dim>> keys;
+      for (const auto &pt : nodesInOut)
+      {
+        const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
+        keys.push_back(key);
+      }
+
+      // To use the schedule the TNPoints have to be locally sorted
+      // in the order of the keys.
+      SFC_Tree<C, dim>::locTreeSort(keys, nodesInOut);
+
+      const std::vector<TNPoint<C, dim>> nodesIn = nodesInOut;
+      std::vector<TNPoint<C, dim>> &nodesOut = nodesInOut;
+
+      // To sort the TNPoints, get a schedule based on the TreeNodes.
+      par::SendRecvSchedule sched = SFC_Tree<C, dim>::distTreePartitionSchedule(
+          keys, 0, sfc_tol, comm);
+
+      if (sched.scounts.size() > 0)
+      {
+        nodesOut.clear();
+        nodesOut.resize(sched.rdispls.back() + sched.rcounts.back());
+
+        par::Mpi_Alltoallv_sparse<TNPoint<C, dim>>(
+            &nodesIn[0],  &sched.scounts[0], &sched.sdispls[0],
+            &nodesOut[0], &sched.rcounts[0], &sched.rdispls[0],
+            comm);
+
+        // Locally sort the TNPoints again by keys.
+        keys.clear();
+        for (const auto &pt : nodesOut)
+        {
+          const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
+          keys.push_back(key);
+        }
+        SFC_Tree<C, dim>::locTreeSort(keys, nodesOut);
+      }
+    }
+
+
+    //
+    // getNodeElementOwnership()
+    //
+    template <unsigned int dim>
+    std::vector<DendroIntL> getNodeElementOwnership(
+        DendroIntL globElementBegin,
+        const std::vector<TreeNode<unsigned int, dim>> &octList,
+        const std::vector<TreeNode<unsigned int, dim>> &ghostedNodeList,
+        const unsigned int eleOrder,
+        const DA<dim> &ghostExchange)  //TODO factor part as class GhostExchange
+    {
+      using OwnershipT = DendroIntL;
+      using DirtyT = char;
+
+      OwnershipT globElementId = globElementBegin;  // enumerate elements in loop.
+
+      const unsigned int nPe = intPow(eleOrder+1, dim);
+
+      MatvecBaseOut<dim, OwnershipT, false> elementLoop(
+          ghostedNodeList.size(),
+          1,
+          eleOrder,
+          false,
+          0,
+          ghostedNodeList.data(),
+          octList.data(),
+          octList.size(),
+          (octList.size() ? octList.front() : dummyOctant<dim>()),
+          (octList.size() ? octList.back() : dummyOctant<dim>())
+          );
+
+      std::vector<OwnershipT> leafBuffer(nPe, 0);
+      std::vector<DirtyT> leafDirty(nPe, 0);
+      while (!elementLoop.isFinished())
+      {
+        if (elementLoop.isPre() && elementLoop.subtreeInfo().isLeaf())
+        {
+          for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+            if (elementLoop.subtreeInfo().readNodeNonhangingIn()[nIdx])
+            {
+              leafBuffer[nIdx] = globElementId;
+              leafDirty[nIdx] = true;
+            }
+            else
+            {
+              leafBuffer[nIdx] = 0;
+              leafDirty[nIdx] = true;
+            }
+
+          elementLoop.subtreeInfo().overwriteNodeValsOut(leafBuffer.data(), leafDirty.data());
+          elementLoop.next();
+          globElementId++;
+        }
+        else
+          elementLoop.step();
+      }
+
+      std::vector<OwnershipT> ghostedOwners(ghostedNodeList.size(), 0);
+      std::vector<DirtyT> ghostedDirty(ghostedNodeList.size(), 0);
+
+      const size_t writtenSz = elementLoop.finalize(ghostedOwners.data(), ghostedDirty.data());
+
+      ghostExchange.writeToGhostsBegin(ghostedOwners.data(), 1, ghostedDirty.data());
+      ghostExchange.writeToGhostsEnd(ghostedOwners.data(), 1, false, ghostedDirty.data()); // overwrite mode
+      ghostExchange.readFromGhostBegin(ghostedOwners.data(), 1);
+      ghostExchange.readFromGhostEnd(ghostedOwners.data(), 1);
+
+      return ghostedOwners;
     }
 
     template <typename ...Args>
@@ -179,7 +304,7 @@ namespace ot
      */
     template <unsigned int dim>
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-    void DA<dim>::construct(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::constructStratum(const ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
       // TODO remove grainSz parameter from ODA, which must respect the tree!
 
@@ -530,7 +655,20 @@ namespace ot
       }
 
       // Finish assigning object attributes.
-      construct(myTNCoords, scatterMap, gatherMap, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+      this->_constructInner(myTNCoords, scatterMap, gatherMap, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+
+      m_totalSendSz = computeTotalSendSz(m_sm);
+      m_totalRecvSz = totalRecvSz(m_gm);
+
+      // TODO for cleaner code, factor the scattermap/gatthermap as GhostExchange
+      // for now, use the DA interface for ghost exchange.
+      const DA<dim> &ghostExchange = *this;
+      m_ghostedNodeOwnerElements = getNodeElementOwnership(
+          m_uiGlobalElementBegin,
+          distTree.getTreePartFiltered(stratum),
+          m_tnCoords,
+          order,
+          ghostExchange); //need ghost maps
     }
 
 
@@ -648,7 +786,7 @@ namespace ot
     // construct() - given the partition of owned points.
     //
     template <unsigned int dim>
-    void DA<dim>::construct(const std::vector<TreeNode<C,dim>> &ownedNodes,
+    void DA<dim>::_constructInner(const std::vector<TreeNode<C,dim>> &ownedNodes,
                             const ScatterMap &sm,
                             const GatherMap &gm,
                             unsigned int eleOrder,
@@ -715,14 +853,7 @@ namespace ot
         m_treePartFront = *treePartFront;
         m_treePartBack = *treePartBack;
 
-        //TODO locally sort our partition of the DA.
-
-        unsigned long long locNodeSz = ownedNodes.size();
-        unsigned long long globNodeSz = 0;
-        par::Mpi_Allreduce(&locNodeSz, &globNodeSz, 1, MPI_SUM, activeComm);
-
-        m_uiLocalNodalSz = locNodeSz;
-        m_uiGlobalNodeSz = globNodeSz;
+        m_uiLocalNodalSz = ownedNodes.size();
 
         // Gather/scatter maps.
         m_sm = sm;
@@ -743,8 +874,6 @@ namespace ot
       else
       {
         m_uiLocalNodalSz = 0;
-        m_uiGlobalNodeSz = 0;
-
         m_uiTotalNodalSz   = 0;
         m_uiPreNodeBegin   = 0;
         m_uiPreNodeEnd     = 0;
@@ -754,10 +883,17 @@ namespace ot
         m_uiPostNodeEnd    = 0;
       }
 
+
       // Find offset into the global array.  All ranks take part.
       DendroIntL locSz = m_uiLocalNodalSz;
+      par::Mpi_Allreduce(&locSz, &m_uiGlobalNodeSz, 1, MPI_SUM, m_uiGlobalComm);
       par::Mpi_Scan(&locSz, &m_uiGlobalRankBegin, 1, MPI_SUM, m_uiGlobalComm);
       m_uiGlobalRankBegin -= locSz;
+
+      DendroIntL elementCount = m_uiLocalElementSz;
+      par::Mpi_Allreduce(&elementCount, &m_uiGlobalElementSz, 1, MPI_SUM, m_uiGlobalComm);
+      par::Mpi_Scan(&elementCount, &m_uiGlobalElementBegin, 1, MPI_SUM, m_uiGlobalComm);
+      m_uiGlobalElementBegin -= elementCount;
 
       if (m_uiIsActive)
       {
@@ -1171,7 +1307,7 @@ namespace ot
 
 
     template <unsigned int dim>
-    void DA<dim>::petscReadFromGhostBegin(PetscScalar* vecArry, unsigned int dof) 
+    void DA<dim>::petscReadFromGhostBegin(PetscScalar* vecArry, unsigned int dof) const
     {
         if(!m_uiIsActive)
             return;
@@ -1182,7 +1318,7 @@ namespace ot
     }
 
     template <unsigned int dim>
-    void DA<dim>::petscReadFromGhostEnd(PetscScalar* vecArry, unsigned int dof) 
+    void DA<dim>::petscReadFromGhostEnd(PetscScalar* vecArry, unsigned int dof) const
     {
         if(!m_uiIsActive)
             return;
@@ -1207,7 +1343,7 @@ namespace ot
 
 
     template <unsigned int dim>
-    PetscErrorCode DA<dim>::petscDestroyVec(Vec & vec)
+    PetscErrorCode DA<dim>::petscDestroyVec(Vec & vec) const
     {
             VecDestroy(&vec);
             vec=NULL;

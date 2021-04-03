@@ -235,6 +235,12 @@ namespace ot
         return;
       }
 
+
+      // TODO TODO TODO
+      //   Somehow send nodes and/or check sorting order
+      //   so that nodes end up in right order.
+
+
       const DendroIntL mySrcGlobBegin = srcDA.getGlobalRankBegin();
       const DendroIntL myDstGlobBegin = dstDA.getGlobalRankBegin();
       const DendroIntL mySrcGlobEnd = mySrcGlobBegin + srcDA.getLocalNodalSz();
@@ -251,6 +257,20 @@ namespace ot
 
       const bool isActiveSrc = srcDA.isActive();
       const bool isActiveDst = dstDA.isActive();
+
+      if (printDebug && rProc == 0)
+      {
+        std::stringstream ss;
+        ss << "allSrcSplit == ";
+        for (DendroIntL split : allSrcSplit)
+          ss << " " << split;
+        ss << "\n";
+        ss << "allDstSplit == ";
+        for (DendroIntL split : allDstSplit)
+          ss << " " << split;
+        ss << "\n";
+        fprintf(stderr, "\n%s\n", ss.str().c_str());
+      }
 
       if (!isActiveSrc && !isActiveDst)
       {
@@ -289,18 +309,18 @@ namespace ot
       dst_r0 = r_lb;
 
       if(printDebug) std::cerr << rankPrefix << "Begin binary search (#2)\n";
-      // Search for last rank : dstBegin[rank] < mySrcEnd
+      // Search for first rank after dst_r0: mySrcEnd <= dstEnd[rank]
       r_ub = nProc - 1;
       { while (r_lb < r_ub)
         {
-          const int test = (r_lb + r_ub + 1)/2;
-          if (allDstSplit[test + bSplit] < mySrcGlobEnd)
+          const int test = (r_lb + r_ub)/2;
+          if (mySrcGlobEnd <= allDstSplit[test + eSplit])
           {
-            r_lb = test;
+            r_ub = test;
           }
           else
           {
-            r_ub = test - 1;
+            r_lb = test + 1;
           }
         }
       }
@@ -325,18 +345,18 @@ namespace ot
       src_r0 = r_lb;
 
       if(printDebug) std::cerr << rankPrefix << "Begin binary search (#4)\n";
-      // Search for last rank : srcBegin[rank] < myDstEnd
+      // Search for first rank after src_r0: myDstEnd <= srcEnd[rank]
       r_ub = nProc - 1;
       { while (r_lb < r_ub)
         {
-          const int test = (r_lb + r_ub + 1)/2;
-          if (allSrcSplit[test + bSplit] < myDstGlobEnd)
+          const int test = (r_lb + r_ub)/2;
+          if (myDstGlobEnd <= allSrcSplit[test + eSplit])
           {
-            r_lb = test;
+            r_ub = test;
           }
           else
           {
-            r_ub = test - 1;
+            r_lb = test + 1;
           }
         }
       }
@@ -347,16 +367,32 @@ namespace ot
       // The binary search should automaticallly take care of the case
       // that some ranks are not active, but if it doesn't, give error.
       if (!(
-            !(allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin) &&
-            !(allDstSplit[dst_r1+1 + bSplit] < mySrcGlobEnd) &&
-            !(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin) &&
-            !(allSrcSplit[src_r1+1 + bSplit] < myDstGlobEnd)
+            !(dst_r0+1 < nProc   && allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin) &&
+            !(dst_r1-1 >= dst_r0 && allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd) &&
+            !(src_r0+1 < nProc   && allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin) &&
+            !(src_r1-1 >= src_r0 && allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd)
            ))
       {
-        assert(!(allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
-        assert(!(allDstSplit[dst_r1+1 + bSplit] < mySrcGlobEnd));
-        assert(!(allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
-        assert(!(allSrcSplit[src_r1+1 + bSplit] < myDstGlobEnd));
+        fprintf(stderr, "%s:\n"
+                        "  mySrcGlobBegin--End == %llu--%llu\n"
+                        "  myDstGlobBegin--End == %llu--%llu\n"
+                        "  dst_r0+1 + bSplit == %u    -->   allDstSplit[] == %llu\n"
+                        "  dst_r1-1 + eSplit == %u    -->   allDstSplit[] == %llu\n"
+                        "  src_r0+1 + bSplit == %u    -->   allSrcSplit[] == %llu\n"
+                        "  src_r1-1 + eSplit == %u    -->   allSrcSplit[] == %llu\n",
+                        rankPrefix.c_str(),
+                        mySrcGlobBegin, mySrcGlobEnd,
+                        myDstGlobBegin, myDstGlobEnd,
+                        dst_r0+1 + bSplit, allDstSplit[dst_r0+1 + bSplit],
+                        dst_r1-1 + eSplit, allDstSplit[dst_r1-1 + eSplit],
+                        src_r0+1 + bSplit, allSrcSplit[src_r0+1 + bSplit],
+                        src_r1-1 + eSplit, allSrcSplit[src_r1-1 + eSplit]
+            );
+
+        assert(!(dst_r0+1 < nProc   && allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
+        assert(!(dst_r1-1 >= dst_r0 && allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd));
+        assert(!(src_r0+1 < nProc   && allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
+        assert(!(src_r1-1 >= src_r0 && allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd));
       }
 
       std::string dstRangeStr, srcRangeStr;
@@ -380,11 +416,11 @@ namespace ot
       // otherDstBegin[r], mySrcBegin  <=  mySrcRank[x]  <  mySrcEnd, otherDstEnd[r];
       // otherSrcBegin[r], myDstBegin  <=  myDstRank[x]  <  myDstEnd, otherSrcEnd[r];
       for (int i = 0; i < dstTo.size(); ++i)
-        dstCount[i] = ndofs * (fmin(mySrcGlobEnd, allDstSplit[dstTo[i] + eSplit])
-                               - fmax(mySrcGlobBegin, allDstSplit[dstTo[i] + bSplit]));
+        dstCount[i] = ndofs * (std::min(mySrcGlobEnd, allDstSplit[dstTo[i] + eSplit])
+                               - std::max(mySrcGlobBegin, allDstSplit[dstTo[i] + bSplit]));
       for (int i = 0; i < srcFrom.size(); ++i)
-        srcCount[i] = ndofs * (fmin(myDstGlobEnd, allSrcSplit[srcFrom[i] + eSplit])
-                               - fmax(myDstGlobBegin, allSrcSplit[srcFrom[i] + bSplit]));
+        srcCount[i] = ndofs * (std::min(myDstGlobEnd, allSrcSplit[srcFrom[i] + eSplit])
+                               - std::max(myDstGlobBegin, allSrcSplit[srcFrom[i] + bSplit]));
       std::vector<int> dstDspls(1, 0);
       std::vector<int> srcDspls(1, 0);
       for (int c : dstCount)
@@ -463,7 +499,7 @@ namespace ot
       // Empty self-sends/recvs don't count.
       if (selfSrcI != -1 && srcCount[selfSrcI] == 0)
         selfSrcI = -1;
-      if (selfDstI != -1 && srcCount[selfDstI] == 0)
+      if (selfDstI != -1 && dstCount[selfDstI] == 0)
         selfDstI = -1;
 
       const bool selfConsistentSendRecv = (selfSrcI != -1) == (selfDstI != -1);
@@ -657,11 +693,40 @@ namespace ot
         std::copy(srcStart, srcStart + dof*m_uiLocalNodalSz, local);
     }
 
+    template <unsigned int dim>
+    template<typename T>
+    void DA<dim>::nodalVecToGhostedNodal(const std::vector<T> &in, std::vector<T> &out,bool isAllocated,unsigned int dof) const
+    {
+        if(!(m_uiIsActive))
+            return;
+
+        if(!isAllocated)
+            createVector<T>(out,false,true,dof);
+
+        // Assumes layout [abc][abc][...], so just need single shift.
+        std::copy(in.cbegin(), in.cend(), out.begin() + dof*m_uiLocalNodeBegin);
+    }
+
+    template <unsigned int dim>
+    template<typename T>
+    void DA<dim>::ghostedNodalToNodalVec(const std::vector<T> gVec, std::vector<T> &local,bool isAllocated,unsigned int dof) const
+    {
+        if(!(m_uiIsActive))
+            return;
+
+        if(!isAllocated)
+            createVector(local,false,false,dof);
+
+        // Assumes layout [abc][abc][...], so just need single shift.
+        typename std::vector<T>::const_iterator srcStart = gVec.cbegin() + dof*m_uiLocalNodeBegin;
+        std::copy(srcStart, srcStart + dof*m_uiLocalNodalSz, local.begin());
+    }
+
 
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::readFromGhostBegin(T* vec,unsigned int dof)
+    void DA<dim>::readFromGhostBegin(T* vec,unsigned int dof) const
     {
         // Send to downstream, recv from upstream.
 
@@ -730,7 +795,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::readFromGhostEnd(T *vec,unsigned int dof)
+    void DA<dim>::readFromGhostEnd(T *vec,unsigned int dof) const
     {
         if (m_uiGlobalNpes==1)
             return;
@@ -768,7 +833,7 @@ namespace ot
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof)
+    void DA<dim>::writeToGhostsBegin(T *vec, unsigned int dof, const char * isDirtyOut) const
     {
         // The same as readFromGhosts, but roles reversed:
         // Send to upstream, recv from downstream.
@@ -782,11 +847,22 @@ namespace ot
           T* dnstB = NULL;
           T* upstB = NULL;
 
+          char* dnstB_dirty = NULL;
+          const char* upstB_dirty = NULL;
+
           // 1. Prepare asynchronous exchange context.
           const unsigned int nUpstProcs = m_gm.m_recvProc.size();
           const unsigned int nDnstProcs = m_sm.m_sendProc.size();
+          m_uiMPIContexts.reserve(m_uiMPIContexts.size() + 2);
           m_uiMPIContexts.emplace_back(vec, typeid(T).hash_code(), nUpstProcs, nDnstProcs);
           AsyncExchangeContex &ctx = m_uiMPIContexts.back();
+
+          AsyncExchangeContex *ctx_dirty = nullptr;
+          if (isDirtyOut)
+          {
+            m_uiMPIContexts.emplace_back(isDirtyOut, typeid(char).hash_code(), nUpstProcs, nDnstProcs);
+            ctx_dirty = &m_uiMPIContexts.back();
+          }
 
           const size_t upstBSz = m_uiTotalNodalSz - m_uiLocalNodalSz;
           const size_t dnstBSz = m_sm.m_map.size();
@@ -805,6 +881,21 @@ namespace ot
               size_t dnstProc = m_sm.m_sendProc[dnstIdx];
               par::Mpi_Irecv(dnstProcStart, dnstCount, dnstProc, m_uiCommTag, m_uiActiveComm, &reql[dnstIdx]);
             }
+
+            if (isDirtyOut)
+            {
+              ctx_dirty->allocateSendBuffer(sizeof(char)*dnstBSz*1);  // Re-use the send buffer for receiving.
+              dnstB_dirty = (char*) ctx_dirty->getSendBuffer();
+              MPI_Request *reql = ctx_dirty->getDnstRequestList();
+
+              for (unsigned int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
+              {
+                char *dnstProcStart = dnstB_dirty + 1 * m_sm.m_sendOffsets[dnstIdx];
+                size_t dnstCount = 1*m_sm.m_sendCounts[dnstIdx];
+                size_t dnstProc = m_sm.m_sendProc[dnstIdx];
+                par::Mpi_Irecv(dnstProcStart, dnstCount, dnstProc, m_uiCommTag+1, m_uiActiveComm, &reql[dnstIdx]);
+              }
+            }
           }
 
           // 3. Send data. Since vec is collated [abc abc], ghosts can be sent directly from vec.
@@ -822,16 +913,31 @@ namespace ot
               size_t upstProc = m_gm.m_recvProc[upstIdx];
               par::Mpi_Isend(upstProcStart, upstCount, upstProc, m_uiCommTag, m_uiActiveComm, &reql[upstIdx]);
             }
+
+            if (isDirtyOut)
+            {
+              upstB_dirty = isDirtyOut;
+              MPI_Request *reql = ctx_dirty->getUpstRequestList();
+
+              for (unsigned int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
+              {
+                const char *upstProcStart = upstB_dirty + 1*m_gm.m_recvOffsets[upstIdx];
+                size_t upstCount = 1*m_gm.m_recvCounts[upstIdx];
+                size_t upstProc = m_gm.m_recvProc[upstIdx];
+                par::Mpi_Isend(upstProcStart, upstCount, upstProc, m_uiCommTag+1, m_uiActiveComm, &reql[upstIdx]);
+              }
+            }
           }
         }
 
         m_uiCommTag++;   // inactive procs also advance tag.
+        m_uiCommTag += bool(isDirtyOut);
     }
 
 
     template <unsigned int dim>
     template <typename T>
-    void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof)
+    void DA<dim>::writeToGhostsEnd(T *vec, unsigned int dof, bool useAccumulation, const char * isDirtyOut) const
     {
         // The same as readFromGhosts, but roles reversed:
         // Send to upstream, recv from downstream.
@@ -843,6 +949,8 @@ namespace ot
             return;
 
         T* dnstB = NULL;
+
+        char* dnstB_dirty = NULL;
 
         // 1. Find asynchronous exchange context.
         MPI_Request *reql;
@@ -856,6 +964,17 @@ namespace ot
 
         dnstB = (T*) ctxPtr->getSendBuffer();
 
+
+        auto ctx_dirty = m_uiMPIContexts.begin();
+        if (isDirtyOut)
+        {
+          ctx_dirty = std::find_if(
+              m_uiMPIContexts.begin(), m_uiMPIContexts.end(),
+              [isDirtyOut](const AsyncExchangeContex &c){ return ((char*) c.getBuffer()) == isDirtyOut; });
+          assert(ctx_dirty->getBufferType() == typeid(char).hash_code());
+          dnstB_dirty = (char*) ctx_dirty->getSendBuffer();
+        }
+
         const unsigned int nUpstProcs = m_gm.m_recvProc.size();
         const unsigned int nDnstProcs = m_sm.m_sendProc.size();
         const size_t dnstBSz = m_sm.m_map.size();
@@ -865,14 +984,27 @@ namespace ot
         for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
           MPI_Wait(&reql[dnstIdx], &status);
 
+        if (isDirtyOut)
+        {
+          reql = ctx_dirty->getDnstRequestList();
+          for (int dnstIdx = 0; dnstIdx < nDnstProcs; dnstIdx++)
+            MPI_Wait(&reql[dnstIdx], &status);
+        }
+
         // 3. "De-stage" the received downstream data.
         for (size_t k = 0; k < dnstBSz; k++)
         {
-          // Instead of simply copying from the downstream data, we need to accumulate it.
-          const T *nodeSrc = dnstB + dof * k;
-          /// std::copy(nodeSrc, nodeSrc + dof, vec + dof * m_sm.m_map[k]);
-          for (unsigned int v = 0; v < dof; v++)
-            vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] += nodeSrc[v];
+          if (isDirtyOut == nullptr || dnstB_dirty[k])
+          {
+            // Instead of simply copying from the downstream data, we need to accumulate it.
+            const T *nodeSrc = dnstB + dof * k;
+            /// std::copy(nodeSrc, nodeSrc + dof, vec + dof * m_sm.m_map[k]);
+            for (unsigned int v = 0; v < dof; v++)
+              if (useAccumulation)
+                vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] += nodeSrc[v];
+              else
+                vec[dof * (m_sm.m_map[k] + m_uiLocalNodeBegin) + v] = nodeSrc[v];
+          }
         }
 
         // 4. Wait on sends.
@@ -880,10 +1012,23 @@ namespace ot
         for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
           MPI_Wait(&reql[upstIdx], &status);
 
+        if (isDirtyOut)
+        {
+          reql = ctx_dirty->getUpstRequestList();
+          for (int upstIdx = 0; upstIdx < nUpstProcs; upstIdx++)
+            MPI_Wait(&reql[upstIdx], &status);
+        }
+
         // 5. Release the asynchronous exchange context.
         /// ctxPtr->deAllocateRecvBuffer();
         ctxPtr->deAllocateSendBuffer();
         m_uiMPIContexts.erase(ctxPtr);
+
+        if (isDirtyOut)
+        {
+          ctx_dirty->deAllocateSendBuffer();
+          m_uiMPIContexts.erase(ctx_dirty);
+        }
     }
 
     template <unsigned int dim>

@@ -90,14 +90,14 @@ int main(int argc, char * argv[]){
 
   // distRemeshSubdomain()
   ot::DistTree<unsigned int, DIM> newDistTree, surrDistTree;
-  ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, 0.3);
+  ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, ot::RemeshPartition::SurrogateInByOut, 0.3);
   const std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> &newTree = newDistTree.getTreePartFiltered();
   const std::vector<ot::TreeNode<DENDRITE_UINT, DIM>> &surrTree = surrDistTree.getTreePartFiltered();
 
   //Old way, returns back the whole domain.
   /// std::vector<ot::TreeNode<DENDRITE_UINT, DIM>>  newTree;
   /// std::vector<ot::TreeNode<DENDRITE_UINT, DIM>>  surrTree;
-  /// ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(treePart, refineFlags, newTree, surrTree, 0.3, MPI_COMM_WORLD);
+  /// ot::SFC_Tree<DENDRITE_UINT , DIM>::distRemeshWholeDomain(treePart, refineFlags, newTree, surrTree, 0.3, ot::RemeshPartition::SurrogateInByOut, MPI_COMM_WORLD);
 
   std::cout << "\n-------\n";
 

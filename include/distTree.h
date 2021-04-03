@@ -41,10 +41,12 @@ namespace ot
   class DistTree
   {
     public:
+      enum CoalesceOption : bool { NoCoalesce = false, Coalesce = true };
+
       // Member functions.
       //
       DistTree();
-      DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm);
+      DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm, CoalesceOption coalesceSiblings = Coalesce);
       DistTree(const DistTree &other) { this->operator=(other); }
       DistTree & operator=(const DistTree &other);
 
@@ -76,11 +78,29 @@ namespace ot
                                        const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                        DistTree &outTree,
                                        DistTree &surrogateTree,
+                                       RemeshPartition remeshPartition,
                                        double loadFlexibility );
 
+      // insertRefinedGrid()
+      //
+      static void insertRefinedGrid(DistTree &distTree,
+                                    DistTree &surrDistTree,
+                                    const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                    GridAlignment gridAlignment,
+                                    double loadFlexibility);
+
+      //defineCoarsenedGrid()
+      //
+      static void defineCoarsenedGrid(DistTree &distTree,
+                                      DistTree &surrDistTree,
+                                      const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                      GridAlignment gridAlignment,
+                                      double loadFlexibility);
+
+
+
       // generateGridHierarchyUp()
-      //   TODO should return surrogate DistTree
-      void generateGridHierarchyUp(bool isFixedNumStrata,
+      DistTree generateGridHierarchyUp(bool isFixedNumStrata,
                                  unsigned int lev,
                                  double loadFlexibility);
 
@@ -114,7 +134,7 @@ namespace ot
       TreeNode<T, dim> getTreePartBack(int stratum = 0) const;
 
 
-      int getNumStrata() { return m_numStrata; }
+      int getNumStrata() const { return m_numStrata; }
 
 
       // These deciders can be called directly.
@@ -202,6 +222,7 @@ namespace ot
       // Member variables.
       //
       MPI_Comm m_comm;
+      CoalesceOption m_coalesceSiblings;
       ::ibm::DomainDecider m_domainDecider;
       std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> m_domainDeciderTN_asCell;
       std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> m_domainDeciderTN_asPoint;
@@ -209,12 +230,12 @@ namespace ot
       bool m_hasBeenFiltered;
 
       // Multilevel grids, finest first. Must initialize with at least one level.
+      //TODO make it a vector of unique pointers to vector, for efficient grid insertion
       std::vector<std::vector<TreeNode<T, dim>>> m_gridStrata;
       std::vector<TreeNode<T, dim>> m_tpFrontStrata;
       std::vector<TreeNode<T, dim>> m_tpBackStrata;
       std::vector<size_t> m_originalTreePartSz;
       std::vector<size_t> m_filteredTreePartSz;
-
 
       int m_numStrata;
 
@@ -226,6 +247,9 @@ namespace ot
       TreeNode<T, dim> &get_m_treePartBack() { return m_tpBackStrata[0]; }
       const TreeNode<T, dim> &get_m_treePartBack() const { return m_tpBackStrata[0]; }
 
+      void insertStratum(int newStratum, std::vector<TreeNode<T, dim>> &treePart);
+      void replaceStratum(int atStratum, std::vector<TreeNode<T, dim>> &treePart);
+      void filterStratum(int stratum);
 
       void assignDomainDecider(const ::ibm::DomainDecider &domainDecider);
 
@@ -253,6 +277,10 @@ namespace ot
         return m_domainDecider(physCoords, 0.0);
       }
 
+    private:
+      void generateGridHierarchyUp_tooClevertoVerify(bool isFixedNumStrata,
+                                                     unsigned int lev,
+                                                     double loadFlexibility);
   };
 
 
@@ -279,8 +307,9 @@ namespace ot
   // DistTree() - constructor
   //
   template <typename T, unsigned int dim>
-  DistTree<T, dim>::DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm)
+  DistTree<T, dim>::DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm, CoalesceOption coalesceSiblings)
   : m_comm(comm),
+    m_coalesceSiblings(coalesceSiblings),
     m_gridStrata(m_uiMaxDepth+1),
     m_tpFrontStrata(m_uiMaxDepth+1),
     m_tpBackStrata(m_uiMaxDepth+1),
@@ -288,7 +317,7 @@ namespace ot
     m_filteredTreePartSz(m_uiMaxDepth+1, 0),
     m_numStrata(1)
   {
-    if (comm != MPI_COMM_NULL)
+    if (coalesceSiblings == Coalesce && comm != MPI_COMM_NULL)
       SFC_Tree<T, dim>::distCoalesceSiblings(treePart, comm);
 
     m_originalTreePartSz[0] = treePart.size();
@@ -306,6 +335,47 @@ namespace ot
 
     this->filterTree(DistTree::defaultDomainDecider);
   }
+
+
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::insertStratum(int newStratum, std::vector<TreeNode<T, dim>> &treePart)
+  {
+    if (m_coalesceSiblings == Coalesce && m_comm != MPI_COMM_NULL)
+      SFC_Tree<T, dim>::distCoalesceSiblings(treePart, m_comm);
+
+    m_tpFrontStrata.insert(m_tpFrontStrata.begin() + newStratum,
+        (treePart.size() > 0 ? treePart.front() : TreeNode<T, dim>()));
+    m_tpBackStrata.insert(m_tpBackStrata.begin() + newStratum,
+        (treePart.size() > 0 ? treePart.back() : TreeNode<T, dim>()));
+
+    m_originalTreePartSz.insert(m_originalTreePartSz.begin() + newStratum,
+      treePart.size());
+    m_filteredTreePartSz.insert(m_filteredTreePartSz.begin() + newStratum,
+      treePart.size());
+
+    m_gridStrata.insert(m_gridStrata.begin() + newStratum, std::vector<TreeNode<T, dim>>());
+    std::swap(m_gridStrata[newStratum], treePart);  // Steal the tree vector.
+
+    m_numStrata++;
+  }
+
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::replaceStratum(int atStratum, std::vector<TreeNode<T, dim>> &treePart)
+  {
+    if (m_coalesceSiblings == Coalesce && m_comm != MPI_COMM_NULL)
+      SFC_Tree<T, dim>::distCoalesceSiblings(treePart, m_comm);
+
+    m_tpFrontStrata[atStratum] =
+        (treePart.size() > 0 ? treePart.front() : TreeNode<T, dim>());
+    m_tpBackStrata[atStratum] =
+        (treePart.size() > 0 ? treePart.back() : TreeNode<T, dim>());
+
+    m_originalTreePartSz[atStratum] = treePart.size();
+    m_filteredTreePartSz[atStratum] = treePart.size();
+
+    std::swap(m_gridStrata[atStratum], treePart);  // Steal the tree vector.
+  }
+
 
 
 
@@ -402,27 +472,33 @@ namespace ot
     this->assignDomainDecider(domainDecider);
 
     for (int l = 0; l < m_numStrata; ++l)
-    {
-      const size_t oldSz = m_gridStrata[l].size();
-      size_t ii = 0;
-
-      m_filteredTreePartSz[l] = ii;
-
-      ::ibm::Partition subdomain;
-
-      // Keep finding and deleting elements.
-      for ( ; ii < oldSz ; ii++)
-        if ( (subdomain = this->m_domainDeciderTN_asCell(m_gridStrata[l][ii])) != ::ibm::IN )
-        {
-          m_gridStrata[l][m_filteredTreePartSz[l]] = std::move(m_gridStrata[l][ii]);
-          m_gridStrata[l][m_filteredTreePartSz[l]].setIsOnTreeBdry(subdomain == ::ibm::INTERCEPTED);
-          m_filteredTreePartSz[l]++;
-        }
-
-      m_gridStrata[l].resize(m_filteredTreePartSz[l]);
-    }
+      this->filterStratum(l);
 
     m_hasBeenFiltered = true;
+  }
+
+
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::filterStratum(int stratum)
+  {
+    const int l = stratum;
+    const size_t oldSz = m_gridStrata[l].size();
+    size_t ii = 0;
+
+    m_filteredTreePartSz[l] = ii;
+
+    ::ibm::Partition subdomain;
+
+    // Keep finding and deleting elements.
+    for ( ; ii < oldSz ; ii++)
+      if ( (subdomain = this->m_domainDeciderTN_asCell(m_gridStrata[l][ii])) != ::ibm::IN )
+      {
+        m_gridStrata[l][m_filteredTreePartSz[l]] = std::move(m_gridStrata[l][ii]);
+        m_gridStrata[l][m_filteredTreePartSz[l]].setIsOnTreeBdry(subdomain == ::ibm::INTERCEPTED);
+        m_filteredTreePartSz[l]++;
+      }
+
+    m_gridStrata[l].resize(m_filteredTreePartSz[l]);
   }
 
 

@@ -40,11 +40,13 @@ protected:
          * @brief constructs an FEM stiffness matrix class.
          * @param[in] da: octree DA
          * */
-        feMatrix(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
+        feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
 
         feMatrix(feMatrix &&other);
 
         ~feMatrix();
+
+        unsigned ndofs() const { return m_uiDof; }
 
         /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
           * @param [in] in input vector u
@@ -127,6 +129,7 @@ protected:
          * @param[in] scale: scalaing factror
          **/
 
+        //TODO Output channel of preMatVec may be unexpected, should clarify use case.
         bool preMatVec(const VECType* in, VECType* out,double scale=1.0) {
             // If this is asLeaf().preMatVec(), i.e. there is not an override, don't recurse.
             static bool entered = false;
@@ -147,6 +150,7 @@ protected:
          * @param[in] scale: scalaing factror
          * */
 
+        //TODO Input channel of postMatVec may be unexpected, should clarify use case.
         bool postMatVec(const VECType* in, VECType* out,double scale=1.0) {
             // If this is asLeaf().postMatVec(), i.e. there is not an override, don't recurse.
             static bool entered = false;
@@ -212,7 +216,7 @@ protected:
 };
 
 template <typename LeafT, unsigned int dim>
-feMatrix<LeafT,dim>::feMatrix(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof)
+feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof)
   : feMat<dim>(da, octList)
 {
     m_uiDof=dof;
@@ -259,7 +263,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   using namespace std::placeholders;   // Convenience for std::bind().
 
   // Shorter way to refer to our member DA.
-  ot::DA<dim> * &m_oda = feMat<dim>::m_uiOctDA;
+  const ot::DA<dim> * m_oda = this->da();
 
   // Static buffers for ghosting. Check/increase size.
   static std::vector<VECType> inGhosted, outGhosted;
@@ -273,7 +277,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   m_oda->template nodalVecToGhostedNodal<VECType>(in, inGhostedPtr, true, m_uiDof);
 
   // 1.a. Override input data with pre-matvec initialization.
-  preMatVec(in, inGhostedPtr + m_oda->getLocalNodeBegin(), scale);
+  preMatVec(in, inGhostedPtr + this->ndofs() * m_oda->getLocalNodeBegin(), scale);
   // TODO what is the return value supposed to represent?
 
 #ifdef DENDRO_KT_MATVEC_BENCH_H
@@ -323,7 +327,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, m_uiDof);
 
   // 5.a. Override output data with post-matvec re-initialization.
-  postMatVec(outGhostedPtr + m_oda->getLocalNodeBegin(), out, scale);
+  postMatVec(outGhostedPtr + this->ndofs() * m_oda->getLocalNodeBegin(), out, scale);
   // TODO what is the return value supposed to represent?
 }
 
@@ -334,11 +338,13 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
   using namespace std::placeholders;   // Convenience for std::bind().
 
   // Shorter way to refer to our member DA.
-  ot::DA<dim> * &m_oda = feMat<dim>::m_uiOctDA;
+  const ot::DA<dim> * m_oda = this->da();
 
   // Static buffers for ghosting. Check/increase size.
   static std::vector<VECType> outGhosted;
+  /// static std::vector<char> outDirty;
   m_oda->template createVector<VECType>(outGhosted, false, true, m_uiDof);
+  /// m_oda->template createVector<char>(outDirty, false, true, 1);
   std::fill(outGhosted.begin(), outGhosted.end(), 0);
   VECType *outGhostedPtr = outGhosted.data();
 
@@ -350,9 +356,10 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
 #ifdef DENDRO_KT_GMG_BENCH_H
   bench::t_matvec.start();
 #endif
-  fem::locSetDiag(outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),
+  fem::locSetDiag(outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(), this->octList(),
       *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
       eleSet, scale, m_oda->getReferenceElement());
+      /// outDirty.data());
 
 #ifdef DENRO_KT_GMG_BENCH_H
   bench::t_matvec.stop();
@@ -366,6 +373,8 @@ void feMatrix<LeafT,dim>::setDiag(VECType *out, double scale)
   // Downstream->Upstream ghost exchange.
   m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof);
   m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, m_uiDof);
+  /// m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof, outDirty.data());
+  /// m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, m_uiDof, false, outDirty.data());
 
 #ifdef DENRO_KT_GMG_BENCH_H
   bench::t_ghostexchange.stop();
@@ -546,7 +555,7 @@ class SubMatView
 template <typename LeafT, unsigned int dim>
 ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
 {
-  const ot::DA<dim> &m_oda = *feMat<dim>::m_uiOctDA;
+  const ot::DA<dim> &m_oda = *this->da();
   const unsigned int eleOrder = m_oda.getElementOrder();
   const unsigned int nPe = m_oda.getNumNodesPerElement();
   ot::MatCompactRows matRowChunks(nPe, m_uiDof);

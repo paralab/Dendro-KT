@@ -195,8 +195,11 @@ class DA
     /**@brief: post ghost end*/ 
     size_t m_uiPostNodeEnd;
 
-    /**@brief: position of local segment in the distributed array. */
+    /**@brief: position of local nodal segment in the distributed array. */
     DendroIntL m_uiGlobalRankBegin;
+
+    /**@brief: position of local elements segment in the distributed array. */
+    DendroIntL m_uiGlobalElementBegin;
 
     /**@brief: map, size of ghosted node array, gives global node indices.*/
     std::vector<RankI> m_uiLocalToGlobalNodalMap;
@@ -207,14 +210,20 @@ class DA
     /**@brief: internal gather map. */
     GatherMap m_gm;
 
+    size_t m_totalSendSz;
+    size_t m_totalRecvSz;
+
     /**@brief contexts for async data transfers*/
-    std::vector<AsyncExchangeContex> m_uiMPIContexts;
+    mutable std::vector<AsyncExchangeContex> m_uiMPIContexts;
 
     /**@brief: mpi tags*/
-    unsigned int m_uiCommTag;
+    mutable unsigned int m_uiCommTag;
 
     /**@brief: total number of nodes accross all the processes*/
     DendroIntL m_uiGlobalNodeSz;
+
+    /**@brief: total number of elements across all processes*/
+    DendroIntL m_uiGlobalElementSz;
 
     /**@brief: Global mpi communicator */ 
     MPI_Comm m_uiGlobalComm; 
@@ -254,6 +263,9 @@ class DA
 
     /**@brief: coordinates of nodes in the vector. */
     std::vector<TreeNode<C,dim>> m_tnCoords;
+
+    /**@brief: for each (ghosted) node, the global element id of owning element. */
+    std::vector<DendroIntL> m_ghostedNodeOwnerElements;
 
     //TODO I don't think RefElement member belongs in DA (distributed array),
     //  but it has to go somewhere that the polyOrder is known.
@@ -299,7 +311,7 @@ class DA
         DA(const DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
         // Construct multiple DA for multigrid.
-        static void multiLevelDA(std::vector<DA> &outDAPerStratum, DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+        static void multiLevelDA(std::vector<DA> &outDAPerStratum, const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
 
         /** @brief Construct oda for regular grid. */
@@ -321,14 +333,28 @@ class DA
          * */
         ~DA();
 
+
+        // move constructor
+        /// DA(DA &&movedDA) = default;
+
+
         /**
          * @brief does the work for the constructors.
          */
         /// void construct(const TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
-        void construct(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
-
+        void constructStratum(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
         void construct(const DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
+        /** @brief The latter part of construct() if already have ownedNodes. */
+        void _constructInner(const std::vector<TreeNode<C,dim>> &ownedNodes,
+                            const ScatterMap &sm,
+                            const GatherMap &gm,
+                            unsigned int eleOrder,
+                            const TreeNode<C,dim> *treePartFront,
+                            const TreeNode<C,dim> *treePartBack,
+                            bool isActive,
+                            MPI_Comm globalComm,
+                            MPI_Comm activeComm);
 
         /**@brief returns the local element size*/
         inline size_t getLocalElementSz() const { return m_uiLocalElementSz; }
@@ -354,6 +380,10 @@ class DA
         /**@brief returns the rank of the begining of local segment among all processors. */
         inline RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
 
+        inline DendroIntL getGlobalElementSz() const { return m_uiGlobalElementSz; }
+
+        inline DendroIntL getGlobalElementBegin() const { return m_uiGlobalElementBegin; }
+
         inline const std::vector<RankI> & getNodeLocalToGlobalMap() const { return m_uiLocalToGlobalNodalMap; }
 
         /**@brief see if the current DA is active*/
@@ -362,6 +392,9 @@ class DA
         int getNumOutboundRanks() const { return m_sm.m_sendProc.size(); }
 
         int getNumInboundRanks() const { return m_gm.m_recvProc.size(); }
+
+        size_t getTotalSendSz() const { return m_totalSendSz; }
+        size_t getTotalRecvSz() const { return m_totalRecvSz; }
 
         /**@brief get number of nodes per element*/
         inline unsigned int getNumNodesPerElement() const { return m_uiNpE; }
@@ -414,6 +447,9 @@ class DA
         /**@brief: get pointer to the (ghosted) array of nodal coordinates. */
         inline const TreeNode<C,dim> * getTNCoords() const { return &(*m_tnCoords.cbegin()); }
 
+        /**@brief get pointer to the (ghosted) array of owning elements. */
+        inline const DendroIntL * getNodeOwnerElements() const { return &(*m_ghostedNodeOwnerElements.cbegin()); }
+
         /**@brief: get first treeNode of the local partition of the tree (front splitter). */
         inline const TreeNode<C,dim> * getTreePartFront() const { return (m_uiLocalElementSz > 0 ? &m_treePartFront : nullptr); }
 
@@ -425,6 +461,9 @@ class DA
 
         /**@brief replaces bdyIndex with a copy of the boundary node indices. */
         inline void getBoundaryNodeIndices(std::vector<size_t> &bdyIndex) const { bdyIndex = m_uiBdyNodeIds; }
+
+        /**@brief returns a const ref to boundary node indices. */
+        inline const std::vector<size_t> & getBoundaryNodeIndices() const { return m_uiBdyNodeIds; }
 
         /**
           * @brief Creates a ODA vector
@@ -461,28 +500,28 @@ class DA
           * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
           * */
         template <typename T>
-        void readFromGhostBegin(T *vec, unsigned int dof = 1);
+        void readFromGhostBegin(T *vec, unsigned int dof = 1) const;
 
         /**
           * @brief Sync the ghost element exchange
           * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
           * */
         template <typename T>
-        void readFromGhostEnd(T *vec, unsigned int dof = 1);
+        void readFromGhostEnd(T *vec, unsigned int dof = 1) const;
 
         /**
          * @brief Initiate accumilation across ghost elements
          * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
          */
         template <typename T>
-        void writeToGhostsBegin(T *vec, unsigned int dof = 1);
+        void writeToGhostsBegin(T *vec, unsigned int dof = 1, const char * isDirtyOut = nullptr) const;
 
         /**
          * @brief Sync accumilation across ghost elements
          * @note It is assumed the dofs {A,B,C} are stored ABC ABC ABC ABC.
          */
         template <typename T>
-        void writeToGhostsEnd(T *vec, unsigned int dof = 1);
+        void writeToGhostsEnd(T *vec, unsigned int dof = 1, bool useAccumulation = true, const char * isDirtyOut = nullptr) const;
 
         /**
              * @brief convert nodal local vector with ghosted buffer regions.
@@ -504,6 +543,15 @@ class DA
 
         template <typename T>
         void ghostedNodalToNodalVec(const T *gVec, T *&local, bool isAllocated = false, unsigned int dof = 1) const;
+
+
+        // std::vector versions
+        template<typename T>
+        void nodalVecToGhostedNodal(const std::vector<T> &in, std::vector<T> &out,bool isAllocated = false,unsigned int dof = 1) const;
+
+        template<typename T>
+        void ghostedNodalToNodalVec(const std::vector<T> gVec, std::vector<T> &local,bool isAllocated = false,unsigned int dof = 1) const;
+
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
@@ -678,7 +726,7 @@ class DA
              * @param[in] dof: Degrees of freedoms
              * */
 
-        void petscReadFromGhostBegin(PetscScalar *vecArry, unsigned int dof = 1);
+        void petscReadFromGhostBegin(PetscScalar *vecArry, unsigned int dof = 1) const;
 
         /**
              * @brief Sync the ghost element exchange
@@ -686,7 +734,7 @@ class DA
              * @param[in] vecArry: pointer to from the VecGetArray()
              * @param[in] dof: Degrees of freedoms
              * */
-        void petscReadFromGhostEnd(PetscScalar *vecArry, unsigned int dof = 1);
+        void petscReadFromGhostEnd(PetscScalar *vecArry, unsigned int dof = 1) const;
 
         /**
              * @brief initialize a variable vector to a function depends on spatial coords.
@@ -738,7 +786,7 @@ class DA
      
         /**@brief: dealloc the petsc vector
          * */  
-        PetscErrorCode petscDestroyVec(Vec & vec);       
+        PetscErrorCode petscDestroyVec(Vec & vec) const;
 
         #endif
 };

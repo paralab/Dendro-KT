@@ -326,7 +326,7 @@ int main(int argc, char *argv[]) {
     if (global_refineAny)
     {
       ot::DistTree<unsigned int, DIM> newDistTree, surrDistTree;
-      ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, 0.3);
+      ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree, ot::RemeshPartition::SurrogateInByOut, 0.3);
       /// ot::DA<DIM> *newDA = new ot::DA<DIM>(newDistTree, comm, eleOrder, 100, 0.3); //DistTree overload
       std::swap(distTree,newDistTree);
       /// std::swap(octDA,newDA);
