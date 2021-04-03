@@ -119,6 +119,9 @@ protected:
 #ifdef BUILD_WITH_AMAT
         template<typename AMATType>
         bool getAssembledAMat(AMATType* J);
+
+        template<typename AMATType>
+        bool setDiagonalAMat(const VECType * diag, AMATType* J) const;
 #endif
 
 
@@ -920,6 +923,118 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
       }
       PetscFunctionReturn(0);
     }
+
+
+    /**@brief Create a diagonal matrix from a distributed, non-ghosted dof array, no accumulation.
+     * For example, if outside this method you assemble the diagonal of A,
+     * and compute the inverse, then with this you can turn it back into a matrix.
+     */
+    template <typename LeafT, unsigned int dim>
+    template<typename AMATType>
+    bool feMatrix<LeafT, dim>::setDiagonalAMat(const VECType * diag, AMATType* J) const
+    {
+      using DT = typename AMATType::DTType;
+      using GI = typename AMATType::GIType;
+      using LI = typename AMATType::LIType;
+      using OwnershipT = DendroIntL;
+
+      if(this->m_uiOctDA->isActive())
+      {
+        /// const size_t numLocElem = this->m_uiOctDA->getLocalElementSz();
+        const size_t numLocalNodes = this->m_uiOctDA->getLocalNodalSz();
+        const size_t localNodeBegin = this->m_uiOctDA->getLocalNodeBegin();
+        const size_t numTotalNodes = this->m_uiOctDA->getTotalNodalSz();
+        const unsigned eleOrder = this->m_uiOctDA->getElementOrder();
+        const unsigned int nPe = intPow(eleOrder+1, dim);
+        const unsigned ndofs = this->ndofs();
+
+        // Copy input to a ghosted vector for traversal.
+        std::vector<VECType> ghostedDiag(ndofs * numTotalNodes, 0.0f);
+        std::copy_n(diag, ndofs * numLocalNodes, &ghostedDiag[ndofs * localNodeBegin]);
+
+        // Set up loops.
+        ot::MatvecBaseIn<dim, VECType> dataLoop(
+            numTotalNodes, ndofs, eleOrder,
+            false, 0,
+            this->m_uiOctDA->getTNCoords(),
+            ghostedDiag.data(),
+            this->m_octList->data(),
+            this->m_octList->size(),
+            *this->m_uiOctDA->getTreePartFront(),
+            *this->m_uiOctDA->getTreePartBack());
+
+        ot::MatvecBaseIn<dim, OwnershipT> ownerLoop(
+            numTotalNodes, 1, eleOrder,
+            false, 0,
+            this->m_uiOctDA->getTNCoords(),
+            this->m_uiOctDA->getNodeOwnerElements(),
+            this->m_octList->data(),
+            this->m_octList->size(),
+            *this->m_uiOctDA->getTreePartFront(),
+            *this->m_uiOctDA->getTreePartBack());
+
+        // Element ID used to determine node ownership status in traversal.
+        unsigned int localElementId = 0;
+        OwnershipT globElementId = this->m_uiOctDA->getGlobalElementBegin();
+
+        // Elemental diagonal matrix.
+        typedef Eigen::Matrix<PetscScalar, Eigen::Dynamic, Eigen::Dynamic> EigenMat;
+        EigenMat* eMat[2] = {nullptr, nullptr};
+        eMat[0] = new EigenMat();
+        eMat[0]->resize(ndofs*nPe, ndofs*nPe);
+        const EigenMat * read_eMat[2] = {eMat[0], eMat[1]};
+        // Clear elemental matrix.
+        for(unsigned int r = 0; r < (nPe*ndofs); ++r)
+          for(unsigned int c = 0; c < (nPe*ndofs); ++c)
+            (*(eMat[0]))(r,c) = 0;
+
+        // Loop over nodes and elements.
+        while (!dataLoop.isFinished())
+        {
+          if (dataLoop.isPre() && dataLoop.subtreeInfo().isLeaf())
+          {
+            const VECType * diagCopy = dataLoop.subtreeInfo().readNodeValsIn();
+            const OwnershipT * nodeOwners = ownerLoop.subtreeInfo().readNodeValsIn();
+            for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+            {
+              // Only transfer nonhanging nodes, and from a unique element.
+              if (dataLoop.subtreeInfo().readNodeNonhangingIn()[nIdx]
+                  && nodeOwners[nIdx] == globElementId)
+              {
+                // Overwrite elemental matrix diagonal.
+                for (int dof = 0; dof < ndofs; ++dof)
+                  (*(eMat[0]))(ndofs * nIdx + dof, ndofs * nIdx + dof) = diagCopy[ndofs * nIdx + dof];
+              }
+              else
+              {
+                for (int dof = 0; dof < ndofs; ++dof)
+                  (*(eMat[0]))(ndofs * nIdx + dof, ndofs * nIdx + dof) = 0;
+              }
+            }
+
+            // Send elemental diagonal matrix to aMat.
+            LI n_i[1]={0};
+            LI n_j[1]={0};
+            J->set_element_matrix(localElementId, n_i, n_j, read_eMat, 1u);
+
+            dataLoop.next();
+            ownerLoop.next();
+            globElementId++;
+            localElementId++;
+          }
+          else
+          {
+            dataLoop.step();
+            ownerLoop.step();
+          }
+        }
+        delete eMat[0];
+      }
+
+      PetscFunctionReturn(0);
+    }
+
+
 #endif
 
 

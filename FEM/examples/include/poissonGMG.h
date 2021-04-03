@@ -92,6 +92,11 @@ namespace PoissonEq
         m_gridOperators[stratum]->matVec(in, out, scale);  // Global matvec.
       }
 
+      const VECType * rcp_diag(unsigned int stratum) const
+      {
+        return m_rcp_diags[stratum].data();
+      }
+
       void leafApplySmoother(const VECType *res, VECType *resLeft, unsigned int stratum)
       {
         fprintf(stdout, "Jacobi %d\n", int(stratum));
@@ -141,6 +146,14 @@ namespace PoissonEq
       {
         for (int ii = 0; ii < this->getNumStrata(); ++ii)
           m_gridOperators[ii]->getAssembledAMat(J[ii]);
+        return 0;
+      }
+
+      template <typename AMATType>
+      bool setInvDiagonalAMatStrata(AMATType** J)
+      {
+        for (int ii = 0; ii < this->getNumStrata(); ++ii)
+          m_gridOperators[ii]->setDiagonalAMat(this->rcp_diag(ii), J[ii]);
         return 0;
       }
 #endif

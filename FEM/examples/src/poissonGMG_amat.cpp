@@ -87,24 +87,34 @@ int main(int argc, char * argv[])
   typedef par::Maps<double,unsigned long,unsigned int> aMatMaps;
 
   // Use the aMat interface of gmgMat to define a chain of aMat.
-  aMatFree** stMatFree_strata = nullptr;
   aMatMaps** meshMaps_strata = nullptr;
+  aMatFree** stMatFree_strata = nullptr;
+  aMatFree** stMatFreeInvDiag_strata = nullptr;
   poissonGMG.allocAMatMapsStrata(meshMaps_strata);
   poissonGMG.createAMatStrata(stMatFree_strata, meshMaps_strata);
+  poissonGMG.createAMatStrata(stMatFreeInvDiag_strata , meshMaps_strata);
   std::cout << "Created aMat chain\n";
 
   // Custom poissonGMG operator calls getAssembledAMat() on each level.
   poissonGMG.getAssembledAMatStrata(stMatFree_strata);
 
+  // Create aMat matrices for inverse diagonal, on each level
+  // (needed for smoothers)
+  poissonGMG.setInvDiagonalAMatStrata(stMatFreeInvDiag_strata);
+
   // Pestc begins and completes assembling the global stiffness matrices.
   for (int stratum = 0; stratum < numGrids; ++stratum)
+  {
     stMatFree_strata[stratum]->finalize();
+    stMatFreeInvDiag_strata[stratum]->finalize();
+  }
 
   std::cout << "Assembled aMat on each level.\n";
 
   // TODO define vcycle() for AMat
 
   // Once done, use aMat interface of gmgMat to deallocate.
+  poissonGMG.destroyAMatStrata(stMatFreeInvDiag_strata);
   poissonGMG.destroyAMatStrata(stMatFree_strata);
   poissonGMG.deallocAMatMapsStrata(meshMaps_strata);
 
