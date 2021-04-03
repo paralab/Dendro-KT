@@ -364,7 +364,7 @@ namespace ot {
 
   inline size_t totalRecvSz(const GatherMap &gm)
   {
-    return gm.m_totalCount;
+    return gm.m_totalCount - gm.m_locCount;
   }
 
 
