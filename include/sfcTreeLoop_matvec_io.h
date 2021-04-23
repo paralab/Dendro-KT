@@ -986,6 +986,8 @@ namespace ot
     // Update child summaries.
     //
     bool thereAreHangingNodes = false;
+    std::array<bool, NumChildren> hangingInChild;
+    hangingInChild.fill(false);
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
@@ -1004,7 +1006,10 @@ namespace ot
       summaries[child_sfc].m_initializedOut = false;
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+      {
+        hangingInChild[child_sfc] = true;
         thereAreHangingNodes = true;
+      }
     }
     //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary (to decide whether to skip subtree)
 
@@ -1197,6 +1202,8 @@ namespace ot
     // Update child summaries.
     //
     bool thereAreHangingNodes = false;
+    std::array<bool, NumChildren> hangingInChild;
+    hangingInChild.fill(false);
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
@@ -1215,7 +1222,10 @@ namespace ot
       summaries[child_sfc].m_initializedOut = false;
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+      {
+        hangingInChild[child_sfc] = true;
         thereAreHangingNodes = true;
+      }
     }
     //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary
 
@@ -1376,7 +1386,7 @@ namespace ot
 
         // Nodal values.
         // Don't overwrite nonhanging nodes that are on a hanging face.
-        if (!thereAreHangingNodes || myNodes[nIdx].getLevel() > parSubtree.getLevel())
+        if (!hangingInChild[child_sfc] || myNodes[nIdx].getLevel() > parSubtree.getLevel())
           std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
                        &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * nodeRank]);
       }
@@ -1483,6 +1493,8 @@ namespace ot
     // Update child summaries.
     //
     bool thereAreHangingNodes = false;
+    std::array<bool, NumChildren> hangingInChild;
+    hangingInChild.fill(false);
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
@@ -1501,7 +1513,10 @@ namespace ot
       summaries[child_sfc].m_initializedOut = false;
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+      {
+        hangingInChild[child_sfc] = true;
         thereAreHangingNodes = true;
+      }
     }
     //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary
 
@@ -1646,6 +1661,8 @@ namespace ot
     // Retrieve child summaries.
     //
     bool thereAreHangingNodes = false;
+    std::array<bool, NumChildren> hangingInChild;
+    hangingInChild.fill(false);
     bool childrenHaveNodes = false;
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
@@ -1654,7 +1671,10 @@ namespace ot
       childNodeCounts[child_sfc] = summaries[child_sfc].m_subtreeNodeCount;
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+      {
         thereAreHangingNodes = true;
+        hangingInChild[child_sfc] = true;
+      }
       if (childNodeCounts[child_sfc] > 0)
         childrenHaveNodes = true;
     }
@@ -1720,7 +1740,7 @@ namespace ot
           if (childOutIsDirty[nodeRank])
           {
             // Don't move nonhanging nodes that are on a hanging face.
-            if (!UseAccumulation || !thereAreHangingNodes || myNodes[nIdx].getLevel() > parSubtree.getLevel())
+            if (!UseAccumulation || !hangingInChild[child_sfc] || myNodes[nIdx].getLevel() > parSubtree.getLevel())
             {
               // Nodal values.
               for (int dof = 0; dof < m_ndofs; dof++)
