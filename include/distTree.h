@@ -70,7 +70,9 @@ namespace ot
           double interp_tol,
           double sfc_tol);
 
-
+      ~DistTree(){
+        MPI_Comm_free(&m_comm);
+      }
       /** distRemeshSubdomain
        *  @brief: Uses DistTree filter function to carve out subdomain from remeshed tree.
        */

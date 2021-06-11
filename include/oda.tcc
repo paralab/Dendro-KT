@@ -224,6 +224,7 @@ namespace ot
 
       newSubDA.construct(dtree, comm, eleOrder, 1, sfc_tol);
 
+      MPI_Comm_free(&activeComm0);
       return newSubDA.getLocalElementSz();
     }
 

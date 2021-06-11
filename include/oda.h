@@ -394,10 +394,7 @@ class DA
         /**@brief: returns the active MPI sub com of the global communicator*/
         inline MPI_Comm getCommActive() const
         {
-            if (m_uiIsActive)
-                return m_uiActiveComm;
-            else
-                return MPI_COMM_NULL;
+          return m_uiActiveComm;
         }
 
         /**@brief: global mpi com. size*/
