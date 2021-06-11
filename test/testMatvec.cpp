@@ -46,6 +46,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order);
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
 
   MPI_Comm comm = MPI_COMM_WORLD;
 
@@ -156,6 +157,7 @@ int main(int argc, char * argv[])
 
   _DestroyHcurve();
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;

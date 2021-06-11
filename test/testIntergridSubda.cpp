@@ -157,6 +157,7 @@ const auto DomainDecider2 =
 int main(int argc, char *argv[]) {
     typedef unsigned int DENDRITE_UINT;
     PetscInitialize(&argc, &argv, NULL, NULL);
+    DendroScopeBegin();
     _InitializeHcurve(DIM);
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -271,5 +272,6 @@ int main(int argc, char *argv[]) {
     checkIntergridTransfer(comm, newDAVec,newDA,newDistTree,ndof);
 
     /// Bunch of stuff to delete
+    DendroScopeEnd();
     PetscFinalize();
 }

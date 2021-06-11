@@ -108,6 +108,7 @@ void test_distOutputTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 int main(int argc, char* argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
 
   int ptsPerProc = 200;
   if (argc > 1)
@@ -115,6 +116,7 @@ int main(int argc, char* argv[])
 
   test_distOutputTreeBalancing(ptsPerProc, MPI_COMM_WORLD);
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;

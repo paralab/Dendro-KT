@@ -19,6 +19,8 @@ int _main(int argc, char * argv[]);
 int main(int argc, char * argv[])
 {
   PetscInitialize(&argc, &argv, NULL, NULL);
+  int code = 1;
+  DendroScopeBegin();
 
   if (!(argc-1 >= 1))
   {
@@ -27,7 +29,6 @@ int main(int argc, char * argv[])
   }
 
   const unsigned int dim = static_cast<unsigned>(strtoul(argv[1], NULL, 0));
-  int code = 1;
   switch (dim)
   {
     case 2: code = _main<2>(argc, argv); break;
@@ -37,6 +38,7 @@ int main(int argc, char * argv[])
       std::cout << "dim==" << dim << " is not supported.\n";
   }
 
+  DendroScopeEnd();
   PetscFinalize();
   return code;
 }

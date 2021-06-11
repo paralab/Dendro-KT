@@ -312,6 +312,7 @@ namespace bench
 int main(int argc, char** argv)
 {
     MPI_Init(&argc,&argv);
+    DendroScopeBegin();
 
     int rank,npes;
     MPI_Comm comm = MPI_COMM_WORLD;
@@ -389,6 +390,7 @@ int main(int argc, char** argv)
     bench::dump_profile_info(std::cout, msgPrefix, params,param_names,2, counters,counter_names,10, comm);
 
     _DestroyHcurve();
+    DendroScopeEnd();
     MPI_Finalize();
     return 0;
 }

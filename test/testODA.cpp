@@ -51,6 +51,7 @@ class myConcreteFeVector;
 int main(int argc, char *argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
 
   int nProc, rProc;
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -81,6 +82,7 @@ int main(int argc, char *argv[])
 
   testSubdomain<dim, endL, order>(comm);
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;

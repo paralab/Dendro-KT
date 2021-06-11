@@ -223,13 +223,13 @@ bool get_args(int argc, char * argv[], Parameters &pm, MPI_Comm comm)
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
+  int returnCode = 1;
+  DendroScopeBegin();
 
   int rProc, nProc;
   MPI_Comm comm = MPI_COMM_WORLD;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
-
-  int returnCode = 1;
 
   Parameters pm;
   unsigned int &dim = pm.dim;
@@ -254,6 +254,7 @@ int main(int argc, char * argv[])
     _DestroyHcurve();
   }
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return returnCode;

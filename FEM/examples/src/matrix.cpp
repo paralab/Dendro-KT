@@ -39,6 +39,7 @@ void generateRefinementFlags(const ot::DA<DIM> *octDA, const std::vector<TREENOD
 int main(int argc, char *argv[]) {
 
     PetscInitialize(&argc, &argv, NULL, NULL);
+    DendroScopeBegin();
     _InitializeHcurve(DIM);
     int eleOrder = 2;
     typedef unsigned int DENDRITE_UINT;
@@ -122,5 +123,6 @@ int main(int argc, char *argv[]) {
 
 
 //
+    DendroScopeEnd();
     PetscFinalize();
 }

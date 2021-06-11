@@ -619,13 +619,13 @@ int main(int argc, char * argv[])
 #else
   PetscInitialize(&argc, &argv, NULL, NULL);
 #endif
+  int returnCode = 1;
+  DendroScopeBegin();
 
   int rProc, nProc;
   MPI_Comm comm = MPI_COMM_WORLD;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
-
-  int returnCode = 1;
 
   Parameters pm;
   const unsigned int &dim = pm.dim;
@@ -655,6 +655,7 @@ int main(int argc, char * argv[])
 #else
   PetscFinalize();
 #endif
+  DendroScopeEnd();
 
   return returnCode;
 }

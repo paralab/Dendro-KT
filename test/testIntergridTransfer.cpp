@@ -73,9 +73,9 @@ int main(int argc, char *argv[])
   constexpr unsigned int dim = 2;
 
   MPI_Init(&argc, &argv);
-  _InitializeHcurve(dim);
-
   bool success = true;
+  DendroScopeBegin();
+  _InitializeHcurve(dim);
 
   /// success &= testNull<dim>(argc, argv);
   /// success &= testMultiDA<dim>(argc, argv);
@@ -84,6 +84,7 @@ int main(int argc, char *argv[])
   /// success &= testLinear<dim>(argc, argv);
 
   _DestroyHcurve();
+  DendroScopeEnd();
   MPI_Finalize();
 
   return !success;

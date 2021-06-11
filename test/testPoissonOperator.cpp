@@ -21,6 +21,7 @@ void convertToFlatCoords(const ot::TreeNode<UICoordT, dim> &element,
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
   MPI_Comm comm = MPI_COMM_WORLD;
 
   constexpr unsigned int dim = 2;
@@ -256,6 +257,7 @@ int main(int argc, char * argv[])
 
   _DestroyHcurve();
 
+  DendroScopeEnd();
   MPI_Finalize();
 }
 

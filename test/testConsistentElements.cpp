@@ -113,6 +113,7 @@ ibm::Partition DomainDecider(const double * physCoords, double physSize)
 int main(int argc, char * argv[]){
   typedef unsigned int DENDRITE_UINT;
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
   int rank; MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   m_uiMaxDepth = 10;
@@ -148,5 +149,6 @@ int main(int argc, char * argv[]){
             << "  loop elements: "<< getNumElements(newDA, newTreePart) <<  "  "
             << (newDA->getLocalElementSz() == getNumElements(newDA, newTreePart) ? "(equal)" : "(not equal!)") << "\n";
   assert(newDA->getLocalElementSz() == getNumElements(newDA, newTreePart)); // assertion fails using original sfctreeloop
+  DendroScopeEnd();
   PetscFinalize();
 }

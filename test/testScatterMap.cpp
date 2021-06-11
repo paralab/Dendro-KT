@@ -67,6 +67,7 @@ void testDummyMatvec();
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
 
   int nProc, rProc;
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -85,6 +86,7 @@ int main(int argc, char * argv[])
 
   testDummyMatvec<dim,endL,order>();
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;
