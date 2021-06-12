@@ -137,6 +137,7 @@ int main(int argc, char *argv[]) {
   auto tree = distTree.getTreePartFiltered();
   par::partitionW(tree, par::defaultWeight,comm);
   DTree newDtree(tree, MPI_COMM_WORLD);
+  newDtree.filterTree(distTree.getDomainDecider());
   delete octDA;
   ot::DA<DIM> *newDA = new ot::DA<DIM>(newDtree, comm, eleOrder, 100, 0.3); //DistTree overload
   std::swap(octDA,newDA);
