@@ -118,6 +118,12 @@ namespace ot
       //   and calls setIsOnTreeBdry(true) on 'INTERCEPTED' elements.
       void filterTree(const ::ibm::DomainDecider &domainDecider);
 
+      // filterTree() requires the input decider to be in physical coordinate form.
+      // Discards 'IN' elements, keeps 'OUT' and 'INTERCEPTED' elements,
+      //   and calls setIsOnTreeBdry(true) on 'INTERCEPTED' elements.
+      static void filterOctList(const ::ibm::DomainDecider &domainDecider,
+                                std::vector<TreeNode<T, dim>> &treeNodeElem);
+
       void destroyTree();
 
       const ::ibm::DomainDecider & getDomainDecider() const;
@@ -478,28 +484,45 @@ namespace ot
     m_hasBeenFiltered = true;
   }
 
-
+  //
+  // filterStratum()
+  //
   template <typename T, unsigned int dim>
   void DistTree<T, dim>::filterStratum(int stratum)
   {
-    const int l = stratum;
-    const size_t oldSz = m_gridStrata[l].size();
-    size_t ii = 0;
+    DistTree<T, dim>::filterOctList(this->m_domainDecider,
+                                    m_gridStrata[stratum]);
+    m_filteredTreePartSz[stratum] = m_gridStrata[stratum].size();
+  }
 
-    m_filteredTreePartSz[l] = ii;
+  //
+  // filterOctList()
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::filterOctList(const ::ibm::DomainDecider &domainDecider,
+                                       std::vector<TreeNode<T, dim>> &treeNodeElem)
+  {
+    const size_t oldSz = treeNodeElem.size();
+    size_t newSz = 0;
 
     ::ibm::Partition subdomain;
 
     // Keep finding and deleting elements.
-    for ( ; ii < oldSz ; ii++)
-      if ( (subdomain = this->m_domainDeciderTN_asCell(m_gridStrata[l][ii])) != ::ibm::IN )
-      {
-        m_gridStrata[l][m_filteredTreePartSz[l]] = std::move(m_gridStrata[l][ii]);
-        m_gridStrata[l][m_filteredTreePartSz[l]].setIsOnTreeBdry(subdomain == ::ibm::INTERCEPTED);
-        m_filteredTreePartSz[l]++;
-      }
+    for (size_t ii = 0; ii < oldSz ; ii++)
+    {
+      double physCoords[dim];
+      double physSize;
+      treeNode2Physical(treeNodeElem[ii], physCoords, physSize);
 
-    m_gridStrata[l].resize(m_filteredTreePartSz[l]);
+      if ( (subdomain = domainDecider(physCoords, physSize)) != ::ibm::IN )
+      {
+        treeNodeElem[newSz] = std::move(treeNodeElem[ii]);
+        treeNodeElem[newSz].setIsOnTreeBdry(subdomain == ::ibm::INTERCEPTED);
+        newSz++;
+      }
+    }
+
+    treeNodeElem.resize(newSz);
   }
 
 

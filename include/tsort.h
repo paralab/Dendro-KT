@@ -409,10 +409,16 @@ struct SFC_Tree
   static void distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
                                      const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                      std::vector<TreeNode<T, D>> &outTree,
-                                     std::vector<TreeNode<T, D>> &surrogateTree,
                                      double loadFlexibility,
-                                     RemeshPartition remeshPartition,
                                      MPI_Comm comm );
+
+  // When remeshing with the SFC_Tree interface, surrogate grid is optional.
+  // Use getSurrogateGrid method after distRemeshWholeDomain() to recover the surrogate.
+  static std::vector<TreeNode<T, D>> getSurrogateGrid(
+      RemeshPartition remeshPartition,
+      const std::vector<TreeNode<T, D>> &oldTree,
+      const std::vector<TreeNode<T, D>> &newTree,
+      MPI_Comm comm);
 
   static std::vector<TreeNode<T, D>> getSurrogateGrid( const std::vector<TreeNode<T, D>> &replicateGrid,
                                                        const std::vector<TreeNode<T, D>> &splittersFromGrid,
