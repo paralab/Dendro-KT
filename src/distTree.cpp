@@ -99,7 +99,11 @@ namespace ot
     SFC_Tree<T, dim>::distRemeshWholeDomain(
         inTreeVec, refnFlags, outTreeVec, loadFlexibility, comm);
 
-    // TODO before create DistTree must repartition and recoalesce
+    // Filter and repartition based on filtered octlist,
+    // before fixing the octlist into a DistTree.
+    DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), outTreeVec);
+    SFC_Tree<T, dim>::distTreeSort(outTreeVec, loadFlexibility, comm);
+    SFC_Tree<T, dim>::distCoalesceSiblings(outTreeVec, comm);
 
     std::vector<TreeNode<T, dim>> surrogateTreeVec =
         SFC_Tree<T, dim>::getSurrogateGrid(
