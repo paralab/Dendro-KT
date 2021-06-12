@@ -1239,15 +1239,12 @@ void
 SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
                                        const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                        std::vector<TreeNode<T, D>> &outTree,
-                                       std::vector<TreeNode<T, D>> &surrogateTree,
                                        double loadFlexibility,
-                                       RemeshPartition remeshPartition,
                                        MPI_Comm comm )
 {
   constexpr ChildI NumChildren = 1u << D;
 
   outTree.clear();
-  surrogateTree.clear();
 
   // TODO need to finally make a seperate minimal balancing tree routine
   // that remembers the level of the seeds.
@@ -1283,19 +1280,31 @@ SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree
   SFC_Tree<T, D>::distRemoveDuplicates(seed, loadFlexibility, RM_DUPS_AND_ANC, comm);
   SFC_Tree<T, D>::distTreeBalancing(seed, outTree, 1, loadFlexibility, comm);
   SFC_Tree<T, D>::distCoalesceSiblings(outTree, comm);
+}
+
+template <typename T, unsigned int D>
+std::vector<TreeNode<T, D>> SFC_Tree<T, D>::getSurrogateGrid(
+    RemeshPartition remeshPartition,
+    const std::vector<TreeNode<T, D>> &oldTree,
+    const std::vector<TreeNode<T, D>> &newTree,
+    MPI_Comm comm)
+{
+  std::vector<TreeNode<T, D>> surrogateTree;
 
   if (remeshPartition == SurrogateInByOut)  // old default
   {
-    // Create a surrogate tree, which is identical to the inTree,
-    // but partitioned to match the outTree.
-    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(inTree, outTree, comm);
+    // Create a surrogate tree, which is identical to the oldTree,
+    // but partitioned to match the newTree.
+    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(oldTree, newTree, comm);
   }
   else
   {
-    // Create a surrogate tree, which is identical to the outTree,
-    // but partitioned to match the inTree.
-    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(outTree, inTree, comm);
+    // Create a surrogate tree, which is identical to the newTree,
+    // but partitioned to match the oldTree.
+    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(newTree, oldTree, comm);
   }
+
+  return surrogateTree;
 }
 
 
