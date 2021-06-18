@@ -71,7 +71,7 @@ namespace ot
           double sfc_tol);
 
       ~DistTree(){
-        MPI_Comm_free(&m_comm);
+        /// MPI_Comm_free(&m_comm);
       }
       /** distRemeshSubdomain
        *  @brief: Uses DistTree filter function to carve out subdomain from remeshed tree.
