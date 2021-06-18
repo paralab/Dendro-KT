@@ -54,8 +54,9 @@ void printMaxCoords(ot::DA<DIM> & octDA, const std::vector<ot::TreeNode<unsigned
 
 
 int main(int argc, char * argv[]){
-  typedef unsigned int DENDRITE_UINT;
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
+  typedef unsigned int DENDRITE_UINT;
   _InitializeHcurve(DIM);
   int eleOrder = 1;
   int ndof = 1;
@@ -108,5 +109,6 @@ int main(int argc, char * argv[]){
 
   std::swap(octDA, newDA);
   delete newDA;
+  DendroScopeEnd();
   PetscFinalize();
 }

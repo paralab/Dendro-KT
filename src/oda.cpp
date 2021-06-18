@@ -669,6 +669,9 @@ namespace ot
           m_tnCoords,
           order,
           ghostExchange); //need ghost maps
+
+      // Active comm is not destroyed here because they are used in formation of DA.
+      // This is finally destroyed in the destructor of DA.
     }
 
 
@@ -932,6 +935,9 @@ namespace ot
     template <unsigned int dim>
     DA<dim>::~DA()
     {
+      m_uiMPIContexts.clear();
+      MPI_Comm_free(&m_uiActiveComm);
+      MPI_Comm_free(&m_uiGlobalComm);
     }
 
 
@@ -1164,7 +1170,7 @@ namespace ot
     PetscErrorCode DA<dim>::petscCreateVector(Vec &local, bool isElemental, bool isGhosted, unsigned int dof) const
     {
         size_t sz=0;
-        MPI_Comm globalComm=this->getGlobalComm();
+        PetscErrorCode status = 0;
         if(!m_uiIsActive)
         {
             local=NULL;
@@ -1188,16 +1194,16 @@ namespace ot
                 else
                     sz=dof*m_uiLocalNodalSz;
             }
+            MPI_Comm activeComm = this->getCommActive();
+            VecCreate(activeComm,&local);
+            status=VecSetSizes(local,sz,PETSC_DECIDE);
 
-        }
+            if (this->getNpesAll() > 1) {
+                VecSetType(local,VECMPI);
+            } else {
+                VecSetType(local,VECSEQ);
+            }
 
-        VecCreate(globalComm,&local);
-        PetscErrorCode status=VecSetSizes(local,sz,PETSC_DECIDE);
-
-        if (this->getNpesAll() > 1) {
-            VecSetType(local,VECMPI);
-        } else {
-            VecSetType(local,VECSEQ);
         }
 
 

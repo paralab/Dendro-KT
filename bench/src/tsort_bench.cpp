@@ -159,6 +159,7 @@ int main(int argc, char** argv)
 {
 
     MPI_Init(&argc,&argv);
+    DendroScopeBegin();
 
     int rank,npes;
     MPI_Comm comm = MPI_COMM_WORLD;
@@ -188,6 +189,7 @@ int main(int argc, char** argv)
     bench::dump_profile_info(std::cout,counters,counter_names,5,comm);
 
     _DestroyHcurve();
+    DendroScopeEnd();
     MPI_Finalize();
     return 0;
 }

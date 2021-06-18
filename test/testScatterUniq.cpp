@@ -39,6 +39,7 @@ void testExample(const char *msgPrefix, Tree<dim> &tree, const bool RunDistribut
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
 
   const bool RunDistributed = true;  // Switch between sequential and distributed.
 
@@ -71,6 +72,7 @@ int main(int argc, char * argv[])
 
   _DestroyHcurve();
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;

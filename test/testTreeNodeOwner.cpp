@@ -11,6 +11,7 @@
 int main(int argc, char * argv[])
 {
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
 
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -80,5 +81,6 @@ int main(int argc, char * argv[])
 
   delete octDA;
   _DestroyHcurve();
+  DendroScopeEnd();
   PetscFinalize();
 }

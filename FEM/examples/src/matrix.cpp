@@ -39,6 +39,7 @@ void generateRefinementFlags(const ot::DA<DIM> *octDA, const std::vector<TREENOD
 int main(int argc, char *argv[]) {
 
     PetscInitialize(&argc, &argv, NULL, NULL);
+    DendroScopeBegin();
     _InitializeHcurve(DIM);
     int eleOrder = 2;
     typedef unsigned int DENDRITE_UINT;
@@ -47,14 +48,25 @@ int main(int argc, char *argv[]) {
     std::vector<ot::TreeNode<unsigned int, DIM>> treePart;
     ot::createRegularOctree(treePart, 3, MPI_COMM_WORLD);
 
-    ot::DA<DIM> *newDA = new ot::DA<DIM>(ot::DistTree<DENDRITE_UINT, DIM>(treePart, MPI_COMM_WORLD), MPI_COMM_WORLD, eleOrder);
+    ot::DA<DIM> *newDA = new ot::DA<DIM>(
+        ot::DistTree<DENDRITE_UINT, DIM>(treePart, MPI_COMM_WORLD),
+        MPI_COMM_WORLD,
+        eleOrder);
     {
         std::vector<ot::OCT_FLAGS::Refine> octFlags;
         generateRefinementFlags(newDA, treePart, octFlags);
-        ot::SFC_Tree<DENDRITE_UINT, DIM>::distRemeshWholeDomain(treePart, octFlags, newTree, surrTree, 0.3,
-                                                                ot::RemeshPartition::SurrogateInByOut,
-                                                                MPI_COMM_WORLD);
-        ot::DA<DIM> *octDA = new ot::DA<DIM>(ot::DistTree<DENDRITE_UINT, DIM>(newTree, MPI_COMM_WORLD), MPI_COMM_WORLD, eleOrder, 100, 0.3);
+
+        ot::SFC_Tree<DENDRITE_UINT, DIM>::distRemeshWholeDomain(
+            treePart, octFlags, newTree, 0.3, MPI_COMM_WORLD);
+
+        surrTree = ot::SFC_Tree<DENDRITE_UINT, DIM>::getSurrogateGrid(
+            ot::RemeshPartition::SurrogateInByOut, treePart, newTree, MPI_COMM_WORLD);
+
+        ot::DA<DIM> *octDA = new ot::DA<DIM>(
+            ot::DistTree<DENDRITE_UINT, DIM>(newTree, MPI_COMM_WORLD),
+            MPI_COMM_WORLD,
+            eleOrder, 100, 0.3);
+
         std::swap(octDA, newDA);
         std::swap(newTree,treePart);
         delete octDA;
@@ -122,5 +134,6 @@ int main(int argc, char *argv[]) {
 
 
 //
+    DendroScopeEnd();
     PetscFinalize();
 }

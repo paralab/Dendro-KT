@@ -162,6 +162,7 @@ bool intersectsInnerBox(const double * p, double sz)
 int main(int argc, char * argv[]){
   typedef unsigned int DENDRITE_UINT;
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
   int rank; MPI_Comm_rank(MPI_COMM_WORLD,&rank);
   m_uiMaxDepth = 10;
@@ -277,5 +278,6 @@ for(int i = 0; i < 7; i++) {
 }
   delete octDA;
   _DestroyHcurve();
+  DendroScopeEnd();
   PetscFinalize();
 }

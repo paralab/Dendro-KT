@@ -152,7 +152,7 @@ namespace ot
 
       newTreePart = dtree.getTreePartFiltered();
 
-      return newTreePart.size();
+      return newSubDA.getLocalElementSz();
     }
 
 

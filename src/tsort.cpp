@@ -992,6 +992,7 @@ SFC_Tree<T,D>:: distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree, double lo
     if (rNE < nNE-1 && (tree.back() == nextBegin || !strict && tree.back().isAncestor(nextBegin)))
       tree.pop_back();
   }
+  MPI_Comm_free(&nonemptys);
 }
 
 
@@ -1056,8 +1057,10 @@ SFC_Tree<T,D>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,D>> &tnodes)
 //
 template <typename T, unsigned int D>
 void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
-                                           MPI_Comm comm )
+                                           MPI_Comm comm_ )
 {
+  MPI_Comm comm = comm_;
+
   int nProc, rProc;
   MPI_Comm_size(comm, &nProc);
   MPI_Comm_rank(comm, &rProc);
@@ -1071,6 +1074,8 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
     bool isActive = (tree.size() > 0);
     MPI_Comm activeComm;
     MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
+    if (comm != comm_)
+      MPI_Comm_free(&comm);
     comm = activeComm;
 
     if (!isActive)
@@ -1176,6 +1181,8 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
     locDone = (!exchangeLeft && !exchangeRight);
     par::Mpi_Allreduce(&locDone, &globDone, 1, MPI_LAND, comm);
   }
+  if (comm != comm_)
+    MPI_Comm_free(&comm);
 
 }
 
@@ -1229,15 +1236,12 @@ void
 SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
                                        const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                        std::vector<TreeNode<T, D>> &outTree,
-                                       std::vector<TreeNode<T, D>> &surrogateTree,
                                        double loadFlexibility,
-                                       RemeshPartition remeshPartition,
                                        MPI_Comm comm )
 {
   constexpr ChildI NumChildren = 1u << D;
 
   outTree.clear();
-  surrogateTree.clear();
 
   // TODO need to finally make a seperate minimal balancing tree routine
   // that remembers the level of the seeds.
@@ -1273,19 +1277,31 @@ SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree
   SFC_Tree<T, D>::distRemoveDuplicates(seed, loadFlexibility, RM_DUPS_AND_ANC, comm);
   SFC_Tree<T, D>::distTreeBalancing(seed, outTree, 1, loadFlexibility, comm);
   SFC_Tree<T, D>::distCoalesceSiblings(outTree, comm);
+}
+
+template <typename T, unsigned int D>
+std::vector<TreeNode<T, D>> SFC_Tree<T, D>::getSurrogateGrid(
+    RemeshPartition remeshPartition,
+    const std::vector<TreeNode<T, D>> &oldTree,
+    const std::vector<TreeNode<T, D>> &newTree,
+    MPI_Comm comm)
+{
+  std::vector<TreeNode<T, D>> surrogateTree;
 
   if (remeshPartition == SurrogateInByOut)  // old default
   {
-    // Create a surrogate tree, which is identical to the inTree,
-    // but partitioned to match the outTree.
-    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(inTree, outTree, comm);
+    // Create a surrogate tree, which is identical to the oldTree,
+    // but partitioned to match the newTree.
+    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(oldTree, newTree, comm);
   }
   else
   {
-    // Create a surrogate tree, which is identical to the outTree,
-    // but partitioned to match the inTree.
-    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(outTree, inTree, comm);
+    // Create a surrogate tree, which is identical to the newTree,
+    // but partitioned to match the oldTree.
+    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(newTree, oldTree, comm);
   }
+
+  return surrogateTree;
 }
 
 
@@ -1399,6 +1415,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
                             surrogateRecvDispls.data(),
                             comm);
 
+  MPI_Comm_free(&sgActiveComm);
   return surrogateGrid;
 }
 

@@ -14,6 +14,7 @@ int main(int argc, char * argv[])
   constexpr int DIM = 3;
 
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
 
   int nProc, rProc;
@@ -141,6 +142,7 @@ int main(int argc, char * argv[])
 
   fprintf(stdout, "[rank%d] numTotalBdryNodes == %lu\n", rProc, numTotalBdryNodes);
 
+  DendroScopeEnd();
   PetscFinalize();
 
   return 0;

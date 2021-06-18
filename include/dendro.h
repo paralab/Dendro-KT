@@ -36,6 +36,11 @@
 #define DendroScalar double
 #define DendroComplex std::complex<double>
 
+// Use DendroScopeBegin() and DendroScopeEnd() in main().
+// - DendroScopeBegin() after init'ing MPI, before declaring Dendro objects.
+// - DendroScopeEnd() before finalizing MPI to de-scope automatic variables.
+#define DendroScopeBegin() {
+#define DendroScopeEnd() }
 
 
 //#define DendroIntL unsigned int

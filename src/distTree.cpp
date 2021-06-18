@@ -95,10 +95,19 @@ namespace ot
 
     const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();
     std::vector<TreeNode<T, dim>> outTreeVec;
-    std::vector<TreeNode<T, dim>> surrogateTreeVec;
 
     SFC_Tree<T, dim>::distRemeshWholeDomain(
-        inTreeVec, refnFlags, outTreeVec, surrogateTreeVec, loadFlexibility, remeshPartition, comm);
+        inTreeVec, refnFlags, outTreeVec, loadFlexibility, comm);
+
+    // Filter and repartition based on filtered octlist,
+    // before fixing the octlist into a DistTree.
+    DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), outTreeVec);
+    SFC_Tree<T, dim>::distTreeSort(outTreeVec, loadFlexibility, comm);
+    SFC_Tree<T, dim>::distCoalesceSiblings(outTreeVec, comm);
+
+    std::vector<TreeNode<T, dim>> surrogateTreeVec =
+        SFC_Tree<T, dim>::getSurrogateGrid(
+            remeshPartition, inTreeVec, outTreeVec, comm);
 
     DistTree outTree(outTreeVec, comm);
     DistTree surrogateTree(surrogateTreeVec, comm, NoCoalesce);
@@ -148,19 +157,25 @@ namespace ot
     std::vector<TreeNode<T, dim>> surrogateTreeVec;
 
     if (gridAlignment == GridAlignment::CoarseByFine)
+    {
       SFC_Tree<T, dim>::distRemeshWholeDomain(
           inTreeVec, refnFlags,
-          outTreeVec, surrogateTreeVec,
+          outTreeVec,
           loadFlexibility,
-          RemeshPartition::SurrogateInByOut,
           comm);
+      surrogateTreeVec = SFC_Tree<T, dim>::getSurrogateGrid(
+          RemeshPartition::SurrogateInByOut, inTreeVec, outTreeVec, comm);
+    }
     else
+    {
       SFC_Tree<T, dim>::distRemeshWholeDomain(
           inTreeVec, refnFlags,
-          outTreeVec, surrogateTreeVec,
+          outTreeVec,
           loadFlexibility,
-          RemeshPartition::SurrogateOutByIn,
           comm);
+      surrogateTreeVec = SFC_Tree<T, dim>::getSurrogateGrid(
+          RemeshPartition::SurrogateOutByIn, inTreeVec, outTreeVec, comm);
+    }
 
     distTree.insertStratum(finestStratum, outTreeVec);
     distTree.filterStratum(finestStratum);
@@ -216,19 +231,25 @@ namespace ot
     std::vector<TreeNode<T, dim>> surrogateTreeVec;
 
     if (gridAlignment == GridAlignment::FineByCoarse)
+    {
       SFC_Tree<T, dim>::distRemeshWholeDomain(
           inTreeVec, refnFlags,
-          outTreeVec, surrogateTreeVec,
+          outTreeVec,
           loadFlexibility,
-          RemeshPartition::SurrogateInByOut,
           comm);
+      surrogateTreeVec = SFC_Tree<T, dim>::getSurrogateGrid(
+          RemeshPartition::SurrogateInByOut, inTreeVec, outTreeVec, comm);
+    }
     else
+    {
       SFC_Tree<T, dim>::distRemeshWholeDomain(
           inTreeVec, refnFlags,
-          outTreeVec, surrogateTreeVec,
+          outTreeVec,
           loadFlexibility,
-          RemeshPartition::SurrogateOutByIn,
           comm);
+      surrogateTreeVec = SFC_Tree<T, dim>::getSurrogateGrid(
+          RemeshPartition::SurrogateOutByIn, inTreeVec, outTreeVec, comm);
+    }
 
     distTree.insertStratum(newCoarsestStratum, outTreeVec);
     distTree.filterStratum(newCoarsestStratum);

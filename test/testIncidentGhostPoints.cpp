@@ -84,6 +84,7 @@ int main(int argc, char * argv[])
 #else
   MPI_Init(&argc, &argv);
 #endif
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
   // -----------------------------------------
 
@@ -149,6 +150,7 @@ int main(int argc, char * argv[])
 
   // -----------------------------------------
   _DestroyHcurve();
+  DendroScopeEnd();
 #ifdef BUILD_WITH_PETSC
   PetscFinalize();
 #else

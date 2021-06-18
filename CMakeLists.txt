@@ -244,6 +244,11 @@ if(HILBERT_ORDERING)
 endif()
 
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testPartition.cpp)
+add_executable(tstPartition ${SRC_FILES})
+target_include_directories(tstPartition PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstPartition dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testConstruct.cpp)
 add_executable(tstConstruct ${SRC_FILES})
 target_include_directories(tstConstruct PUBLIC ${MPI_INCLUDE_PATH})

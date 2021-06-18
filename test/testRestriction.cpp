@@ -356,6 +356,7 @@ using val_t = double;
 int main(int argc, char * argv[])
 {
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(dim);
 
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -444,6 +445,7 @@ int main(int argc, char * argv[])
       NRM);
 
   _DestroyHcurve();
+  DendroScopeEnd();
   PetscFinalize();
 
   return 0;

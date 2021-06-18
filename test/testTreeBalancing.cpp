@@ -709,6 +709,7 @@ testTheTest()
 int main(int argc, char* argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
 
   int ptsPerProc = 200;
   if (argc > 1)
@@ -726,6 +727,7 @@ int main(int argc, char* argv[])
 
   test_distTreeBalancing<2>(ptsPerProc, MPI_COMM_WORLD);
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;
