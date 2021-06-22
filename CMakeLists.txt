@@ -27,7 +27,7 @@ endif()
 ## options for dendro
 
 option(USE_64BIT_INDICES "Use 64-Bit indices. Reverts to 32-bit if turned off" ON)
-option(ALLTOALLV_FIX "Use K-way all to all v" OFF)
+option(ALLTOALLV_FIX "Use K-way all to all v" ON)
 option(SPLITTER_SELECTION_FIX "Turn on Splitter Selection fix" ON)
 option(DIM_2 "use the two dimentional sorting" OFF)
 option(WITH_BLAS_LAPACK "build using BLAS and LAPACk" ON)

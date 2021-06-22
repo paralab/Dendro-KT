@@ -25,6 +25,7 @@
 #include "mpi.h"
 #include <vector>
 #include "dendro.h"
+#include "string.h"
 
 #ifndef KWAY
 #define KWAY 128
