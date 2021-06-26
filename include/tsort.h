@@ -251,6 +251,34 @@ struct SFC_Tree
                           Companion * ... companions
                           );
 
+  static std::vector<char> bucketStableAux;
+
+  // Template-recursively buckets one companion array at a time.
+  template <class KeyFun, typename PointType, typename KeyType, typename ValueType>
+  static void SFC_bucketStable(
+      const PointType *points,
+      RankI begin,
+      RankI end,
+      LevI lev,
+      KeyFun keyfun,
+      bool separateAncestors,
+      std::array<RankI, TreeNode<T,D>::numChildren+1> offsets,            // last idx represents ancestors.
+      const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+      ValueType *values);
+  template <class KeyFun, typename PointType, typename KeyType, typename CompanionHead, typename... CompanionTail>
+  static void SFC_bucketStable(
+      const PointType *points,
+      RankI begin,
+      RankI end,
+      LevI lev,
+      KeyFun keyfun,
+      bool separateAncestors,
+      const std::array<RankI, TreeNode<T,D>::numChildren+1> &offsets,     // last idx represents ancestors.
+      const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+      CompanionHead * companionHead,
+      CompanionTail* ... companionTail);
+
+
 
   /**
    * @tparam KeyFun KeyType KeyFun::operator()(PointType);

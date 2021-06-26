@@ -194,6 +194,83 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
 }
 
 
+
+
+template <typename T, unsigned int D>
+template <class KeyFun, typename PointType, typename KeyType, typename CompanionHead, typename... CompanionTail>
+void SFC_Tree<T, D>::SFC_bucketStable(
+    const PointType *points,
+    RankI begin,
+    RankI end,
+    LevI lev,
+    KeyFun keyfun,
+    bool separateAncestors,
+    const std::array<RankI, TreeNode<T,D>::numChildren+1> &offsets,     // last idx represents ancestors.
+    const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+    CompanionHead * companionHead,
+    CompanionTail* ... companionTail)
+{
+  // Recursively unwrap the pack of companions
+  // until call the single-parameter "values" version.
+  SFC_bucketStable<KeyFun, PointType, KeyType>(
+      points,
+      begin,
+      end,
+      lev,
+      keyfun,
+      separateAncestors,
+      offsets,
+      bucketEnds,
+      companionHead);   // bucket the head companion array
+  SFC_bucketStable<KeyFun, PointType, KeyType>(
+      points,
+      begin,
+      end,
+      lev,
+      keyfun,
+      separateAncestors,
+      offsets,
+      bucketEnds,
+      companionTail...);  // recursive on tail of companion arrays
+}
+
+
+template <typename T, unsigned int D>
+template <class KeyFun, typename PointType, typename KeyType, typename ValueType>
+void SFC_Tree<T, D>::SFC_bucketStable(
+    const PointType *points,
+    RankI begin,
+    RankI end,
+    LevI lev,
+    KeyFun keyfun,
+    bool separateAncestors,
+    std::array<RankI, TreeNode<T,D>::numChildren+1> offsets,            // last idx represents ancestors.
+    const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+    ValueType *values)
+{
+  SFC_Tree<T, D>::bucketStableAux.resize(sizeof(ValueType) * (end - begin));
+  ValueType *auxv = reinterpret_cast<ValueType*>(SFC_Tree<T, D>::bucketStableAux.data());
+
+  // Bucket to aux[]
+  for (size_t ii = begin; ii < end; ++ii)
+  {
+    const TreeNode<T,D> key = keyfun(points[ii]);
+    const unsigned char destBucket
+        = (separateAncestors && key.getLevel() < lev)
+          ? TreeNode<T,D>::numChildren
+          : key.getMortonIndex(lev);
+    assert(offsets[destBucket] < bucketEnds[destBucket]);
+    auxv[(offsets[destBucket]++) - begin] = values[ii];
+  }
+
+  // Restore to values[]
+  for (size_t ii = begin; ii < end; ++ii)
+    values[ii] = auxv[ii - begin];
+}
+
+
+
+
 //
 // SFC_bucketing_general()
 //
@@ -235,47 +312,19 @@ SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points,
   offsets[numChildren] = outAncStart;
   bucketEnds[numChildren] = outAncEnd;
 
-  // -- Movement phase. -- //
-  std::array<PointType, numChildren+1> unsortedBuffer;
-  std::array<std::tuple<Companion...>, numChildren+1> unsortedBufferComp;
-  int bufferSize = 0;
-
-  for (char bucketId = 0; bucketId <= numChildren; bucketId++)
-  {
-    if (offsets[bucketId] < bucketEnds[bucketId])
-    {
-      unsortedBuffer[bufferSize]     = points[offsets[bucketId]];  // Copy TreeNode.
-      if (useCompanions)
-        unsortedBufferComp[bufferSize] = std::make_tuple((companions[offsets[bucketId]])...);  // Copy companion.
-      bufferSize++;
-    }
-  }
-
-  while (bufferSize > 0)
-  {
-    PointType *bufferTop     = &unsortedBuffer[bufferSize-1];
-    std::tuple<Companion...> *bufferTopComp;
-    if (useCompanions)
-      bufferTopComp = &unsortedBufferComp[bufferSize-1];
-    unsigned char destBucket
-      = (separateAncestors && keyfun(*bufferTop).getLevel() < lev) ? numChildren : keyfun(*bufferTop).getMortonIndex(lev);
-    // destBucket is used to index into offsets[] and bucketEnds[], for which
-    // ancestors are represented in [numChildren] regardless of `ancestorsFirst'.
-
-    points[offsets[destBucket]]     = *bufferTop;  // Set down the TreeNode.
-    if (useCompanions)
-      std::tie((companions[offsets[destBucket]])...) = *bufferTopComp;  // Set down the companion.
-    offsets[destBucket]++;
-
-    if (offsets[destBucket] < bucketEnds[destBucket])
-    {
-      *bufferTop     = points[offsets[destBucket]];    // Copy TreeNode.
-      if (useCompanions)
-        *bufferTopComp = std::make_tuple((companions[offsets[destBucket]])...);    // Copy companion.
-    }
-    else
-      bufferSize--;
-  }
+  // Perform bucketing using computed bucket offsets.
+  if (useCompanions)
+    SFC_Tree<T, D>::SFC_bucketStable<KeyFun, PointType, KeyType>(
+        points, begin, end, lev, keyfun,
+        separateAncestors,
+        offsets, bucketEnds,
+        companions...);
+  // Wait to bucket the keys until all companions have been bucketed.
+  SFC_Tree<T, D>::SFC_bucketStable<KeyFun, PointType, KeyType>(
+      points, begin, end, lev, keyfun,
+      separateAncestors,
+      offsets, bucketEnds,
+      points);
 }
 
 

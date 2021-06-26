@@ -519,6 +519,7 @@ namespace ot
         // Inform each owner about the borrowers, and borrowers about the owner.
         //
         std::vector<TNPoint<C, dim>> ownShareNodes;
+        std::vector<TreeNode<C, dim>> ownShareElems;
         std::vector<int> ownShareDestRank;
         combinedNodes.clear();
         std::swap(ownShareNodes, combinedNodes);
@@ -546,6 +547,7 @@ namespace ot
             const int owner = sharingRanks[bestRepId];
             TNPoint<C, dim> node = convertedNodes[bestRepId];
             node.set_owner(owner);
+            const TreeNode<C, dim> elem = convertedElems[bestRepId];
 
             assert(ranksOfNode.find(owner) != ranksOfNode.end());
 
@@ -554,12 +556,14 @@ namespace ot
               {
                 ownShareDestRank.push_back(borrower);
                 ownShareNodes.push_back(node);
+                ownShareElems.push_back(elem);
               }
             for (int sharer : ranksOfNode)
             {
               ownShareDestRank.push_back(owner);
               node.set_owner(sharer);
               ownShareNodes.push_back(node);
+              ownShareElems.push_back(elem);
             }
           }
         }
@@ -567,14 +571,17 @@ namespace ot
         convertedElems.clear();
 
         ownShareNodes = par::sendAll(ownShareNodes, ownShareDestRank, activeComm);
+        ownShareElems = par::sendAll(ownShareElems, ownShareDestRank, activeComm);
         ownShareDestRank.clear();
-        SFC_Tree<C, dim>::locTreeSortMaxDepth(ownShareNodes);
+        SFC_Tree<C, dim>::locTreeSortMaxDepth(ownShareNodes, ownShareElems);
 
 
         // The information for scattermap and gathermap is jumbled together.
         // Sort them out.
-        std::vector<std::vector<RankI>> scatterSets(nProcActive);
+        std::vector<TNPoint<C, dim>> ownedAndScatteredNodes;
+        std::vector<TreeNode<C, dim>> ownedAndScatteredElems;
         std::vector<std::vector<TreeNode<C, dim>>> gatherSets(nProcActive);
+        std::vector<std::vector<RankI>> scatterSets(nProcActive);
         {
           size_t nextId;
           for (size_t edgeId = 0; edgeId < ownShareNodes.size(); edgeId = nextId)
@@ -585,13 +592,12 @@ namespace ot
             });
             if (isOwned)
             {
-              const size_t localRank = myTNCoords.size();
-              myTNCoords.push_back(ownShareNodes[edgeId]);
-
-              // Contribute to scattermap.
-              for (size_t deferentId = edgeId; deferentId < nextId; ++deferentId)
-                if (ownShareNodes[deferentId].get_owner() != rProcActive)
-                  scatterSets[ownShareNodes[deferentId].get_owner()].push_back(localRank);
+              // Contribute to owned nodes and scattermap.
+              for (size_t instanceId = edgeId; instanceId < nextId; ++instanceId)
+              {
+                ownedAndScatteredNodes.push_back(ownShareNodes[instanceId]);
+                ownedAndScatteredElems.push_back(ownShareElems[instanceId]);
+              }
             }
             else
             {
@@ -602,16 +608,64 @@ namespace ot
           }
         }
 
+        // Sort by winning element, which has also determined the owning rank.
+        // Ensure consistent global ordering of nodes, regardless of partitioning,
+        // which is an assumption needed by distShiftNodes().
+        //
+        // The global ordering is:
+        //   node1 < node2 iff element(node1) < element(node2) OR
+        //                     element(node1) == element(node2) AND
+        //                        (isElementExterior(node1) AND isElementInterior(node2) OR
+        //                         isElementExterior(node1) AND isElementExterior(node2) AND SFC(node1) < SFC(node2) OR
+        //                         isElementInterior(node1) AND isElementInterior(node2) AND lex(node1) < lex(node2))
+        // For this ordering, the element-interior nodes need
+        // to be next to element-exterior nodes for the same element.
+        // 
+        // Also element sort must be stable so that forEachInNodeGroup() works.
+        SFC_Tree<C, dim>::locTreeSort(ownedAndScatteredElems,
+                                      ownedAndScatteredNodes);
+
+        // Merge exterior nodes and interior nodes
+        // (both are now sorted by element)
+        // and separate owned-node-indicators from scattering-indicators.
+        {
+          std::vector<TNPoint<C,dim>> interiorNodeList;
+
+          // Append element-by-element.
+          // elem : ownedAndScatteredNodes[i] -> ownedAndScatteredElems[i]
+          // elem : Element(inTreeFiltered[j]).interiorNodes[k] -> inTreeFiltered[j]
+          size_t elemIntI = 0, elemExtJ = 0;
+          while (elemIntI < inTreeFiltered.size())
+          {
+            const TreeNode<C, dim> elemKey = inTreeFiltered[elemIntI];
+
+            interiorNodeList.clear();
+            ot::Element<C,dim>(elemKey).appendInteriorNodes(order, interiorNodeList);
+            for (const auto &pt : interiorNodeList)  // convert from TNPoint to TreeNode
+              myTNCoords.push_back(pt);
+            elemIntI++;
+
+            while (elemExtJ < ownedAndScatteredElems.size()
+                && ownedAndScatteredElems[elemExtJ] == elemKey)
+            {
+              const size_t localRank = myTNCoords.size();
+              const size_t nextId = forEachInNodeGroup(
+                  &ownedAndScatteredNodes[0],
+                  elemExtJ, ownedAndScatteredNodes.size(),
+                  [&](size_t ii) {
+                    const int sharer = ownedAndScatteredNodes[ii].get_owner();
+                    if (sharer == rProcActive)
+                      myTNCoords.push_back(ownedAndScatteredNodes[ii]);  // own nodes
+                    else
+                      scatterSets[sharer].push_back(localRank);  // scattermap
+                  });
+              elemExtJ = nextId;
+            }
+          }
+        }
+
         // Note that if we want to re-order myTNCoords
         // then the scatterSets must be mapped to the new indices.
-
-        std::vector<TNPoint<C,dim>> interiorNodeList;
-        for (const TreeNode<C, dim> &elem : inTreeFiltered)
-          ot::Element<C,dim>(elem).appendInteriorNodes(order, interiorNodeList);
-
-        // Adding interior nodes at the end of myTNCoords will not disrupt scatterSets.
-        for (const auto &pt : interiorNodeList)
-          myTNCoords.push_back(pt);
 
         // Compute scatterMap and gatherMap using scatterSets and gatherSets.
         RankI smapSendOffset = 0;

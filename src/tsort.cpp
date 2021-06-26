@@ -1741,6 +1741,12 @@ SFC_Tree<T,D>::lastDescendant(TreeNode<T,D> &parent,
   }
 }
 
+
+// define static data member bucketStableAux
+template <typename T, unsigned int D>
+std::vector<char> SFC_Tree<T, D>::bucketStableAux;
+
+
 // Template instantiations.
 template struct SFC_Tree<unsigned int, 2>;
 template struct SFC_Tree<unsigned int, 3>;
