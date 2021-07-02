@@ -1074,7 +1074,7 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
     bool isActive = (tree.size() > 0);
     MPI_Comm activeComm;
     MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
-    if (comm != comm_)
+    if (comm != comm_ && comm != MPI_COMM_NULL)
       MPI_Comm_free(&comm);
     comm = activeComm;
 
@@ -1181,7 +1181,7 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
     locDone = (!exchangeLeft && !exchangeRight);
     par::Mpi_Allreduce(&locDone, &globDone, 1, MPI_LAND, comm);
   }
-  if (comm != comm_)
+  if (comm != comm_ && comm != MPI_COMM_NULL)
     MPI_Comm_free(&comm);
 
 }
@@ -1415,7 +1415,8 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
                             surrogateRecvDispls.data(),
                             comm);
 
-  MPI_Comm_free(&sgActiveComm);
+  if (sgActiveComm != MPI_COMM_NULL)
+    MPI_Comm_free(&sgActiveComm);
   return surrogateGrid;
 }
 
