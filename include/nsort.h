@@ -82,8 +82,6 @@ namespace ot {
   class TNPoint : public TreeNode<T,dim>
   {
     public:
-      enum IsSelected { No, Maybe, Yes };
-
       /**
        * @brief Constructs a node at the extreme "lower-left" corner of the domain.
        */
@@ -119,26 +117,11 @@ namespace ot {
       bool operator!= (TNPoint const &that) const;
 
 
-      IsSelected get_isSelected() const { return m_isSelected; }
-      void set_isSelected(IsSelected isSelected) { m_isSelected = isSelected; }
-
-      unsigned char get_numInstances() const { return m_numInstances; }
-      void set_numInstances(unsigned char numInstances) { m_numInstances = numInstances; }
-      void incrementNumInstances(char delta_numInstances = 1) { m_numInstances += delta_numInstances; }
-
       int get_owner() const { return m_owner; }
       void set_owner(int owner) { m_owner = owner; }
 
       /// long get_globId() const { return m_globId; }
       /// void set_globId(long globId) { m_globId = globId; }
-
-      /**
-       * @brief The point may be incident on one or more grid lines (hyperplanes) at coarseness level `hlev'.
-       *   If so, this method returns the smallest-indexed such hyperplane.
-       *   A hyperplane is indexed by the normal axis.
-       *   If the point is not incident on any of the grid hyperplanes, then the method returns dim.
-       */
-      unsigned char get_firstIncidentHyperplane(unsigned int hlev) const;
 
       /**@brief Get type of cell to which point is interior, at native level. */
       CellType<dim> get_cellType() const;
@@ -153,9 +136,6 @@ namespace ot {
 
       /**@brief Return whether own cell type differs from cell type on parent. */
       bool isCrossing() const;
-
-      /**@brief Get the deepest cell such that the point is not on the boundary of the cell. */
-      TreeNode<T,dim> getFinestOpenContainer() const;
 
       /** @brief Get the cell that generated this point, based on coordinates and level. */
       TreeNode<T,dim> getCell() const;
@@ -189,8 +169,6 @@ namespace ot {
 
     protected:
       // Data members.
-      IsSelected m_isSelected;
-      unsigned char m_numInstances = 1;
       int m_owner = -1;
       long m_globId = -1;
       //TODO These members could be overlayed in a union if we are careful.
@@ -289,48 +267,6 @@ namespace ot {
   };
 
 
-  /**
-   * @brief Class to represent a kface that possibly contains an owned node, while building scattermap.
-   * @description The TreeNode segment records the level and anchor coordinates of the kface.
-   *   The addition of m_owner describes what processor any contained nodes will need to be sent to.
-   *   ScatterFace objects might represent open or closed kfaces, depending on the usage scenario.
-   */
-  template <typename T, unsigned int dim>
-  class ScatterFace : public TreeNode<T,dim>
-  {
-    public:
-      // Bring in parent constructors.
-      ScatterFace () : TreeNode<T,dim> () {}
-      ScatterFace (const std::array<T,dim> coords, unsigned int level) : TreeNode<T,dim> (coords, level) {}
-      ScatterFace (const ScatterFace & other) : TreeNode<T,dim> (other), m_owner(other.m_owner) {}
-      ScatterFace (const int dummy, const std::array<T,dim> coords, unsigned int level) :
-          TreeNode<T,dim> (dummy, coords, level) {}
-
-      // Constructors from TreeNode to ScatterFace.
-      ScatterFace(const TreeNode<T,dim> & other) : TreeNode<T,dim>(other) {}
-      ScatterFace(const TreeNode<T,dim> & other, int owner) : TreeNode<T,dim>(other), m_owner(owner) {}
-
-      // Assignment operators.
-      ScatterFace & operator=(const TreeNode<T,dim> &otherTN) { TreeNode<T,dim>::operator=(otherTN); return *this; }
-      ScatterFace & operator=(const ScatterFace &other) { TreeNode<T,dim>::operator=(other); m_owner = other.m_owner; return *this; }
-
-      // Equality operators.
-      bool operator==(const ScatterFace &other) { return TreeNode<T,dim>::operator==(other) && m_owner == other.m_owner; }
-      bool operator!=(const ScatterFace &other) { return !operator==(other); }
-
-      // Getter/setter m_owner.
-      int get_owner() const { return m_owner; }
-      void set_owner(int owner) { m_owner = owner; }
-
-      /**@brief Sort points into SFC order and extract unique points, discriminating owners. */
-      static void sortUniq(std::vector<ScatterFace> &faceList);
-
-    private:
-      // Data members.
-      int m_owner = -1;
-  };
-
-
   struct ScatterMap
   {
     std::vector<RankI> m_map;
@@ -389,32 +325,6 @@ namespace ot {
   struct SFC_NodeSort
   {
     /**
-     * @brief Count all unique, nonhanging nodes in/on the domain, when the node list is a distributed array. Also compact node list and compute ``scatter map.''
-     */
-    static RankI dist_countCGNodes(
-        std::vector<TNPoint<T,dim>> &points, unsigned int order,
-        const TreeNode<T,dim> *treePartFront, const TreeNode<T,dim> *treePartBack,
-        MPI_Comm comm);
-
-    static void markExtantCellFlags(std::vector<TNPoint<T,dim>> &points, const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> &domainDecider_elem);
-
-    /**
-     * @brief Count all unique, nonhanging nodes in/on the domain.
-     * @param classify If true, perform node classification and mark them appropriately. If false,
-     *        the points are still sorted, but they are not marked - instead the number of instances
-     *        is recorded in the first instance of every duplicate bunch. If false, the return value
-     *        is meaningless.
-     * @note Assumes none of the points are (dim)-cell interior points.
-     *   To achieve this, use Element::appendExteriorNodes() and Element::appendInteriorNodes() separately.
-     */
-    static RankI countCGNodes(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order, bool classify = true);
-
-    /**
-     * @brief Sorts points `as points', meaning by coordinate first. NOTE: Doesn't enforce any ordering among points with identical coordinates.
-     */
-    static void locTreeSortAsPoints(TNPoint<T,dim> *points, RankI begin, RankI end, LevI sLev, LevI eLev, RotI pRot);
-
-    /**
      * @brief Takes distributed sorted lists of owned nodes, uses key generation to compute sufficient scattermap.
      * @note Might produce some nodes that don't need to be exchanged. Hopefully it's not too many surplus.
      */
@@ -436,117 +346,6 @@ namespace ot {
     // TODO move this to the 'oda' class as well.
     template <typename da>
     static void ghostReverse(da *dataAndGhostBuffers, da *sendBufferSpace, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm);
-
-
-    private:
-
-      static constexpr unsigned int nSFOrient = intPow(2,dim)-1;
-      using ScatterFacesCollection = std::array<std::vector<ScatterFace<T,dim>>, nSFOrient>;
-
-      /**
-       * @brief Count the number of duplicate coordinate locations, if all are at the same level, or yield -1 if there are mixed levels.
-       * @param [in] start The start of the scan.
-       * @param [in] end Scan won't enter end.
-       * @param [out] firstCoarsest The first duplicate, or if there are mixed levels, the first with the coarser level.
-       * @param [out] next The next element that was not scanned. Future scans can pick up from here.
-       * @param [out] numDups If all same level, the number of duplicates. If mixed levels, -1.
-       * @note Assumes that start < end.
-       * @note Assumes that the field m_numInstances has been properly initialized for all points.
-       */
-      static void scanForDuplicates(TNPoint<T,dim> *start, TNPoint<T,dim> *end, TNPoint<T,dim> * &firstCoarsest, TNPoint<T,dim> * &firstFinest, TNPoint<T,dim> * &next, int &numDups, bool &noCancellations);
-
-      /** @brief Moves all domain boundary points to the end, returning the number of boundary points. */
-      static RankI filterDomainBoundary(TNPoint<T,dim> *start, TNPoint<T,dim> *end);
-
-      /** @brief Breaks up an interface into the component hyperplanes. */
-      static void bucketByHyperplane(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int hlev, std::array<RankI,dim+1> &hSplitters);
-
-      /**
-       * @brief Depth-first traversal: pre-order bucketing, post-order calling resolveInterface (bottom up).
-       * @param sLev The level to separate children into sibiling buckets.
-       * @param pRot The SFC orientation of the parent (containing) region.
-       */
-      template<typename ResolverT>
-      static RankI countCGNodes_impl(ResolverT &resolveInterface, TNPoint<T,dim> *start, TNPoint<T,dim> *end, LevI sLev, RotI pRot, unsigned int order);
-
-      /**
-       * @brief For order 1 or 2, alignment of points means we can count duplicates at node site to resolve duplicates/hanging nodes.
-       * @note Assumes the points are already sorted -- as points, such that all points with same coordinates appear together, regardless of level.
-       * @note Assumes that the field m_numInstances has been properly initialized for all points.
-       */
-      static RankI resolveInterface(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
-
-      /**
-       * @deprecated
-       * @brief For order > 2, alignment might not hold. However, we can use the fact that order > 2
-       *        to take advantage of locality of k'-face interior nodes of differing levels to
-       *        resolve duplicates/hanging nodes using a small buffer.
-       * @note Assumes the points are already sorted -- as points, such that all points with same coordinates appear together, regardless of level.
-       */
-      static RankI resolveInterface_highOrder(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int order);
-
-      /**
-       * @brief A ``pseudo-resolver'' method that counts literal duplicate points,
-       *        i.e. having both the same coordinates and level. Does not classify points
-       *        in any way. Also the return value is not meaningful at all.
-       * @note The reason for having this function is for a final preprocessing
-       *       stage before finding the processor-boundary nodes.
-       */
-      static RankI countInstances(TNPoint<T,dim> *start, TNPoint<T,dim> *end, unsigned int unused_order);
-
-      /**
-       * @brief Find which processors upon which the node is incident.
-       * @description Generates keys from pt.getDFD() and then calls getContainingBlocks().
-       * @note Guaranteed to include all neighbours but may include non-neighbours too.
-       *       Specifically (assuming 2:1 balancing), includes all neighbours of the host k-face.
-       */
-      static int getProcNeighbours(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList, unsigned int order);
-
-      /**
-       * @brief Find which processors upon which the node is incident.
-       * @description The other method, getProcNeighbours(), while fixing the hanging node allowance,
-       *              actually assumes it is invoked over a set of nodes originating from elements.
-       *              This method works on a single-node basis.
-       */
-      static int getProcNeighboursSingleNode(TNPoint<T,dim> pt, const TreeNode<T,dim> *splitters, int numSplitters, std::vector<int> &procNbList);
-
-
-      /** @brief State of visitor for computeScattermap dual traversal. */
-      struct SMVisit_data
-      {
-        // Methods.
-        void computeOffsets()
-        {
-          RankI accum = 0;
-          for (auto &&x : m_sendCountMap)
-          {
-            m_sendOffsetsMap[x.first] = accum;
-            accum += x.second;
-          }
-          m_scatterMap.resize(accum);
-        }
-
-        // Data members.
-        std::map<int, RankI> m_sendCountMap;
-        std::map<int, RankI> m_sendOffsetsMap;
-        std::vector<RankI> m_scatterMap;
-      };
-
-      /** @brief Adapter to combine state and action for 1st pass counting. */
-      struct SMVisit_count
-      {
-        SMVisit_data &m_data;
-        SMVisit_count(SMVisit_data &data) : m_data(data) {}
-        template <class ...Ts> void operator() (Ts... args) { SFC_NodeSort::visit_count(m_data, args...); }
-      };
-
-      /** @brief Adapter to combine state and action for 2nd pass mapping. */
-      struct SMVisit_buildMap
-      {
-        SMVisit_data &m_data;
-        SMVisit_buildMap(SMVisit_data &data) : m_data(data) {}
-        template <class ...Ts> void operator() (Ts... args) { SFC_NodeSort::visit_buildMap(m_data, args...); }
-      };
 
   }; // struct SFC_NodeSort
 
