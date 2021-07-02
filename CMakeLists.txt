@@ -295,21 +295,6 @@ add_executable(tstTSearchCmpx ${SRC_FILES})
 target_include_directories(tstTSearchCmpx PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstTSearchCmpx dendroKT ${MPI_LIBRARIES} m)
 
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testCountCGNodes.cpp)
-add_executable(tstCountCGNodes ${SRC_FILES})
-target_include_directories(tstCountCGNodes PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstCountCGNodes dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testScatterMap.cpp)
-add_executable(tstScatterMap ${SRC_FILES})
-target_include_directories(tstScatterMap PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstScatterMap dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testScatterUniq.cpp)
-add_executable(tstScatterUniq ${SRC_FILES})
-target_include_directories(tstScatterUniq PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstScatterUniq dendroKT ${MPI_LIBRARIES} m)
-
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testODA.cpp)
 add_executable(tstODA ${SRC_FILES})
 target_include_directories(tstODA PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
