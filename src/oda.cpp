@@ -990,8 +990,10 @@ namespace ot
     DA<dim>::~DA()
     {
       m_uiMPIContexts.clear();
-      MPI_Comm_free(&m_uiActiveComm);
-      MPI_Comm_free(&m_uiGlobalComm);
+      if (m_uiActiveComm != MPI_COMM_NULL)
+        MPI_Comm_free(&m_uiActiveComm);
+      if (m_uiActiveComm != MPI_COMM_NULL)
+        MPI_Comm_free(&m_uiGlobalComm);
     }
 
 
