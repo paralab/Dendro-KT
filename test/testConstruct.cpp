@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
   // MAX_LEVEL is defined in TreeNode.h.
   std::vector<TN> rand_treenode;
   for (std::array<T,dim> uicoords : rand_coords)
-    rand_treenode.push_back(TN(0, uicoords, MAX_LEVEL));
+    rand_treenode.push_back(TN(uicoords, MAX_LEVEL));
 
   std::cout << "Done feeding coordinates.\n";
   std::cout << "Constructing KTree...  ";

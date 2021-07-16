@@ -126,8 +126,6 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
         scaleDQD[d] *= (dd == d ? (1.0 / J.x(dd)) : J.x(dd));
     }
 
-    //std::cout<<"Stifness:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
-
     // Phase 2
     // Quadrature for each basis function.
     for (unsigned int d = 0; d < dim; d++)

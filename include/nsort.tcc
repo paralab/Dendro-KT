@@ -90,7 +90,7 @@ namespace ot {
     */
   template <typename T, unsigned int dim>
   TNPoint<T,dim>::TNPoint (const std::array<T,dim> coords, unsigned int level) :
-      TreeNode<T,dim>(0, coords, level)
+      TreeNode<T,dim>(coords, level)
   { }
 
   /**@brief Copy constructor */
@@ -100,6 +100,7 @@ namespace ot {
       m_owner(other.m_owner), m_isCancellation(other.m_isCancellation)
   { }
 
+#if 0
   /**
     @brief Constructs an octant (without checks).
     @param dummy : not used yet.
@@ -110,6 +111,7 @@ namespace ot {
   TNPoint<T,dim>::TNPoint (const int dummy, const std::array<T,dim> coords, unsigned int level) :
       TreeNode<T,dim>(dummy, coords, level)
   { }
+#endif
 
   /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the object using the assignment operator.*/
   template <typename T, unsigned int dim>
@@ -201,11 +203,12 @@ namespace ot {
     const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
     const unsigned int mask = (len << 1u) - 1u;
     for (int d = 0; d < dim; d++)
-      if ((TreeNode::m_uiCoords[d] & mask) == len)
+      if ((this->getX(d) & mask) == len)
         return true;
     return false;
   }
 
+#if 0
   template <typename T, unsigned int dim>
   TreeNode<T,dim> TNPoint<T,dim>::getCell() const
   {
@@ -255,6 +258,7 @@ namespace ot {
       nodeList.push_back(base);
     }
   }
+#endif
 
 
   template <typename T, unsigned int dim>
@@ -374,7 +378,7 @@ namespace ot {
   TNPoint<T, dim>    Element<T, dim>::getNode(
       const std::array<unsigned, dim> &numerators, unsigned polyOrder) const
   {
-    return TNPoint<T, dim>(1, this->getNodeX(numerators, polyOrder), this->getLevel());
+    return TNPoint<T, dim>(this->getNodeX(numerators, polyOrder), this->getLevel());
   }
 
 
@@ -400,7 +404,7 @@ namespace ot {
     // Basically the same thing as appendNodes (same dimension of volume, if nonempty),
     // just use (order-1) instead of (order+1), and shift indices by 1.
     using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+    const unsigned int len = 1u << (m_uiMaxDepth - this->getLevel());
 
     const unsigned int numNodes = intPow(order-1, dim);
 
@@ -411,8 +415,8 @@ namespace ot {
       std::array<T,dim> nodeCoords;
       #pragma unroll(dim)
       for (int d = 0; d < dim; d++)
-        nodeCoords[d] = len * (nodeIndices[d]+1) / order  +  TreeNode::m_uiCoords[d];
-      nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
+        nodeCoords[d] = len * (nodeIndices[d]+1) / order  +  this->getX(d);
+      nodeList.push_back(TNPoint<T,dim>(nodeCoords, this->getLevel()));
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order-1);
     }
@@ -523,7 +527,7 @@ namespace ot {
   void Element<T,dim>::appendCancellationNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
   {
     using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+    const unsigned int len = 1u << (m_uiMaxDepth - this->getLevel());
 
     const unsigned int numNodes = intPow(order+1, dim);
 
@@ -561,10 +565,10 @@ namespace ot {
           for (int d = 0; d < dim; ++d)
           {
             // Should be the same as if had children append.
-            nodeCoords[d] = len / 2 * nodeIndices[d] / order + TreeNode::m_uiCoords[d];
+            nodeCoords[d] = len / 2 * nodeIndices[d] / order + this->getX(d);
           }
 
-          nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel+1));
+          nodeList.push_back(TNPoint<T,dim>(nodeCoords, this->getLevel()+1));
           nodeList.back().setIsCancellation(true);
 
           numOdd++;

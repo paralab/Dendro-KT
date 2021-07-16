@@ -108,7 +108,7 @@ namespace ot
          out.clear();
          for(unsigned int i=0;i<numNodes;i++)
          {
-             if(in[i].minX(sDim) <= sliceVal && sliceVal <= in[i].maxX(sDim))
+             if (in[i].range().closedContains(sDim, sliceVal))
                  out.push_back(in[i]);
          }
 
@@ -1118,10 +1118,10 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
   elemIndex++;
   for (const TreeNode<T, dim> quad : treePart)
   {
-    const T minX = quad.minX(0) >> (m_uiMaxDepth - fineLev);
-    const T minY = quad.minX(1) >> (m_uiMaxDepth - fineLev);
-    const T maxX = quad.maxX(0) >> (m_uiMaxDepth - fineLev);
-    const T maxY = quad.maxX(1) >> (m_uiMaxDepth - fineLev);
+    const T minX = quad.lowerBound(0) >> (m_uiMaxDepth - fineLev);
+    const T minY = quad.lowerBound(1) >> (m_uiMaxDepth - fineLev);
+    const T maxX = quad.upperBound(0) >> (m_uiMaxDepth - fineLev);
+    const T maxY = quad.upperBound(1) >> (m_uiMaxDepth - fineLev);
 
     const double centerX = 0.5 * (double(minX) + double(maxX));
     const double centerY = 0.5 * (double(minY) + double(maxY));

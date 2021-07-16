@@ -48,7 +48,7 @@ namespace ot {
     TreeNode<T,dim>::TreeNode()
     {
       m_uiLevel = 0;
-      m_uiCoords.fill(0);
+      m_coords = periodic::PCoord<T, dim>();
 
       m_isOnTreeBdry = false;
 
@@ -67,26 +67,8 @@ namespace ot {
     TreeNode<T,dim>::TreeNode(const std::array<T,dim> coords, unsigned int level)
     {
       m_uiLevel = level;
-
       m_isOnTreeBdry = false;
-
-      T mask = -(1u << (m_uiMaxDepth - level));
-
-      #pragma unroll(dim)
-      for (int d = 0; d < dim; d++)
-        m_uiCoords[d] = (coords[d] & mask);
-
-#ifdef __DEBUG_TN__
-        //@masado Allow arbitrary dimensions but warn about unexpected cases.
-      if (dim < 1 || dim > 4) {
-        std::cout << "Warning: Value for dim: " << dim << std::endl;
-      }
-      for ( T x : m_uiCoords )
-      {
-        assert( x < ((unsigned int)(1u << m_uiMaxDepth)));
-        assert((x % ((unsigned int)(1u << (m_uiMaxDepth - level)))) == 0);
-      }
-#endif
+      m_coords = periodic::PCoord<T, dim>(coords);
     } //end function
 
 
@@ -94,20 +76,18 @@ namespace ot {
     // TreeNode copy constructor.
     template<typename T, unsigned int dim>
     TreeNode<T,dim>::TreeNode(const TreeNode & other)
+      : m_coords(other.m_coords),
+        m_uiLevel(other.m_uiLevel),
+        m_isOnTreeBdry(other.m_isOnTreeBdry)
     {
-      m_uiCoords = other.m_uiCoords;
-      m_uiLevel = other.m_uiLevel;
-
-      m_isOnTreeBdry = other.m_isOnTreeBdry;
     } //end function
 
 
-    //
-    // TreeNode trusting constructor.
-    template<typename T, unsigned int dim>
+    // TreeNode protected constructor
+    template <typename T, unsigned int dim>
     TreeNode<T,dim>::TreeNode(const int dummy, const std::array<T,dim> coords, unsigned int level)
     {
-      m_uiCoords = coords;
+      m_coords = coords;
       m_uiLevel = level;
 
       m_isOnTreeBdry = false;
@@ -119,7 +99,7 @@ namespace ot {
     template<typename T, unsigned int dim>
     TreeNode<T,dim>& TreeNode<T,dim>::operator=(TreeNode<T,dim> const &other)
     {
-      m_uiCoords = other.m_uiCoords;
+      m_coords = other.m_coords;
       m_uiLevel = other.m_uiLevel;
 
       m_isOnTreeBdry = other.m_isOnTreeBdry;
@@ -144,7 +124,7 @@ inline bool TreeNode<T,dim>::operator==(TreeNode<T,dim> const &other) const {
   // Compare coordinates one dimension at a time.
   for (int d = 0; d < dim; d++)
   {
-    if ((m_uiCoords[d] >> shiftIrlvnt) != (other.m_uiCoords[d] >> shiftIrlvnt))
+    if ((m_coords.coord(d) >> shiftIrlvnt) != (other.m_coords.coord(d) >> shiftIrlvnt))
       return false;
   }
 
@@ -158,57 +138,13 @@ inline bool TreeNode<T,dim>::operator!=(TreeNode<T,dim> const &other) const {
 } //end fn.
 
 
-//
-// operator<()
-//
-template <typename T, unsigned int dim>
-inline bool TreeNode<T,dim>::operator<(TreeNode<T,dim> const &other) const {
-
-  // -- original Morton
-  
-  // Use the coordinate with the highest level difference (closest to root).
-  T maxDiffCoord = 0;
-  for (int d = 0; d < dim; d++)
-  {
-    T diffCoord = m_uiCoords[d] ^ other.m_uiCoords[d];  // Will have 0's where equal.
-    maxDiffCoord = (diffCoord > maxDiffCoord ? diffCoord : maxDiffCoord);
-  }
-
-  // Find the index of the highest level of difference.
-  T levelDiff = 0;
-  while (levelDiff < m_uiLevel && levelDiff < other.m_uiLevel
-      && !(maxDiffCoord & (1u << (m_uiMaxDepth - levelDiff))))
-  {
-    levelDiff++;
-  }
-
-  // Use that level to compare child numbers.
-  // In case of descendantship, ancestor is strictly less than descendant.
-  unsigned int myIndex = getMortonIndex(levelDiff);
-  unsigned int otherIndex = other.getMortonIndex(levelDiff);
-  if (myIndex == otherIndex)
-    return m_uiLevel < other.m_uiLevel;
-  else
-    return myIndex < otherIndex;
-
-  // -- original Morton
-}
-
-//
-// operator<=()
-//
-template <typename T, unsigned int dim>
-inline bool TreeNode<T,dim>::operator<=(TreeNode<T,dim> const &other) const
-{
-  return operator==(other) || operator<(other);
-}
 
 //
 // operator<<()
 //
 template<typename T, unsigned int dim>
 std::ostream& operator<<(std::ostream& os, TreeNode<T,dim> const& other) {
-  std::for_each(other.m_uiCoords.begin(), other.m_uiCoords.end(),
+  std::for_each(other.m_coords.coords().begin(), other.m_coords.coords().end(),
       [&os] (T x) { os << std::setw(10) << x << " "; });
   return (os << other.getLevel());
 } //end fn.
@@ -248,7 +184,13 @@ inline T TreeNode<T,dim>::getX(int d) const {
 #if __DEBUG_TN__
   assert(0 <= d && d < dim);
 #endif
-    return m_uiCoords[d];
+    return m_coords.coord(d);
+}
+
+template <typename T, unsigned int dim>
+inline const periodic::PRange<T, dim> TreeNode<T, dim>::range() const
+{
+  return periodic::PRange<T, dim>(m_coords, (1u << (m_uiMaxDepth - getLevel())));
 }
 
 template <typename T, unsigned int dim>
@@ -256,14 +198,13 @@ inline void TreeNode<T,dim>::setX(int d, T coord) {
 #if __DEBUG_TN__
   assert(0 <= d && d < dim);
 #endif
-  m_uiCoords[d] = coord;
+  m_coords.coord(d, coord);
 }
 
 template <typename T, unsigned int dim>
 inline void TreeNode<T,dim>::setX(const std::array<T, dim> &coords)
 {
-  for (int d = 0; d < dim; ++d)
-    this->setX(d, coords[d]);
+  m_coords = periodic::PCoord<T, dim>(coords);
 }
 
 
@@ -288,13 +229,13 @@ inline unsigned char TreeNode<T,dim>::getMortonIndex(T level) const
 {
     unsigned char childNum = 0;
 
-    unsigned int len = (1u << (getMaxDepth() - level));
-    unsigned int len_par = (1u << (getMaxDepth() - level + 1u));
+    T len = (1u << (getMaxDepth() - level));
+    T len_par = (1u << (getMaxDepth() - level + 1u));
 
     #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
     {
-        childNum += ((m_uiCoords[d] % len_par) / len) << d;
+        childNum += ((m_coords.coord(d) % len_par) / len) << d;
     }
     return  childNum;
 }
@@ -315,8 +256,8 @@ inline void TreeNode<T,dim>::setMortonIndex(unsigned char child)
     for (int d = 0; d < dim; d++)
     {
       const T D = 1u << d;
-      T oldCoord = m_uiCoords[d];           // Activate.          // Suppress.
-      m_uiCoords[d] = (child & D ? oldCoord | selector : oldCoord & (~selector));
+      T oldCoord = m_coords.coord(d);           // Activate.          // Suppress.
+      m_coords.coord(d, (child & D ? oldCoord | selector : oldCoord & (~selector)));
     }
 }
 
@@ -327,7 +268,7 @@ inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &othe
   #pragma unroll(dim)
   for (int d = 0; d < dim; d++)
   {
-    unsigned int diff = other.m_uiCoords[d] ^ m_uiCoords[d];
+    unsigned int diff = other.m_coords.coord(d) ^ m_coords.coord(d);
     // Using log2 gives the index of the highest '1'. We want one above that.
     unsigned int depth = m_uiMaxDepth - log2((diff << 1) | 1u);
     depth_rt = (depth < depth_rt ? depth : depth_rt);  // Minimum of depths.
@@ -337,7 +278,7 @@ inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &othe
 
 template <typename T, unsigned int dim>
 inline int TreeNode<T,dim>::getAnchor(std::array<T,dim> &xyz) const {
-    xyz = m_uiCoords;
+    xyz = m_coords.coords();
     return 1;
 }
 
@@ -388,24 +329,21 @@ inline T TreeNode<T,dim>::getParentX(int d) const {
 
 template <typename T, unsigned int dim>
 inline TreeNode<T,dim> TreeNode<T,dim>::getParent() const {
-    //For any node at level l, the last (maxD-l) bits are 0.
-    //By convention, root's parent is also root.
-    std::array<T,dim> parCoords;
-    unsigned int parLev = (((m_uiLevel & MAX_LEVEL) > 0)
-                           ? ((m_uiLevel & MAX_LEVEL) - 1) : 0);
-#pragma unroll(dim)
-    for (int d = 0; d < dim; d++)
-        parCoords[d] = ((m_uiCoords[d] >> (m_uiMaxDepth - parLev)) << (m_uiMaxDepth - parLev));
-    return TreeNode(1, parCoords, parLev);
+  //For any node at level l, the last (maxD-l) bits are 0.
+  //By convention, root's parent is also root.
+  // parent level 1: (1u << (m_uiMaxDepth-1))  ->  (m_uiMaxDepth-1) 0s
+  // parent level 2: (1u << (m_uiMaxDepth-2))  ->  (m_uiMaxDepth-2) 0s
+  const unsigned int parLev = (this->getLevel() > 0 ? this->getLevel() - 1 : 0);
+  const periodic::PCoord<T, dim> parCoords =
+      this->m_coords.truncated(m_uiMaxDepth - parLev);
+  return TreeNode(1, parCoords, parLev);
 } //end function
 
 template <typename T, unsigned int dim>
 inline TreeNode<T,dim> TreeNode<T,dim>::getAncestor(unsigned int ancLev) const {
-    std::array<T,dim> ancCoords;
-#pragma unroll(dim)
-    for (int d = 0; d < dim; d++)
-        ancCoords[d] = ((m_uiCoords[d] >> (m_uiMaxDepth - ancLev)) << (m_uiMaxDepth - ancLev));
-    return TreeNode(1, ancCoords, ancLev);
+  const periodic::PCoord<T, dim> ancCoords =
+      this->m_coords.truncated(m_uiMaxDepth - ancLev);
+  return TreeNode(1, ancCoords, ancLev);
 } //end function
 
 
@@ -416,48 +354,38 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getFirstChildMorton() const {
 
 template <typename T, unsigned int dim>
 inline TreeNode<T,dim> TreeNode<T,dim>::getChildMorton(unsigned char child) const {
-  const T mask = ~((1u << (m_uiMaxDepth - m_uiLevel)) - 1);
   TreeNode<T,dim> m = *this;
-#pragma unroll(dim)
-  for (int d = 0; d < dim; d++)
-    m.m_uiCoords[d] &= mask;      // Clear anything below parent bit.
   m.m_uiLevel++;
-
   m.setMortonIndex(child);
-  
   return m;
 }
 
 
 /**
-  @brief Get min (inclusive lower bound) for a single dimension.
+  @brief Get (inclusive) lower bound for a single dimension.
  */
 template <typename T, unsigned int dim>
-inline T TreeNode<T,dim>::minX(int d) const {
-#if __DEBUG_TN__
-  assert(0 <= d && d < dim);
-#endif
-  return m_uiCoords[d];
+inline T TreeNode<T,dim>::lowerBound(int d) const {
+  return m_coords.coord(d);
 }
 
 /**
-  @brief Get max (exclusive upper bound) for a single dimension.
+  @brief Get (exclusive) upper bound for a single dimension.
  */
 template <typename T, unsigned int dim>
-inline T TreeNode<T,dim>::maxX(int d) const {
-#if __DEBUG_TN__
-  assert(0 <= d && d < dim);
-#endif
-  unsigned int len = (1u << (m_uiMaxDepth - getLevel()));
-  return (minX(d) + len);
+inline T TreeNode<T,dim>::upperBound(int d) const {
+  T len = (1u << (m_uiMaxDepth - getLevel()));
+  return lowerBound(d) + len;
 }
 
+
+#if 0
 /**
   @brief Get min (inclusive lower bound) for all dimensions.
  */
 template <typename T, unsigned int dim>
 inline std::array<T,dim> TreeNode<T,dim>::minX() const {
-  return m_uiCoords;
+  return m_coords.coords();
 }
 
 /**
@@ -465,31 +393,34 @@ inline std::array<T,dim> TreeNode<T,dim>::minX() const {
  */
 template <typename T, unsigned int dim>
 inline std::array<T,dim> TreeNode<T,dim>::maxX() const {
-  unsigned int len = (1u << (m_uiMaxDepth - getLevel()));
+  T len = (1u << (m_uiMaxDepth - getLevel()));
   std::array<T,dim> maxes = minX();
 #pragma unroll(dim)
   for (int d = 0; d < dim; d++) { maxes[d] += len; }
   return maxes;
 } //end function
 
+#endif
 
 
 template <typename T, unsigned int dim>
 inline TreeNode<T,dim> TreeNode<T,dim>::getDFD() const {
-  TreeNode<T,dim> dfd(1, m_uiCoords, m_uiMaxDepth);
+  TreeNode<T,dim> dfd(1, m_coords, m_uiMaxDepth);
   return dfd;
 } //end function
 
 
 template <typename T, unsigned int dim>
 inline TreeNode<T,dim> TreeNode<T,dim>::getDLD() const {
-  std::array<T,dim> maxes = maxX();
-  std::for_each(maxes.begin(), maxes.end(), [](T &v) { v--; });
-  TreeNode<T,dim> dld(1, maxes, m_uiMaxDepth);
-  return dld;
+  T len = (1u << (m_uiMaxDepth - getLevel()));
+  std::array<T,dim> coords = this->m_coords.coords();
+  for (int d = 0; d < dim; ++d)
+    coords[d] += len - 1;
+  return TreeNode<T, dim>(coords, m_uiMaxDepth);
 } //end function
 
 
+#if 0
 // Helper routine for getNeighbour() methods.
 // If addr_in plus offset does not overflow boundary,  sets addr_out and returns true.
 // Otherwise, returns false without setting addr_out.
@@ -506,7 +437,7 @@ inline bool getNeighbour1d(T addr_in,
     return true;
   }
 
-  unsigned int len = (1u << (m_uiMaxDepth - level));
+  T len = (1u << (m_uiMaxDepth - level));
   if ( (!includeDomBdry &&
            ((offset > 0 && addr_in >= (1u << m_uiMaxDepth) - len) ||  // Function is false if >=.
            (offset < 0 && addr_in < len))
@@ -561,10 +492,10 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getNeighbour(std::array<signed char,dim>
 
   return TreeNode<T,dim>(1, n_coords, level);
 } //end function
+#endif
 
 
 template <typename T, unsigned int dim>
-template <bool includeDomBdry>
 inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &nodeList) const
 {
   // The set of neighbors is a 3x3x3x... hypercube with the center deleted.
@@ -577,16 +508,22 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
   //        -1 <--> [2]    +1 <--> [1]    0 <--> [0]
 
   const unsigned int level = getLevel();
+  periodic::PCoord<T, dim> distances;
+  for (int d = 0; d < dim; ++d)
+    distances.coord(d, (1u << (m_uiMaxDepth - level)));
 
-  std::array<bool, 2*dim> dimUsable;   // | Cache the results of boundary tests.
-  std::array<T, 2*dim> nAxis;          // | Outer: dimension. Inner: offset. [0]:+1, [1]:-1.
+  const periodic::PCoord<T, dim> &self = this->m_coords;
+  const periodic::PCoord<T, dim> plus = self + distances;
+  const periodic::PCoord<T, dim> minus = self - distances;
 
-  // Check both ends of each axis for domain boundary.
+  // Bounds tests on each axis with respect to the unit hypercube.
+  std::array<bool, dim> plusValid;
+  std::array<bool, dim> minusValid;
   #pragma unroll(dim)
   for (int d = 0; d < dim; d++)
   {
-    dimUsable[2*d + 0] = getNeighbour1d<T,includeDomBdry>(m_uiCoords[d], level, +1, nAxis[2*d + 0]);
-    dimUsable[2*d + 1] = getNeighbour1d<T,includeDomBdry>(m_uiCoords[d], level, -1, nAxis[2*d + 1]);
+    plusValid[d] = plus.coord(d) < (1u << m_uiMaxDepth);
+    minusValid[d] = minus.coord(d) >= 0 && minus.coord(d) < (1u << m_uiMaxDepth);
   }
 
   // Precompute strides for sizes of sub-faces.
@@ -598,10 +535,11 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
   //TODO is there a more efficient way than BigO(dx3^d) per call? Such as just BigTheta(3^d)?
 
   // For each neighbor, compose the address and append to nodeList.
-  for (int neighbourIdx = 1; neighbourIdx < intPow(3,dim); neighbourIdx++)
+  constexpr int pow3 = intPow(3, dim);
+  for (int neighbourIdx = 1; neighbourIdx < pow3; neighbourIdx++)
   {
     bool isNeighbourUsable = true;
-    std::array<T,dim> n_coords;
+    periodic::PCoord<T, dim> n_coords = self;
 
     int remainder = neighbourIdx;
     for (int d = dim-1; d >= 0; d--)  // Large to small.
@@ -609,16 +547,11 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
       char delta_ref = (remainder < stride[d] ? 0 : remainder < 2*stride[d] ? 1 : 2);
       switch(delta_ref)
       {
-        case 0: n_coords[d] = m_uiCoords[d];    isNeighbourUsable = (n_coords[d] < (1u << m_uiMaxDepth) || includeDomBdry);
+        case 1: n_coords.coord(d, plus.coord(d));    isNeighbourUsable &= plusValid[d];
             break;
-        case 1: n_coords[d] = nAxis[2*d + 0];   isNeighbourUsable = dimUsable[2*d + 0];
-            break;
-        case 2: n_coords[d] = nAxis[2*d + 1];   isNeighbourUsable = dimUsable[2*d + 1];
+        case 2: n_coords.coord(d, minus.coord(d));   isNeighbourUsable &= minusValid[d];
             break;
       }
-      if (!isNeighbourUsable)
-        break;
-
       remainder = remainder - delta_ref * stride[d];
     }
 
@@ -626,53 +559,6 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
       nodeList.push_back(TreeNode<T,dim>(1, n_coords, level));
   }
 }  // end function()
-
-
-template <typename T, unsigned int dim>
-inline void TreeNode<T,dim>::appendAllNeighboursAsPoints(std::vector<TreeNode<T,dim>> &nodeList) const
-{
-  appendAllNeighbours<true>(nodeList);
-}  // end function()
-
-
-template <typename T, unsigned int dim>
-inline unsigned int TreeNode<T,dim>::getNumAlignedFaces(unsigned int level) const
-{
-  unsigned int ret = 0;
-  #pragma unroll(dim)
-  for (int d = 0; d < dim; d++)
-    ret += !(m_uiCoords[d] << (level+1));
-  return ret;
-}
-
-template <typename T, unsigned int dim>
-inline bool TreeNode<T,dim>::isTouchingDomainBoundary() const
-{
-#ifdef __DEBUG__
-  fprintf(stderr, "Warning: TreeNode<T,dim>::isTouchingDomainBoundary() is deprecated.\n");
-#endif
-
-  const unsigned int domainMask = (1u << m_uiMaxDepth) - 1;
-  const unsigned int len = 1u << (m_uiMaxDepth - m_uiLevel);
-  for (int d = 0; d < dim; d++)
-    if (!(m_uiCoords[d] & domainMask) || !((m_uiCoords[d] + len) & domainMask))
-      return true;
-  return false;
-}
-
-template <typename T, unsigned int dim>
-inline bool TreeNode<T,dim>::isOnDomainBoundary() const
-{
-#ifdef __DEBUG__
-  fprintf(stderr, "Warning: TreeNode<T,dim>::isOnDomainBoundary() is deprecated.\n");
-#endif
-
-  const unsigned int domainMask = (1u << m_uiMaxDepth) - 1;
-  for (int d = 0; d < dim; d++)
-    if (!(m_uiCoords[d] & domainMask))
-      return true;
-  return false;
-}
 
 
 // ================= End Pseudo-getters ====================== //
@@ -685,52 +571,21 @@ inline bool TreeNode<T,dim>::isRoot() const {
 }
 
 template <typename T, unsigned int dim>
-inline bool TreeNode<T,dim>::isAncestor(TreeNode<T,dim> const &other) const {
-    std::array<T,dim> min1, min2, max1, max2;
-
-    min1 = this->minX();
-    min2 = other.minX();
-
-    max1 = this->maxX();
-    max2 = other.maxX();
-
-    //@masado Again it should be possible to get a single short-circuiting expression \
-              using recursive TMP if needed. See StaticUtils at top.
-      // Here is the TMP solution if desired.
-    ///  bool state1 = ( (this->getLevel() < other.getLevel())  \
-                  && detail::StaticUtils<dim>::reduce_and([&min1, &min2] (unsigned int d) { return min2[d] >= min1[d]; }) \
-                  && detail::StaticUtils<dim>::reduce_and([&max1, &max2] (unsigned int d) { return max2[d] <= max1[d]; }) );
-    bool state1=( (this->getLevel() < other.getLevel()) );  // <
-    #pragma unroll(dim)
-    for (int d = 0; d < dim; d++)
-      state1 = state1 && (min2[d] >= min1[d]) && (max2[d] <= max1[d]);
-
-    return state1;
-    // In a previous version there was `state2` involving Hilbert ordering.
-
-} // end function
+inline bool TreeNode<T,dim>::isAncestor(TreeNode<T,dim> const &other) const
+{
+  if (other.getLevel() <= this->getLevel())
+    return false;
+  return other.m_coords.truncated(m_uiMaxDepth - this->getLevel()) == m_coords;
+}
 
 
 template <typename T, unsigned int dim>
-inline bool TreeNode<T,dim>::isAncestorInclusive(TreeNode<T,dim> const &other) const {
-    std::array<T,dim> min1, min2, max1, max2;
-
-    min1 = this->minX();
-    min2 = other.minX();
-
-    max1 = this->maxX();
-    max2 = other.maxX();
-
-    bool state1=( (this->getLevel() <= other.getLevel()) );  // <=
-    #pragma unroll(dim)
-    for (int d = 0; d < dim; d++)
-      state1 = state1 && (min2[d] >= min1[d]) && (max2[d] <= max1[d]);
-
-    return state1;
-    // In a previous version there was `state2` involving Hilbert ordering.
-
-} // end function
-
+inline bool TreeNode<T,dim>::isAncestorInclusive(TreeNode<T,dim> const &other) const
+{
+  if (other.getLevel() < this->getLevel())
+    return false;
+  return other.m_coords.truncated(m_uiMaxDepth - this->getLevel()) == m_coords;
+}
 
 
 // ================ End is-tests ========================== //

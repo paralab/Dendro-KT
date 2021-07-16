@@ -18,6 +18,7 @@ extern unsigned int m_uiMaxDepth;
 
 #include <algorithm>
 #include "dendro.h"
+#include "pcoord.h"
 #include <iostream>
 #include <array>
 #include <vector>
@@ -43,7 +44,7 @@ namespace ot {
     protected:
 
         /**TreeNode coefficients*/
-        std::array<T,dim> m_uiCoords;
+        periodic::PCoord<T, dim> m_coords;
 
         /**level of the tree node*/
         unsigned int m_uiLevel;
@@ -55,6 +56,14 @@ namespace ot {
 
         // m_isOnTreeBdry is just a tag.
         // Not computed automatically by TreeNode.
+
+        /**
+          @brief Constructs an octant
+          @param dummy : not used yet.
+          @param coords The coordinates of the anchor of the octant
+          @param level The level of the octant
+        */
+        TreeNode (const int dummy, const std::array<T,dim> coords, unsigned int level);
 
     public:
 
@@ -76,19 +85,13 @@ namespace ot {
         @brief Constructs an octant
         @param coords The coordinates of the anchor of the octant
         @param level The level of the octant
+        @note Coordinates are not masked to level, however periodic is applied.
         */
       TreeNode (const std::array<T,dim> coords, unsigned int level);
 
       /**@brief Copy constructor */
       TreeNode (const TreeNode & other);
 
-      /**
-        @brief Constructs an octant
-        @param dummy : not used yet.
-        @param coords The coordinates of the anchor of the octant
-        @param level The level of the octant
-      */
-      TreeNode (const int dummy, const std::array<T,dim> coords, unsigned int level);
 
       /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the current octant using the assignment operator.*/
       TreeNode & operator = (TreeNode const  & other);
@@ -98,12 +101,6 @@ namespace ot {
 
       /** @brief Two octants are equal if their respective anchors are equal and their levels are equal. */
       bool  operator != (TreeNode const  &other) const;
-
-      /**@brief The comparisons are based on the Morton/Hilbert ordering of the octants */
-      bool operator < (TreeNode const &other) const;
-
-      /**@brief overloaded comparison operator based on some SFC ordering. */
-      bool operator <= (TreeNode const &other) const;
 
       /** @brief stream operator to output treeNodes with std::cout */
       friend std::ostream & operator << <T,dim> (std::ostream & os,TreeNode<T,dim> const & node) ;
@@ -126,7 +123,11 @@ namespace ot {
       /**@brief return the coordinates of the dth dimention*/
       T getX(int d) const;
 
-      const std::array<T, dim> & getX() const { return m_uiCoords; }
+      const std::array<T, dim> & getX() const { return m_coords.coords(); }
+
+      inline const periodic::PCoord<T, dim> & coords() const { return m_coords; }
+
+      inline const periodic::PRange<T, dim> range() const;
 
       // This gives write access to coordinates.
       /**@brief set the coordinate in the dth dimension*/
@@ -202,22 +203,6 @@ namespace ot {
         */
       TreeNode getDLD() const;
 
-      /**
-       * @brief returns the number of level `level' faces which the anchor intersects.
-       * @description The result is a number between 0 and dim.
-       *              A node is always aligned at its own level, so calling
-       *              getNumAlignedFaces(this->getLevel()) will return dim.
-       *              A way to test for domain boundaries is to use level 0.
-       */
-      unsigned int getNumAlignedFaces(unsigned int level) const;
-
-      //TODO Need to update Boundary properties to include isBoundaryNode.
-
-      /** @deprecated @returns true iff the intersection between orthant exterior and domain boundary is nonempty. */
-      bool isTouchingDomainBoundary() const;
-
-      /** @deprecated @returns true iff the orthant anchor is on the domain boundary. */
-      bool isOnDomainBoundary() const;
 
       /**@brief returns true if *(this) octant is root. false otherwise*/
       bool isRoot() const;
@@ -237,18 +222,21 @@ namespace ot {
       /**@brief return a child of this octant with the given child number.*/
       TreeNode getChildMorton(unsigned char child) const;
 
-      /**@brief max coord of the d dimention*/
-      T minX(int d) const;
+      /**@brief lower bound of the d dimension*/
+      T lowerBound(int d) const;
 
-      /**@brief min coord of the d dimention*/
-      T maxX(int d) const;
+      /**@brief upper bound of the d dimension, not mapped periodic*/
+      T upperBound(int d) const;
 
+#if 0
       /**@brief min coord of the octant (leftmost corner)*/
       std::array<T,dim> minX() const;
 
       /**@brief max coord of the octant (rightmost corner)*/
       std::array<T,dim> maxX() const;
+#endif
 
+#if 0
      /**
        @brief Return neighbor at the same level.
        @author Masado Ishii
@@ -264,22 +252,13 @@ namespace ot {
         */
       template <bool includeDomBdry = false>
       TreeNode getNeighbour(unsigned int d, signed char offset) const;
+#endif
 
       /**
         @brief Append in-bounds neighbors of node to node list.
         @author Masado Ishii
        */
-      template <bool includeDomBdry = false>
       void appendAllNeighbours(std::vector<TreeNode> &nodeList) const;
-
-      /**
-       @brief Append in-bounds neighbours of node to node list. Considered as points, so points on the domain boundary are included.
-       @note Use of level information is retained, i.e. neighbours will be at distance 1u<<(m_uiMaxDepth - level) away.
-             Call this on the DFD (deepest first descendant) if you need the finest resolution neighbours.
-       @note Wrapper around appendAllNeighbours<true>().
-       @author Masado Ishii
-       */
-      void appendAllNeighboursAsPoints(std::vector<TreeNode> &nodeList) const;
 
     };
 

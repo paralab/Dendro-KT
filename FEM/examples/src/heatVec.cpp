@@ -65,8 +65,6 @@ void HeatVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsigned 
     const double Jz = 1.0/(refElSz/(double (szZ)));
 
 
-    //std::cout<<"Mass:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
-
     for(unsigned int k=0;k<(eleOrder+1);k++)
         for(unsigned int j=0;j<(eleOrder+1);j++)
             for(unsigned int i=0;i<(eleOrder+1);i++)
