@@ -264,25 +264,7 @@ namespace ot {
   template <typename T, unsigned int dim>
   unsigned int TNPoint<T,dim>::get_lexNodeRank(const TreeNode<T,dim> &hostCell, unsigned int polyOrder) const
   {
-    using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - hostCell.getLevel());
-
-    unsigned int rank = 0;
-    unsigned int stride = 1;
-    #pragma unroll(dim)
-    for (int d = 0; d < dim; d++)
-    {
-      // Round up here, since we round down when we generate the nodes.
-      // The inequalities of integer division work out, as long as polyOrder < len.
-      //TODO is there a noticeable performance cost for preserving precision?
-      unsigned int index1D = polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - TreeNode::m_uiCoords[d]) / len;
-      rank += index1D * stride;
-      stride *= (polyOrder + 1);
-    }
-
-    return rank;
-
-    //TODO just call the static version on self. That was copied from here.
+    return TNPoint<T, dim>::get_lexNodeRank(hostCell, *this, polyOrder);
   }
 
 
@@ -300,10 +282,7 @@ namespace ot {
     #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
     {
-      // Round up here, since we round down when we generate the nodes.
-      // The inequalities of integer division work out, as long as polyOrder < len.
-      //TODO is there a noticeable performance cost for preserving precision?
-      unsigned int index1D = polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - tnPoint.getX(d)) / len;
+      unsigned int index1D = TNPoint<T, dim>::get_nodeRank1D(hostCell, tnPoint, d, polyOrder);
       rank += index1D * stride;
       stride *= (polyOrder + 1);
     }
@@ -318,7 +297,13 @@ namespace ot {
                                               unsigned int polyOrder)
   {
     const unsigned int len = 1u << (m_uiMaxDepth - hostCell.getLevel());
-    return polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - tnPoint.getX(d)) / len;
+
+    // Round up here, since we round down when we generate the nodes.
+    // The inequalities of integer division work out, as long as polyOrder < len.
+    if (hostCell.range().upperEquals(d, tnPoint.coords().coord(d)))
+      return polyOrder;
+    else
+      return polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - tnPoint.getX(d)) / len;
   }
 
 
@@ -650,7 +635,7 @@ namespace ot {
 
 
   /**
-   * @brief Using bit-wise ops, identifies which virtual children are touching a point.
+   * @brief Identifies which virtual children are touching a point.
    * @param [in] pointCoords Coordinates of the point incident on 0 or more children.
    * @param [out] incidenceOffset The Morton child # of the first incident child.
    * @param [out] incidenceSubspace A bit string of axes, with a '1'
@@ -666,17 +651,28 @@ namespace ot {
       typename ot::CellType<dim>::FlagType &incidenceSubspace,
       typename ot::CellType<dim>::FlagType &incidenceSubspaceDim) const
   {
-    const LevI pLev = this->getLevel();
+    periodic::PRange<T, dim> lowerRange = this->getChildMorton(0).range();
+    periodic::PRange<T, dim> upperRange = this->getChildMorton((1u << dim) - 1).range();
 
-    incidenceOffset = (pt.getMortonIndex(pLev) ^ this->getMortonIndex(pLev))  | pt.getMortonIndex(pLev + 1);  // One of the duplicates.
-    ot::CellType<dim> paCellt = TNPoint<T,dim>::get_cellType(pt, pLev);
-    ot::CellType<dim> chCellt = TNPoint<T,dim>::get_cellType(pt, pLev+1);
+    incidenceOffset = 0;
+    incidenceSubspace = 0;
+    incidenceSubspaceDim = 0;
+    for (int d = 0; d < dim; ++d)
+    {
+      const bool child0 = lowerRange.closedContains(d, pt.coords().coord(d));
+      const bool child1 = upperRange.closedContains(d, pt.coords().coord(d));
 
-    // Note that dupDim is the number of set bits in dupOrient.
-    incidenceSubspace =    paCellt.get_orient_flag() & ~chCellt.get_orient_flag();
-    incidenceSubspaceDim = paCellt.get_dim_flag()    -  chCellt.get_dim_flag();
-
-    incidenceOffset = ~incidenceSubspace & incidenceOffset;  // The least Morton-child among all duplicates.
+      if (child0 && child1)
+      {
+        incidenceSubspace |= (1u << d);
+        incidenceSubspaceDim++;
+      }
+      else if (child1)
+      {
+        incidenceOffset |= (1u << d);
+      }
+      // if just child0, then no offset needed.
+    }
   }
 
 

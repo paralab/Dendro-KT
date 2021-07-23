@@ -105,9 +105,12 @@ namespace periodic
       using CoordTransfer = typename PCoord<T, dim>::CoordTransfer;
       bool openContains(int axis, const CoordTransfer &coord) const;
       bool halfClosedContains(int axis, const CoordTransfer &coord) const;
+      bool upperEquals(int axis, const CoordTransfer &coord) const;
       bool closedContains(int axis, const CoordTransfer &coord) const;
+
       bool openContains(int axis, T coord) const;
       bool halfClosedContains(int axis, T coord) const;
+      bool upperEquals(int axis, T coord) const;
       bool closedContains(int axis, T coord) const;
 
       bool closedContains(const PCoord<T, dim> &pcoord) const;
@@ -322,12 +325,20 @@ namespace periodic
     return min_coord <= coord && coord < min_coord + m_side;
   }
 
+  // PRange::upperEquals()
+  template <typename T, int dim>
+  bool PRange<T, dim>::upperEquals(int axis, const CoordTransfer &coord) const
+  {
+    const T max_coord = m_max.coord(axis);
+    return coord == max_coord;
+  }
+
   // PRange::closedContains()
   template <typename T, int dim>
   bool PRange<T, dim>::closedContains(int axis, const CoordTransfer &coord) const
   {
-    const T max_coord = m_max.coord(axis);
-    return this->halfClosedContains(axis, coord) || coord == max_coord;
+    return this->halfClosedContains(axis, coord) ||
+        this->upperEquals(axis, coord);
   }
 
   // PRange::openContains()
@@ -348,13 +359,21 @@ namespace periodic
     return min_coord <= coord && coord < min_coord + m_side;
   }
 
+  // PRange::upperEquals()
+  template <typename T, int dim>
+  bool PRange<T, dim>::upperEquals(int axis, T coord) const
+  {
+    coord = PCoord<T, dim>::map(axis, coord);
+    const T max_coord = m_max.coord(axis);
+    return coord == max_coord;
+  }
+
   // PRange::closedContains()
   template <typename T, int dim>
   bool PRange<T, dim>::closedContains(int axis, T coord) const
   {
-    coord = PCoord<T, dim>::map(axis, coord);
-    const T max_coord = m_max.coord(axis);
-    return this->halfClosedContains(axis, coord) || coord == max_coord;
+    return this->halfClosedContains(axis, coord) ||
+        this->upperEquals(axis, coord);
   }
 
   // PRange::closedContains()

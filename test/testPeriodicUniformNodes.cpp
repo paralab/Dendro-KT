@@ -201,7 +201,7 @@ int main(int argc, char * argv[])
       for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
         sumNodes += loop.loop().subtreeInfo().readNodeValsIn()[nIdx];
       sumNodesPerElem.push_back(sumNodes);
-      nodesPerElem.push_back(loop.loop().subtreeInfo().getNumNodesIn());
+      nodesPerElem.push_back(loop.loop().subtreeInfo().getNumNonhangingNodes());
 
       loop.loop().next();
     }
@@ -224,8 +224,12 @@ int main(int argc, char * argv[])
   {
     fprintf(stdout, (RED "%lu elements are missing nodes: " MAG), wrongElems.size());
     for (size_t ii : wrongElems)
-      fprintf(stdout, " %2lu", ii);
+      fprintf(stdout, "  %2lu(%.0f)", ii, sumNodesPerElem[ii]);
     fprintf(stdout, NRM "\n");
+  }
+  else
+  {
+    fprintf(stdout, GRN "All nodes accounted for.\n" NRM);
   }
 
   delete da;
