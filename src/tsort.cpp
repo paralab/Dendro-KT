@@ -992,7 +992,8 @@ SFC_Tree<T,D>:: distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree, double lo
     if (rNE < nNE-1 && (tree.back() == nextBegin || !strict && tree.back().isAncestor(nextBegin)))
       tree.pop_back();
   }
-  MPI_Comm_free(&nonemptys);
+  if (nonemptys != MPI_COMM_NULL)
+    MPI_Comm_free(&nonemptys);
 }
 
 
