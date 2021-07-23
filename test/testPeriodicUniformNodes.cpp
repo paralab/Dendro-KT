@@ -150,7 +150,7 @@ int main(int argc, char * argv[])
   DendroScopeBegin();
 
   _InitializeHcurve(DIM);
-  periodic::PCoord<uint, DIM>::periods({(1u<<m_uiMaxDepth), periodic::NO_PERIOD});
+  periodic::PCoord<uint, DIM>::periods({(1u<<m_uiMaxDepth)/2, periodic::NO_PERIOD});
   /// periodic::PCoord<uint, DIM>::periods({periodic::NO_PERIOD, periodic::NO_PERIOD});
 
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -168,7 +168,7 @@ int main(int argc, char * argv[])
   ot::DA<DIM> * da = new ot::DA<DIM>(distTree, comm, 1);
 
   {
-    const RankI cellDims = 1u << fineLevel;
+    const RankI cellDims = (1u << fineLevel) / 2;
     const RankI vertexDims = (1u << fineLevel) + 1;
     const RankI expectedNodes = cellDims * vertexDims;  // 2D
 
