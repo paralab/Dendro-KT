@@ -17,6 +17,7 @@
 #include "ompUtils.h"
 #include <chrono>
 #include <assert.h>
+#include <string.h>
 
 
 #ifdef __DEBUG__
