@@ -7,6 +7,15 @@
 namespace PoissonEq {
 
 template <unsigned int dim>
+PoissonVec<dim>::PoissonVec()
+  : feVector<PoissonVec<dim>,dim>()
+{
+  for (unsigned int d = 0; d < dim-1; d++)
+    imV[d] = nullptr;
+}
+
+
+template <unsigned int dim>
 PoissonVec<dim>::PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof) : feVector<PoissonVec<dim>, dim>(da, octList, dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
@@ -15,11 +24,28 @@ PoissonVec<dim>::PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsi
 }
 
 template <unsigned int dim>
+PoissonVec<dim>::PoissonVec(PoissonVec &&other)
+  : PoissonVec()
+{
+  this->operator=(std::forward<PoissonVec&&>(other));
+}
+
+template <unsigned int dim>
+PoissonVec<dim> & PoissonVec<dim>::operator=(PoissonVec &&other)
+{
+  feVector<PoissonVec<dim>, dim>::operator=(std::forward<PoissonVec&&>(other));
+  std::swap(this->imV, other.imV);
+  return *this;
+}
+
+
+template <unsigned int dim>
 PoissonVec<dim>::~PoissonVec()
 {
     for (unsigned int d = 0; d < dim-1; d++)
     {
-      delete [] imV[d];
+      if (imV[d] != nullptr)
+        delete [] imV[d];
       imV[d] = nullptr;
     }
 }

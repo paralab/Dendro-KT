@@ -9,6 +9,18 @@ namespace PoissonEq
 {
 
 template <unsigned int dim>
+PoissonMat<dim>::PoissonMat()
+  : feMatrix<PoissonMat<dim>,dim>()
+{
+  for (unsigned int d = 0; d < dim-1; d++)
+    imV[d] = nullptr;
+  for (unsigned int d = 0; d < dim; d++)
+    Qx[d] = nullptr;
+  phi_i = nullptr;
+  ematBuf = nullptr;
+}
+
+template <unsigned int dim>
 PoissonMat<dim>::PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof) : feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
@@ -23,24 +35,46 @@ PoissonMat<dim>::PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNod
 }
 
 template <unsigned int dim>
+PoissonMat<dim>::PoissonMat(PoissonMat &&other)
+  : PoissonMat()
+{
+  this->operator=(std::forward<PoissonMat&&>(other));
+}
+
+template <unsigned int dim>
+PoissonMat<dim> & PoissonMat<dim>::operator=(PoissonMat &&other)
+{
+  feMatrix<PoissonMat<dim>, dim>::operator=(std::forward<PoissonMat&&>(other));
+  std::swap(this->imV, other.imV);
+  std::swap(this->Qx, other.Qx);
+  std::swap(this->phi_i, other.phi_i);
+  std::swap(this->ematBuf, other.ematBuf);
+  return *this;
+}
+
+template <unsigned int dim>
 PoissonMat<dim>::~PoissonMat()
 {
     for (unsigned int d = 0; d < dim-1; d++)
     {
-      delete [] imV[d];
+      if (imV[d] != nullptr)
+        delete [] imV[d];
       imV[d] = nullptr;
     }
 
     for (unsigned int d = 0; d < dim; d++)
     {
-      delete [] Qx[d];
+      if (Qx[d] != nullptr)
+        delete [] Qx[d];
       Qx[d] = nullptr;
     }
 
-    delete [] phi_i;
+    if (phi_i != nullptr)
+      delete [] phi_i;
     phi_i = nullptr;
 
-    delete [] ematBuf;
+    if (ematBuf != nullptr)
+      delete [] ematBuf;
     ematBuf = nullptr;
 }
 

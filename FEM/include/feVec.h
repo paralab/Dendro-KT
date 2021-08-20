@@ -25,23 +25,26 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief: pointer to OCT DA*/
-    ot::DA<dim>* m_uiOctDA;
+    ot::DA<dim>* m_uiOctDA = nullptr;
 
-    const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList;
+    const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList = nullptr;
 
     /// /**@brief: type of the DA*/  ///TODO
     /// ot::DAType m_uiDaType;
 
     /**@brief problem domain min point*/
-    Point<dim> m_uiPtMin;
+    Point<dim> m_uiPtMin{-1.0};
 
     /**@brief problem domain max point*/
-    Point<dim> m_uiPtMax;
+    Point<dim> m_uiPtMax{1.0};
 
 #ifdef BUILD_WITH_PETSC
     /**@brief: petsc DM*/
     DM m_uiPETSC_DA;
 #endif
+
+protected:
+    feVec() { }
 
 public:
 
@@ -52,6 +55,23 @@ public:
       : m_octList(octList)
     {
         m_uiOctDA=da;
+    }
+
+    feVec(feVec &&other)
+      :
+        m_uiOctDA(other.m_uiOctDA),
+        m_octList(other.m_octList),
+        m_uiPtMin(other.m_uiPtMin),
+        m_uiPtMax(other.m_uiPtMax)
+    { }
+
+    feVec & operator=(feVec &&other)
+    {
+      m_uiOctDA = other.m_uiOctDA;
+      m_octList = other.m_octList;
+      m_uiPtMin = other.m_uiPtMin;
+      m_uiPtMax = other.m_uiPtMax;
+      return *this;
     }
 
     /**@brief deconstructor*/

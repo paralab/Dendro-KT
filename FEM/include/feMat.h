@@ -22,24 +22,27 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief: pointer to OCT DA*/
-    const ot::DA<dim>* m_uiOctDA;
+    const ot::DA<dim>* m_uiOctDA = nullptr;
 
-    const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList;
+    const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList = nullptr;
 
     /// /**@brief: type of the DA*/  //TODO
     /// ot::DAType m_uiDaType;
 
     /**@brief problem domain min point*/
-    Point<dim> m_uiPtMin;
+    Point<dim> m_uiPtMin{-1.0};
 
     /**@brief problem domain max point*/
-    Point<dim> m_uiPtMax;
+    Point<dim> m_uiPtMax{1.0};
 
 
 #ifdef BUILD_WITH_PETSC
     /**@brief: petsc DM*/
     DM m_uiPETSC_DA;
 #endif
+
+protected:
+    feMat() {}
 
 public:
     /**@brief: feMat constructor
@@ -50,15 +53,23 @@ public:
       : m_uiOctDA(da),
         m_octList(octList)
     {
-      std::array<double, dim> lo, hi;
-      std::fill(lo.begin(), lo.end(), -1);
-      std::fill(hi.begin(), hi.end(), 1);
-      this->setProblemDimensions(Point<dim>(lo), Point<dim>(hi));
     }
 
     feMat(feMat &&other)
-      : feMat(m_uiOctDA, m_octList)
+      : m_uiOctDA(other.m_uiOctDA),
+        m_octList(other.m_octList),
+        m_uiPtMin(other.m_uiPtMin),
+        m_uiPtMax(other.m_uiPtMax)
     { }
+
+    feMat & operator=(feMat &&other)
+    {
+      m_uiOctDA = other.m_uiOctDA;
+      m_octList = other.m_octList;
+      m_uiPtMin = other.m_uiPtMin;
+      m_uiPtMax = other.m_uiPtMax;
+      return *this;
+    }
 
     /**@brief deconstructor*/
     ~feMat()

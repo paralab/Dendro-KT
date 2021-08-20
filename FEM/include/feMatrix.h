@@ -24,16 +24,19 @@ protected:
          static constexpr unsigned int m_uiDim = dim;
 
          /**@brief number of dof*/
-         unsigned int m_uiDof;
+         unsigned int m_uiDof = 1;
 
          /**@brief element nodal vec in */
-         VECType * m_uiEleVecIn;
+         VECType * m_uiEleVecIn = nullptr;
 
          /***@brief element nodal vecOut */
-         VECType * m_uiEleVecOut;
+         VECType * m_uiEleVecOut = nullptr;
 
          /** elemental coordinates */
-         double * m_uiEleCoords;
+         double * m_uiEleCoords = nullptr;
+
+    protected:
+         feMatrix() {}
 
     public:
         /**
@@ -43,6 +46,7 @@ protected:
         feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
 
         feMatrix(feMatrix &&other);
+        feMatrix & operator=(feMatrix &&other);
 
         ~feMatrix();
 
@@ -249,6 +253,17 @@ feMatrix<LeafT, dim>::feMatrix(feMatrix &&other)
   other.m_uiEleCoords = nullptr;
 }
 
+template <typename LeafT, unsigned int dim>
+feMatrix<LeafT, dim> & feMatrix<LeafT, dim>::operator=(feMatrix &&other)
+{
+  feMat<dim>::operator=(std::forward<feMatrix&&>(other));
+  std::swap(this->m_uiDof, other.m_uiDof);
+  std::swap(this->m_uiEleVecIn, other.m_uiEleVecIn);
+  std::swap(this->m_uiEleVecOut, other.m_uiEleVecOut);
+  std::swap(this->m_uiEleCoords, other.m_uiEleCoords);
+  return *this;
+}
+
 
 template <typename LeafT, unsigned int dim>
 feMatrix<LeafT,dim>::~feMatrix()
@@ -278,6 +293,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   m_oda->template createVector<VECType>(inGhosted, false, true, m_uiDof);
   m_oda->template createVector<VECType>(outGhosted, false, true, m_uiDof);
   std::fill(outGhosted.begin(), outGhosted.end(), 0);
+
   VECType *inGhostedPtr = inGhosted.data();
   VECType *outGhostedPtr = outGhosted.data();
 

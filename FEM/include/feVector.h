@@ -21,17 +21,19 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief number of unknowns */
-    unsigned int m_uiDof;
+    unsigned int m_uiDof = 1;
 
     /**@brief element nodal vec in */
-    VECType * m_uiEleVecIn;
+    VECType * m_uiEleVecIn = nullptr;
 
     /***@brief element nodal vecOut */
-    VECType * m_uiEleVecOut;
+    VECType * m_uiEleVecOut = nullptr;
 
     /** elemental coordinates */
-    double * m_uiEleCoords;
+    double * m_uiEleCoords = nullptr;
 
+protected:
+    feVector() {}
 
 public:
     /**
@@ -39,6 +41,9 @@ public:
      * @param[in] da: octree DA
      * */
     feVector(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof=1);
+
+    feVector(feVector &&other);
+    feVector & operator=(feVector &&other);
 
     ~feVector();
 
@@ -108,6 +113,33 @@ feVector<T,dim>::feVector(ot::DA<dim> *da, const std::vector<ot::TreeNode<unsign
 
     m_uiEleCoords= new double[m_uiDim*nPe];
 }
+
+template <typename LeafT, unsigned int dim>
+feVector<LeafT, dim>::feVector(feVector &&other)
+  : feVec<dim>(std::forward<feVec<dim>>(other)),
+    m_uiDof{other.m_uiDof},
+    m_uiEleVecIn{other.m_uiEleVecIn},
+    m_uiEleVecOut{other.m_uiEleVecOut},
+    m_uiEleCoords{other.m_uiEleCoords}
+{
+  other.m_uiEleVecIn = nullptr;
+  other.m_uiEleVecOut = nullptr;
+  other.m_uiEleCoords = nullptr;
+}
+
+template <typename LeafT, unsigned int dim>
+feVector<LeafT, dim> & feVector<LeafT, dim>::operator=(feVector &&other)
+{
+  feVec<dim>::operator=(std::forward<feVector&&>(other));
+  std::swap(this->m_uiDof, other.m_uiDof);
+  std::swap(this->m_uiEleVecIn, other.m_uiEleVecIn);
+  std::swap(this->m_uiEleVecOut, other.m_uiEleVecOut);
+  std::swap(this->m_uiEleCoords, other.m_uiEleCoords);
+  return *this;
+}
+
+
+
 
 template <typename T, unsigned int dim>
 feVector<T,dim>::~feVector()
