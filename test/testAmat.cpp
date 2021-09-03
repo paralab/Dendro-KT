@@ -58,7 +58,6 @@ int main(int argc, char * argv[])
   PoissonEq::PoissonVec<dim> poissonVec(da, &dtree.getTreePartFiltered(), 1);
   poissonVec.setProblemDimensions(pt_min,pt_max);
 
-
   // -----------------------------
   // aMat
   // -----------------------------
@@ -66,10 +65,12 @@ int main(int argc, char * argv[])
   typedef par::aMat<par::aMatFree<double, unsigned long, unsigned int>, double, unsigned long, unsigned int>  aMatFree; // aMat type taking aMatBased as derived class
   typedef par::Maps<double,unsigned long,unsigned int> aMatMaps;
 
+  std::vector<double> dirichletZeros(da->getBoundaryNodeIndices().size() * ndofs, 0.0);
+
   aMatFree*   stMatFree=NULL;
   /// aMatBased* stMatBased=NULL;
   aMatMaps* meshMaps=NULL;
-  da->allocAMatMaps(meshMaps, dtree.getTreePartFiltered(), 1);
+  da->allocAMatMaps(meshMaps, dtree.getTreePartFiltered(), dirichletZeros.data(), ndofs);
   da->createAMat(stMatFree,meshMaps);
 
   poissonMat.getAssembledAMat(stMatFree);

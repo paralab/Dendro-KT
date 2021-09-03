@@ -566,7 +566,14 @@ public:
     {
       meshMaps = new par::Maps<DT, GI, LI>*[this->getNumStrata()];
       for (int ii = 0; ii < this->getNumStrata(); ++ii)
-        (*m_multiDA)[ii].allocAMatMaps(meshMaps[ii], m_distTree->getTreePartFiltered(ii), m_ndofs);
+      {
+        std::vector<DT> dirichletZeros((*m_multiDA)[ii].getBoundaryNodeIndices().size() * m_ndofs, 0.0);
+        (*m_multiDA)[ii].allocAMatMaps(
+            meshMaps[ii],
+            m_distTree->getTreePartFiltered(ii),
+            dirichletZeros.data(),
+            m_ndofs);
+      }
     }
 
     // deallocAMatMapsStrata()

@@ -799,7 +799,10 @@ class DA
          * @param dof
          */
         template<typename DT,typename GI,typename LI>
-        void allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps, const std::vector<TreeNode<unsigned, dim>> &octList, unsigned int dof=1) const;
+        void allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,
+                           const std::vector<TreeNode<unsigned, dim>> &octList,
+                           const DT *prescribedLocalBoundaryVals,
+                           unsigned int dof=1) const;
 
         template<typename DT,typename GI,typename LI>
         void deallocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,unsigned int dof=1) const;
@@ -851,7 +854,10 @@ namespace ot
    */
   template <unsigned int dim>
   template<typename DT,typename GI,typename LI>
-  void DA<dim>::allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps, const std::vector<TreeNode<unsigned, dim>> &octList, unsigned int dof) const
+  void DA<dim>::allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,
+                              const std::vector<TreeNode<unsigned, dim>> &octList,
+                              const DT *prescribedLocalBoundaryVals,
+                              unsigned int dof) const
   {
     if(this->isActive())
     {
@@ -908,6 +914,13 @@ namespace ot
       GI dof_end_global   = da_local2global[this->getLocalNodeBegin()+this->getLocalNodalSz()-1]*dof + (dof-1);
       GI total_dof_global = this->getGlobalNodeSz() * dof;
 
+      // Boundary data
+      const std::vector<size_t> localBoundaryIndices = this->getBoundaryNodeIndices();
+      std::vector<GI> global_boundary_dofs(localBoundaryIndices.size() * dof);
+      for (size_t ii = 0; ii < localBoundaryIndices.size(); ++ii)
+        for (unsigned v = 0; v < dof; ++v)
+          global_boundary_dofs[dof * ii + v] =
+              dof * da_local2global[localBoundaryIndices[ii]] + v;
 
       // Define output meshMaps.
       meshMaps = new par::Maps<DT,GI,LI>(acomm);
@@ -921,8 +934,9 @@ namespace ot
           dof_end_global,
           total_dof_global);
 
-      //meshMaps->set_bdr_map(bdy_dof_global,bdy_dof_val,0);
-      meshMaps->set_bdr_map(NULL,NULL,0);//TODO ask @Milinda about boundary nodes
+      meshMaps->set_bdr_map(global_boundary_dofs.data(),
+                            const_cast<DT *>( prescribedLocalBoundaryVals ),  // hack until AMat fixes const
+                            localBoundaryIndices.size() * dof);
 
       // cleanup.
       for(unsigned int i=0; i < localElems; i++)
