@@ -246,8 +246,8 @@ class LocalVector : public Vector<ValT>
     : Vector<ValT>(mesh, false, ndofs, input)
     {}
 
-    ValT & operator[](const LocalIdx &local) { return this->data()[local]; }
-    const ValT & operator[](const LocalIdx &local) const { return this->data()[local]; }
+    ValT & operator[](const LocalIdx &local) { return this->ptr()[local]; }
+    const ValT & operator[](const LocalIdx &local) const { return this->ptr()[local]; }
 };
 
 template <typename ValT>
@@ -259,9 +259,95 @@ class GhostedVector : public Vector<ValT>
     : Vector<ValT>(mesh, true, ndofs, input)
     {}
 
-    ValT & operator[](const GhostedIdx &ghosted) { return this->data()[ghosted]; }
-    const ValT & operator[](const GhostedIdx &ghosted) const { return this->data()[ghosted]; }
+    ValT & operator[](const GhostedIdx &ghosted) { return this->ptr()[ghosted]; }
+    const ValT & operator[](const GhostedIdx &ghosted) const { return this->ptr()[ghosted]; }
 };
+
+
+//
+// PetscVector  (wrapper)
+//
+template <typename ValT>
+class PetscVector
+{
+  private:
+    Vec m_data;
+    size_t m_size;
+    bool m_isGhosted;
+    size_t m_ndofs = 1;
+    unsigned long long m_globalNodeRankBegin = 0;
+
+  public:
+    // PetscVector constructor
+    template <unsigned int dim>
+    PetscVector(const ConstMeshPointers<dim> &mesh, bool isGhosted, size_t ndofs, const ValT *input = nullptr)
+    : m_size(
+        isGhosted ?
+        mesh.da()->getTotalNodalSz() * ndofs : mesh.da()->getLocalNodalSz() * ndofs),
+      m_isGhosted(isGhosted),
+      m_ndofs(ndofs)
+    {
+      mesh.da()->petscCreateVector(m_data, false, isGhosted, ndofs);
+      if (input != nullptr)
+      {
+        const size_t localSz = ndofs * mesh.da()->getLocalNodalSz();
+        const size_t localBegin = ndofs * mesh.da()->getLocalNodeBegin();
+        if (isGhosted)
+          input += localBegin;
+
+        ValT *array;
+        VecGetArray(m_data, &array);
+        std::copy_n(input, localSz, array);
+        VecRestoreArray(m_data, &array);
+      }
+      m_globalNodeRankBegin = mesh.da()->getGlobalRankBegin();
+    }
+
+    // vec()
+    Vec vec() { return m_data; }
+    const Vec vec() const { return m_data; }  // doesn't really enforce const
+
+    // isGhosted()
+    bool isGhosted() const { return m_isGhosted; }
+
+    // ndofs()
+    size_t ndofs() const { return m_ndofs; }
+
+    // size()
+    size_t size() const { return m_size; }
+
+    // globalRankBegin();
+    unsigned long long globalRankBegin() const { return m_globalNodeRankBegin; }
+};
+
+template <typename ValT>
+class LocalPetscVector : public PetscVector<ValT>
+{
+  public:
+    template <unsigned int dim>
+    LocalPetscVector(const ConstMeshPointers<dim> &mesh, size_t ndofs, const ValT *input = nullptr)
+    : PetscVector<ValT>(mesh, false, ndofs, input)
+    {}
+};
+
+
+template <typename ValT>
+void copyToPetscVector(LocalPetscVector<ValT> &petscVec, const LocalVector<ValT> &vector)
+{
+  ValT *array;
+  VecGetArray(petscVec.vec(), &array);
+  std::copy_n(vector.ptr(), petscVec.size(), array);
+  VecRestoreArray(petscVec.vec(), &array);
+}
+
+template <typename ValT>
+void copyFromPetscVector(LocalVector<ValT> &vector, const LocalPetscVector<ValT> &petscVec)
+{
+  ValT *array;
+  VecGetArray(petscVec.vec(), &array);
+  std::copy_n(array, vector.size(), vector.ptr());
+  VecRestoreArray(petscVec.vec(), &array);
+}
 
 
 template <unsigned int dim, typename NodeT>
@@ -311,6 +397,37 @@ class ElementLoopOutOverwrite
 };
 
 
+struct AMatWrapper
+{
+  typedef par::aMat<par::aMatFree<double, unsigned long, unsigned int>,
+                    double, unsigned long, unsigned int>  aMatFree;
+  typedef par::Maps<double, unsigned long, unsigned int>  aMatMaps;
+
+  aMatFree* stMatFree = NULL;
+  aMatMaps* meshMaps = NULL;
+
+  // ------------------------------------
+
+  template <unsigned int dim>
+  AMatWrapper(const ConstMeshPointers<dim> &mesh,
+              PoissonEq::PoissonMat<dim> &poissonMat,
+              const double * boundaryValues,
+              int ndofs = 1)
+  {
+    mesh.da()->allocAMatMaps(meshMaps, mesh.distTree()->getTreePartFiltered(), boundaryValues, ndofs);
+    mesh.da()->createAMat(stMatFree, meshMaps);
+    stMatFree->set_matfree_type((par::MATFREE_TYPE)1);
+    poissonMat.getAssembledAMat(stMatFree);
+    stMatFree->finalize();
+  }
+
+  ~AMatWrapper()
+  {
+    // TODO DA destroy amat stuff???
+  }
+};
+
+
 template <unsigned int dim>
 struct Equation
 {
@@ -323,11 +440,10 @@ struct Equation
     Point<dim> m_min;
     Point<dim> m_max;
 
-    std::map<Key, PoissonEq::PoissonMat<dim>> m_poissonMats;
-    std::map<Key, PoissonEq::PoissonVec<dim>> m_poissonVecs;
-
   public:
     Equation(const AABB<dim> &aabb) : m_min(aabb.min()), m_max(aabb.max()) { }
+
+    void explicitFlags(const std::vector<bool> &explicitFlags);
 
     template <typename ValT>
     void matvec(const ConstMeshPointers<dim> &mesh, const LocalVector<ValT> &in, LocalVector<ValT> &out);
@@ -338,8 +454,35 @@ struct Equation
     template <typename ValT>
     void assembleDiag(const ConstMeshPointers<dim> &mesh, LocalVector<ValT> &diag_out);
 
+    // TODO make private again...
+    AMatWrapper & atOrInsertAMat(const ConstMeshPointers<dim> &mesh) const;
+
   private:
-    const Key key(const ConstMeshPointers<dim> &mesh);
+    //temporary
+    static int ndofs() { return 1; }
+
+    const Key key(const ConstMeshPointers<dim> &mesh) const;
+    PoissonEq::PoissonMat<dim> & atOrInsertPoissonMat(
+        const ConstMeshPointers<dim> &mesh) const;
+    PoissonEq::PoissonVec<dim> & atOrInsertPoissonVec(
+        const ConstMeshPointers<dim> &mesh) const;
+
+    mutable std::map<Key, PoissonEq::PoissonMat<dim>> m_poissonMats;
+    mutable std::map<Key, PoissonEq::PoissonVec<dim>> m_poissonVecs;
+    mutable std::map<Key, std::shared_ptr<AMatWrapper>> m_amats;
+
+    // hack TODO add to the map? Should be associated with a mesh
+    std::vector<bool> m_explicitFlags;
+    std::vector<ot::TreeNode<uint, dim>> m_implicitSubset;
+    //TODO so I need
+    //  - subsetNodes: Takes DA(nodes) x subset(octlist) -> indices of nodes incident on octlist
+    //    - map to read/set/add with subset and main list
+    //  - abstraction for info to node traversal loop (given subset octlist and subset nodes)
+    //  - DA create amat for subset octlist and subset nodes...
+
+
+
+
 };
 
 
@@ -362,7 +505,7 @@ int main(int argc, char * argv[])
   using DA_t = ot::DA<DIM>;
   using Mesh_t = ConstMeshPointers<DIM>;
 
-  const uint fineLevel = 5;
+  const uint fineLevel = 4;
   const size_t dummyInt = 100;
   const size_t singleDof = 1;
 
@@ -374,6 +517,13 @@ int main(int argc, char * argv[])
   Mesh_t mesh(&dtree, &das, 0);
   printf("localElements=%lu\n", mesh.numElements());
   /// printf("boundaryNodes=%lu\n", mesh.da()->getBoundaryNodeIndices().size());
+
+  // Indicate boundary elements should be 'explicit'.
+  std::vector<bool> explicitFlags(mesh.numElements(), false);
+  const std::vector<ot::TreeNode<uint, DIM>> &elements = 
+      mesh.distTree()->getTreePartFiltered(mesh.stratum());
+  for (size_t ii = 0; ii < mesh.numElements(); ++ii)
+    explicitFlags[ii] = elements[ii].getIsOnTreeBdry();
 
   AABB<DIM> bounds(Point<DIM>(-1.0), Point<DIM>(1.0));
 
@@ -397,20 +547,21 @@ int main(int argc, char * argv[])
 
   // Initialize  u=Dirichlet(0)  and  f={f function}
   for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
-    u_vec[LocalIdx(ii)] = ((ii % 43) * (ii % 97)) % 10;
+    u_vec[LocalIdx(ii)] = ((ii % 43) * (ii % 97)) % 10 + 1;
   for (size_t bdyIdx : mesh.da()->getBoundaryNodeIndices())
-    u_vec.data()[bdyIdx] = 0.0;
+    u_vec.ptr()[bdyIdx] = 0.0;
   for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
-    f_vec.data()[ii] = f(mesh.nodeCoord(LocalIdx(ii), bounds).data());
+    f_vec.ptr()[ii] = f(mesh.nodeCoord(LocalIdx(ii), bounds).data());
 
   Equation<DIM> equation(bounds);
+  equation.explicitFlags(explicitFlags);
 
   // Compute r.h.s. of weak formulation.
   equation.rhsvec(mesh, f_vec, rhs_vec);
 
   LocalVector<double> u_exact_vec(mesh, singleDof);
   for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
-    u_exact_vec.data()[ii] = u_exact(mesh.nodeCoord(LocalIdx(ii), bounds).data());
+    u_exact_vec.ptr()[ii] = u_exact(mesh.nodeCoord(LocalIdx(ii), bounds).data());
 
   // Function to check solution error.
   const auto sol_err_max = [&]() {
@@ -425,32 +576,77 @@ int main(int argc, char * argv[])
       return err_max;
   };
 
-
-  // Jacobi method:
-  const int iter_max = 1500;
-  LocalVector<double> diag_vec(mesh, singleDof);
-  equation.assembleDiag(mesh, diag_vec);
-
-  fprintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
-  for (int iter = 0; iter < iter_max; ++iter)
+  const bool matrixFreeJacobi = false;
+  if (matrixFreeJacobi)
   {
-    // matvec: overwrites v = Au
-    equation.matvec(mesh, u_vec, v_vec);
+    // Jacobi method:
+    const int iter_max = 1500;
+    LocalVector<double> diag_vec(mesh, singleDof);
+    equation.assembleDiag(mesh, diag_vec);
 
-    // Jacobi update: x -= D^-1 (Ax-b)
-    for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
+    fprintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
+    for (int iter = 0; iter < iter_max; ++iter)
     {
-      const LocalIdx lii(ii);
-      u_vec[lii] -= (v_vec[lii] - rhs_vec[lii]) / diag_vec[lii];
+      // matvec: overwrites v = Au
+      equation.matvec(mesh, u_vec, v_vec);
+
+      // Jacobi update: x -= D^-1 (Ax-b)
+      for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
+      {
+        const LocalIdx lii(ii);
+        u_vec[lii] -= (v_vec[lii] - rhs_vec[lii]) / diag_vec[lii];
+      }
+
+      // Restore boundary condition
+      for (size_t bdyIdx : mesh.da()->getBoundaryNodeIndices())
+        u_vec[LocalIdx(bdyIdx)] = 0.0;
+
+      // Check solution error
+      if ((iter + 1) % 50 == 0)
+        fprintf(stdout, "[%3d] solution err_max==%e\n", iter+1, sol_err_max());
     }
+  }
+  else
+  {
+    const AMatWrapper & amatWrapper = equation.atOrInsertAMat(mesh);
+    Mat petscMat = amatWrapper.stMatFree->get_matrix();
 
-    // Restore boundary condition
-    for (size_t bdyIdx : mesh.da()->getBoundaryNodeIndices())
-      u_vec[LocalIdx(bdyIdx)] = 0.0;
+    // PETSc solver context: Create and set KSP
+    KSP ksp;
+    KSPCreate(comm, &ksp);
+    KSPSetType(ksp, KSPCG);
+    KSPSetFromOptions(ksp);
 
-    // Check solution error
-    if ((iter + 1) % 50 == 0)
-      fprintf(stdout, "[%3d] solution err_max==%e\n", iter+1, sol_err_max());
+    // Set tolerances.
+    double tol=1e-12;
+    unsigned int max_iter=1000;
+    KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter); 
+
+    // Set operators.
+    KSPSetOperators(ksp, petscMat, petscMat);
+
+    // Set preconditioner.
+    PC pc;
+    KSPGetPC(ksp, &pc);
+    PCSetType(pc, PCJACOBI);
+    PCSetFromOptions(pc);
+
+    // Copy vectors to Petsc vectors.
+    LocalPetscVector<double> Mfrhs(mesh, ndofs, rhs_vec.ptr());
+    LocalPetscVector<double> ux(mesh, ndofs, u_vec.ptr());
+    /// print(mesh, u_vec);  // 2D grid of values in the terminal
+
+    // Solve the system.
+    KSPSolve(ksp, Mfrhs.vec(), ux.vec());
+
+    PetscInt numIterations;
+    KSPGetIterationNumber(ksp, &numIterations);
+
+    // Copy back from Petsc vector.
+    copyFromPetscVector(u_vec, ux);
+    fprintf(stdout, "[%3d] solution err_max==%e\n", numIterations, sol_err_max());
+
+    KSPDestroy(&ksp);
   }
 
   /// print(mesh, u_vec);  // 2D grid of values in the terminal
@@ -464,9 +660,64 @@ int main(int argc, char * argv[])
 
 
 template <unsigned int dim>
-const typename Equation<dim>::Key Equation<dim>::key(const ConstMeshPointers<dim> &mesh)
+const typename Equation<dim>::Key Equation<dim>::key(const ConstMeshPointers<dim> &mesh) const
 {
   return Key{DistTreeAddrT(mesh.distTree()), StratumT(mesh.stratum())};
+}
+
+template <unsigned int dim>
+PoissonEq::PoissonMat<dim> & Equation<dim>::atOrInsertPoissonMat(
+    const ConstMeshPointers<dim> &mesh) const
+{
+  const Key key = this->key(mesh);
+  if (m_poissonMats.find(key) == m_poissonMats.end())
+  {
+    m_poissonMats.insert(
+        std::make_pair(key,
+        PoissonEq::PoissonMat<dim>(mesh.da(), &mesh.distTree()->getTreePartFiltered(), this->ndofs())));
+    m_poissonMats.at(key).setProblemDimensions(m_min, m_max);
+  }
+  return m_poissonMats.at(key);
+}
+
+template <unsigned int dim>
+PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
+    const ConstMeshPointers<dim> &mesh) const
+{
+  const Key key = this->key(mesh);
+  if (m_poissonVecs.find(key) == m_poissonVecs.end())
+  {
+    m_poissonVecs.insert(
+        std::make_pair(key,
+        PoissonEq::PoissonVec<dim>(
+          const_cast<ot::DA<dim> *>(mesh.da()),   // violate const for weird feVec non-const necessity
+          &mesh.distTree()->getTreePartFiltered(), this->ndofs())));
+    m_poissonVecs.at(key).setProblemDimensions(m_min, m_max);
+  }
+  return m_poissonVecs.at(key);
+}
+
+template <unsigned int dim>
+AMatWrapper & Equation<dim>::atOrInsertAMat(const ConstMeshPointers<dim> &mesh) const
+{
+  // Homogeneous Dirichlet boundary conditions.
+  std::vector<double> zeroBoundary(mesh.da()->getLocalNodalSz() * this->ndofs(), 0.0);
+
+  const Key key = this->key(mesh);
+  if (m_amats.find(key) == m_amats.end())
+  {
+    m_amats.insert(
+        std::make_pair(key, std::make_shared<AMatWrapper>(
+            mesh, this->atOrInsertPoissonMat(mesh), zeroBoundary.data(), this->ndofs())) );
+  }
+  return *m_amats.at(key);
+}
+
+
+template <unsigned int dim>
+void Equation<dim>::explicitFlags(const std::vector<bool> &explicitFlags)
+{
+  m_explicitFlags = explicitFlags;
 }
 
 
@@ -477,23 +728,13 @@ void Equation<dim>::matvec(
     const LocalVector<ValT> &in,
     LocalVector<ValT> &out)
 {
-  // TODO replace the feMatrix structure with something
-  // easier to read, partially implement, and extend
-  // Discretized Poisson operator. TODO
+  if (in.ndofs() != this->ndofs())
+    throw std::logic_error("ndofs not supported");
 
-  const size_t ndofs = in.ndofs();
-  /// static GhostedVector<ValT> in_ghosted(mesh, ndofs), out_ghosted(mesh, ndofs);
+  PoissonEq::PoissonMat<dim> &poissonMat =
+      this->atOrInsertPoissonMat(mesh);
 
-  const Key key = this->key(mesh);
-  if (m_poissonMats.find(key) == m_poissonMats.end())
-  {
-    m_poissonMats.insert(
-        std::make_pair(key,
-        PoissonEq::PoissonMat<dim>(mesh.da(), &mesh.distTree()->getTreePartFiltered(), ndofs)));
-    m_poissonMats.at(key).setProblemDimensions(m_min, m_max);
-  }
-
-  m_poissonMats.at(key).matVec(in.data().data(), out.data().data());
+  poissonMat.matVec(in.ptr(), out.ptr());
 }
 
 
@@ -504,24 +745,13 @@ void Equation<dim>::rhsvec(
     const LocalVector<ValT> &in,
     LocalVector<ValT> &out)
 {
-  // TODO replace the feVector structure with something
-  // easier to read, partially implement, and extend
-  // Discretized Poisson rhs operator. TODO
+  if (in.ndofs() != this->ndofs())
+    throw std::logic_error("ndofs not supported");
 
-  const size_t ndofs = in.ndofs();
+  PoissonEq::PoissonVec<dim> &poissonVec =
+      this->atOrInsertPoissonVec(mesh);
 
-  const Key key = this->key(mesh);
-  if (m_poissonVecs.find(key) == m_poissonVecs.end())
-  {
-    m_poissonVecs.insert(
-        std::make_pair(key,
-        PoissonEq::PoissonVec<dim>(
-          const_cast<ot::DA<dim> *>(mesh.da()),   // violate const for weird feVec non-const necessity
-          &mesh.distTree()->getTreePartFiltered(), ndofs)));
-    m_poissonVecs.at(key).setProblemDimensions(m_min, m_max);
-  }
-
-  m_poissonVecs.at(key).computeVec(in.data().data(), out.data().data());
+  poissonVec.computeVec(in.ptr(), out.ptr());
 }
 
 
@@ -529,19 +759,16 @@ template <unsigned int dim>
 template <typename ValT>
 void Equation<dim>::assembleDiag(const ConstMeshPointers<dim> &mesh, LocalVector<ValT> &diag_out)
 {
-  const size_t ndofs = diag_out.ndofs();
+  if (diag_out.ndofs() != this->ndofs())
+    throw std::logic_error("ndofs not supported");
 
-  const Key key = this->key(mesh);
-  if (m_poissonMats.find(key) == m_poissonMats.end())
-  {
-    m_poissonMats.insert(
-        std::make_pair(key,
-        PoissonEq::PoissonMat<dim>(mesh.da(), &mesh.distTree()->getTreePartFiltered(), ndofs)));
-    m_poissonMats.at(key).setProblemDimensions(m_min, m_max);
-  }
+  PoissonEq::PoissonMat<dim> &poissonMat =
+      this->atOrInsertPoissonMat(mesh);
 
-  m_poissonMats.at(key).setDiag(diag_out.data().data());
+  poissonMat.setDiag(diag_out.ptr());
 }
+
+
 
 
 template <unsigned int dim, typename NodeT>
@@ -553,7 +780,7 @@ std::ostream & print(const ConstMeshPointers<dim> &mesh,
   return ot::printNodes(
       da->getTNCoords() + da->getLocalNodeBegin(),
       da->getTNCoords() + da->getLocalNodeBegin() + da->getLocalNodalSz(),
-      vec.data().data(),
+      vec.ptr(),
       da->getElementOrder(),
       out);
 }
