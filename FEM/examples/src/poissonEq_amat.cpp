@@ -200,9 +200,14 @@ class Vector
 {
   private:
     std::vector<ValT> m_data;
-    bool m_isGhosted;
+    bool m_isGhosted = false;
     size_t m_ndofs = 1;
     unsigned long long m_globalNodeRankBegin = 0;
+
+  protected:
+    Vector(size_t size, bool isGhosted, size_t ndofs, unsigned long long globalRankBegin)
+      : m_data(size), m_isGhosted(isGhosted), m_ndofs(ndofs), m_globalNodeRankBegin(globalRankBegin)
+    { }
 
   public:
     // Vector constructor
@@ -240,14 +245,49 @@ class Vector
 template <typename ValT>
 class LocalVector : public Vector<ValT>
 {
+  protected:
+    LocalVector(size_t size, size_t ndofs, unsigned long long globalRankBegin)
+      : Vector<ValT>::Vector(size, false, ndofs, globalRankBegin)
+    { }
+
   public:
     template <unsigned int dim>
     LocalVector(const ConstMeshPointers<dim> &mesh, size_t ndofs, const ValT *input = nullptr)
     : Vector<ValT>(mesh, false, ndofs, input)
     {}
 
-    ValT & operator[](const LocalIdx &local) { return this->ptr()[local]; }
-    const ValT & operator[](const LocalIdx &local) const { return this->ptr()[local]; }
+    ValT & operator()(const LocalIdx &local, size_t dof = 0) {
+      return this->ptr()[local * this->ndofs() + dof];
+    }
+    const ValT & operator()(const LocalIdx &local, size_t dof = 0) const {
+      return this->ptr()[local * this->ndofs() + dof];
+    }
+
+    ValT & operator[](const LocalIdx &local) { return (*this)(local, 0); }
+    const ValT & operator[](const LocalIdx &local) const { return (*this)(local, 0); }
+
+    LocalVector operator+(const LocalVector &b) const {
+      const LocalVector &a = *this;
+      LocalVector c(this->size(), this->ndofs(), this->globalRankBegin());
+      assert(sizes_match(a, b));
+      for (size_t i = 0; i < this->size(); ++i)
+        c[LocalIdx(i)] = a[LocalIdx(i)] + b[LocalIdx(i)];
+      return c;
+    }
+
+    LocalVector operator-(const LocalVector &b) const {
+      const LocalVector &a = *this;
+      LocalVector c(this->size(), this->ndofs(), this->globalRankBegin());
+      assert(sizes_match(a, b));
+      for (size_t i = 0; i < this->size(); ++i)
+        c[LocalIdx(i)] = a[LocalIdx(i)] - b[LocalIdx(i)];
+      return c;
+    }
+
+    static bool sizes_match(const LocalVector &a, const LocalVector &b)
+    {
+      return a.size() == b.size();
+    }
 };
 
 template <typename ValT>
@@ -454,6 +494,8 @@ struct Equation
     template <typename ValT>
     void assembleDiag(const ConstMeshPointers<dim> &mesh, LocalVector<ValT> &diag_out);
 
+    void dirichlet(const ConstMeshPointers<dim> &mesh, const double *prescribed_vals);
+
     // TODO make private again...
     AMatWrapper & atOrInsertAMat(const ConstMeshPointers<dim> &mesh) const;
 
@@ -467,9 +509,13 @@ struct Equation
     PoissonEq::PoissonVec<dim> & atOrInsertPoissonVec(
         const ConstMeshPointers<dim> &mesh) const;
 
+    std::vector<double> & atOrInsertDirichletVec(
+        const ConstMeshPointers<dim> &mesh) const;
+
     mutable std::map<Key, PoissonEq::PoissonMat<dim>> m_poissonMats;
     mutable std::map<Key, PoissonEq::PoissonVec<dim>> m_poissonVecs;
     mutable std::map<Key, std::shared_ptr<AMatWrapper>> m_amats;
+    mutable std::map<Key, std::vector<double>> m_dirichletVecs;
 
     // hack TODO add to the map? Should be associated with a mesh
     std::vector<bool> m_explicitFlags;
@@ -535,23 +581,26 @@ int main(int argc, char * argv[])
 
   // u_exact function  : product of sines
   const auto u_exact = [&] (const double *x) {
-    double result = 1.0;
-    for (int d = 0; d < DIM; ++d)
-      result *= sin(2 * M_PI * x[d]);
-    return result;
+    return 1 + x[0]*x[0] + 2*x[1]*x[1];
   };
-  // ... is the solution to div(grad(u)) = f, where f is
+  // ... is the solution to -div(grad(u)) = f, where f is
   const auto f = [&] (const double *x) {
-    return 4 * M_PI * M_PI * DIM * u_exact(x);
+    return -6;
+  };
+  // ... and boundary is prescribed (matching u_exact)
+  const auto u_bdry = [&] (const double *x) {
+    return 1 + x[0]*x[0] + 2*x[1]*x[1];
   };
 
   // Initialize  u=Dirichlet(0)  and  f={f function}
   for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
-    u_vec[LocalIdx(ii)] = ((ii % 43) * (ii % 97)) % 10 + 1;
+    u_vec[LocalIdx(ii)] = ((ii % 43) * (ii % 97)) % 10 + 1;  // arbitrary func
   for (size_t bdyIdx : mesh.da()->getBoundaryNodeIndices())
-    u_vec.ptr()[bdyIdx] = 0.0;
+    u_vec[LocalIdx(bdyIdx)] = u_bdry(mesh.nodeCoord(LocalIdx(bdyIdx), bounds).data());
   for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
-    f_vec.ptr()[ii] = f(mesh.nodeCoord(LocalIdx(ii), bounds).data());
+    f_vec[LocalIdx(ii)] = f(mesh.nodeCoord(LocalIdx(ii), bounds).data());
+
+  /// print(mesh, u_vec);  // 2D grid of values in the terminal
 
   Equation<DIM> equation(bounds);
   equation.explicitFlags(explicitFlags);
@@ -559,6 +608,16 @@ int main(int argc, char * argv[])
   // Compute r.h.s. of weak formulation.
   equation.rhsvec(mesh, f_vec, rhs_vec);
 
+  // Set dirichlet before setting up other matrix abstractions
+  std::vector<double> prescribed_bdry(mesh.da()->getBoundaryNodeIndices().size());
+  for (size_t bii = 0; bii < mesh.da()->getBoundaryNodeIndices().size(); ++bii)
+  {
+    size_t bdyIdx = mesh.da()->getBoundaryNodeIndices()[bii];
+    prescribed_bdry[bii] = u_bdry(mesh.nodeCoord(LocalIdx(bdyIdx), bounds).data());
+  }
+  equation.dirichlet(mesh, prescribed_bdry.data());
+
+  // for comparison
   LocalVector<double> u_exact_vec(mesh, singleDof);
   for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
     u_exact_vec.ptr()[ii] = u_exact(mesh.nodeCoord(LocalIdx(ii), bounds).data());
@@ -631,8 +690,11 @@ int main(int argc, char * argv[])
     PCSetType(pc, PCJACOBI);
     PCSetFromOptions(pc);
 
-    // Copy vectors to Petsc vectors.
+    // Compensate r.h.s. of weak formulation. Amat subtracts boundary from rhs.
     LocalPetscVector<double> Mfrhs(mesh, ndofs, rhs_vec.ptr());
+    amatWrapper.stMatFree->apply_bc(Mfrhs.vec());
+
+    // Copy vectors to Petsc vectors.
     LocalPetscVector<double> ux(mesh, ndofs, u_vec.ptr());
     /// print(mesh, u_vec);  // 2D grid of values in the terminal
 
@@ -649,9 +711,8 @@ int main(int argc, char * argv[])
     KSPDestroy(&ksp);
   }
 
-  /// print(mesh, u_vec);  // 2D grid of values in the terminal
+  print(mesh, u_vec);  // 2D grid of values in the terminal
 
-  _DestroyHcurve();
   /// DendroScopeEnd();
   PetscFinalize();
 }
@@ -669,6 +730,9 @@ template <unsigned int dim>
 PoissonEq::PoissonMat<dim> & Equation<dim>::atOrInsertPoissonMat(
     const ConstMeshPointers<dim> &mesh) const
 {
+  // TODO
+  // std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
+
   const Key key = this->key(mesh);
   if (m_poissonMats.find(key) == m_poissonMats.end())
   {
@@ -684,6 +748,9 @@ template <unsigned int dim>
 PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
     const ConstMeshPointers<dim> &mesh) const
 {
+  // TODO
+  // std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
+
   const Key key = this->key(mesh);
   if (m_poissonVecs.find(key) == m_poissonVecs.end())
   {
@@ -700,17 +767,32 @@ PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
 template <unsigned int dim>
 AMatWrapper & Equation<dim>::atOrInsertAMat(const ConstMeshPointers<dim> &mesh) const
 {
-  // Homogeneous Dirichlet boundary conditions.
-  std::vector<double> zeroBoundary(mesh.da()->getLocalNodalSz() * this->ndofs(), 0.0);
+  // Dirichlet boundary conditions, assume dirichlet() already called, else 0.
+  std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
 
   const Key key = this->key(mesh);
   if (m_amats.find(key) == m_amats.end())
   {
     m_amats.insert(
         std::make_pair(key, std::make_shared<AMatWrapper>(
-            mesh, this->atOrInsertPoissonMat(mesh), zeroBoundary.data(), this->ndofs())) );
+            mesh, this->atOrInsertPoissonMat(mesh), dirichletVec.data(), this->ndofs())) );
   }
   return *m_amats.at(key);
+}
+
+template <unsigned int dim>
+std::vector<double> & Equation<dim>::atOrInsertDirichletVec(
+        const ConstMeshPointers<dim> &mesh) const
+{
+  const Key key = this->key(mesh);
+  if (m_dirichletVecs.find(key) == m_dirichletVecs.end())
+  {
+    m_dirichletVecs.insert(std::make_pair(key, std::vector<double>()));
+  }
+
+  const size_t numBdryNodes = mesh.da()->getBoundaryNodeIndices().size();
+  m_dirichletVecs.at(key).resize(numBdryNodes * this->ndofs(), 0.0);
+  return m_dirichletVecs.at(key);
 }
 
 
@@ -768,6 +850,17 @@ void Equation<dim>::assembleDiag(const ConstMeshPointers<dim> &mesh, LocalVector
   poissonMat.setDiag(diag_out.ptr());
 }
 
+template <unsigned int dim>
+void Equation<dim>::dirichlet(const ConstMeshPointers<dim> &mesh, const double *prescribed_vals)
+{
+  std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
+
+  const size_t numBdryNodes = mesh.da()->getBoundaryNodeIndices().size();
+  for (size_t bvii = 0; bvii < numBdryNodes * this->ndofs(); ++bvii)
+    dirichletVec[bvii] = prescribed_vals[bvii];
+
+  // Note that dirichlet() should be called before making PoissonMat and aMat.
+}
 
 
 

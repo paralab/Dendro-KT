@@ -915,7 +915,7 @@ namespace ot
       GI total_dof_global = this->getGlobalNodeSz() * dof;
 
       // Boundary data
-      const std::vector<size_t> localBoundaryIndices = this->getBoundaryNodeIndices();
+      const std::vector<size_t> &localBoundaryIndices = this->getBoundaryNodeIndices();
       std::vector<GI> global_boundary_dofs(localBoundaryIndices.size() * dof);
       for (size_t ii = 0; ii < localBoundaryIndices.size(); ++ii)
         for (unsigned v = 0; v < dof; ++v)
