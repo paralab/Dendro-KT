@@ -47,6 +47,8 @@ public:
 
     ~feVector();
 
+    unsigned ndofs() const { return m_uiDof; }
+
     /**
      * @brief Evaluates the RHS of the PDE at specific points (for example evaluation at the quadrature points)
      * @param [out] out : function evaluated at specific points.

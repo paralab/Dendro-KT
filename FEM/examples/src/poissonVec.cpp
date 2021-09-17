@@ -16,11 +16,24 @@ PoissonVec<dim>::PoissonVec()
 
 
 template <unsigned int dim>
-PoissonVec<dim>::PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof) : feVector<PoissonVec<dim>, dim>(da, octList, dof)
+PoissonVec<dim>::PoissonVec(
+    ot::DA<dim>* da,
+    const std::vector<ot::TreeNode<unsigned int, dim>> *octList,
+    unsigned int dof,
+    const double * prescribedBoundaryValues)
+  :
+    feVector<PoissonVec<dim>, dim>(da, octList, dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)
       imV[d] = new double[dof*nPe];
+
+    if (prescribedBoundaryValues != nullptr)
+    {
+      const size_t numBdryDofs = dof * da->numBoundaryNodeIndices();
+      this->prescribedBoundaryDofs = new double[numBdryDofs];
+      std::copy_n(prescribedBoundaryValues, numBdryDofs, this->prescribedBoundaryDofs);
+    }
 }
 
 template <unsigned int dim>
@@ -35,6 +48,7 @@ PoissonVec<dim> & PoissonVec<dim>::operator=(PoissonVec &&other)
 {
   feVector<PoissonVec<dim>, dim>::operator=(std::forward<PoissonVec&&>(other));
   std::swap(this->imV, other.imV);
+  std::swap(this->prescribedBoundaryDofs, other.prescribedBoundaryDofs);
   return *this;
 }
 
@@ -48,6 +62,9 @@ PoissonVec<dim>::~PoissonVec()
         delete [] imV[d];
       imV[d] = nullptr;
     }
+
+    if (prescribedBoundaryDofs != nullptr)
+      delete [] prescribedBoundaryDofs;
 }
 
 template <unsigned int dim>
@@ -116,11 +133,17 @@ template <unsigned int dim>
 bool PoissonVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale)
 {
     // apply boundary conditions.
-    std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    const std::vector<size_t> &bdyIndex = m_uiOctDA->getBoundaryNodeIndices();
+    const size_t ndofs = this->ndofs();
 
-    for(unsigned int i=0;i<bdyIndex.size();i++)
-        out[bdyIndex[i]]=0.0;
+    if (this->prescribedBoundaryDofs != nullptr)
+      for(unsigned int i = 0; i < bdyIndex.size(); i++)
+        for (int dof = 0; dof < ndofs; ++dof)
+          out[bdyIndex[i] * ndofs + dof] = this->prescribedBoundaryDofs[i * ndofs + dof];
+    else
+      for(unsigned int i = 0; i < bdyIndex.size(); i++)
+        for (int dof = 0; dof < ndofs; ++dof)
+          out[bdyIndex[i] * ndofs + dof] = 0.0;  // Default 0 Dirichlet bdry
 
     return true;
 }
@@ -129,11 +152,12 @@ template <unsigned int dim>
 bool PoissonVec<dim>::postComputeVec(const VECType* in,VECType* out, double scale)
 {
     // apply boundary conditions.
-    std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    const std::vector<size_t> &bdyIndex = m_uiOctDA->getBoundaryNodeIndices();
+    const size_t ndofs = this->ndofs();
 
-    for(unsigned int i=0;i<bdyIndex.size();i++)
-        out[bdyIndex[i]]=0.0;
+    for(unsigned int i = 0; i < bdyIndex.size(); i++)
+      for (int dof = 0; dof < ndofs; ++dof)
+        out[bdyIndex[i] + dof] = 0.0;  // should be 0 for any Dirichlet bdry
 
     return true;
 }

@@ -21,7 +21,13 @@ PoissonMat<dim>::PoissonMat()
 }
 
 template <unsigned int dim>
-PoissonMat<dim>::PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof) : feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
+PoissonMat<dim>::PoissonMat(
+    const ot::DA<dim>* da,
+    const std::vector<ot::TreeNode<unsigned int, dim>> *octList,
+    unsigned int dof,
+    const double * prescribedBoundaryValues)
+  :
+    feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
 {
     const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)
@@ -32,6 +38,13 @@ PoissonMat<dim>::PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNod
 
     phi_i = new double[(dof*nPe)];
     ematBuf = new double[(dof*nPe) * (dof*nPe)];
+
+    if (prescribedBoundaryValues != nullptr)
+    {
+      const size_t numBdryDofs = dof * da->numBoundaryNodeIndices();
+      this->prescribedBoundaryDofs = new double[numBdryDofs];
+      std::copy_n(prescribedBoundaryValues, numBdryDofs, this->prescribedBoundaryDofs);
+    }
 }
 
 template <unsigned int dim>
@@ -49,6 +62,7 @@ PoissonMat<dim> & PoissonMat<dim>::operator=(PoissonMat &&other)
   std::swap(this->Qx, other.Qx);
   std::swap(this->phi_i, other.phi_i);
   std::swap(this->ematBuf, other.ematBuf);
+  std::swap(this->prescribedBoundaryDofs, other.prescribedBoundaryDofs);
   return *this;
 }
 
@@ -76,6 +90,9 @@ PoissonMat<dim>::~PoissonMat()
     if (ematBuf != nullptr)
       delete [] ematBuf;
     ematBuf = nullptr;
+
+    if (prescribedBoundaryDofs != nullptr)
+      delete [] prescribedBoundaryDofs;
 }
 
 template <unsigned int dim>
@@ -392,11 +409,17 @@ template <unsigned int dim>
 bool PoissonMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 {
     // apply boundary conditions.
-    std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    const std::vector<size_t> &bdyIndex = m_uiOctDA->getBoundaryNodeIndices();
+    const size_t ndofs = this->ndofs();
 
-    for(unsigned int i=0;i<bdyIndex.size();i++)
-        out[bdyIndex[i]]=0.0;
+    if (this->prescribedBoundaryDofs != nullptr)
+      for(unsigned int i = 0; i < bdyIndex.size(); i++)
+        for (int dof = 0; dof < ndofs; ++dof)
+          out[bdyIndex[i] * ndofs + dof] = this->prescribedBoundaryDofs[i * ndofs + dof];
+    else
+      for(unsigned int i = 0; i < bdyIndex.size(); i++)
+        for (int dof = 0; dof < ndofs; ++dof)
+          out[bdyIndex[i] * ndofs + dof] = 0.0;  // Default 0 Dirichlet bdry
 
     return true;
 }
@@ -405,11 +428,12 @@ template <unsigned int dim>
 bool PoissonMat<dim>::postMatVec(const VECType* in,VECType* out,double scale) {
 
     // apply boundary conditions.
-    std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    const std::vector<size_t> &bdyIndex = m_uiOctDA->getBoundaryNodeIndices();
+    const size_t ndofs = this->ndofs();
 
-    for(unsigned int i=0;i<bdyIndex.size();i++)
-        out[bdyIndex[i]]=0.0;
+    for(unsigned int i = 0; i < bdyIndex.size(); i++)
+      for (int dof = 0; dof < ndofs; ++dof)
+        out[bdyIndex[i] + dof] = 0.0;  // should be 0 for any Dirichlet bdry
 
     return true;
 }

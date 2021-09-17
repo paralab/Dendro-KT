@@ -457,6 +457,8 @@ class DA
         /**@brief returns a const ref to boundary node indices. */
         inline const std::vector<size_t> & getBoundaryNodeIndices() const { return m_uiBdyNodeIds; }
 
+        inline const size_t numBoundaryNodeIndices() const { return m_uiBdyNodeIds.size(); }
+
         /**@brief Compute ghosted node ids of nodes on each element. */
         std::vector<size_t> createE2NMapping(const std::vector<TreeNode<unsigned, dim>> &octList) const;
 
