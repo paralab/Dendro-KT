@@ -605,9 +605,6 @@ int main(int argc, char * argv[])
   Equation<DIM> equation(bounds);
   equation.explicitFlags(explicitFlags);
 
-  // Compute r.h.s. of weak formulation.
-  equation.rhsvec(mesh, f_vec, rhs_vec);
-
   // Set dirichlet before setting up other matrix abstractions
   std::vector<double> prescribed_bdry(mesh.da()->getBoundaryNodeIndices().size());
   for (size_t bii = 0; bii < mesh.da()->getBoundaryNodeIndices().size(); ++bii)
@@ -616,6 +613,9 @@ int main(int argc, char * argv[])
     prescribed_bdry[bii] = u_bdry(mesh.nodeCoord(LocalIdx(bdyIdx), bounds).data());
   }
   equation.dirichlet(mesh, prescribed_bdry.data());
+
+  // Compute r.h.s. of weak formulation.
+  equation.rhsvec(mesh, f_vec, rhs_vec);
 
   // for comparison
   LocalVector<double> u_exact_vec(mesh, singleDof);
@@ -635,7 +635,7 @@ int main(int argc, char * argv[])
       return err_max;
   };
 
-  const bool matrixFreeJacobi = false;
+  const bool matrixFreeJacobi = true;
   if (matrixFreeJacobi)
   {
     // Jacobi method:
@@ -655,10 +655,6 @@ int main(int argc, char * argv[])
         const LocalIdx lii(ii);
         u_vec[lii] -= (v_vec[lii] - rhs_vec[lii]) / diag_vec[lii];
       }
-
-      // Restore boundary condition
-      for (size_t bdyIdx : mesh.da()->getBoundaryNodeIndices())
-        u_vec[LocalIdx(bdyIdx)] = 0.0;
 
       // Check solution error
       if ((iter + 1) % 50 == 0)
@@ -711,7 +707,10 @@ int main(int argc, char * argv[])
     KSPDestroy(&ksp);
   }
 
-  print(mesh, u_vec);  // 2D grid of values in the terminal
+  /// print(mesh, u_vec);  // 2D grid of values in the terminal
+
+  printf("\n-------------------------------------------------------\n");
+  print(mesh, u_vec - u_exact_vec);  // 2D grid of values in the terminal
 
   /// DendroScopeEnd();
   PetscFinalize();
@@ -730,15 +729,18 @@ template <unsigned int dim>
 PoissonEq::PoissonMat<dim> & Equation<dim>::atOrInsertPoissonMat(
     const ConstMeshPointers<dim> &mesh) const
 {
-  // TODO
-  // std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
+  const std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
 
   const Key key = this->key(mesh);
   if (m_poissonMats.find(key) == m_poissonMats.end())
   {
     m_poissonMats.insert(
         std::make_pair(key,
-        PoissonEq::PoissonMat<dim>(mesh.da(), &mesh.distTree()->getTreePartFiltered(), this->ndofs())));
+        PoissonEq::PoissonMat<dim>(
+          mesh.da(),
+          &mesh.distTree()->getTreePartFiltered(),
+          this->ndofs(),
+          dirichletVec.data())));
     m_poissonMats.at(key).setProblemDimensions(m_min, m_max);
   }
   return m_poissonMats.at(key);
@@ -748,8 +750,7 @@ template <unsigned int dim>
 PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
     const ConstMeshPointers<dim> &mesh) const
 {
-  // TODO
-  // std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
+  const std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
 
   const Key key = this->key(mesh);
   if (m_poissonVecs.find(key) == m_poissonVecs.end())
@@ -758,7 +759,9 @@ PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
         std::make_pair(key,
         PoissonEq::PoissonVec<dim>(
           const_cast<ot::DA<dim> *>(mesh.da()),   // violate const for weird feVec non-const necessity
-          &mesh.distTree()->getTreePartFiltered(), this->ndofs())));
+          &mesh.distTree()->getTreePartFiltered(),
+          this->ndofs(),
+          dirichletVec.data())));
     m_poissonVecs.at(key).setProblemDimensions(m_min, m_max);
   }
   return m_poissonVecs.at(key);
