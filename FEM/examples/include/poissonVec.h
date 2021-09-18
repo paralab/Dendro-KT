@@ -21,8 +21,6 @@ namespace PoissonEq
         Point<dim> &m_uiPtMin = feVec<dim>::m_uiPtMin;
         Point<dim> &m_uiPtMax = feVec<dim>::m_uiPtMax;
 
-        double * prescribedBoundaryDofs = nullptr;
-
         static constexpr unsigned int m_uiDim = dim;
 
         void getImPtrs(const double * fromPtrs[], double * toPtrs[], const double *in, double *out) const
@@ -40,7 +38,7 @@ namespace PoissonEq
         PoissonVec();
 
     public:
-        PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof=1, const double * prescribedBoundaryValues = nullptr);
+        PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof=1);
 
         PoissonVec(PoissonVec &&other);
 

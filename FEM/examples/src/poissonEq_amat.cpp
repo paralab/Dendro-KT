@@ -533,6 +533,55 @@ struct Equation
 
 
 
+template <typename T>
+class ReduceSeq
+{
+  private:
+    bool m_nonempty = false;
+    T m_min = 0;
+    T m_max = 0;
+    T m_sum = 0;
+    T m_sum2 = 0;
+
+    void first(const T & val)
+    {
+      m_min = val;
+      m_max = val;
+      m_sum = val;
+      m_sum2 = val * val;
+    }
+
+    void next(const T & val)
+    {
+      if (val < m_min)  m_min = val;
+      if (val > m_max)  m_max = val;
+      m_sum += val;
+      m_sum2 += val*val;
+    }
+
+  public:
+    ReduceSeq()
+    {}
+
+    void include(const T & val)
+    {
+      if (m_nonempty)
+        this->next(val);
+      else
+      {
+        this->first(val);
+        this->m_nonempty = true;
+      }
+    }
+
+    const T & min() const { return m_min; }
+    const T & max() const { return m_max; }
+    const T & sum() const { return m_sum; }
+    const T & sum2() const { return m_sum2; }
+};
+
+
+
 //
 // main()
 //
@@ -579,7 +628,7 @@ int main(int argc, char * argv[])
   LocalVector<double> f_vec(mesh, singleDof);
   LocalVector<double> rhs_vec(mesh, singleDof);
 
-  // u_exact function  : product of sines
+  // u_exact function
   const auto u_exact = [&] (const double *x) {
     return 1 + x[0]*x[0] + 2*x[1]*x[1];
   };
@@ -646,6 +695,9 @@ int main(int argc, char * argv[])
     fprintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
     for (int iter = 0; iter < iter_max; ++iter)
     {
+      ReduceSeq<double> iter_diff;
+      ReduceSeq<double> residual;
+
       // matvec: overwrites v = Au
       equation.matvec(mesh, u_vec, v_vec);
 
@@ -653,12 +705,23 @@ int main(int argc, char * argv[])
       for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
       {
         const LocalIdx lii(ii);
-        u_vec[lii] -= (v_vec[lii] - rhs_vec[lii]) / diag_vec[lii];
+        const double res = (v_vec[lii] - rhs_vec[lii]);
+        const double update = (v_vec[lii] - rhs_vec[lii]) / diag_vec[lii];
+        u_vec[lii] -= update;
+        iter_diff.include(fabs(update));
+        residual.include(fabs(res));
       }
 
       // Check solution error
-      if ((iter + 1) % 50 == 0)
-        fprintf(stdout, "[%3d] solution err_max==%e\n", iter+1, sol_err_max());
+      if ((iter + 1) % 50 == 0 || (iter + 1 == 1))
+      {
+        fprintf(stdout, "[%3d] solution err_max==%e", iter+1, sol_err_max());
+        /// fprintf(stdout, "\n");
+        fprintf(stdout, "\t\t max_change==%e", iter_diff.max());
+        /// fprintf(stdout, "\n");
+        fprintf(stdout, "\t res==%e", residual.max());
+        fprintf(stdout, "\n");
+      }
     }
   }
   else
@@ -709,8 +772,8 @@ int main(int argc, char * argv[])
 
   /// print(mesh, u_vec);  // 2D grid of values in the terminal
 
-  printf("\n-------------------------------------------------------\n");
-  print(mesh, u_vec - u_exact_vec);  // 2D grid of values in the terminal
+  /// printf("\n-------------------------------------------------------\n");
+  /// print(mesh, u_vec - u_exact_vec);  // 2D grid of values in the terminal
 
   /// DendroScopeEnd();
   PetscFinalize();
@@ -750,8 +813,6 @@ template <unsigned int dim>
 PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
     const ConstMeshPointers<dim> &mesh) const
 {
-  const std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
-
   const Key key = this->key(mesh);
   if (m_poissonVecs.find(key) == m_poissonVecs.end())
   {
@@ -760,8 +821,7 @@ PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
         PoissonEq::PoissonVec<dim>(
           const_cast<ot::DA<dim> *>(mesh.da()),   // violate const for weird feVec non-const necessity
           &mesh.distTree()->getTreePartFiltered(),
-          this->ndofs(),
-          dirichletVec.data())));
+          this->ndofs())));
     m_poissonVecs.at(key).setProblemDimensions(m_min, m_max);
   }
   return m_poissonVecs.at(key);
