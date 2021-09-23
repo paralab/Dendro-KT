@@ -33,7 +33,7 @@
 
 using Eigen::Matrix;
 
-constexpr int DIM = 2;
+constexpr int DIM = 4;
 
 
 
@@ -600,7 +600,7 @@ int main(int argc, char * argv[])
   using DA_t = ot::DA<DIM>;
   using Mesh_t = ConstMeshPointers<DIM>;
 
-  const uint fineLevel = 4;
+  const uint fineLevel = 3;
   const size_t dummyInt = 100;
   const size_t singleDof = 1;
 
@@ -628,17 +628,23 @@ int main(int argc, char * argv[])
   LocalVector<double> f_vec(mesh, singleDof);
   LocalVector<double> rhs_vec(mesh, singleDof);
 
+  const double coefficient[] = {1, 2, 5, 3};
+  const double sum_coeff = std::accumulate(coefficient, coefficient + DIM, 0);
+
   // u_exact function
-  const auto u_exact = [&] (const double *x) {
-    return 1 + x[0]*x[0] + 2*x[1]*x[1];
+  const auto u_exact = [=] (const double *x) {
+    double expression = 1;
+    for (int d = 0; d < DIM; ++d)
+      expression += coefficient[d] * x[d] * x[d];
+    return expression;
   };
   // ... is the solution to -div(grad(u)) = f, where f is
-  const auto f = [&] (const double *x) {
-    return -6;
+  const auto f = [=] (const double *x) {
+    return -2*sum_coeff;
   };
   // ... and boundary is prescribed (matching u_exact)
-  const auto u_bdry = [&] (const double *x) {
-    return 1 + x[0]*x[0] + 2*x[1]*x[1];
+  const auto u_bdry = [=] (const double *x) {
+    return u_exact(x);
   };
 
   // Initialize  u=Dirichlet(0)  and  f={f function}
@@ -684,16 +690,19 @@ int main(int argc, char * argv[])
       return err_max;
   };
 
-  const bool matrixFreeJacobi = true;
+  const double tol=1e-12;
+  const unsigned int max_iter=1500;
+
+  const bool matrixFreeJacobi = false;
   if (matrixFreeJacobi)
   {
     // Jacobi method:
-    const int iter_max = 1500;
     LocalVector<double> diag_vec(mesh, singleDof);
     equation.assembleDiag(mesh, diag_vec);
 
     fprintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
-    for (int iter = 0; iter < iter_max; ++iter)
+    double check_res = std::numeric_limits<double>::infinity();
+    for (int iter = 0; iter < max_iter && check_res > tol; ++iter)
     {
       ReduceSeq<double> iter_diff;
       ReduceSeq<double> residual;
@@ -721,6 +730,8 @@ int main(int argc, char * argv[])
         /// fprintf(stdout, "\n");
         fprintf(stdout, "\t res==%e", residual.max());
         fprintf(stdout, "\n");
+
+        check_res = residual.max();
       }
     }
   }
@@ -736,8 +747,6 @@ int main(int argc, char * argv[])
     KSPSetFromOptions(ksp);
 
     // Set tolerances.
-    double tol=1e-12;
-    unsigned int max_iter=1000;
     KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter); 
 
     // Set operators.
