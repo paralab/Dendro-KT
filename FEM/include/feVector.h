@@ -11,7 +11,7 @@
 #define DENDRO_KT_FEVECTOR_H
 
 #include "feVec.h"
-#include "matvec.h"
+#include "da_matvec.h"
 #include "refel.h"
 
 template <typename T, unsigned int dim>
@@ -185,11 +185,7 @@ void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
   std::function<void(const VECType *, VECType *, unsigned int, const double *, double, bool)> eleOp =
       std::bind(&feVector<T,dim>::elementalComputeVec, this, _1, _2, _3, _4, _5, _6);
 
-  fem::matvec(inGhostedPtr, outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),
-      &(*this->m_octList->cbegin()), this->m_octList->size(),
-      *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
-      eleOp, scale, m_oda->getReferenceElement());
-  //TODO I think refel won't always be provided by oda.
+  fem::da_matvec(m_oda, this->m_octList, inGhostedPtr, outGhostedPtr, m_uiDof, eleOp, scale);
 
   // 4. Downstream->Upstream ghost exchange.
   m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof);

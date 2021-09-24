@@ -790,7 +790,10 @@ class DA
 
 
     #ifdef BUILD_WITH_AMAT
+      private:
+        std::vector<bool> m_explicitFlags;
 
+      public:
         /**
          * @brief creates a aMat map object from Dendro maps.
          *
@@ -830,6 +833,17 @@ class DA
 
         template<typename DT,typename LI,typename GI>
         void destroyAMat(par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI> *& aMat) const;
+
+        //------------
+
+        /** @brief Save flags for hybrid traversal-/-aMat matvec.
+         * Doesn't really belong in DA.
+         * In future, move this to a structure containing both mesh and DA.
+         * @param flags : parallel array with the octList,
+         *       true for elements to be handled by aMat
+         */
+        void explicitFlags(const std::vector<bool> &flags);
+        const std::vector<bool> & explicitFlags() const;
 
     #endif//BUILD_WITH_AMAT
 
@@ -1014,6 +1028,17 @@ namespace ot
       aMat=NULL;
   }
 
+  template <unsigned int dim>
+  void DA<dim>::explicitFlags(const std::vector<bool> &flags)
+  {
+    m_explicitFlags = flags;
+  }
+
+  template <unsigned int dim>
+  const std::vector<bool> & DA<dim>::explicitFlags() const
+  {
+    return m_explicitFlags;
+  }
 
 }
 #endif//BUILD_WITH_AMAT

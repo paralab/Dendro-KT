@@ -5,8 +5,8 @@
  * @brief: Variations of the TreeSort algorithm (tsort.h) for mesh-free matvec. Based on Dendro-5.0.
  */
 
-#ifndef DENDRO_KT_MATVEC_H
-#define DENDRO_KT_MATVEC_H
+#ifndef DENDRO_KT_MATVEC_PREALLOCATION_H
+#define DENDRO_KT_MATVEC_PREALLOCATION_H
 
 #include "treeNode.h"
 #include "tsort.h"
@@ -37,4 +37,4 @@ namespace fem {
 
 #include "matvecPreallocation.tcc"
 
-#endif//DENDRO_KT_MATVEC_H
+#endif//DENDRO_KT_MATVEC_PREALLOCATION_H

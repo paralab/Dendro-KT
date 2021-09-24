@@ -276,9 +276,7 @@ class ElementLoopIn
                mesh.da()->getTNCoords(),
                ghostedVec.ptr(),
                mesh.distTree()->getTreePartFiltered().data(),
-               mesh.distTree()->getTreePartFiltered().size(),
-               *mesh.da()->getTreePartFront(),
-               *mesh.da()->getTreePartBack())
+               mesh.distTree()->getTreePartFiltered().size())
     { }
 };
 
@@ -303,9 +301,7 @@ class ElementLoopOut
                0,
                mesh.da()->getTNCoords(),
                mesh.distTree()->getTreePartFiltered().data(),
-               mesh.distTree()->getTreePartFiltered().size(),
-               *mesh.da()->getTreePartFront(),
-               *mesh.da()->getTreePartBack())
+               mesh.distTree()->getTreePartFiltered().size())
     { }
 };
 
@@ -330,9 +326,7 @@ class ElementLoopOutOverwrite
                0,
                mesh.da()->getTNCoords(),
                mesh.distTree()->getTreePartFiltered().data(),
-               mesh.distTree()->getTreePartFiltered().size(),
-               *mesh.da()->getTreePartFront(),
-               *mesh.da()->getTreePartBack())
+               mesh.distTree()->getTreePartFiltered().size())
     { }
 };
 
@@ -812,9 +806,7 @@ static void custom_restriction(const ConstMeshPointers<dim> &fineMesh,
                                          fineMesh.da()->getTNCoords(),
                                          fineInGhosted.ptr(),
                                          fineMesh.distTree()->getTreePartFiltered().data(),
-                                         fineMesh.distTree()->getTreePartFiltered().size(),
-                                         *fineMesh.da()->getTreePartFront(),
-                                         *fineMesh.da()->getTreePartBack());
+                                         fineMesh.distTree()->getTreePartFiltered().size());
     const bool acc = true;
     ot::MatvecBaseOut<dim, ValT, acc> loopCoarse(surrogateMesh.da()->getTotalNodalSz(),
                                                  ndofs,
@@ -823,9 +815,7 @@ static void custom_restriction(const ConstMeshPointers<dim> &fineMesh,
                                                  1,
                                                  surrogateMesh.da()->getTNCoords(),
                                                  surrogateMesh.distTree()->getTreePartFiltered(surrogateMesh.stratum()).data(),
-                                                 surrogateMesh.distTree()->getTreePartFiltered(surrogateMesh.stratum()).size(),
-                                                 *surrogateMesh.da()->getTreePartFront(),
-                                                 *surrogateMesh.da()->getTreePartBack());
+                                                 surrogateMesh.distTree()->getTreePartFiltered(surrogateMesh.stratum()).size());
 
     const unsigned int nPe = intPow(eleOrder+1, dim);
     std::vector<ValT> leafBuffer(ndofs * nPe, 0.0);

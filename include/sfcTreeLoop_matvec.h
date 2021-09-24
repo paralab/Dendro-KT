@@ -54,11 +54,6 @@ namespace ot
 
       bool m_initializedIn;
       bool m_initializedOut;
-
-      bool m_segmentByFirstElement;
-      bool m_segmentByLastElement;
-      TreeNode<unsigned int, dim> m_firstElement;
-      TreeNode<unsigned int, dim> m_lastElement;
   };
 
 
@@ -75,7 +70,7 @@ namespace ot
   // Output<0>: Node value (NodeT i.e. float type)
   //
   // Usage:
-  //    ot::MatvecBase<dim, T> treeloop_mvec(numNodes, ndofs, eleOrder, &(*nodes.begin()), &(*vals.begin()), partFront, partBack);
+  //    ot::MatvecBase<dim, T> treeloop_mvec(numNodes, ndofs, eleOrder, &(*nodes.begin()), &(*vals.begin()));
   //    while (!treeloop_mvec.isFinished())
   //    {
   //      if (treeloop_mvec.isPre())
@@ -118,6 +113,15 @@ namespace ot
 
       MatvecBase() = delete;
       MatvecBase(size_t numNodes,
+                 unsigned int ndofs,
+                 unsigned int eleOrder,
+                 const TreeNode<unsigned int, dim> * allNodeCoords,
+                 const NodeT * inputNodeVals,
+                 const TreeNode<unsigned int, dim> *treePartPtr,
+                 size_t treePartSz);
+
+      // for backwards-compatability, but firstElement and lastElement are not used
+      inline MatvecBase(size_t numNodes,
                  unsigned int ndofs,
                  unsigned int eleOrder,
                  const TreeNode<unsigned int, dim> * allNodeCoords,
@@ -347,6 +351,18 @@ namespace ot
                                       size_t treePartSz,
                                       const TreeNode<unsigned int, dim> &firstElement,
                                       const TreeNode<unsigned int, dim> &lastElement )
+    :
+      MatvecBase(numNodes, ndofs, eleOrder, allNodeCoords, inputNodeVals, treePartPtr, treePartSz)
+  {}
+
+  template <unsigned int dim, typename NodeT>
+  MatvecBase<dim, NodeT>::MatvecBase( size_t numNodes,
+                                      unsigned int ndofs,
+                                      unsigned int eleOrder,
+                                      const TreeNode<unsigned int, dim> * allNodeCoords,
+                                      const NodeT * inputNodeVals,
+                                      const TreeNode<unsigned int, dim> *treePartPtr,
+                                      size_t treePartSz)
   : BaseT(treePartPtr, treePartSz, get_max_depth(allNodeCoords, numNodes)),
     m_ndofs(ndofs),
     m_eleOrder(eleOrder),
@@ -359,10 +375,6 @@ namespace ot
 
     // m_rootSummary
     rootFrame.mySummaryHandle = generate_node_summary(allNodeCoords, allNodeCoords + numNodes);
-    rootFrame.mySummaryHandle.m_segmentByFirstElement = false;
-    rootFrame.mySummaryHandle.m_segmentByLastElement = false;
-    rootFrame.mySummaryHandle.m_firstElement = firstElement;
-    rootFrame.mySummaryHandle.m_lastElement = lastElement;
 
     //TODO extend the invariant that a leaf subtree has all nodes
     //  in lexicographic order

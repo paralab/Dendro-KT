@@ -9,7 +9,7 @@
 #define DENDRO_KT_FEMATRIX_H
 
 #include "feMat.h"
-#include "matvec.h"
+#include "da_matvec.h"
 #include "refel.h"
 #include "setDiag.h"
 #include "matRecord.h"
@@ -324,11 +324,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
 #ifdef DENDRO_KT_MATVEC_BENCH_H
   bench::t_matvec.start();
 #endif
-  fem::matvec(inGhostedPtr, outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),
-      &(*this->m_octList->cbegin()), this->m_octList->size(),
-      *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
-      eleOp, scale, m_oda->getReferenceElement());
-  //TODO I think refel won't always be provided by oda.
+  fem::da_matvec(m_oda, this->m_octList, inGhostedPtr, outGhostedPtr, m_uiDof, eleOp, scale);
 
 #ifdef DENDRO_KT_MATVEC_BENCH_H
   bench::t_matvec.stop();
@@ -622,9 +618,7 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries(unsigned char * el
                                                    odaCoords,
                                                    &(*ghostedGlobalNodeId.cbegin()),
                                                    &(*this->m_octList->cbegin()),
-                                                   this->m_octList->size(),
-                                                   *m_oda.getTreePartFront(),
-                                                   *m_oda.getTreePartBack());
+                                                   this->m_octList->size());
 
     // Iterate over all leafs of the local part of the tree.
     while (!treeLoopIn.isFinished())
@@ -975,9 +969,7 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
             this->m_uiOctDA->getTNCoords(),
             ghostedDiag.data(),
             this->m_octList->data(),
-            this->m_octList->size(),
-            *this->m_uiOctDA->getTreePartFront(),
-            *this->m_uiOctDA->getTreePartBack());
+            this->m_octList->size());
 
         ot::MatvecBaseIn<dim, OwnershipT> ownerLoop(
             numTotalNodes, 1, eleOrder,
@@ -985,9 +977,7 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
             this->m_uiOctDA->getTNCoords(),
             this->m_uiOctDA->getNodeOwnerElements(),
             this->m_octList->data(),
-            this->m_octList->size(),
-            *this->m_uiOctDA->getTreePartFront(),
-            *this->m_uiOctDA->getTreePartBack());
+            this->m_octList->size());
 
         // Element ID used to determine node ownership status in traversal.
         unsigned int localElementId = 0;

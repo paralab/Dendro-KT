@@ -33,7 +33,7 @@
 
 using Eigen::Matrix;
 
-constexpr int DIM = 4;
+constexpr int DIM = 2;
 
 
 
@@ -483,8 +483,6 @@ struct Equation
   public:
     Equation(const AABB<dim> &aabb) : m_min(aabb.min()), m_max(aabb.max()) { }
 
-    void explicitFlags(const std::vector<bool> &explicitFlags);
-
     template <typename ValT>
     void matvec(const ConstMeshPointers<dim> &mesh, const LocalVector<ValT> &in, LocalVector<ValT> &out);
 
@@ -516,21 +514,7 @@ struct Equation
     mutable std::map<Key, PoissonEq::PoissonVec<dim>> m_poissonVecs;
     mutable std::map<Key, std::shared_ptr<AMatWrapper>> m_amats;
     mutable std::map<Key, std::vector<double>> m_dirichletVecs;
-
-    // hack TODO add to the map? Should be associated with a mesh
-    std::vector<bool> m_explicitFlags;
-    std::vector<ot::TreeNode<uint, dim>> m_implicitSubset;
-    //TODO so I need
-    //  - subsetNodes: Takes DA(nodes) x subset(octlist) -> indices of nodes incident on octlist
-    //    - map to read/set/add with subset and main list
-    //  - abstraction for info to node traversal loop (given subset octlist and subset nodes)
-    //  - DA create amat for subset octlist and subset nodes...
-
-
-
-
 };
-
 
 
 template <typename T>
@@ -581,6 +565,14 @@ class ReduceSeq
 };
 
 
+template <typename C, unsigned int dim>
+std::vector<bool> boundaryFlags(
+    const ot::DistTree<C, dim> &distTree,
+    const int stratum,
+    const ot::DA<dim> &da);
+
+
+
 
 //
 // main()
@@ -604,6 +596,9 @@ int main(int argc, char * argv[])
   const size_t dummyInt = 100;
   const size_t singleDof = 1;
 
+  enum Method { matrixFreeJacobi, aMatAssembly, hybridJacobi };
+  const Method method = hybridJacobi;
+
   // Mesh
   DTree_t dtree = DTree_t::constructSubdomainDistTree(
       fineLevel, comm, sfc_tol);
@@ -614,11 +609,12 @@ int main(int argc, char * argv[])
   /// printf("boundaryNodes=%lu\n", mesh.da()->getBoundaryNodeIndices().size());
 
   // Indicate boundary elements should be 'explicit'.
-  std::vector<bool> explicitFlags(mesh.numElements(), false);
-  const std::vector<ot::TreeNode<uint, DIM>> &elements = 
-      mesh.distTree()->getTreePartFiltered(mesh.stratum());
-  for (size_t ii = 0; ii < mesh.numElements(); ++ii)
-    explicitFlags[ii] = elements[ii].getIsOnTreeBdry();
+  if (method == hybridJacobi)
+  {
+    std::vector<bool> bdryFlags = boundaryFlags(dtree, 0, das[0]);
+    das[0].explicitFlags(bdryFlags);
+    /// das[0].explicitFlags(std::vector<bool>(mesh.numElements(), false));  // ignore
+  }
 
   AABB<DIM> bounds(Point<DIM>(-1.0), Point<DIM>(1.0));
 
@@ -658,7 +654,6 @@ int main(int argc, char * argv[])
   /// print(mesh, u_vec);  // 2D grid of values in the terminal
 
   Equation<DIM> equation(bounds);
-  equation.explicitFlags(explicitFlags);
 
   // Set dirichlet before setting up other matrix abstractions
   std::vector<double> prescribed_bdry(mesh.da()->getBoundaryNodeIndices().size());
@@ -693,90 +688,143 @@ int main(int argc, char * argv[])
   const double tol=1e-12;
   const unsigned int max_iter=1500;
 
-  const bool matrixFreeJacobi = false;
-  if (matrixFreeJacobi)
+  switch (method)
   {
-    // Jacobi method:
-    LocalVector<double> diag_vec(mesh, singleDof);
-    equation.assembleDiag(mesh, diag_vec);
-
-    fprintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
-    double check_res = std::numeric_limits<double>::infinity();
-    for (int iter = 0; iter < max_iter && check_res > tol; ++iter)
+    case matrixFreeJacobi:
     {
-      ReduceSeq<double> iter_diff;
-      ReduceSeq<double> residual;
+      // Jacobi method:
+      LocalVector<double> diag_vec(mesh, singleDof);
+      equation.assembleDiag(mesh, diag_vec);
 
-      // matvec: overwrites v = Au
-      equation.matvec(mesh, u_vec, v_vec);
-
-      // Jacobi update: x -= D^-1 (Ax-b)
-      for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
+      fprintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
+      double check_res = std::numeric_limits<double>::infinity();
+      for (int iter = 0; iter < max_iter && check_res > tol; ++iter)
       {
-        const LocalIdx lii(ii);
-        const double res = (v_vec[lii] - rhs_vec[lii]);
-        const double update = (v_vec[lii] - rhs_vec[lii]) / diag_vec[lii];
-        u_vec[lii] -= update;
-        iter_diff.include(fabs(update));
-        residual.include(fabs(res));
-      }
+        ReduceSeq<double> iter_diff;
+        ReduceSeq<double> residual;
 
-      // Check solution error
-      if ((iter + 1) % 50 == 0 || (iter + 1 == 1))
-      {
-        fprintf(stdout, "[%3d] solution err_max==%e", iter+1, sol_err_max());
-        /// fprintf(stdout, "\n");
-        fprintf(stdout, "\t\t max_change==%e", iter_diff.max());
-        /// fprintf(stdout, "\n");
-        fprintf(stdout, "\t res==%e", residual.max());
-        fprintf(stdout, "\n");
+        // matvec: overwrites v = Au
+        equation.matvec(mesh, u_vec, v_vec);
 
-        check_res = residual.max();
+        // Jacobi update: x -= D^-1 (Ax-b)
+        for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
+        {
+          const LocalIdx lii(ii);
+          const double res = (v_vec[lii] - rhs_vec[lii]);
+          const double update = (v_vec[lii] - rhs_vec[lii]) / diag_vec[lii];
+          u_vec[lii] -= update;
+          iter_diff.include(fabs(update));
+          residual.include(fabs(res));
+        }
+
+        // Check solution error
+        if ((iter + 1) % 50 == 0 || (iter + 1 == 1))
+        {
+          fprintf(stdout, "[%3d] solution err_max==%e", iter+1, sol_err_max());
+          /// fprintf(stdout, "\n");
+          fprintf(stdout, "\t\t max_change==%e", iter_diff.max());
+          /// fprintf(stdout, "\n");
+          fprintf(stdout, "\t res==%e", residual.max());
+          fprintf(stdout, "\n");
+
+          check_res = residual.max();
+        }
       }
+      break;
+     }
+
+    case aMatAssembly:
+    {
+      const AMatWrapper & amatWrapper = equation.atOrInsertAMat(mesh);
+      Mat petscMat = amatWrapper.stMatFree->get_matrix();
+
+      // PETSc solver context: Create and set KSP
+      KSP ksp;
+      KSPCreate(comm, &ksp);
+      KSPSetType(ksp, KSPCG);
+      KSPSetFromOptions(ksp);
+
+      // Set tolerances.
+      KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter);
+
+      // Set operators.
+      KSPSetOperators(ksp, petscMat, petscMat);
+
+      // Set preconditioner.
+      PC pc;
+      KSPGetPC(ksp, &pc);
+      PCSetType(pc, PCJACOBI);
+      PCSetFromOptions(pc);
+
+      // Compensate r.h.s. of weak formulation. Amat subtracts boundary from rhs.
+      LocalPetscVector<double> Mfrhs(mesh, ndofs, rhs_vec.ptr());
+      amatWrapper.stMatFree->apply_bc(Mfrhs.vec());
+
+      // Copy vectors to Petsc vectors.
+      LocalPetscVector<double> ux(mesh, ndofs, u_vec.ptr());
+      /// print(mesh, u_vec);  // 2D grid of values in the terminal
+
+      // Solve the system.
+      KSPSolve(ksp, Mfrhs.vec(), ux.vec());
+
+      PetscInt numIterations;
+      KSPGetIterationNumber(ksp, &numIterations);
+
+      // Copy back from Petsc vector.
+      copyFromPetscVector(u_vec, ux);
+      fprintf(stdout, "[%3d] solution err_max==%e\n", numIterations, sol_err_max());
+
+      KSPDestroy(&ksp);
+      break;
     }
-  }
-  else
-  {
-    const AMatWrapper & amatWrapper = equation.atOrInsertAMat(mesh);
-    Mat petscMat = amatWrapper.stMatFree->get_matrix();
 
-    // PETSc solver context: Create and set KSP
-    KSP ksp;
-    KSPCreate(comm, &ksp);
-    KSPSetType(ksp, KSPCG);
-    KSPSetFromOptions(ksp);
+    case hybridJacobi:
+    {
+      // [ ] equation.hybrid_matvec()
+      // [ ] equation.hybrid_assembleDiag()
+      // [ ] equation.hybrid_rhsvec()
+      // [ ] equation.hybrid_dirichlet()
 
-    // Set tolerances.
-    KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter); 
+      // Jacobi method:
+      LocalVector<double> diag_vec(mesh, singleDof);
+      equation.assembleDiag(mesh, diag_vec);
 
-    // Set operators.
-    KSPSetOperators(ksp, petscMat, petscMat);
+      fprintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
+      double check_res = std::numeric_limits<double>::infinity();
+      for (int iter = 0; iter < max_iter && check_res > tol; ++iter)
+      {
+        ReduceSeq<double> iter_diff;
+        ReduceSeq<double> residual;
 
-    // Set preconditioner.
-    PC pc;
-    KSPGetPC(ksp, &pc);
-    PCSetType(pc, PCJACOBI);
-    PCSetFromOptions(pc);
+        // matvec: overwrites v = Au
+        equation.matvec(mesh, u_vec, v_vec);
 
-    // Compensate r.h.s. of weak formulation. Amat subtracts boundary from rhs.
-    LocalPetscVector<double> Mfrhs(mesh, ndofs, rhs_vec.ptr());
-    amatWrapper.stMatFree->apply_bc(Mfrhs.vec());
+        // Jacobi update: x -= D^-1 (Ax-b)
+        for (size_t ii = 0; ii < mesh.da()->getLocalNodalSz(); ++ii)
+        {
+          const LocalIdx lii(ii);
+          const double res = (v_vec[lii] - rhs_vec[lii]);
+          const double update = (v_vec[lii] - rhs_vec[lii]) / diag_vec[lii];
+          u_vec[lii] -= update;
+          iter_diff.include(fabs(update));
+          residual.include(fabs(res));
+        }
 
-    // Copy vectors to Petsc vectors.
-    LocalPetscVector<double> ux(mesh, ndofs, u_vec.ptr());
-    /// print(mesh, u_vec);  // 2D grid of values in the terminal
+        // Check solution error
+        if ((iter + 1) % 50 == 0 || (iter + 1 == 1))
+        {
+          fprintf(stdout, "[%3d] solution err_max==%e", iter+1, sol_err_max());
+          /// fprintf(stdout, "\n");
+          fprintf(stdout, "\t\t max_change==%e", iter_diff.max());
+          /// fprintf(stdout, "\n");
+          fprintf(stdout, "\t res==%e", residual.max());
+          fprintf(stdout, "\n");
 
-    // Solve the system.
-    KSPSolve(ksp, Mfrhs.vec(), ux.vec());
-
-    PetscInt numIterations;
-    KSPGetIterationNumber(ksp, &numIterations);
-
-    // Copy back from Petsc vector.
-    copyFromPetscVector(u_vec, ux);
-    fprintf(stdout, "[%3d] solution err_max==%e\n", numIterations, sol_err_max());
-
-    KSPDestroy(&ksp);
+          check_res = residual.max();
+        }
+      }
+      break;
+    }
   }
 
   /// print(mesh, u_vec);  // 2D grid of values in the terminal
@@ -788,6 +836,24 @@ int main(int argc, char * argv[])
   PetscFinalize();
 }
 
+
+template <typename C, unsigned int dim>
+std::vector<bool> boundaryFlags(
+    const ot::DistTree<C, dim> &distTree,
+    const int stratum,
+    const ot::DA<dim> &da)
+{
+  const std::vector<ot::TreeNode<C, dim>> &elements =
+      distTree.getTreePartFiltered(stratum);
+  const size_t size = elements.size();
+
+  std::vector<bool> boundaryFlags(size, false);
+
+  for (size_t ii = 0; ii < size; ++ii)
+    boundaryFlags[ii] = elements[ii].getIsOnTreeBdry();
+
+  return boundaryFlags;
+}
 
 
 
@@ -865,13 +931,6 @@ std::vector<double> & Equation<dim>::atOrInsertDirichletVec(
   const size_t numBdryNodes = mesh.da()->getBoundaryNodeIndices().size();
   m_dirichletVecs.at(key).resize(numBdryNodes * this->ndofs(), 0.0);
   return m_dirichletVecs.at(key);
-}
-
-
-template <unsigned int dim>
-void Equation<dim>::explicitFlags(const std::vector<bool> &explicitFlags)
-{
-  m_explicitFlags = explicitFlags;
 }
 
 
@@ -970,9 +1029,7 @@ ElementLoopIn<dim, ValT>::ElementLoopIn(
            mesh.da()->getTNCoords(),
            ghostedVec.ptr(),
            mesh.distTree()->getTreePartFiltered().data(),
-           mesh.distTree()->getTreePartFiltered().size(),
-           *mesh.da()->getTreePartFront(),
-           *mesh.da()->getTreePartBack())
+           mesh.distTree()->getTreePartFiltered().size())
 { }
 
 // ElementLoopOut::ElementLoopOut()
@@ -987,9 +1044,7 @@ ElementLoopOut<dim, ValT>::ElementLoopOut(
            0,
            mesh.da()->getTNCoords(),
            mesh.distTree()->getTreePartFiltered().data(),
-           mesh.distTree()->getTreePartFiltered().size(),
-           *mesh.da()->getTreePartFront(),
-           *mesh.da()->getTreePartBack())
+           mesh.distTree()->getTreePartFiltered().size())
 { }
 
 // ElementLoopOutOverwrite::ElementLoopOutOverwrite()
@@ -1004,9 +1059,7 @@ ElementLoopOutOverwrite<dim, ValT>::ElementLoopOutOverwrite(
            0,
            mesh.da()->getTNCoords(),
            mesh.distTree()->getTreePartFiltered().data(),
-           mesh.distTree()->getTreePartFiltered().size(),
-           *mesh.da()->getTreePartFront(),
-           *mesh.da()->getTreePartBack())
+           mesh.distTree()->getTreePartFiltered().size())
 { }
 
 
