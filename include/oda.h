@@ -905,7 +905,7 @@ namespace ot
           const unsigned int cgindx = e2n_cg[ele*nPe + node];
 
           if (cgindx < this->getLocalNodeBegin()
-              || cgindx > this->getLocalNodeBegin() + this->getLocalNodalSz())
+              || cgindx >= this->getLocalNodeBegin() + this->getLocalNodalSz())
             sm_ghost_id.push_back(cgindx);
 
           for(unsigned int v=0; v < dof; v++)
