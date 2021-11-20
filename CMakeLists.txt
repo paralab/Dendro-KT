@@ -27,7 +27,7 @@ endif()
 ## options for dendro
 
 option(USE_64BIT_INDICES "Use 64-Bit indices. Reverts to 32-bit if turned off" ON)
-option(ALLTOALLV_FIX "Use K-way all to all v" OFF)
+option(ALLTOALLV_FIX "Use K-way all to all v" ON)
 option(SPLITTER_SELECTION_FIX "Turn on Splitter Selection fix" ON)
 option(DIM_2 "use the two dimentional sorting" OFF)
 option(WITH_BLAS_LAPACK "build using BLAS and LAPACk" ON)
@@ -288,6 +288,11 @@ if(HILBERT_ORDERING)
   add_definitions(-DHILBERT_ORDERING)
 endif()
 
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testPartition.cpp)
+add_executable(tstPartition ${SRC_FILES})
+target_include_directories(tstPartition PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstPartition dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testConstruct.cpp)
 add_executable(tstConstruct ${SRC_FILES})

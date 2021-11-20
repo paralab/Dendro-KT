@@ -522,6 +522,8 @@ namespace ot
     // Update child summaries.
     //
     bool thereAreHangingNodes = false;
+    std::array<bool, NumChildren> hangingInChild;
+    hangingInChild.fill(false);
     MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
@@ -540,7 +542,10 @@ namespace ot
       summaries[child_sfc].m_initializedOut = false;
 
       if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+      {
+        hangingInChild[child_sfc] = true;
         thereAreHangingNodes = true;
+      }
     }
     //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary
 

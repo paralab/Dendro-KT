@@ -11,6 +11,7 @@
 #include "sfcTreeLoop_matvec_io.h"
 
 #include <algorithm>
+#include <set>
 
 #define OCT_NO_CHANGE 0u
 #define OCT_SPLIT 1u
@@ -43,42 +44,42 @@ namespace ot
     }
 
 
-    /**@brief: Constructor for the DA data structures
-      * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-     * */
-    template <unsigned int dim>
-    DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-        : m_refel{dim, order}
-    {
-        ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
-        inTree = distTree.getTreePartFiltered();       // Give back a copy of the in tree.
-        construct(distTree, comm, order, grainSz, sfc_tol);
-        //TODO (need straightforward interface for tree/DistTree)
-        //     Without a change to the interface, we can avoid copying
-        //     if we give back the DistTree instead, and let the user
-        //     get a const ref to the tree partition.
-    }
+    /// /**@brief: Constructor for the DA data structures
+    ///   * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
+    ///   * @param [in] comm: MPI global communicator for mesh generation.
+    ///   * @param [in] order: order of the element.
+    ///  * */
+    /// template <unsigned int dim>
+    /// DA<dim>::DA(std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    ///     : m_refel{dim, order}
+    /// {
+    ///     ot::DistTree<C, dim> distTree(inTree, comm);   // Uses default domain decider.
+    ///     inTree = distTree.getTreePartFiltered();       // Give back a copy of the in tree.
+    ///     construct(distTree, comm, order, grainSz, sfc_tol);
+    ///     //TODO (need straightforward interface for tree/DistTree)
+    ///     //     Without a change to the interface, we can avoid copying
+    ///     //     if we give back the DistTree instead, and let the user
+    ///     //     get a const ref to the tree partition.
+    /// }
 
 
-    /**@brief: Constructor for the DA data structures
-      * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-     * */
-    template <unsigned int dim>
-    DA<dim>::DA(const std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-        : m_refel{dim, order}
-    {
-        std::vector<ot::TreeNode<C,dim>> inTreeCopy = inTree;  // Use a copy of the in tree.
-        ot::DistTree<C, dim> distTree(inTreeCopy, comm);       // Uses default domain decider.
-        construct(distTree, comm, order, grainSz, sfc_tol);
-        //TODO (need straightforward interface for tree/DistTree)
-        //     Without a change to the interface, we can avoid copying
-        //     if we give back the DistTree instead, and let the user
-        //     get a const ref to the tree partition.
-    }
+    /// /**@brief: Constructor for the DA data structures
+    ///   * @param [in] inTree : input octree, need to be 2:1 balanced unique sorted octree.
+    ///   * @param [in] comm: MPI global communicator for mesh generation.
+    ///   * @param [in] order: order of the element.
+    ///  * */
+    /// template <unsigned int dim>
+    /// DA<dim>::DA(const std::vector<ot::TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    ///     : m_refel{dim, order}
+    /// {
+    ///     std::vector<ot::TreeNode<C,dim>> inTreeCopy = inTree;  // Use a copy of the in tree.
+    ///     ot::DistTree<C, dim> distTree(inTreeCopy, comm);       // Uses default domain decider.
+    ///     construct(distTree, comm, order, grainSz, sfc_tol);
+    ///     //TODO (need straightforward interface for tree/DistTree)
+    ///     //     Without a change to the interface, we can avoid copying
+    ///     //     if we give back the DistTree instead, and let the user
+    ///     //     get a const ref to the tree partition.
+    /// }
 
 
     /**@brief: Constructor for the DA data structures
@@ -260,7 +261,41 @@ namespace ot
       return ghostedOwners;
     }
 
+    template <typename ...Args>
+    void noFprintf(Args... args) { }
 
+    template <typename C, unsigned dim>
+    void sortUniqXPreferCoarser(std::vector<TNPoint<C, dim>> &points,
+                                std::vector<TreeNode<C, dim>> &elems,
+                                std::vector<TNPoint<C, dim>> &tmp_p,
+                                std::vector<TreeNode<C, dim>> &tmp_e
+                                );
+
+    template <typename C, unsigned dim>
+    TNPoint<C, dim> hangingBijection(const TreeNode<C, dim> &elem,
+                                     const TNPoint<C, dim> tnpoint,
+                                     unsigned eleOrder);
+
+    template <typename C, unsigned dim>
+    void distPartitionEdges(std::vector<TNPoint<C, dim>> &nodesInOut,
+                            std::vector<TreeNode<C, dim>> &elemsInOut,
+                            double sfc_tol,
+                            MPI_Comm comm);
+
+    template <typename TN, typename ForEachIndexBody>
+    size_t forEachInNodeGroup(const TN *nodeArray,
+                              size_t groupBegin,
+                              size_t arrayEnd,
+                              const ForEachIndexBody &forEachIndexBody)
+    {
+      size_t index = groupBegin;
+      while (index < arrayEnd && nodeArray[index].getX() == nodeArray[groupBegin].getX())
+      {
+        forEachIndexBody( index );
+        index++;
+      }
+      return index;
+    }
 
 
     /**
@@ -285,12 +320,72 @@ namespace ot
       MPI_Comm activeComm;
       MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
 
-      std::vector<ot::TNPoint<C,dim>> nodeList;
       TreeNode<C, dim> treePartFront;
       TreeNode<C, dim> treePartBack;
 
+      std::vector<TreeNode<C, dim>> myTNCoords;
+
+      ScatterMap scatterMap;
+      GatherMap gatherMap;
+      gatherMap.m_locOffset = 0;
+      gatherMap.m_locCount = 0;
+      gatherMap.m_totalCount = 0;
+
+      //
+      // Create edges from host elements to nodes.
+      // When we sort edges we do it based on the node coordinate.
+      // Later the edges will determine which ranks share a node.
+      //
+      // Using an Edge(element->node) rather than Edge(rank->node)
+      // makes it possible to propagate hanging node dependencies
+      // as Edge(element->parent_node). The element is needed
+      // to compute the parent_node.
+      //
+      // -------------------------------------------------------------------
+      // Pseudocode:
+      // -------------------------------------------------------------------
+      //   Vector<Pair<Node, Elem>> nodeEdges <-- exteriorNodes(localElems);
+      //   Vector<Pair<Node, Elem>> cancelEdges <-- cancellationNodes(localElems);
+      //   Vector<Pair<Node, Elem>> combinedEdges <-- concat(nodeEdges, cancelEdges);
+      //
+      //   combinedEdges <-- distributedTreeSort(combinedEdges, BY_NODES);
+      //   edgeGroups <-- locGroupByCoordinate(combinedEdges, BY_NODES);
+      //
+      //   Vector<Pair<Node, Elem>> newEdges;
+      //   for each (group in edgeGroups):
+      //     if (cancellation is present):  // hanging node
+      //       for each ((hanging_node, child_elem) in group):
+      //         parent_node <-- hangingBijection(child_elem, hanging_node);
+      //         newEdges.push_back((parent_node, child_elem));
+      //     else   // nonhanging node
+      //       for each ((nonhanging_node, elem) in group):
+      //         newEdges.push_back((nonhanging_node, elem));
+      //
+      //   newEdges <-- distributedTreeSort(newEdges, BY_NODES);
+      //   edgeGroups <-- locGroupByCoordinate(newEdges, BY_NODES);
+      //
+      //   for each (group in edgeGroups):
+      //     ownerRank <-- mapElementToRank(coarsest element in group.elems);
+      //     borrowerRanks <-- map(mapElementToRank, group.elems) - {ownerRank};
+      //
+      //     new_message(to:ownerRank, group.node, "borrowers=", borrowerRanks);
+      //     new_message(to:borrowerRanks, group.node, "owner=", ownerRank);
+      //
+      //   locAndGhostNodes, borrowers, owners <-- send_messages();
+      //
+      //   ownedNodes <-- filterOwnedNodes(locAndGhostNodes);
+      //   ghostNodes <-- locAndGhostNodes - ownedNodes;
+      //   scatterMap <-- createScatterMap(borrowedNodes, borrowers);
+      //   gatherMap <-- createGatherMap(ghostNodes, owners);
+      // -------------------------------------------------------------------
+      //
+
       if (isActive)
       {
+        int nProcActive, rProcActive;
+        MPI_Comm_size(activeComm, &nProcActive);
+        MPI_Comm_rank(activeComm, &rProcActive);
+
         // Splitters for distributed exchanges.
         treePartFront = distTree.getTreePartFront(stratum);
         treePartBack = distTree.getTreePartBack(stratum);
@@ -299,29 +394,323 @@ namespace ot
         // ^ includes marked boundary elements from distTree.filterTree().
 
         // Generate nodes from the tree. First, element-exterior nodes.
+        std::vector<TNPoint<C,dim>> exteriorNodeList;
+        std::vector<TNPoint<C,dim>> cancelNodeList;
+        std::vector<TreeNode<C,dim>> exteriorNodeElements;
+        std::vector<TreeNode<C,dim>> cancelNodeElements;
         for (const TreeNode<C, dim> &elem : inTreeFiltered)
-            ot::Element<C,dim>(elem).appendExteriorNodes(order, nodeList, distTree.getDomainDecider());
+        {
+            size_t countNewNodes1 = exteriorNodeList.size();
+            size_t countNewNodes2 = cancelNodeList.size();
+
+            Element<C,dim>(elem).appendExteriorNodes(order, exteriorNodeList, distTree.getDomainDecider());
+            Element<C,dim>(elem).appendCancellationNodes(order, cancelNodeList);
+
+            countNewNodes1 = exteriorNodeList.size() - countNewNodes1;
+            countNewNodes2 = cancelNodeList.size() - countNewNodes2;
+
+            std::fill_n(std::back_inserter(exteriorNodeElements), countNewNodes1, elem);
+            std::fill_n(std::back_inserter(cancelNodeElements), countNewNodes2, elem);
+        }
         // Also appends cancellation nodes where potential hanging nodes could be.
         // Only tests domainDecider if the element has been flagged as a boundary element.
 
-        // Count unique element-exterior nodes.
-        unsigned long long glbExtNodes =
-            ot::SFC_NodeSort<C,dim>::dist_countCGNodes(nodeList,
-                                                       order,
-                                                       &treePartFront,
-                                                       &treePartBack,
-                                                       activeComm);
+        std::vector<TNPoint<C,dim>> tmpList;
+        std::vector<TreeNode<C,dim>> tmpElemList;
 
-        // Finish generating nodes from the tree - element-interior nodes.
-        size_t intNodeIdx = nodeList.size();
-        for (const TreeNode<C, dim> &elem : inTreeFiltered)
-            ot::Element<C,dim>(elem).appendInteriorNodes(order, nodeList);
+        /// // Compact local exterior node list.
+        /// sortUniqXPreferCoarser(exteriorNodeList, exteriorNodeElements, tmpList, tmpElemList);
 
-        globallySortNodes(nodeList, sfc_tol, activeComm);
+        /// // Compact local cancellation node list.
+        /// sortUniqXPreferCoarser(cancelNodeList, cancelNodeElements, tmpList, tmpElemList);
+
+        // Create a combined list of edges to be sorted.
+        std::vector<TNPoint<C, dim>> combinedNodes;
+        std::vector<TreeNode<C, dim>> combinedElems;
+        for (size_t ii = 0; ii < exteriorNodeList.size(); ++ii)
+        {
+          const TNPoint<C, dim> pt = exteriorNodeList[ii];
+          const TreeNode<C, dim> elem = exteriorNodeElements[ii];
+          combinedNodes.push_back(pt);
+          combinedElems.push_back(elem);
+        }
+        for (size_t ii = 0; ii < cancelNodeList.size(); ++ii)
+        {
+          const TNPoint<C, dim> pt = cancelNodeList[ii];
+          const TreeNode<C, dim> elem = cancelNodeElements[ii];
+          combinedNodes.push_back(pt);
+          combinedElems.push_back(elem);
+        }
+
+        if (nProcActive > 1)
+          distPartitionEdges(combinedNodes, combinedElems, sfc_tol, activeComm);
+        SFC_Tree<C, dim>::locTreeSortMaxDepth(combinedNodes, combinedElems);
+
+
+        //
+        // Convert edges of hanging nodes and re-sort.
+        //
+        std::vector<TNPoint<C, dim>> convertedNodes;
+        std::vector<TreeNode<C, dim>> convertedElems;
+        {
+          const std::vector<TNPoint<C, dim>> &nodes = combinedNodes;
+          const std::vector<TreeNode<C, dim>> &elems = combinedElems;
+          const size_t numEdges = nodes.size();
+          size_t nextEdgeId;
+          for (size_t edgeId = 0; edgeId < numEdges; edgeId = nextEdgeId)
+          {
+            // Scan the edge group for a cancelled node.
+            bool isCancelled = false;
+            bool isOrdinary = false;
+            nextEdgeId = forEachInNodeGroup(&nodes[0], edgeId, nodes.size(), [&](size_t ii) {
+                isCancelled |= (nodes[ii].getIsCancellation());
+                isOrdinary |= !(nodes[ii].getIsCancellation());
+            });
+
+            // Emit identical edges if nonhanging,
+            // or edges with parent nodes if hanging.
+            if (isCancelled && isOrdinary)
+            {
+              for (size_t ii = edgeId; ii < nextEdgeId; ++ii)
+              {
+                if (!nodes[ii].getIsCancellation())
+                {
+                  TNPoint<C, dim> parentNode = hangingBijection(elems[ii], nodes[ii], order);
+                  parentNode.setIsCancellation(false);
+                  convertedNodes.push_back(parentNode);
+                  convertedElems.push_back(elems[ii]);
+                }
+              }
+            }
+            else if (isOrdinary)
+            {
+              for (size_t ii = edgeId; ii < nextEdgeId; ++ii)
+              {
+                convertedNodes.push_back(nodes[ii]);
+                convertedElems.push_back(elems[ii]);
+              }
+            }
+            else
+            {
+              // Discard pure cancellation nodes.
+            }
+          }
+        }
+
+        combinedNodes.clear();
+        combinedElems.clear();
+
+        if (nProcActive > 1)
+          distPartitionEdges(convertedNodes, convertedElems, sfc_tol, activeComm);
+        SFC_Tree<C, dim>::locTreeSortMaxDepth(convertedNodes, convertedElems);
+
+        assert((convertedNodes.size() == convertedElems.size()));
+
+        // Map elements of edges to the ranks that own those elements.
+        // These are the ranks that share or depend on corresponding nodes.
+        const std::vector<TreeNode<C, dim>> activeFrontSplitters
+            = SFC_Tree<C, dim>::dist_bcastSplitters(&treePartFront, activeComm);
+        const std::vector<int> sharingRanks
+            = SFC_Tree<C, dim>::treeNode2PartitionRank(convertedElems, activeFrontSplitters);
+
+
+        //
+        // Assign owners to nodes.
+        // Inform each owner about the borrowers, and borrowers about the owner.
+        //
+        std::vector<TNPoint<C, dim>> ownShareNodes;
+        std::vector<TreeNode<C, dim>> ownShareElems;
+        std::vector<int> ownShareDestRank;
+        combinedNodes.clear();
+        std::swap(ownShareNodes, combinedNodes);
+
+        {
+          std::set<int> ranksOfNode;
+          size_t nextEdgeId = 0;
+          for (size_t edgeId = 0; edgeId < convertedNodes.size(); edgeId = nextEdgeId)
+          {
+            size_t bestRepId = edgeId;
+            ranksOfNode.clear();
+            nextEdgeId = forEachInNodeGroup(&convertedNodes[0], edgeId, convertedNodes.size(),
+            [&](size_t ii) {
+                if (convertedElems[bestRepId].getLevel() > convertedElems[ii].getLevel()
+                    || convertedElems[bestRepId].getLevel() == convertedElems[ii].getLevel()
+                       && sharingRanks[bestRepId] > sharingRanks[ii])
+                  bestRepId = ii;
+
+                ranksOfNode.insert(sharingRanks[ii]);
+            });
+
+            // We will send the node (with owner tag) to all borrowers).
+            // We will also send the node (with sharers tagged) to the owner.
+            // Only the owner will see itself tagged.
+            const int owner = sharingRanks[bestRepId];
+            TNPoint<C, dim> node = convertedNodes[bestRepId];
+            node.set_owner(owner);
+            const TreeNode<C, dim> elem = convertedElems[bestRepId];
+
+            assert(ranksOfNode.find(owner) != ranksOfNode.end());
+
+            for (int borrower : ranksOfNode)
+              if (borrower != owner)
+              {
+                ownShareDestRank.push_back(borrower);
+                ownShareNodes.push_back(node);
+                ownShareElems.push_back(elem);
+              }
+            for (int sharer : ranksOfNode)
+            {
+              ownShareDestRank.push_back(owner);
+              node.set_owner(sharer);
+              ownShareNodes.push_back(node);
+              ownShareElems.push_back(elem);
+            }
+          }
+        }
+        convertedNodes.clear();
+        convertedElems.clear();
+
+        ownShareNodes = par::sendAll(ownShareNodes, ownShareDestRank, activeComm);
+        ownShareElems = par::sendAll(ownShareElems, ownShareDestRank, activeComm);
+        ownShareDestRank.clear();
+        SFC_Tree<C, dim>::locTreeSortMaxDepth(ownShareNodes, ownShareElems);
+
+
+        // The information for scattermap and gathermap is jumbled together.
+        // Sort them out.
+        std::vector<TNPoint<C, dim>> ownedAndScatteredNodes;
+        std::vector<TreeNode<C, dim>> ownedAndScatteredElems;
+        std::vector<std::vector<TreeNode<C, dim>>> gatherSets(nProcActive);
+        std::vector<std::vector<RankI>> scatterSets(nProcActive);
+        {
+          size_t nextId;
+          for (size_t edgeId = 0; edgeId < ownShareNodes.size(); edgeId = nextId)
+          {
+            bool isOwned = false;
+            nextId = forEachInNodeGroup(&ownShareNodes[0], edgeId, ownShareNodes.size(), [&](size_t ii) {
+              isOwned |= (ownShareNodes[ii].get_owner() == rProcActive);
+            });
+            if (isOwned)
+            {
+              // Contribute to owned nodes and scattermap.
+              for (size_t instanceId = edgeId; instanceId < nextId; ++instanceId)
+              {
+                ownedAndScatteredNodes.push_back(ownShareNodes[instanceId]);
+                ownedAndScatteredElems.push_back(ownShareElems[instanceId]);
+              }
+            }
+            else
+            {
+              // Contribute to gathermap.
+              gatherSets[ownShareNodes[edgeId].get_owner()].push_back(ownShareNodes[edgeId]);
+              assert(nextId == edgeId + 1);
+            }
+          }
+        }
+
+        // Sort by winning element, which has also determined the owning rank.
+        // Ensure consistent global ordering of nodes, regardless of partitioning,
+        // which is an assumption needed by distShiftNodes().
+        //
+        // The global ordering is:
+        //   node1 < node2 iff element(node1) < element(node2) OR
+        //                     element(node1) == element(node2) AND
+        //                        (isElementExterior(node1) AND isElementInterior(node2) OR
+        //                         isElementExterior(node1) AND isElementExterior(node2) AND SFC(node1) < SFC(node2) OR
+        //                         isElementInterior(node1) AND isElementInterior(node2) AND lex(node1) < lex(node2))
+        // For this ordering, the element-interior nodes need
+        // to be next to element-exterior nodes for the same element.
+        // 
+        // Also element sort must be stable so that forEachInNodeGroup() works.
+        SFC_Tree<C, dim>::locTreeSort(ownedAndScatteredElems,
+                                      ownedAndScatteredNodes);
+
+        // Merge exterior nodes and interior nodes
+        // (both are now sorted by element)
+        // and separate owned-node-indicators from scattering-indicators.
+        {
+          std::vector<TNPoint<C,dim>> interiorNodeList;
+
+          // Append element-by-element.
+          // elem : ownedAndScatteredNodes[i] -> ownedAndScatteredElems[i]
+          // elem : Element(inTreeFiltered[j]).interiorNodes[k] -> inTreeFiltered[j]
+          size_t elemIntI = 0, elemExtJ = 0;
+          while (elemIntI < inTreeFiltered.size())
+          {
+            const TreeNode<C, dim> elemKey = inTreeFiltered[elemIntI];
+
+            interiorNodeList.clear();
+            ot::Element<C,dim>(elemKey).appendInteriorNodes(order, interiorNodeList);
+            for (const auto &pt : interiorNodeList)  // convert from TNPoint to TreeNode
+              myTNCoords.push_back(pt);
+            elemIntI++;
+
+            while (elemExtJ < ownedAndScatteredElems.size()
+                && ownedAndScatteredElems[elemExtJ] == elemKey)
+            {
+              const size_t localRank = myTNCoords.size();
+              const size_t nextId = forEachInNodeGroup(
+                  &ownedAndScatteredNodes[0],
+                  elemExtJ, ownedAndScatteredNodes.size(),
+                  [&](size_t ii) {
+                    const int sharer = ownedAndScatteredNodes[ii].get_owner();
+                    if (sharer == rProcActive)
+                      myTNCoords.push_back(ownedAndScatteredNodes[ii]);  // own nodes
+                    else
+                      scatterSets[sharer].push_back(localRank);  // scattermap
+                  });
+              elemExtJ = nextId;
+            }
+          }
+        }
+
+        // Note that if we want to re-order myTNCoords
+        // then the scatterSets must be mapped to the new indices.
+
+        // Compute scatterMap and gatherMap using scatterSets and gatherSets.
+        RankI smapSendOffset = 0;
+        for (int r = 0; r < scatterSets.size(); ++r)
+        {
+          if (scatterSets[r].size() > 0)
+          {
+            scatterMap.m_map.insert(scatterMap.m_map.end(), scatterSets[r].cbegin(), scatterSets[r].cend());
+            scatterMap.m_sendCounts.push_back(scatterSets[r].size());
+            scatterMap.m_sendOffsets.push_back(smapSendOffset);
+            smapSendOffset += scatterSets[r].size();
+            scatterMap.m_sendProc.push_back(r);
+          }
+        }
+
+        RankI gmapRecvOffset = 0;
+        for (int r = 0; r < rProcActive; ++r)
+        {
+          if (gatherSets[r].size() > 0)
+          {
+            gatherMap.m_recvProc.push_back(r);
+            gatherMap.m_recvCounts.push_back(gatherSets[r].size());
+            gatherMap.m_recvOffsets.push_back(gmapRecvOffset);
+            gmapRecvOffset += gatherSets[r].size();
+          }
+        }
+        gatherMap.m_locCount = myTNCoords.size();
+        gatherMap.m_locOffset = gmapRecvOffset;
+        gmapRecvOffset += myTNCoords.size();
+        for (int r = rProcActive+1; r < gatherSets.size(); ++r)
+        {
+          if (gatherSets[r].size() > 0)
+          {
+            gatherMap.m_recvProc.push_back(r);
+            gatherMap.m_recvCounts.push_back(gatherSets[r].size());
+            gatherMap.m_recvOffsets.push_back(gmapRecvOffset);
+            gmapRecvOffset += gatherSets[r].size();
+          }
+        }
+        gatherMap.m_totalCount = gmapRecvOffset;
       }
 
-      // Finish constructing.
-      this->_constructInner(nodeList, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+      // Finish assigning object attributes.
+      this->_constructInner(myTNCoords, scatterMap, gatherMap, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+
       m_totalSendSz = computeTotalSendSz(m_sm);
       m_totalRecvSz = totalRecvSz(m_gm);
 
@@ -334,14 +723,129 @@ namespace ot
           m_tnCoords,
           order,
           ghostExchange); //need ghost maps
+
+      // Active comm is not destroyed here because they are used in formation of DA.
+      // This is finally destroyed in the destructor of DA.
     }
+
+
+    template <typename C, unsigned dim>
+    void sortUniqXPreferCoarser(std::vector<TNPoint<C, dim>> &points,
+                                std::vector<TreeNode<C, dim>> &elems,
+                                std::vector<TNPoint<C, dim>> &tmp_p,
+                                std::vector<TreeNode<C, dim>> &tmp_e
+                                )
+    {
+      SFC_Tree<C, dim>::locTreeSortMaxDepth(points, elems);
+      tmp_p.clear();
+      tmp_e.clear();
+      if (points.size() > 0)
+      {
+        tmp_p.push_back(points[0]);
+        tmp_e.push_back(elems[0]);
+        for (size_t ii = 1; ii < points.size(); ++ii)
+          if (points[ii].getX() == tmp_p.back().getX())
+          {
+            if (tmp_p.back().getLevel() > points[ii].getLevel())
+            {
+              tmp_p.back() = points[ii];
+              tmp_e.back() = elems[ii];
+            }
+          }
+          else
+          {
+            tmp_p.push_back(points[ii]);
+            tmp_e.push_back(elems[ii]);
+          }
+      }
+      points.clear();
+      elems.clear();
+      std::swap(points, tmp_p);
+      std::swap(elems, tmp_e);
+    }
+
+
+    template <typename C, unsigned dim>
+    TNPoint<C, dim> hangingBijection(const TreeNode<C, dim> &elem,
+                                     const TNPoint<C, dim> tnpoint,
+                                     unsigned eleOrder)
+    {
+      const std::array<unsigned, dim> childIndices
+        = TNPoint<C, dim>::get_nodeRanks1D(elem, tnpoint, eleOrder);
+
+      const std::array<unsigned, dim> parentIndices
+        = Element<C, dim>(elem).hanging2ParentIndicesBijection(
+            childIndices, eleOrder);
+
+      for (int d = 0; d < dim; ++d)
+        assert((0 <= parentIndices[d] && parentIndices[d] <= eleOrder));
+
+      const TNPoint<C, dim> parentPoint
+        = Element<C, dim>(elem.getParent()).getNode(parentIndices, eleOrder);
+
+      TNPoint<C, dim> parentPointKeepProperties = tnpoint;
+      parentPointKeepProperties.setX(parentPoint.getX());
+      parentPointKeepProperties.setLevel(parentPoint.getLevel());
+
+      return parentPointKeepProperties;
+    }
+
+
+    template <typename C, unsigned dim>
+    void distPartitionEdges(std::vector<TNPoint<C, dim>> &nodesInOut,
+                            std::vector<TreeNode<C, dim>> &elemsInOut,
+                            double sfc_tol,
+                            MPI_Comm comm)
+    {
+      // distTreePartition only works on TreeNode inside the unit cube, not TNPoint.
+      // Create a key for each tnpoint.
+      std::vector<TreeNode<C, dim>> keys;
+      for (const auto &pt : nodesInOut)
+      {
+        const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
+        keys.push_back(key);
+      }
+
+      // To use the schedule the TNPoints have to be locally sorted
+      // in the order of the keys.
+      SFC_Tree<C, dim>::locTreeSort(keys, nodesInOut, elemsInOut);
+
+      const std::vector<TNPoint<C, dim>> nodesIn = nodesInOut;
+      const std::vector<TreeNode<C, dim>> elemsIn = elemsInOut;
+
+      std::vector<TNPoint<C, dim>> &nodesOut = nodesInOut;
+      std::vector<TreeNode<C, dim>> &elemsOut = elemsInOut;
+      nodesOut.clear();
+      elemsOut.clear();
+
+      // To sort the TNPoints, get a schedule based on the TreeNodes.
+      par::SendRecvSchedule sched = SFC_Tree<C, dim>::distTreePartitionSchedule(
+          keys, 0, sfc_tol, comm);
+
+      nodesOut.resize(sched.rdispls.back() + sched.rcounts.back());
+      elemsOut.resize(sched.rdispls.back() + sched.rcounts.back());
+
+      par::Mpi_Alltoallv_sparse<TNPoint<C, dim>>(
+          &nodesIn[0],  &sched.scounts[0], &sched.sdispls[0],
+          &nodesOut[0], &sched.rcounts[0], &sched.rdispls[0],
+          comm);
+      par::Mpi_Alltoallv_sparse<TreeNode<C, dim>>(
+          &elemsIn[0],  &sched.scounts[0], &sched.sdispls[0],
+          &elemsOut[0], &sched.rcounts[0], &sched.rdispls[0],
+          comm);
+    }
+
+
+
 
 
     //
     // construct() - given the partition of owned points.
     //
     template <unsigned int dim>
-    void DA<dim>::_constructInner(std::vector<TNPoint<C,dim>> &ownedNodes,
+    void DA<dim>::_constructInner(const std::vector<TreeNode<C,dim>> &ownedNodes,
+                            const ScatterMap &sm,
+                            const GatherMap &gm,
                             unsigned int eleOrder,
                             const TreeNode<C,dim> *treePartFront,
                             const TreeNode<C,dim> *treePartBack,
@@ -408,9 +912,9 @@ namespace ot
 
         m_uiLocalNodalSz = ownedNodes.size();
 
-        // Create scatter/gather maps. Scatter map reflects whatever ordering is in ownedNodes.
-        m_sm = ot::SFC_NodeSort<C,dim>::computeScattermap(ownedNodes, &m_treePartFront, m_uiActiveComm);
-        m_gm = ot::SFC_NodeSort<C,dim>::scatter2gather(m_sm, m_uiLocalNodalSz, m_uiActiveComm);
+        // Gather/scatter maps.
+        m_sm = sm;
+        m_gm = gm;
 
         // Export from gm: dividers between local and ghost segments.
         m_uiTotalNodalSz   = m_gm.m_totalCount;
@@ -454,7 +958,6 @@ namespace ot
         m_tnCoords.resize(m_uiTotalNodalSz);
         for (size_t ii = 0; ii < m_uiLocalNodalSz; ii++)
           m_tnCoords[m_uiLocalNodeBegin + ii] = ownedNodes[ii];
-        ownedNodes.clear();
 
         // Fill ghost segments of node coordinates vector.
         std::vector<ot::TreeNode<C,dim>> tmpSendBuf(m_sm.m_map.size());
@@ -486,6 +989,9 @@ namespace ot
     template <unsigned int dim>
     DA<dim>::~DA()
     {
+      m_uiMPIContexts.clear();
+      MPI_Comm_free(&m_uiActiveComm);
+      MPI_Comm_free(&m_uiGlobalComm);
     }
 
 
@@ -760,7 +1266,7 @@ namespace ot
     PetscErrorCode DA<dim>::petscCreateVector(Vec &local, bool isElemental, bool isGhosted, unsigned int dof) const
     {
         size_t sz=0;
-        MPI_Comm globalComm=this->getGlobalComm();
+        PetscErrorCode status = 0;
         if(!m_uiIsActive)
         {
             local=NULL;
@@ -784,16 +1290,16 @@ namespace ot
                 else
                     sz=dof*m_uiLocalNodalSz;
             }
+            MPI_Comm activeComm = this->getCommActive();
+            VecCreate(activeComm,&local);
+            status=VecSetSizes(local,sz,PETSC_DECIDE);
 
-        }
+            if (this->getNpesAll() > 1) {
+                VecSetType(local,VECMPI);
+            } else {
+                VecSetType(local,VECSEQ);
+            }
 
-        VecCreate(globalComm,&local);
-        PetscErrorCode status=VecSetSizes(local,sz,PETSC_DECIDE);
-
-        if (this->getNpesAll() > 1) {
-            VecSetType(local,VECMPI);
-        } else {
-            VecSetType(local,VECSEQ);
         }
 
 

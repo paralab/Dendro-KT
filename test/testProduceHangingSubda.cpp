@@ -288,6 +288,7 @@ ibm::Partition DomainDecider(const double *physCoords, double physSize) {
 int main(int argc, char *argv[]) {
   typedef unsigned int DENDRITE_UINT;
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
   int rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -353,5 +354,6 @@ int main(int argc, char *argv[]) {
   ///                  "octreeVtu",
   ///                  comm);
 
+  DendroScopeEnd();
   PetscFinalize();
 }

@@ -340,6 +340,7 @@ void test_locTreeConstruction(int numPoints)
 int main(int argc, char* argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
 
   int ptsPerProc = 200;
   if (argc > 1)
@@ -351,6 +352,7 @@ int main(int argc, char* argv[])
 
   //test_locTreeConstruction(ptsPerProc);
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;

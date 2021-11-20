@@ -280,6 +280,21 @@ class DA
     //      so that mutligrid only needs one refel.
     RefElement m_refel;
 
+
+  private:
+
+        /** @brief The latter part of construct() if already have ownedNodes and scatter/gather maps. */
+        void construct(const std::vector<TreeNode<C,dim>> &ownedNodes,
+                       const ScatterMap &sm,
+                       const GatherMap &gm,
+                       unsigned int eleOrder,
+                       const TreeNode<C,dim> *treePartFront,
+                       const TreeNode<C,dim> *treePartBack,
+                       bool isActive,
+                       MPI_Comm globalComm,
+                       MPI_Comm activeComm);
+
+
   public:
 
         /**@brief: Constructor for the DA data structures
@@ -291,8 +306,8 @@ class DA
          */
         DA(unsigned int order = 1);
 
-        DA(std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
-        DA(const std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+        /// DA(std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+        /// DA(const std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
         DA(const DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz /*= 100*/, double sfc_tol /*= 0.3*/);
 
@@ -334,19 +349,18 @@ class DA
          */
         /// void construct(const TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
         void constructStratum(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
-
         void construct(const DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
-
         /** @brief The latter part of construct() if already have ownedNodes. */
-        void _constructInner(
-                       std::vector<TNPoint<C,dim>> &ownedNodes,
-                       unsigned int eleOrder,
-                       const TreeNode<C,dim> *treePartFront,
-                       const TreeNode<C,dim> *treePartBack,
-                       bool isActive,
-                       MPI_Comm globalComm,
-                       MPI_Comm activeComm);
+        void _constructInner(const std::vector<TreeNode<C,dim>> &ownedNodes,
+                            const ScatterMap &sm,
+                            const GatherMap &gm,
+                            unsigned int eleOrder,
+                            const TreeNode<C,dim> *treePartFront,
+                            const TreeNode<C,dim> *treePartBack,
+                            bool isActive,
+                            MPI_Comm globalComm,
+                            MPI_Comm activeComm);
 
         /**@brief returns the local element size*/
         inline size_t getLocalElementSz() const { return m_uiLocalElementSz; }
@@ -406,10 +420,7 @@ class DA
         /**@brief: returns the active MPI sub com of the global communicator*/
         inline MPI_Comm getCommActive() const
         {
-            if (m_uiIsActive)
-                return m_uiActiveComm;
-            else
-                return MPI_COMM_NULL;
+          return m_uiActiveComm;
         }
 
         /**@brief: global mpi com. size*/
@@ -449,10 +460,10 @@ class DA
         inline const DendroIntL * getNodeOwnerElements() const { return &(*m_ghostedNodeOwnerElements.cbegin()); }
 
         /**@brief: get first treeNode of the local partition of the tree (front splitter). */
-        inline const TreeNode<C,dim> * getTreePartFront() const { return &m_treePartFront; }
+        inline const TreeNode<C,dim> * getTreePartFront() const { return (m_uiLocalElementSz > 0 ? &m_treePartFront : nullptr); }
 
         /**@brief: get last treeNode of the local partition of the tree (back splitter). */
-        inline const TreeNode<C,dim> * getTreePartBack() const { return &m_treePartBack; }
+        inline const TreeNode<C,dim> * getTreePartBack() const { return (m_uiLocalElementSz > 0 ? &m_treePartBack : nullptr); }
 
         //TODO again, I don't think RefElement belongs in DA, but it is for now. Maybe it belongs?
         inline const RefElement * getReferenceElement() const { return &m_refel; }

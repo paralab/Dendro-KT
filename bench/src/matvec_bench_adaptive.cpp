@@ -129,7 +129,7 @@ namespace bench
 
             // Generate DA from balanced tree.
             t_adaptive_oda.start();
-            ot::DA<dim> oda(tree, comm, eleOrder, numPts, loadFlexibility);
+            ot::DA<dim> oda(ot::DistTree<T,dim>(tree, comm), comm, eleOrder, numPts, loadFlexibility);
             t_adaptive_oda.stop();
             gDistRptSz.b1_globNodeSz = oda.getGlobalNodeSz();
         }
@@ -147,7 +147,7 @@ namespace bench
             gRptSz.b2_treeMatvecSz = tree.size();
 
             // DA based on adaptive grid.
-            ot::DA<dim> *octDA = new ot::DA<dim>(tree, comm, eleOrder, numPts, loadFlexibility);
+            ot::DA<dim> *octDA = new ot::DA<dim>(ot::DistTree<T, dim>(tree, comm), comm, eleOrder, numPts, loadFlexibility);
             gDistRptSz.b2_globNodeSz = octDA->getGlobalNodeSz();
 
             const unsigned int DOF = 1;   // matvec only supports dof==1 right now.
@@ -312,6 +312,7 @@ namespace bench
 int main(int argc, char** argv)
 {
     MPI_Init(&argc,&argv);
+    DendroScopeBegin();
 
     int rank,npes;
     MPI_Comm comm = MPI_COMM_WORLD;
@@ -389,6 +390,7 @@ int main(int argc, char** argv)
     bench::dump_profile_info(std::cout, msgPrefix, params,param_names,2, counters,counter_names,10, comm);
 
     _DestroyHcurve();
+    DendroScopeEnd();
     MPI_Finalize();
     return 0;
 }

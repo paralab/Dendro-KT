@@ -365,6 +365,19 @@ namespace ot {
   }
 
 
+  template <typename T, unsigned int dim>
+  std::array<unsigned, dim> TNPoint<T, dim>::get_nodeRanks1D(
+      const TreeNode<T, dim> &hostCell,
+      const TreeNode<T, dim> &tnPoint,
+      unsigned int polyOrder)
+  {
+    std::array<unsigned, dim> indices;
+    for (int d = 0; d < dim; ++d)
+      indices[d] = get_nodeRank1D(hostCell, tnPoint, d, polyOrder);
+    return indices;
+  }
+
+
   // Get's numerator and denominator of tnPoint node coordinates relative,
   // to containingSubtree, where 0/1 and 1/1 correspond to the subtree edges.
   template <typename T, unsigned int dim>
@@ -392,26 +405,37 @@ namespace ot {
 
   // ============================ Begin: Element ============================ //
 
+
+  template <typename T, unsigned int dim>
+  std::array<T, dim> Element<T, dim>::getNodeX(
+      const std::array<unsigned, dim> &numerators, unsigned polyOrder) const
+  {
+    const unsigned int len = 1u << (m_uiMaxDepth - this->getLevel());
+    std::array<T, dim> nodeCoords;
+    for (int d = 0; d < dim; ++d)
+      nodeCoords[d] = (unsigned long) len * numerators[d] / polyOrder  +  this->getX(d);
+    return nodeCoords;
+  }
+
+  template <typename T, unsigned int dim>
+  TNPoint<T, dim>    Element<T, dim>::getNode(
+      const std::array<unsigned, dim> &numerators, unsigned polyOrder) const
+  {
+    return TNPoint<T, dim>(1, this->getNodeX(numerators, polyOrder), this->getLevel());
+  }
+
+
   template <typename T, unsigned int dim>
   template <typename TN>
   void Element<T,dim>::appendNodes(unsigned int order, std::vector<TN> &nodeList) const
   {
-    using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
-
     const unsigned int numNodes = intPow(order+1, dim);
 
     std::array<unsigned int, dim> nodeIndices;
     nodeIndices.fill(0);
     for (unsigned int node = 0; node < numNodes; node++)
     {
-      std::array<T,dim> nodeCoords;
-      #pragma unroll(dim)
-      for (int d = 0; d < dim; d++)
-        nodeCoords[d] = (unsigned long) len * nodeIndices[d] / order  +  TreeNode::m_uiCoords[d];
-      //TODO is there a noticeable performance cost for preserving precision?
-      nodeList.push_back({1, nodeCoords, TreeNode::m_uiLevel});
-
+      nodeList.push_back(this->getNode(nodeIndices, order));
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }
   }
@@ -540,6 +564,21 @@ namespace ot {
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order+1);
     }
+  }
+
+  template <typename T, unsigned int dim>
+  void Element<T,dim>::appendCancellationNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
+  {
+    using TreeNode = TreeNode<T,dim>;
+    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+
+    const unsigned int numNodes = intPow(order+1, dim);
+
+    double physElemCoords[dim];
+    double physSize;
+    treeNode2Physical(*this, physElemCoords, physSize);
+
+    std::array<unsigned int, dim> nodeIndices;
 
     if (this->getLevel() < m_uiMaxDepth)  // Don't need cancellations if no hanging elements.
     {
@@ -626,6 +665,35 @@ namespace ot {
       incrementBaseB<unsigned int, dim>(nodeIndices, 3);
     }
   }
+
+
+
+  template <typename T, unsigned int dim>
+  std::array<unsigned, dim> Element<T,dim>::hanging2ParentIndicesBijection(
+      const std::array<unsigned, dim> &indices, unsigned polyOrder) const
+  {
+    std::array<unsigned, dim> parentIndices;
+    for (int d = 0; d < dim; ++d)
+    {
+      const unsigned p = polyOrder;
+      const unsigned i = indices[d];
+
+      const bool isLeft = !(this->getMortonIndex() & (1u << d));
+      if (isLeft && i % 2 == 0)
+        parentIndices[d] = i/2;
+      else if (isLeft && i % 2 != 0)
+        parentIndices[d] = p+1 - (p+1)/2 + (i-1)/2;
+      else if (!isLeft && (p-i) % 2 == 0)
+        parentIndices[d] = p - (p-i)/2;
+      else
+        parentIndices[d] = p-(p+1 - (p+1)/2 + ((p-i)-1)/2);
+    }
+    return parentIndices;
+  }
+
+
+
+
 
 
   /**
@@ -961,8 +1029,8 @@ namespace ot {
     SFC_Tree<T,dim>::template locTreeSort< KeyFunInboundsContainer_t<TNP, TreeNode<T,dim>>,
                                            TNP,
                                            TreeNode<T,dim>,
-                                           int, false >(
-        &(*points.begin()), nullptr, 0, numUniqPoints, 1, m_uiMaxDepth, 0, KeyFunInboundsContainer<TNP, TreeNode<T,dim>>);
+                                           false, int >(
+        &(*points.begin()), 0, numUniqPoints, 1, m_uiMaxDepth, 0, KeyFunInboundsContainer<TNP, TreeNode<T,dim>>, (int*) nullptr);
 
     // The points are now sorted such that some contiguous segment in the middle
     // belongs to the local tree partition. Find that segment and trim.

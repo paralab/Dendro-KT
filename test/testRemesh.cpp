@@ -31,6 +31,7 @@ size_t unit_to_pareto(double u, size_t xmin, size_t xmax)
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
   MPI_Comm comm = MPI_COMM_WORLD;
 
   int rProc, nProc;
@@ -98,7 +99,9 @@ int main(int argc, char * argv[])
     // Generate new tree.
         /// newTree = ot::SFC_Tree<T, dim>::locRemesh(srcTree, octFlags);
         /// surrTree = srcTree;
-    ot::SFC_Tree<T, dim>::distRemeshWholeDomain(srcTree, octFlags, newTree, surrTree, 0.3, ot::RemeshPartition::SurrogateInByOut, comm);
+    ot::SFC_Tree<T, dim>::distRemeshWholeDomain(srcTree, octFlags, newTree, 0.3, comm);
+    surrTree = ot::SFC_Tree<T, dim>::getSurrogateGrid(
+        ot::RemeshPartition::SurrogateInByOut, srcTree, newTree, comm);
     if (printEachRound)
       std::cout << "srcTree.size()==" << srcTree.size()
                 << "    newTree.size()==" << newTree.size() << "  -->  ";
@@ -162,6 +165,7 @@ int main(int argc, char * argv[])
 
   MPI_Barrier(comm);
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;

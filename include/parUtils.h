@@ -25,6 +25,7 @@
 #include "mpi.h"
 #include <vector>
 #include "dendro.h"
+#include "string.h"
 
 #ifndef KWAY
 #define KWAY 128
@@ -370,6 +371,9 @@ namespace par {
     int Mpi_Alltoallv_Kway(const T* sbuff_, int* s_cnt_, int* sdisp_,
                            T* rbuff_, int* r_cnt_, int* rdisp_, MPI_Comm c);
 
+
+    template <typename T>
+    std::vector<T> sendAll(const std::vector<T> &sdata, const std::vector<int> &sdest, MPI_Comm comm);
 
 
     template <typename T>

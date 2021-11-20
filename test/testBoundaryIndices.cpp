@@ -13,6 +13,7 @@ int main(int argc, char * argv[])
   constexpr int DIM = 2;
 
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
 
   int eleOrder = 2;
@@ -70,6 +71,7 @@ int main(int argc, char * argv[])
   ///                     eleOrder,
   ///                     std::cout);
 
+  DendroScopeEnd();
   PetscFinalize();
 
   return 0;

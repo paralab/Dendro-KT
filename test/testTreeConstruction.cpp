@@ -341,6 +341,7 @@ bool checkLocalCompletenessMorton(std::vector<ot::TreeNode<T,D>> &points,
 int main(int argc, char* argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
 
   int ptsPerProc = 200;
   if (argc > 1)
@@ -349,6 +350,7 @@ int main(int argc, char* argv[])
   //test_locTreeConstruction(ptsPerProc);
   test_distTreeConstruction(ptsPerProc, MPI_COMM_WORLD);  // Expected results: See note at definition.
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return 0;

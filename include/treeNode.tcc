@@ -119,9 +119,6 @@ namespace ot {
     template<typename T, unsigned int dim>
     TreeNode<T,dim>& TreeNode<T,dim>::operator=(TreeNode<T,dim> const &other)
     {
-      if (this == &other)
-        return *this;
-
       m_uiCoords = other.m_uiCoords;
       m_uiLevel = other.m_uiLevel;
 
@@ -261,6 +258,14 @@ inline void TreeNode<T,dim>::setX(int d, T coord) {
 #endif
   m_uiCoords[d] = coord;
 }
+
+template <typename T, unsigned int dim>
+inline void TreeNode<T,dim>::setX(const std::array<T, dim> &coords)
+{
+  for (int d = 0; d < dim; ++d)
+    this->setX(d, coords[d]);
+}
+
 
 
 template <typename T, unsigned int dim>

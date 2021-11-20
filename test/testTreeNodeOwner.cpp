@@ -11,6 +11,7 @@
 int main(int argc, char * argv[])
 {
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
 
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -36,7 +37,7 @@ int main(int argc, char * argv[])
     MPI_Barrier(comm);
   }
 
-  ot::DA<DIM> *octDA = new ot::DA<DIM>(treePart, MPI_COMM_WORLD, eleOrder);
+  ot::DA<DIM> *octDA = new ot::DA<DIM>(ot::DistTree<unsigned, DIM>(treePart, MPI_COMM_WORLD), MPI_COMM_WORLD, eleOrder);
 
   /** Print out the number of nodes on each processor. **/
   MPI_Barrier(comm);
@@ -80,5 +81,6 @@ int main(int argc, char * argv[])
 
   delete octDA;
   _DestroyHcurve();
+  DendroScopeEnd();
   PetscFinalize();
 }

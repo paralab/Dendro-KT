@@ -111,6 +111,11 @@ struct KeyFunIdentity_Pt
   const PointType &operator()(const PointType &pt) { return pt; }
 };
 
+template <typename T, unsigned int D>
+struct KeyFunIdentity_maxDepth
+{
+  const TreeNode<T,D> operator()(TreeNode<T,D> tn) { tn.setLevel(m_uiMaxDepth); return tn; }
+};
 
 
 
@@ -121,23 +126,47 @@ struct SFC_Tree
   template <class PointType>
   static void locTreeSort(std::vector<PointType> &points)
   {
-    SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 1, m_uiMaxDepth, 0);
+    SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0);
   }
 
 
-  template <class PointType, typename CompanionT>
-  static void locTreeSort(std::vector<PointType> &points, std::vector<CompanionT> &companions)
+  template <class PointType, typename... CompanionT>
+  static void locTreeSort(std::vector<PointType> &points, std::vector<CompanionT>& ... companions)
   {
     SFC_Tree<T, D>::locTreeSort<KeyFunIdentity_Pt<PointType>,
                                 PointType,
                                 PointType,
-                                CompanionT,
-                                true>
-         (points.data(), companions.data(),
+                                true,
+                                CompanionT...
+                                >
+         (points.data(),
           0, (RankI) points.size(),
           1, m_uiMaxDepth, 0,
-          KeyFunIdentity_Pt<PointType>());
+          KeyFunIdentity_Pt<PointType>(),
+          (companions.data())...
+          );
   }
+
+
+
+  template <class PointType>
+  static void locTreeSortMaxDepth(std::vector<PointType> &points)
+  {
+    SFC_Tree<T, D>::locTreeSort< KeyFunIdentity_maxDepth<T, D>,
+                                 PointType, TreeNode<T, D>, false, int>
+      (&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
+       KeyFunIdentity_maxDepth<T, D>(), (int*) nullptr);
+  }
+
+  template <class PointType, typename... CompanionT>
+  static void locTreeSortMaxDepth(std::vector<PointType> &points, std::vector<CompanionT>& ... companions)
+  {
+    SFC_Tree<T, D>::locTreeSort< KeyFunIdentity_maxDepth<T, D>,
+                                 PointType, TreeNode<T, D>, true, CompanionT...>
+      (&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
+       KeyFunIdentity_maxDepth<T, D>(), (companions.data())...);
+  }
+
 
 
   // Notes:
@@ -154,13 +183,15 @@ struct SFC_Tree
   //   - Allows the generality of a ``key function,''
   //        i.e. function to produce TreeNodes-like objects to sort by.
   //   - Otherwise, same as above except shuffles a parallel companion array along with the TreeNodes.
-  template <class KeyFun, typename PointType, typename KeyType, typename Companion, bool useCompanions = true>
-  static void locTreeSort(PointType *points, Companion *companions,
+  template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
+  static void locTreeSort(PointType *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
                           RotI pRot,            // Initial rotation, use 0 if sLev is 1.
-                          KeyFun keyfun);
+                          KeyFun keyfun,
+                          Companion * ... companions
+                          );
 
   // Notes:
   //   - outSplitters contains both the start and end of children at level `lev'
@@ -206,8 +237,8 @@ struct SFC_Tree
   // Notes:
   //   - Same as above except shuffles a parallel companion array along with the TreeNodes.
   //   - In actuality the above version calls this one.
-  template <class KeyFun, typename PointType, typename KeyType, typename Companion, bool useCompanions = true>
-  static void SFC_bucketing_general(PointType *points, Companion* companions,
+  template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
+  static void SFC_bucketing_general(PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
                           RotI pRot,
@@ -216,7 +247,37 @@ struct SFC_Tree
                           bool ancestorsFirst,
                           std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
                           RankI &outAncStart,
-                          RankI &outAncEnd);
+                          RankI &outAncEnd,
+                          Companion * ... companions
+                          );
+
+  static std::vector<char> bucketStableAux;
+
+  // Template-recursively buckets one companion array at a time.
+  template <class KeyFun, typename PointType, typename KeyType, typename ValueType>
+  static void SFC_bucketStable(
+      const PointType *points,
+      RankI begin,
+      RankI end,
+      LevI lev,
+      KeyFun keyfun,
+      bool separateAncestors,
+      std::array<RankI, TreeNode<T,D>::numChildren+1> offsets,            // last idx represents ancestors.
+      const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+      ValueType *values);
+  template <class KeyFun, typename PointType, typename KeyType, typename CompanionHead, typename... CompanionTail>
+  static void SFC_bucketStable(
+      const PointType *points,
+      RankI begin,
+      RankI end,
+      LevI lev,
+      KeyFun keyfun,
+      bool separateAncestors,
+      const std::array<RankI, TreeNode<T,D>::numChildren+1> &offsets,     // last idx represents ancestors.
+      const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+      CompanionHead * companionHead,
+      CompanionTail* ... companionTail);
+
 
 
   /**
@@ -311,6 +372,27 @@ struct SFC_Tree
       bool isActive,
       std::vector<int> &activeList);
 
+
+  /** @brief Map any collection of treeNodes in the domain
+   *         to the partition ranks that own them.
+   *         The rank ids are returned
+   *         in the range [0 .. partitionFrontSplitters.size()-1].
+   */
+  static std::vector<int> treeNode2PartitionRank(
+      const std::vector<TreeNode<T,D>> &treeNodes,
+      const std::vector<TreeNode<T,D>> &partitionFrontSplitters);
+
+  /** @brief Map any collection of treeNodes in the domain
+   *         to the partition ranks that own them.
+   *         partitionFrontSplitters contains front elements from active ranks.
+   *         partitionActiveList contains the global rank ids of active ranks.
+   *         The rank ids are returned
+   *         in the range [0 .. max{partitionActiveList}].
+   */
+  static std::vector<int> treeNode2PartitionRank(
+      const std::vector<TreeNode<T,D>> &treeNodes,
+      const std::vector<TreeNode<T,D>> &partitionFrontSplitters,
+      const std::vector<int> &partitionActiveList);
 
 
   // -------------------------------------------------------------
@@ -409,10 +491,16 @@ struct SFC_Tree
   static void distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
                                      const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                      std::vector<TreeNode<T, D>> &outTree,
-                                     std::vector<TreeNode<T, D>> &surrogateTree,
                                      double loadFlexibility,
-                                     RemeshPartition remeshPartition,
                                      MPI_Comm comm );
+
+  // When remeshing with the SFC_Tree interface, surrogate grid is optional.
+  // Use getSurrogateGrid method after distRemeshWholeDomain() to recover the surrogate.
+  static std::vector<TreeNode<T, D>> getSurrogateGrid(
+      RemeshPartition remeshPartition,
+      const std::vector<TreeNode<T, D>> &oldTree,
+      const std::vector<TreeNode<T, D>> &newTree,
+      MPI_Comm comm);
 
   static std::vector<TreeNode<T, D>> getSurrogateGrid( const std::vector<TreeNode<T, D>> &replicateGrid,
                                                        const std::vector<TreeNode<T, D>> &splittersFromGrid,

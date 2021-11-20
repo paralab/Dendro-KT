@@ -26,15 +26,18 @@ bool testMatvecBaseCoords();
 int main(int argc, char *argv[])
 {
   MPI_Init(&argc, &argv);
+  bool success = true;
+  DendroScopeBegin();
 
   /// bool success = testNull();
   /// bool success = testDummySubclass();
   /// bool success = testTopDownSubclass();
   /// bool success = testDummySubclass() && testTopDownSubclass();
   /// bool success = testMatvecSubclass();
-  bool success = testMatvecBaseCoords();
+  success = testMatvecBaseCoords();
   std::cout << "Result: " << (success ? GRN "success" NRM : RED "failure" NRM) << "\n";
 
+  DendroScopeEnd();
   MPI_Finalize();
 
   return !success;
@@ -243,7 +246,7 @@ bool testMatvecBaseCoords()
 
   // DA to get nodal vector for test.
   MPI_Comm comm = MPI_COMM_WORLD;
-  ot::DA<dim> octda(tree, comm, eleOrder);
+  ot::DA<dim> octda(ot::DistTree<C, dim>(tree, comm), comm, eleOrder);
   assert(tree.size() > 0);
 
   const ot::TreeNode<C, dim> *nodesPtr = octda.getTNCoords();

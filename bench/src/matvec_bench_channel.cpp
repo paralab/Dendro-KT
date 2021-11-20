@@ -29,6 +29,32 @@
 
 #include <cstring>
 
+
+// ======================
+// Signal handler
+// https://stackoverflow.com/a/77336
+// ======================
+
+#include <stdio.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+void handler(int sig) {
+  void *array[20];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 20);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
+// ======================
+
 namespace bench
 {
     profiler_t t_adaptive_tsort;
@@ -74,7 +100,7 @@ namespace bench
 
 
     template <unsigned int dim>
-    void bench_kernel(unsigned int numPts, unsigned int numWarmup, unsigned int numRuns, unsigned int eleOrder, int lengthPower2, MPI_Comm comm)
+    void bench_kernel(unsigned int numPts, unsigned int numTreeRuns, unsigned int numWarmup, unsigned int numRuns, unsigned int eleOrder, int lengthPower2, MPI_Comm comm)
     {
         // numWarmup affects number of matVec warmup runs.
         // numRuns affects number of matVec runs.
@@ -118,7 +144,7 @@ namespace bench
             //
 
             // Time sorting.
-            for (int ii = 0; ii < numRuns; ii++)
+            for (int ii = 0; ii < numTreeRuns; ii++)
             {
               points_copy = points;
               tree.clear();
@@ -129,7 +155,7 @@ namespace bench
             gRptSz.b1_treeSortSz = points_copy.size();
 
             // Time construction.
-            for (int ii = 0; ii < numRuns; ii++)
+            for (int ii = 0; ii < numTreeRuns; ii++)
             {
               points_copy = points;
               tree.clear();
@@ -140,7 +166,7 @@ namespace bench
             gRptSz.b1_treeConstructionSz = tree.size();
 
             // Time balanced construction.
-            for (int ii = 0; ii < numRuns; ii++)
+            for (int ii = 0; ii < numTreeRuns; ii++)
             {
               points_copy = points;
               tree.clear();
@@ -154,7 +180,7 @@ namespace bench
             dtree.filterTree(boxDecider);
 
             // Generate DA from balanced tree.
-            for (int ii = 0; ii < numRuns; ii++)
+            for (int ii = 0; ii < numTreeRuns; ii++)
             {
               t_adaptive_oda.start();
               ot::DA<dim> oda(dtree, comm, eleOrder, numPts, loadFlexibility);
@@ -191,7 +217,6 @@ namespace bench
             Point<dim> domain_min(-0.5,-0.5,-0.5);
             Point<dim> domain_max(0.5,0.5,0.5);
 
-            assert(tree.size() > 0);
             PoissonEq::PoissonMat<dim> myPoissonMat(octDA, &tree,DOF);
             myPoissonMat.setProblemDimensions(domain_min,domain_max);
 
@@ -338,6 +363,9 @@ namespace bench
 int main(int argc, char** argv)
 {
     MPI_Init(&argc,&argv);
+    DendroScopeBegin();
+
+    signal(SIGABRT, handler);  // Register handler().
 
     int rank,npes;
     MPI_Comm comm = MPI_COMM_WORLD;
@@ -374,9 +402,10 @@ int main(int argc, char** argv)
 
     _InitializeHcurve(dim);
 
-    const unsigned int numWarmup = 10;
-    const unsigned int numRuns = 10;
-    bench::bench_kernel<dim>(pts_per_core, numWarmup, numRuns, eleOrder, lengthPower2,comm);
+    const unsigned int numTreeRuns = 1;
+    const unsigned int numWarmup = 5;
+    const unsigned int numRuns = 100;
+    bench::bench_kernel<dim>(pts_per_core, numTreeRuns, numWarmup, numRuns, eleOrder, lengthPower2,comm);
 
 
     const char * param_names[] = {
@@ -421,6 +450,7 @@ int main(int argc, char** argv)
     bench::dump_profile_info(std::cout, msgPrefix, params,param_names,2, counters,counter_names,9, comm);
 
     _DestroyHcurve();
+    DendroScopeEnd();
     MPI_Finalize();
     return 0;
 }

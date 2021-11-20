@@ -750,8 +750,6 @@ namespace par {
     }
 
 
-
-
     template <typename T>
     std::vector<T> sendAll(const std::vector<T> &sdata, const std::vector<int> &sdest, MPI_Comm comm)
     {
@@ -804,9 +802,6 @@ namespace par {
 
       return rdata;
     }
-
-
-
 
 
 

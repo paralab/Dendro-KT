@@ -21,6 +21,7 @@ void convertToFlatCoords(const ot::TreeNode<UICoordT, dim> &element,
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
+  DendroScopeBegin();
   MPI_Comm comm = MPI_COMM_WORLD;
 
   constexpr unsigned int dim = 2;
@@ -48,7 +49,7 @@ int main(int argc, char * argv[])
   Example1<dim>::fill_tree(3, treeNodes);
 
   const unsigned int numElements = treeNodes.size();
-  ot::DA<dim> daRoot(treeNodes, comm, eleOrder, 1, 0);
+  ot::DA<dim> daRoot(ot::DistTree<TNT, dim>(treeNodes, comm), comm, eleOrder, 1, 0);
   assert(treeNodes.size() > 0);
 
   std::cout << "(1u<<dim) == " << (1u<<dim) << "\n";
@@ -256,6 +257,7 @@ int main(int argc, char * argv[])
 
   _DestroyHcurve();
 
+  DendroScopeEnd();
   MPI_Finalize();
 }
 
