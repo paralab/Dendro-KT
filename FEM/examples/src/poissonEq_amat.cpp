@@ -580,7 +580,7 @@ std::vector<bool> boundaryFlags(
 int main(int argc, char * argv[])
 {
   PetscInitialize(&argc, &argv, NULL, NULL);
-  /// DendroScopeBegin();
+  DendroScopeBegin();
   _InitializeHcurve(DIM);
 
   MPI_Comm comm = PETSC_COMM_WORLD;
@@ -597,7 +597,7 @@ int main(int argc, char * argv[])
   const size_t singleDof = 1;
 
   enum Method { matrixFreeJacobi, aMatAssembly, hybridJacobi };
-  const Method method = hybridJacobi;
+  const Method method = matrixFreeJacobi;
 
   // Mesh
   DTree_t dtree = DTree_t::constructSubdomainDistTree(
@@ -832,7 +832,7 @@ int main(int argc, char * argv[])
   /// printf("\n-------------------------------------------------------\n");
   /// print(mesh, u_vec - u_exact_vec);  // 2D grid of values in the terminal
 
-  /// DendroScopeEnd();
+  DendroScopeEnd();
   PetscFinalize();
 }
 
