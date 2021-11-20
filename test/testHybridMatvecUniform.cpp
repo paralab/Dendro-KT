@@ -76,9 +76,8 @@ int main(int argc, char * argv[])
   ot::GlobalSubset<dim> subsetImp(da, &dtree.getTreePartFiltered(), bdryFlags, false);
 
   {
-    // for debugging
+    // Sanity checks. Should all match due to partitioning from simpleDA.
     ot::GlobalSubset<dim> subsetAll(da, &dtree.getTreePartFiltered(), std::vector<bool>(bdryFlags.size(), true), true);
-    ot::GlobalSubset<dim> subsetNone(da, &dtree.getTreePartFiltered(), std::vector<bool>(bdryFlags.size(), true), false);
 
 #define ASSERT_EQUAL_DA(method) assert(subsetAll.method() == da->method());
 #define PRINT_DIFF(method) { if (subsetAll.method() != da->method()) {\
@@ -88,34 +87,19 @@ int main(int argc, char * argv[])
       (unsigned) da->method(),\
       int(subsetAll.method() - da->method()));\
   }}
-  // Note that some of these checks will not pass until merging the branch `update-simpleDA'
   PRINT_DIFF( getLocalElementSz );              ASSERT_EQUAL_DA( getLocalElementSz );
-  /// PRINT_DIFF( getLocalNodalSz );                /// ASSERT_EQUAL_DA( getLocalNodalSz );
-  /// PRINT_DIFF( getLocalNodeBegin );              /// ASSERT_EQUAL_DA( getLocalNodeBegin );
-  /// PRINT_DIFF( getLocalNodeEnd );                /// ASSERT_EQUAL_DA( getLocalNodeEnd );
-  /// PRINT_DIFF( getPreNodalSz );                  /// ASSERT_EQUAL_DA( getPreNodalSz );
-  /// PRINT_DIFF( getPostNodalSz );                 /// ASSERT_EQUAL_DA( getPostNodalSz );
-  /// PRINT_DIFF( getTotalNodalSz );                /// ASSERT_EQUAL_DA( getTotalNodalSz );
+  PRINT_DIFF( getLocalNodalSz );                ASSERT_EQUAL_DA( getLocalNodalSz );
+  PRINT_DIFF( getLocalNodeBegin );              ASSERT_EQUAL_DA( getLocalNodeBegin );
+  PRINT_DIFF( getLocalNodeEnd );                ASSERT_EQUAL_DA( getLocalNodeEnd );
+  PRINT_DIFF( getPreNodalSz );                  ASSERT_EQUAL_DA( getPreNodalSz );
+  PRINT_DIFF( getPostNodalSz );                 ASSERT_EQUAL_DA( getPostNodalSz );
+  PRINT_DIFF( getTotalNodalSz );                ASSERT_EQUAL_DA( getTotalNodalSz );
   PRINT_DIFF( getGlobalNodeSz );                ASSERT_EQUAL_DA( getGlobalNodeSz );
   PRINT_DIFF( getGlobalNodeBegin );             ASSERT_EQUAL_DA( getGlobalNodeBegin );
   PRINT_DIFF( getGlobalElementSz );             ASSERT_EQUAL_DA( getGlobalElementSz );
   PRINT_DIFF( getGlobalElementBegin );          ASSERT_EQUAL_DA( getGlobalElementBegin );
 #undef PRINT_DIFF
 #undef ASSERT_EQUAL_DA
-
-    fprintf(stderr, "-------------\n");
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getLocalElementSz() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getLocalNodalSz() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getLocalNodeBegin() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getLocalNodeEnd() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getPreNodalSz() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getPostNodalSz() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getTotalNodalSz() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getGlobalNodeSz() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getGlobalNodeBegin() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getGlobalElementSz() );
-    fprintf(stderr, "[%d] %u\n", mpiRank, (unsigned) subsetNone.getGlobalElementBegin() );
-    fprintf(stderr, "-------------\n");
   }
 
 
