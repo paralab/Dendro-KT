@@ -475,6 +475,14 @@ if(BUILD_WITH_AMAT)
   target_include_directories(tstAmatMatvec PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
   target_include_directories(tstAmatMatvec PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
   target_link_libraries(tstAmatMatvec dendroKT ${MPI_LIBRARIES} m)
+
+  set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testHybridMatvecUniform.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp)
+  add_executable(tstHybridMatvecUniform ${SRC_FILES})
+  target_include_directories(tstHybridMatvecUniform PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+  target_include_directories(tstHybridMatvecUniform PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+  target_link_libraries(tstHybridMatvecUniform dendroKT ${MPI_LIBRARIES} m)
 endif()
 
 

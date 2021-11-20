@@ -727,9 +727,7 @@ namespace ot
           this->getTNCoords(),
           iota.data(),
           octList.data(),
-          octList.size(),
-          *this->getTreePartFront(),
-          *this->getTreePartBack());
+          octList.size());
 
       std::vector<size_t> e2nMapping;
 

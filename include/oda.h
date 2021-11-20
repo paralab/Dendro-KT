@@ -357,6 +357,9 @@ class DA
         /**@brief returns the start offset for local node segment in ghosted vector. */
         inline size_t getLocalNodeBegin() const { return m_uiLocalNodeBegin; }
 
+        /**@brief returns the end offset for local node segment in ghosted vector. */
+        inline size_t getLocalNodeEnd() const { return m_uiLocalNodeEnd; }
+
         /**@brief returns the pre ghost nodal size*/
         inline size_t getPreNodalSz() const { return (m_uiPreNodeEnd-m_uiPreNodeBegin); }
 
@@ -369,8 +372,11 @@ class DA
         /**@brief returns the global number of nodes across all processors. */
         inline RankI getGlobalNodeSz() const { return m_uiGlobalNodeSz; }
 
-        /**@brief returns the rank of the begining of local segment among all processors. */
+        /**@brief returns the rank of the begining of local segment among all processors. @deprecated*/
         inline RankI getGlobalRankBegin() const { return m_uiGlobalRankBegin; }
+
+        /**@brief returns the rank of the begining of local segment among all processors. */
+        inline RankI getGlobalNodeBegin() const { return m_uiGlobalRankBegin; }
 
         inline DendroIntL getGlobalElementSz() const { return m_uiGlobalElementSz; }
 

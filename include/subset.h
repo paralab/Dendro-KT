@@ -84,6 +84,74 @@ namespace ot
   template <typename T, typename MergeNewOld>
   void scatter_ndofs(const T *input, MergeNewOld merge, T *output, const std::vector<size_t> &idxs, const size_t ndofs);
 
+
+  //
+  // GlobalSubset
+  //
+  template <unsigned int dim>
+  class GlobalSubset
+  {
+    public:
+      using C = unsigned int;
+
+    protected:
+      const DA<dim> *m_da;
+      std::vector<TreeNode<C, dim>> m_relevantOctList;
+      std::vector<TreeNode<C, dim>> m_relevantNodes;
+      std::vector<size_t> m_originalIndices;
+
+      // within global subset, not referring to original array.
+      size_t m_localNodalSz;
+      size_t m_localNodeBegin;
+
+      void readyMpiGlobalSizes() const;
+      mutable bool m_global_sizes_ready = false;
+      mutable DendroIntL m_globalNodeBegin = -1;
+      mutable DendroIntL m_globalElementBegin = -1;
+      mutable DendroIntL m_globalNodeSz = -1;
+      mutable DendroIntL m_globalElementSz = -1;
+
+    public:
+      template <typename Label>
+      GlobalSubset( const DA<dim> *da,
+                    const std::vector<TreeNode<C, dim>> *octList,
+                    const std::vector<Label> & labels,
+                    const Label selectedLabel );
+
+      GlobalSubset() = default;
+      GlobalSubset(const GlobalSubset &) = default;
+      GlobalSubset(GlobalSubset &&) = default;
+      GlobalSubset & operator=(const GlobalSubset &) = default;
+      GlobalSubset & operator=(GlobalSubset &&) = default;
+
+      const DA<dim> * da() const;
+      const std::vector<TreeNode<unsigned, dim>> & relevantOctList() const;
+      const std::vector<TreeNode<unsigned, dim>> & relevantNodes() const;
+      const std::vector<size_t> & originalIndices() const;
+
+
+      // ----------------------------------------------------
+      // DA proxy methods as if the subset were whole vector.
+      // ----------------------------------------------------
+
+      size_t getLocalElementSz() const;
+      size_t getLocalNodalSz() const;
+      size_t getLocalNodeBegin() const;
+      size_t getLocalNodeEnd() const;
+      size_t getPreNodalSz() const;
+      size_t getPostNodalSz() const;
+      size_t getTotalNodalSz() const;
+      /// bool isActive() const;   // commented out for lack of active comm
+      RankI getGlobalNodeSz() const;
+      RankI getGlobalNodeBegin() const;
+      DendroIntL getGlobalElementSz() const;
+      DendroIntL getGlobalElementBegin() const;
+      //TODO
+      /// const std::vector<RankI> & getNodeLocalToGlobalMap();
+
+  };
+
+
 }
 
 
@@ -274,6 +342,188 @@ namespace ot
         ++input_it;
       }
   }
+
+
+  // GlobalSubset::GlobalSubset()
+  template <unsigned int dim>
+  template <typename Label>
+  GlobalSubset<dim>::GlobalSubset(
+      const DA<dim> *da,
+      const std::vector<TreeNode<C, dim>> *octList,
+      const std::vector<Label> & labels,
+      const Label selectedLabel )
+    :
+      m_da(da),
+      m_relevantOctList(
+          filter_where(*octList, labels, selectedLabel)),
+      m_originalIndices(
+          index_nodes_where_element(*da, *octList, labels, selectedLabel))
+  {
+    m_relevantNodes = gather(da->getTNCoords(), m_originalIndices);
+
+    const size_t localBegin =
+        std::lower_bound(m_originalIndices.begin(),
+                         m_originalIndices.end(),
+                         da->getLocalNodeBegin()) - m_originalIndices.begin();
+
+    const size_t localEnd =
+        std::lower_bound(m_originalIndices.begin(),
+                         m_originalIndices.end(),
+                         da->getLocalNodeEnd()) - m_originalIndices.begin();
+
+    m_localNodalSz = localEnd - localBegin;
+    m_localNodeBegin = localBegin;
+
+    //TODO boundary nodes search
+  }
+
+  // GlobalSubset::da()
+  template <unsigned int dim>
+  const DA<dim> * GlobalSubset<dim>::da() const
+  {
+    return m_da;
+  }
+
+  // GlobalSubset::relevantOctList()
+  template <unsigned int dim>
+  const std::vector<TreeNode<unsigned, dim>> & GlobalSubset<dim>::relevantOctList() const
+  {
+    return m_relevantOctList;
+  }
+
+  // GlobalSubset::relevantNodes()
+  template <unsigned int dim>
+  const std::vector<TreeNode<unsigned, dim>> & GlobalSubset<dim>::relevantNodes() const
+  {
+    return m_relevantNodes;
+  }
+
+  // GlobalSubset::originalIndices()
+  template <unsigned int dim>
+  const std::vector<size_t> & GlobalSubset<dim>::originalIndices() const
+  {
+    return m_originalIndices;
+  }
+
+  // --------------
+
+  // GlobalSubset::getLocalElementSz()
+  template <unsigned int dim>
+  size_t GlobalSubset<dim>::getLocalElementSz() const
+  {
+    return m_relevantOctList.size();
+  }
+
+  // GlobalSubset::getTotalNodalSz()
+  template <unsigned int dim>
+  size_t GlobalSubset<dim>::getTotalNodalSz() const
+  {
+    return m_relevantNodes.size();
+  }
+
+  // GlobalSubset::getLocalNodalSz()
+  template <unsigned int dim>
+  size_t GlobalSubset<dim>::getLocalNodalSz() const
+  {
+    return m_localNodalSz;
+  }
+
+  // GlobalSubset::getLocalNodeBegin()
+  template <unsigned int dim>
+  size_t GlobalSubset<dim>::getLocalNodeBegin() const
+  {
+    return m_localNodeBegin;
+  }
+
+  // GlobalSubset::getLocalNodeEnd()
+  template <unsigned int dim>
+  size_t GlobalSubset<dim>::getLocalNodeEnd() const
+  {
+    return m_localNodeBegin + m_localNodalSz;
+  }
+
+  // GlobalSubset::getPreNodalSz()
+  template <unsigned int dim>
+  size_t GlobalSubset<dim>::getPreNodalSz() const
+  {
+    return m_localNodeBegin;
+  }
+
+  // GlobalSubset::getPostNodalSz()
+  template <unsigned int dim>
+  size_t GlobalSubset<dim>::getPostNodalSz() const
+  {
+    return getTotalNodalSz() - getLocalNodeEnd();
+  }
+
+
+  // commented out until Subset gets its own active comm (might be costly)
+  /// // GlobalSubset::isActive()
+  /// template <unsigned int dim>
+  /// bool GlobalSubset<dim>::isActive() const
+  /// {
+  ///   return getLocalElementSz() > 0;
+  /// }
+
+  // GlobalSubset::getGlobalNodeSz()
+  template <unsigned int dim>
+  RankI GlobalSubset<dim>::getGlobalNodeSz() const
+  {
+    readyMpiGlobalSizes();
+    return m_globalNodeSz;
+  }
+
+  // GlobalSubset::getGlobalNodeBegin()
+  template <unsigned int dim>
+  RankI GlobalSubset<dim>::getGlobalNodeBegin() const
+  {
+    readyMpiGlobalSizes();
+    return m_globalNodeBegin;
+  }
+
+  // GlobalSubset::getGlobalElementSz()
+  template <unsigned int dim>
+  DendroIntL GlobalSubset<dim>::getGlobalElementSz() const
+  {
+    readyMpiGlobalSizes();
+    return m_globalElementSz;
+  }
+
+  // GlobalSubset::getGlobalElementBegin()
+  template <unsigned int dim>
+  DendroIntL GlobalSubset<dim>::getGlobalElementBegin() const
+  {
+    readyMpiGlobalSizes();
+    return m_globalElementBegin;
+  }
+
+  // GlobalSubset::readyMpiGlobalSizes()   (internal)
+  template <unsigned int dim>
+  void GlobalSubset<dim>::readyMpiGlobalSizes() const
+  {
+    if (m_global_sizes_ready)
+      return;
+
+    // Future: Use da->getCommActive() instead of global comm, IF
+    //   every node is owned by a rank that owns the owning element AND
+    //   every rank only has ghost nodes for owned elements.
+    MPI_Comm comm = m_da->getGlobalComm();
+
+    DendroIntL locNodes = getLocalNodalSz();
+    par::Mpi_Allreduce(&locNodes, &m_globalNodeSz, 1, MPI_SUM, comm);
+    par::Mpi_Scan(&locNodes, &m_globalNodeBegin, 1, MPI_SUM, comm);
+    m_globalNodeBegin -= locNodes;
+
+    DendroIntL locElements = getLocalElementSz();
+    par::Mpi_Allreduce(&locElements, &m_globalElementSz, 1, MPI_SUM, comm);
+    par::Mpi_Scan(&locElements, &m_globalElementBegin, 1, MPI_SUM, comm);
+    m_globalElementBegin -= locElements;
+
+    m_global_sizes_ready = true;
+  }
+
+
+
 
 
 }
