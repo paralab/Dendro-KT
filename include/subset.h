@@ -149,6 +149,9 @@ namespace ot
       //TODO
       /// const std::vector<RankI> & getNodeLocalToGlobalMap();
 
+      bool all() const;     // true if all original elements are in subset.
+      bool none() const;    // true if none original elements are in subset (empty).
+
   };
 
 
@@ -523,6 +526,19 @@ namespace ot
   }
 
 
+  // GlobalSubset::all()
+  template <unsigned int dim>
+  bool GlobalSubset<dim>::all() const
+  {
+    return this->getGlobalElementSz() == m_da->getGlobalElementSz();
+  }
+
+  // GlobalSubset::none()
+  template <unsigned int dim>
+  bool GlobalSubset<dim>::none() const
+  {
+    return this->getGlobalElementSz() == 0;
+  }
 
 
 
