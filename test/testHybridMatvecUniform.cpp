@@ -169,20 +169,35 @@ int main(int argc, char * argv[])
 
   stMatFree->matvec(ptr(v_pure), const_ptr(u), false);
 
+  std::vector<double> dirichletZerosExp =
+      gather_ndofs(dirichletZeros.data(), subsetExp, ndofs);
 
   // subset explicit
   aMatMaps *meshMapsExp = nullptr;
   aMatFree *matFreeExp = nullptr;
-  allocAMatMaps(subsetExp, meshMapsExp, dirichletZeros.data(), ndofs);
+  allocAMatMaps(subsetExp, meshMapsExp, dirichletZerosExp.data(), ndofs);
   createAMat(subsetExp, matFreeExp, meshMapsExp);
   matFreeExp->set_matfree_type((par::MATFREE_TYPE) 1);
   //TODO assemble
   matFreeExp->finalize();
 
-  /// matFreeExp->matvec(ptr(v_subExp), const_ptr(u_subExp), false);
+  // split
+  std::vector<double> u_exp = gather_ndofs(const_ptr(u), subsetExp, ndofs);
+  std::vector<double> v_exp(u_exp.size(), 0);
+
+  // matvec
+  matFreeExp->matvec(ptr(v_exp), const_ptr(u_exp), false);
+
+  // accumulate
+  scatter_ndofs_accumulate(const_ptr(v_exp), ptr(v_hybrid), subsetExp, ndofs);
 
 
-  print(da, v_pure.data(), std::cout) << "------------------------------------\n";
+  // TODO subset implicit
+
+
+  print(da, v_hybrid.data(), std::cout) << "------------------------------------\n";
+
+  /// print(da, v_pure.data(), std::cout) << "------------------------------------\n";
 
   delete da;
   _DestroyHcurve();

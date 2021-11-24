@@ -15,6 +15,9 @@ namespace ot
     return IterRange<IteratorT>{begin, end};
   }
 
+  template <unsigned int dim>
+  class LocalSubset;
+
   // === filter_where() ===
 
   template <typename T, typename K>
@@ -77,6 +80,10 @@ namespace ot
   template <typename T>
   std::vector<T> gather_ndofs(const T *input, const std::vector<size_t> &idxs, const size_t ndofs);
 
+  template <typename T, unsigned int dim>
+  std::vector<T> gather_ndofs(const T *input, const LocalSubset<dim> &subset, const size_t ndofs);
+
+
 
   // === scatter_ndofs() ===
 
@@ -84,6 +91,14 @@ namespace ot
   template <typename T, typename MergeNewOld>
   void scatter_ndofs(const T *input, MergeNewOld merge, T *output, const std::vector<size_t> &idxs, const size_t ndofs);
 
+  template <typename T, typename MergeNewOld, unsigned int dim>
+  void scatter_ndofs(const T *input, MergeNewOld merge, T *output, const LocalSubset<dim> &subset, const size_t ndofs);
+
+  template <typename T, unsigned int dim>
+  void scatter_ndofs_overwrite(const T *input, T *output, const LocalSubset<dim> &subset, const size_t ndofs);
+
+  template <typename T, unsigned int dim>
+  void scatter_ndofs_accumulate(const T *input, T *output, const LocalSubset<dim> &subset, const size_t ndofs);
 
   //
   // LocalSubset : Not capable of ghost exchange, must rely on DA.
@@ -314,6 +329,12 @@ namespace ot
     return gathered;
   }
 
+  template <typename T, unsigned int dim>
+  std::vector<T> gather_ndofs(const T *input, const LocalSubset<dim> &subset, const size_t ndofs)
+  {
+    return gather_ndofs(input, subset.originalIndices(), ndofs);
+  }
+
 
   // === scatter_ndofs() ===
 
@@ -325,11 +346,48 @@ namespace ot
     for (size_t ii : idxs)
       for (size_t dof = 0; dof < ndofs; ++dof)
       {
-        T & out_v = output[ii*ndofs + dof];
-        out_v = merge(*input_it, out_v);
+        const T &in = *input_it;
+        T &out_new = output[ii*ndofs + dof];
+        const T &out_old = out_new;
+        out_new = merge(in, out_old);
         ++input_it;
       }
   }
+
+  // scatter_ndofs()
+  template <typename T, typename MergeNewOld, unsigned int dim>
+  void scatter_ndofs(const T *input, MergeNewOld merge, T *output, const LocalSubset<dim> &subset, const size_t ndofs)
+  {
+    scatter_ndofs(input, merge, output, subset.originalIndices(), ndofs);
+  }
+
+  // scatter_ndofs()
+  template <typename T, unsigned int dim>
+  void scatter_ndofs_overwrite(const T *input, T *output, const LocalSubset<dim> &subset, const size_t ndofs)
+  {
+    scatter_ndofs(
+        input,
+        [](const T &in, const T &out) { return in; },
+        output,
+        subset,
+        ndofs);
+  }
+
+  // scatter_ndofs()
+  template <typename T, unsigned int dim>
+  void scatter_ndofs_accumulate(const T *input, T *output, const LocalSubset<dim> &subset, const size_t ndofs)
+  {
+    scatter_ndofs(
+        input,
+        [](const T &in, const T &out) { return in + out; },
+        output,
+        subset,
+        ndofs);
+  }
+
+
+
+
 
 
   // LocalSubset::LocalSubset()
