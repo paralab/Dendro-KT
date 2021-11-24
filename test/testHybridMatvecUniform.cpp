@@ -45,20 +45,6 @@ const NodeT * const_ptr(const std::vector<NodeT> &vec) { return vec.data(); }
 
 namespace ot
 {
-  /// template <unsigned dim>  // hides ::dim.
-  /// std::vector<size_t> createE2NMapping(
-  ///     const GlobalSubset<dim> &sub);
-
-  /// template <unsigned int dim,
-  ///           typename DT, typename GI, typename LI>
-  /// void allocAMatMaps(
-  ///     const GlobalSubset<dim> &subset,
-  ///     par::Maps<DT, GI, LI>* &meshMaps,
-  ///     const DT *prescribedLocalBoundaryVals,
-  ///     unsigned int dof);
-
-
-
   template <unsigned dim>  // hides ::dim.
   std::vector<size_t> createE2NMapping(
       const LocalSubset<dim> &sub);
@@ -120,36 +106,6 @@ int main(int argc, char * argv[])
   std::vector<bool> bdryFlags = boundaryFlags(dtree);
   ot::LocalSubset<dim> subsetExp(da, &dtree.getTreePartFiltered(), bdryFlags, true);
   ot::LocalSubset<dim> subsetImp(da, &dtree.getTreePartFiltered(), bdryFlags, false);
-
-#if 0
-  {
-    // Sanity checks. Should all match due to partitioning from simpleDA.
-    ot::GlobalSubset<dim> subsetAll(da, &dtree.getTreePartFiltered(), std::vector<bool>(bdryFlags.size(), true), true);
-
-#define ASSERT_EQUAL_DA(method) assert(subsetAll.method() == da->method());
-#define PRINT_DIFF(method) { if (subsetAll.method() != da->method()) {\
-  fprintf(stderr, "%s:\t%u:%u (%d)\n",\
-      #method,\
-      (unsigned) subsetAll.method(),\
-      (unsigned) da->method(),\
-      int(subsetAll.method() - da->method()));\
-  }}
-  PRINT_DIFF( getLocalElementSz );              ASSERT_EQUAL_DA( getLocalElementSz );
-  PRINT_DIFF( getLocalNodalSz );                ASSERT_EQUAL_DA( getLocalNodalSz );
-  PRINT_DIFF( getLocalNodeBegin );              ASSERT_EQUAL_DA( getLocalNodeBegin );
-  PRINT_DIFF( getLocalNodeEnd );                ASSERT_EQUAL_DA( getLocalNodeEnd );
-  PRINT_DIFF( getPreNodalSz );                  ASSERT_EQUAL_DA( getPreNodalSz );
-  PRINT_DIFF( getPostNodalSz );                 ASSERT_EQUAL_DA( getPostNodalSz );
-  PRINT_DIFF( getTotalNodalSz );                ASSERT_EQUAL_DA( getTotalNodalSz );
-  PRINT_DIFF( getGlobalNodeSz );                ASSERT_EQUAL_DA( getGlobalNodeSz );
-  PRINT_DIFF( getGlobalNodeBegin );             ASSERT_EQUAL_DA( getGlobalNodeBegin );
-  PRINT_DIFF( getGlobalElementSz );             ASSERT_EQUAL_DA( getGlobalElementSz );
-  PRINT_DIFF( getGlobalElementBegin );          ASSERT_EQUAL_DA( getGlobalElementBegin );
-#undef PRINT_DIFF
-#undef ASSERT_EQUAL_DA
-  }
-#endif
-
 
   // poissonMat and poissonVec
   const double d_min=-0.5;
@@ -435,111 +391,6 @@ namespace ot
       delete aMat;
     aMat = nullptr;
   }
-
-
-
-
-
-
-
-
-  /// template <unsigned int dim,
-  ///           typename DT, typename GI, typename LI>
-  /// void allocAMatMaps(
-  ///     const GlobalSubset<dim> &subset,
-  ///     par::Maps<DT, GI, LI>* &meshMaps,
-  ///     const DT *prescribedLocalBoundaryVals,
-  ///     unsigned int dof)
-  /// {
-  ///   using CoordType = unsigned int;
-  ///   if (subset.da()->isActive())
-  ///   {
-  ///     MPI_Comm acomm = subset.da()->getCommActive();
-  ///     const std::vector<size_t> e2n_cg = createE2NMapping(subset);
-
-  ///     const LI cgSz = subset.getTotalNodalSz();
-  ///     const LI localElems = subset.getLocalElementSz();
-  ///     const LI nPe = subset.da()->getNumNodesPerElement();
-  ///     const LI dofPe = nPe * dof; // dof per elem
-  ///     const LI localNodes = subset.getLocalNodalSz();
-  ///     const LI localBegin = subset.getLocalNodeBegin();
-  ///     const LI localEnd = subset.getLocalNodeEnd();
-
-  ///     // dof_per_elem
-  ///     LI * dof_per_elem = new LI[localElems];
-  ///     for (LI i = 0; i < localElems; ++i)
-  ///       dof_per_elem[i] = dofPe;
-
-  ///     // dofmap_local ([element][element dof] --> ghosted vec dof).
-  ///     LI** dofmap_local = new LI*[localElems];
-  ///     for(LI i = 0; i < localElems; ++i)
-  ///       dofmap_local[i] = new LI[dof_per_elem[i]];
-
-  ///     for (LI ele = 0; ele < localElems; ++ele)
-  ///       for (LI node = 0; node < nPe; ++node)
-  ///         for (LI v = 0; v < dof; ++v)
-  ///           dofmap_local[ele][dof*node + v] = dof * e2n_cg[ele*nPe + node] + v;
-
-  ///     // sm_ghost_id (set of ghost nodes incicent on local elements).
-  ///     // Ultimately used to compute `valid_local_dof'.
-  ///     //   (if node partition is consistent with element partition,
-  ///     //   such that every ghost node is incident on at least one of
-  ///     //   the owned elements, then  valid_local_dof == cgSz.
-  ///     std::set<LI> sm_ghost_id;
-  ///     std::copy_if( e2n_cg.begin(),   e2n_cg.end(),
-  ///                   std::inserter(sm_ghost_id, sm_ghost_id.end()),
-  ///                   [=](LI idx) { return idx < localBegin || idx >= localEnd; }
-  ///         );
-  ///     // valid_local_dof
-  ///     const LI valid_local_dof = dof * (localNodes + sm_ghost_id.size());
-
-  ///     // Create local_to_global_dofM
-  ///     // (extension of LocalToGlobalMap to dofs)
-  ///     const std::vector<RankI> & subset_local2global = subset.getNodeLocalToGlobalMap();
-  ///     std::vector<GI> local_to_global_dofM(cgSz * dof);
-  ///     for (size_t ghosted_nIdx = 0; ghosted_nIdx < cgSz; ++ghosted_nIdx)
-  ///       for (LI v = 0; v < dof; ++v)
-  ///         local_to_global_dofM[dof * ghosted_nIdx + v]
-  ///           = dof * subset_local2global[ghosted_nIdx] + v;
-  ///     const GI dof_start_global = subset_local2global[localBegin]*dof;
-  ///     const GI dof_end_global   = subset_local2global[localEnd-1]*dof + (dof-1);
-  ///     const GI total_dof_global = subset.getGlobalNodeSz() * dof;
-
-  ///     // Boundary data
-  ///     const std::vector<size_t> &localBoundaryIndices = subset.getBoundaryNodeIndices();
-  ///     std::vector<GI> global_boundary_dofs(localBoundaryIndices.size() * dof);
-  ///     for (size_t ii = 0; ii < localBoundaryIndices.size(); ++ii)
-  ///       for (LI v = 0; v < dof; ++v)
-  ///         global_boundary_dofs[dof * ii + v] =
-  ///             dof * subset_local2global[localBoundaryIndices[ii]] + v;
-
-  ///     // Define output meshMaps.
-  ///     meshMaps = new par::Maps<DT, GI, LI>(acomm);
-
-  ///     meshMaps->set_map(
-  ///         localElems,
-  ///         dofmap_local,
-  ///         dof_per_elem,
-  ///         valid_local_dof,
-  ///         local_to_global_dofM.data(),
-  ///         dof_start_global,
-  ///         dof_end_global,
-  ///         total_dof_global);
-
-  ///     meshMaps->set_bdr_map(
-  ///         global_boundary_dofs.data(),
-  ///         const_cast<DT *>( prescribedLocalBoundaryVals ),  // hack until AMat fixes const
-  ///         global_boundary_dofs.size());
-
-  ///     // cleanup.
-  ///     for(LI i = 0; i < localElems; ++i)
-  ///         delete [] dofmap_local[i];
-  ///     delete [] dofmap_local;
-  ///   }
-  /// }
-
-
-
 
 }
 
