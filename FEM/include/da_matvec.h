@@ -54,20 +54,15 @@ namespace fem
 
       //TODO TODO these things should not be recomputed every matvec!
       //
-      const std::vector<TN> oct_exp =
-          ot::filter_where(*octList, explicitFlags, true);
+      const ot::LocalSubset<dim> subset_exp(da, octList, explicitFlags, true);
+      const ot::LocalSubset<dim> subset_imp(da, octList, explicitFlags, false);
 
-      const std::vector<TN> oct_imp =
-          ot::filter_where(*octList, explicitFlags, false);
-
-      const std::vector<size_t> ghostedIdx_exp =
-          ot::index_nodes_where_element(*da, *octList, explicitFlags, true);
-
-      const std::vector<size_t> ghostedIdx_imp =
-          ot::index_nodes_where_element(*da, *octList, explicitFlags, false);
-
-      const std::vector<TN> coords_exp = ot::gather(coords, ghostedIdx_exp);
-      const std::vector<TN> coords_imp = ot::gather(coords, ghostedIdx_imp);
+      const std::vector<TN> & oct_exp = subset_exp.relevantOctList();
+      const std::vector<TN> & oct_imp = subset_imp.relevantOctList();
+      const std::vector<size_t> & ghostedIdx_exp = subset_exp.originalIndices();
+      const std::vector<size_t> & ghostedIdx_imp = subset_imp.originalIndices();
+      const std::vector<TN> & coords_exp = subset_exp.relevantNodes();
+      const std::vector<TN> & coords_imp = subset_imp.relevantNodes();
 
       // Do implicit (traversal-based) matvec.
       const std::vector<T> vecIn_imp = ot::gather_ndofs(vecIn, ghostedIdx_imp, ndofs);
