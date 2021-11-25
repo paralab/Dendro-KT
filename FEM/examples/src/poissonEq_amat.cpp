@@ -13,6 +13,8 @@
 //  before dendro parUtils then it triggers
 //  dendro macros that use undefined variables.
 
+#include "testAdaptiveExamples.h"
+
 #ifdef BUILD_WITH_PETSC
 #include <petsc.h>
 #endif
@@ -108,6 +110,16 @@ class AABB
     const Point<dim> & min() const { return m_min; }
     const Point<dim> & max() const { return m_max; }
 };
+
+
+
+template <unsigned int dim>
+ot::DistTree<unsigned int, dim> fringeExample(
+    int fineLevel, MPI_Comm comm, double sfc_tol);
+
+template <unsigned int dim>
+ot::DistTree<unsigned int, dim> tinyExample(
+    int fineLevel, MPI_Comm comm, double sfc_tol);
 
 
 //
@@ -584,7 +596,7 @@ int main(int argc, char * argv[])
   _InitializeHcurve(DIM);
 
   MPI_Comm comm = PETSC_COMM_WORLD;
-  const int eleOrder = 1;
+  const int eleOrder = 2;
   const unsigned int ndofs = 1;
   const double sfc_tol = 0.3;
   using uint = unsigned int;
@@ -600,8 +612,13 @@ int main(int argc, char * argv[])
   const Method method = aMatAssembly;
 
   // Mesh
-  DTree_t dtree = DTree_t::constructSubdomainDistTree(
-      fineLevel, comm, sfc_tol);
+
+  /// DTree_t dtree = DTree_t::constructSubdomainDistTree(
+  ///     fineLevel, comm, sfc_tol);   // uniform
+
+  DTree_t dtree = fringeExample<DIM>(fineLevel, comm, sfc_tol);  // fringe
+  /// DTree_t dtree = tinyExample<DIM>(2, comm, sfc_tol);  // minimal # elements
+
   std::vector<DA_t> das(1);
   das[0].constructStratum(dtree, 0, comm, eleOrder, dummyInt, sfc_tol);
   Mesh_t mesh(&dtree, &das, 0);
@@ -839,6 +856,47 @@ int main(int argc, char * argv[])
 
   DendroScopeEnd();
   PetscFinalize();
+}
+
+
+
+template <unsigned int dim>
+ot::DistTree<unsigned int, dim> fringeExample(
+    int fineLevel, MPI_Comm comm, double sfc_tol)
+{
+  std::vector<ot::TreeNode<unsigned, dim>> octList;
+  Example3<dim>::fill_tree(fineLevel, octList);
+  distPrune(octList, comm);
+  ot::SFC_Tree<unsigned, dim>::distTreeSort(octList, sfc_tol, comm);
+  return ot::DistTree<unsigned, dim>(octList, comm);
+}
+
+template <unsigned int dim>
+ot::DistTree<unsigned int, dim> tinyExample(
+    int fineLevel, MPI_Comm comm, double sfc_tol)
+{
+  int commRank, commSize;
+  MPI_Comm_size(comm, &commSize);
+  MPI_Comm_rank(comm, &commRank);
+
+  std::vector<ot::TreeNode<unsigned, dim>> octList;
+
+  if (commRank == 0)
+  {
+    ot::TreeNode<unsigned, dim> root;
+    int outerLevel = 0;
+    while (outerLevel < fineLevel)
+    {
+      for (int sibling = 1; sibling < (1u << dim); ++sibling)
+        octList.push_back(root.getChildMorton(sibling));
+      root = root.getChildMorton(0);
+      outerLevel++;
+    }
+    octList.push_back(root);
+  }
+
+  ot::SFC_Tree<unsigned, dim>::distTreeSort(octList, sfc_tol, comm);
+  return ot::DistTree<unsigned, dim>(octList, comm);
 }
 
 
