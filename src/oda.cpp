@@ -1230,7 +1230,7 @@ namespace ot
       const int nPe = this->getNumNodesPerElement();
       const int singleDof = 1;
 
-      MatvecBaseIn<dim, unsigned> eleLoop(
+      MatvecBaseIn<dim, unsigned, false> eleLoop(
           this->getTotalNodalSz(),
           singleDof,
           this->getElementOrder(),

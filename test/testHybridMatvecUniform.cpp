@@ -261,7 +261,7 @@ namespace ot
     const int eleOrder = sub.da()->getElementOrder();
     const int singleDof = 1;
 
-    MatvecBaseIn<dim, unsigned> eleLoop(
+    MatvecBaseIn<dim, unsigned, false> eleLoop(
         nodes.size(),
         singleDof,
         eleOrder,
