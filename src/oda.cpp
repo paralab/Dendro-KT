@@ -982,6 +982,11 @@ namespace ot
           if (m_tnCoords[ii + m_uiLocalNodeBegin].getIsOnTreeBdry())
             m_uiBdyNodeIds.push_back(ii);
         }
+
+        m_ghostBdyNodeIds.clear();
+        for (size_t ii = 0; ii < m_uiTotalNodalSz; ++ii)
+          if (m_tnCoords[ii].getIsOnTreeBdry())
+            m_ghostBdyNodeIds.push_back(ii);
       }
     }
 

@@ -25,7 +25,7 @@ PoissonMat<dim>::PoissonMat(
     const ot::DA<dim>* da,
     const std::vector<ot::TreeNode<unsigned int, dim>> *octList,
     unsigned int dof,
-    const double * prescribedBoundaryValues)
+    const double * ghostedBoundaryValues)
   :
     feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
 {
@@ -39,11 +39,11 @@ PoissonMat<dim>::PoissonMat(
     phi_i = new double[(dof*nPe)];
     ematBuf = new double[(dof*nPe) * (dof*nPe)];
 
-    if (prescribedBoundaryValues != nullptr)
+    if (ghostedBoundaryValues != nullptr)
     {
-      const size_t numBdryDofs = dof * da->numBoundaryNodeIndices();
-      this->prescribedBoundaryDofs = new double[numBdryDofs];
-      std::copy_n(prescribedBoundaryValues, numBdryDofs, this->prescribedBoundaryDofs);
+      const size_t numBdryDofs = dof * da->numGhostedBoundaryNodeIndices();
+      this->ghostedBoundaryDofs = new double[numBdryDofs];
+      std::copy_n(ghostedBoundaryValues, numBdryDofs, this->ghostedBoundaryDofs);
     }
 }
 
@@ -62,7 +62,7 @@ PoissonMat<dim> & PoissonMat<dim>::operator=(PoissonMat &&other)
   std::swap(this->Qx, other.Qx);
   std::swap(this->phi_i, other.phi_i);
   std::swap(this->ematBuf, other.ematBuf);
-  std::swap(this->prescribedBoundaryDofs, other.prescribedBoundaryDofs);
+  std::swap(this->ghostedBoundaryDofs, other.ghostedBoundaryDofs);
   return *this;
 }
 
@@ -91,8 +91,8 @@ PoissonMat<dim>::~PoissonMat()
       delete [] ematBuf;
     ematBuf = nullptr;
 
-    if (prescribedBoundaryDofs != nullptr)
-      delete [] prescribedBoundaryDofs;
+    if (ghostedBoundaryDofs != nullptr)
+      delete [] ghostedBoundaryDofs;
 }
 
 template <unsigned int dim>
@@ -410,12 +410,19 @@ bool PoissonMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 {
     // apply boundary conditions.
     const std::vector<size_t> &bdyIndex = m_uiOctDA->getBoundaryNodeIndices();
+    const std::vector<size_t> &ghostBdyIndex = m_uiOctDA->getGhostedBoundaryNodeIndices();
     const size_t ndofs = this->ndofs();
 
-    if (this->prescribedBoundaryDofs != nullptr)
-      for(unsigned int i = 0; i < bdyIndex.size(); i++)
-        for (int dof = 0; dof < ndofs; ++dof)
-          out[bdyIndex[i] * ndofs + dof] = this->prescribedBoundaryDofs[i * ndofs + dof];
+    const size_t localBegin = m_uiOctDA->getLocalNodeBegin();
+    const size_t localEnd = m_uiOctDA->getLocalNodeEnd();
+
+    if (this->ghostedBoundaryDofs != nullptr)
+      for(unsigned int i = 0; i < ghostBdyIndex.size(); i++)
+        if (ghostBdyIndex[i] >= localBegin && ghostBdyIndex[i] < localEnd)
+        {
+          for (int dof = 0; dof < ndofs; ++dof)
+            out[(ghostBdyIndex[i]-localBegin) * ndofs + dof] = this->ghostedBoundaryDofs[i * ndofs + dof];
+        }
     else
       for(unsigned int i = 0; i < bdyIndex.size(); i++)
         for (int dof = 0; dof < ndofs; ++dof)

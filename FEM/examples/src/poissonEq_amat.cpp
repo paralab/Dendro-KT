@@ -597,7 +597,7 @@ int main(int argc, char * argv[])
   const size_t singleDof = 1;
 
   enum Method { matrixFreeJacobi, aMatAssembly, hybridJacobi };
-  const Method method = matrixFreeJacobi;
+  const Method method = aMatAssembly;
 
   // Mesh
   DTree_t dtree = DTree_t::constructSubdomainDistTree(
@@ -656,13 +656,13 @@ int main(int argc, char * argv[])
   Equation<DIM> equation(bounds);
 
   // Set dirichlet before setting up other matrix abstractions
-  std::vector<double> prescribed_bdry(mesh.da()->getBoundaryNodeIndices().size());
-  for (size_t bii = 0; bii < mesh.da()->getBoundaryNodeIndices().size(); ++bii)
+  std::vector<double> ghosted_bdry(mesh.da()->getGhostedBoundaryNodeIndices().size());
+  for (size_t bii = 0; bii < mesh.da()->getGhostedBoundaryNodeIndices().size(); ++bii)
   {
-    size_t bdyIdx = mesh.da()->getBoundaryNodeIndices()[bii];
-    prescribed_bdry[bii] = u_bdry(mesh.nodeCoord(LocalIdx(bdyIdx), bounds).data());
+    size_t bdyIdx = mesh.da()->getGhostedBoundaryNodeIndices()[bii];
+    ghosted_bdry[bii] = u_bdry(mesh.nodeCoord(GhostedIdx(bdyIdx), bounds).data());
   }
-  equation.dirichlet(mesh, prescribed_bdry.data());
+  equation.dirichlet(mesh, ghosted_bdry.data());
 
   // Compute r.h.s. of weak formulation.
   equation.rhsvec(mesh, f_vec, rhs_vec);
@@ -760,12 +760,17 @@ int main(int argc, char * argv[])
       LocalPetscVector<double> Mfrhs(mesh, ndofs, rhs_vec.ptr());
       amatWrapper.stMatFree->apply_bc(Mfrhs.vec());
 
+      VecAssemblyBegin(Mfrhs.vec());
+      VecAssemblyEnd(Mfrhs.vec());
+
       // Copy vectors to Petsc vectors.
       LocalPetscVector<double> ux(mesh, ndofs, u_vec.ptr());
       /// print(mesh, u_vec);  // 2D grid of values in the terminal
 
       // Solve the system.
       KSPSolve(ksp, Mfrhs.vec(), ux.vec());
+      VecAssemblyBegin(ux.vec());
+      VecAssemblyEnd(ux.vec());
 
       PetscInt numIterations;
       KSPGetIterationNumber(ksp, &numIterations);
@@ -928,7 +933,7 @@ std::vector<double> & Equation<dim>::atOrInsertDirichletVec(
     m_dirichletVecs.insert(std::make_pair(key, std::vector<double>()));
   }
 
-  const size_t numBdryNodes = mesh.da()->getBoundaryNodeIndices().size();
+  const size_t numBdryNodes = mesh.da()->getGhostedBoundaryNodeIndices().size();
   m_dirichletVecs.at(key).resize(numBdryNodes * this->ndofs(), 0.0);
   return m_dirichletVecs.at(key);
 }
@@ -986,8 +991,8 @@ void Equation<dim>::dirichlet(const ConstMeshPointers<dim> &mesh, const double *
 {
   std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
 
-  const size_t numBdryNodes = mesh.da()->getBoundaryNodeIndices().size();
-  for (size_t bvii = 0; bvii < numBdryNodes * this->ndofs(); ++bvii)
+  const size_t numGhostedBdryNodes = mesh.da()->getGhostedBoundaryNodeIndices().size();
+  for (size_t bvii = 0; bvii < numGhostedBdryNodes * this->ndofs(); ++bvii)
     dirichletVec[bvii] = prescribed_vals[bvii];
 
   // Note that dirichlet() should be called before making PoissonMat and aMat.

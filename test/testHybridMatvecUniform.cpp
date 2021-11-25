@@ -350,12 +350,12 @@ namespace ot
       const GI total_dof_global = dof * localNodes;
 
       // Boundary data (using global dofs, which in this case are local dofs).
-      const std::vector<size_t> &localBoundaryIndices = subset.getBoundaryNodeIndices();
-      std::vector<GI> global_boundary_dofs(localBoundaryIndices.size() * dof);
-      for (size_t ii = 0; ii < localBoundaryIndices.size(); ++ii)
+      const std::vector<size_t> &ghostedBoundaryIndices = subset.getBoundaryNodeIndices();
+      std::vector<GI> global_boundary_dofs(ghostedBoundaryIndices.size() * dof);
+      for (size_t ii = 0; ii < ghostedBoundaryIndices.size(); ++ii)
         for (LI v = 0; v < dof; ++v)
           global_boundary_dofs[dof * ii + v] =
-              dof * localBoundaryIndices[ii] + v;
+              dof * ghostedBoundaryIndices[ii] + v;
 
       // Define output meshMaps.
       meshMaps = new par::Maps<DT, GI, LI>(selfComm);

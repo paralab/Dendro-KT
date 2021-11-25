@@ -169,7 +169,9 @@ class DA
     static constexpr unsigned int m_uiDim = dim; 
 
     /**@brief domain boundary node ids*/
-    std::vector<size_t> m_uiBdyNodeIds;
+    std::vector<size_t> m_uiBdyNodeIds;  // relative to local node set
+
+    std::vector<size_t> m_ghostBdyNodeIds;  // relative to ghosted node set
 
     /**@brief total nodal size (with ghost nodes)*/
     size_t m_uiTotalNodalSz;
@@ -474,7 +476,11 @@ class DA
         /**@brief returns a const ref to boundary node indices. */
         inline const std::vector<size_t> & getBoundaryNodeIndices() const { return m_uiBdyNodeIds; }
 
+        inline const std::vector<size_t> & getGhostedBoundaryNodeIndices() const { return m_ghostBdyNodeIds; }
+
         inline const size_t numBoundaryNodeIndices() const { return m_uiBdyNodeIds.size(); }
+
+        inline const size_t numGhostedBoundaryNodeIndices() const { return m_ghostBdyNodeIds.size(); }
 
         /**@brief Compute ghosted node ids of nodes on each element. */
         std::vector<size_t> createE2NMapping(const std::vector<TreeNode<unsigned, dim>> &octList) const;
@@ -823,7 +829,7 @@ class DA
         template<typename DT,typename GI,typename LI>
         void allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,
                            const std::vector<TreeNode<unsigned, dim>> &octList,
-                           const DT *prescribedLocalBoundaryVals,
+                           const DT *prescribedGhostedBoundaryVals,
                            unsigned int dof=1) const;
 
         template<typename DT,typename GI,typename LI>
@@ -889,7 +895,7 @@ namespace ot
   template<typename DT,typename GI,typename LI>
   void DA<dim>::allocAMatMaps(par::Maps<DT, GI, LI>*& meshMaps,
                               const std::vector<TreeNode<unsigned, dim>> &octList,
-                              const DT *prescribedLocalBoundaryVals,
+                              const DT *prescribedGhostedBoundaryVals,
                               unsigned int dof) const
   {
     if(this->isActive())
@@ -948,12 +954,12 @@ namespace ot
       GI total_dof_global = this->getGlobalNodeSz() * dof;
 
       // Boundary data
-      const std::vector<size_t> &localBoundaryIndices = this->getBoundaryNodeIndices();
-      std::vector<GI> global_boundary_dofs(localBoundaryIndices.size() * dof);
-      for (size_t ii = 0; ii < localBoundaryIndices.size(); ++ii)
+      const std::vector<size_t> &ghostedBoundaryIndices = this->getGhostedBoundaryNodeIndices();
+      std::vector<GI> global_boundary_dofs(ghostedBoundaryIndices.size() * dof);
+      for (size_t ii = 0; ii < ghostedBoundaryIndices.size(); ++ii)
         for (unsigned v = 0; v < dof; ++v)
           global_boundary_dofs[dof * ii + v] =
-              dof * da_local2global[localBoundaryIndices[ii]] + v;
+              dof * da_local2global[ghostedBoundaryIndices[ii]] + v;
 
       // Define output meshMaps.
       meshMaps = new par::Maps<DT,GI,LI>(acomm);
@@ -968,8 +974,8 @@ namespace ot
           total_dof_global);
 
       meshMaps->set_bdr_map(global_boundary_dofs.data(),
-                            const_cast<DT *>( prescribedLocalBoundaryVals ),  // hack until AMat fixes const
-                            localBoundaryIndices.size() * dof);
+                            const_cast<DT *>( prescribedGhostedBoundaryVals ),  // hack until AMat fixes const
+                            global_boundary_dofs.size());
 
       // cleanup.
       for(unsigned int i=0; i < localElems; i++)

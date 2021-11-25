@@ -102,7 +102,7 @@ int main(int argc, char * argv[])
   typedef par::aMat<par::aMatFree<double, unsigned long, unsigned int>, double, unsigned long, unsigned int>  aMatFree; // aMat type taking aMatBased as derived class
   typedef par::Maps<double,unsigned long,unsigned int> aMatMaps;
 
-  std::vector<double> dirichletZeros(da->getBoundaryNodeIndices().size() * ndofs, 0.0);
+  std::vector<double> dirichletZeros(da->getGhostedBoundaryNodeIndices().size() * ndofs, 0.0);
 
   aMatFree*   stMatFree=NULL;
   /// aMatBased* stMatBased=NULL;
