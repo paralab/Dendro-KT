@@ -27,7 +27,18 @@ constexpr int dim = 2;
 using uint = unsigned int;
 
 template <typename NodeT>
-std::ostream & print(const ot::DA<dim> *da,
+std::ostream & printLocal(const ot::DA<dim> *da,
+                          const NodeT *vec,
+                          std::ostream & out = std::cout);
+
+template <typename NodeT>
+std::ostream & printGhosted(const ot::DA<dim> *da,
+                            const NodeT *vec,
+                            std::ostream & out = std::cout);
+
+// Note: subset is drawn from da ghosted vec.
+template <typename NodeT>
+std::ostream & print(const ot::LocalSubset<dim> subset,
                      const NodeT *vec,
                      std::ostream & out = std::cout);
 
@@ -71,6 +82,23 @@ namespace ot
       par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI>* &aMat);
 
 
+  template <unsigned int dim, typename DT>
+  std::vector<DT> ghostRead(const DA<dim> *da, const int ndofs, const std::vector<DT> &localVec);
+
+  template <unsigned int dim, typename DT>
+  std::vector<DT> ghostWriteAccumulate(const DA<dim> *da, const int ndofs, const std::vector<DT> &ghostedVec);
+
+  template <unsigned int dim, typename DT>
+  std::vector<DT> ghostWriteOverwrite(const DA<dim> *da, const int ndofs, const std::vector<DT> &ghostedVec);
+}
+
+namespace FEM
+{
+  template <typename feMatLeafT, unsigned int dim, typename AMATType>
+  bool getAssembledAMat(
+      const ot::LocalSubset<dim> &subset,
+      feMatrix<feMatLeafT, dim> &fematrix,
+      AMATType* J);
 }
 
 
@@ -94,6 +122,12 @@ int main(int argc, char * argv[])
   using DTree_t = ot::DistTree<uint, dim>;
   using DA_t = ot::DA<dim>;
 
+  // Domain
+  const double d_min=-0.5;
+  const double d_max=0.5;
+  Point<dim> pt_min(d_min,d_min,d_min);
+  Point<dim> pt_max(d_max,d_max,d_max);
+
   // Static uniform refinement to depth coarseLev.
   const int coarseLev = 3;
   DTree_t dtree = DTree_t::constructSubdomainDistTree(
@@ -107,23 +141,11 @@ int main(int argc, char * argv[])
   ot::LocalSubset<dim> subsetExp(da, &dtree.getTreePartFiltered(), bdryFlags, true);
   ot::LocalSubset<dim> subsetImp(da, &dtree.getTreePartFiltered(), bdryFlags, false);
 
-  // poissonMat and poissonVec
-  const double d_min=-0.5;
-  const double d_max=0.5;
-  Point<dim> pt_min(d_min,d_min,d_min);
-  Point<dim> pt_max(d_max,d_max,d_max);
-  PoissonEq::PoissonMat<dim> poissonMat(da, &dtree.getTreePartFiltered(), 1);
-  poissonMat.setProblemDimensions(pt_min,pt_max);
-  PoissonEq::PoissonVec<dim> poissonVec(da, &dtree.getTreePartFiltered(), 1);
-  poissonVec.setProblemDimensions(pt_min,pt_max);
-
   // vectors
-  std::vector<double> u, v_pure, v_hybrid;
+  std::vector<double> u, v_pure;
   da->createVector(u, false, false, 1);
   da->createVector(v_pure, false, false, 1);
-  da->createVector(v_hybrid, false, false, 1);
   std::fill(v_pure.begin(), v_pure.end(), 0);
-  std::fill(v_hybrid.begin(), v_hybrid.end(), 0);
 
   // set u = x*x + y*y
   for (size_t i = 0; i < da->getLocalNodalSz(); ++i)
@@ -143,6 +165,12 @@ int main(int argc, char * argv[])
     u[i] = x[0]*x[0] + x[1]*x[1];
   }
 
+  // poissonMat and poissonVec
+  PoissonEq::PoissonMat<dim> poissonMat(da, &dtree.getTreePartFiltered(), 1);
+  poissonMat.setProblemDimensions(pt_min,pt_max);
+  PoissonEq::PoissonVec<dim> poissonVec(da, &dtree.getTreePartFiltered(), 1);
+  poissonVec.setProblemDimensions(pt_min,pt_max);
+
 
   // -----------------------------
   // aMat
@@ -156,11 +184,11 @@ int main(int argc, char * argv[])
   // future (not this test): find dependent and independent local element sets
   // future (not this test): explore streaming
 
-  std::vector<double> dirichletZeros(da->getBoundaryNodeIndices().size() * ndofs, 0.0);
 
   // whole da
   aMatFree* stMatFree=NULL;
   aMatMaps* meshMaps=NULL;
+  std::vector<double> dirichletZeros(da->getGhostedBoundaryNodeIndices().size() * ndofs, 0.0);
   da->allocAMatMaps(meshMaps, dtree.getTreePartFiltered(), dirichletZeros.data(), ndofs);
   da->createAMat(stMatFree,meshMaps);
   stMatFree->set_matfree_type((par::MATFREE_TYPE)1);
@@ -169,35 +197,42 @@ int main(int argc, char * argv[])
 
   stMatFree->matvec(ptr(v_pure), const_ptr(u), false);
 
-  std::vector<double> dirichletZerosExp =
-      gather_ndofs(dirichletZeros.data(), subsetExp, ndofs);
-
   // subset explicit
   aMatMaps *meshMapsExp = nullptr;
   aMatFree *matFreeExp = nullptr;
-  allocAMatMaps(subsetExp, meshMapsExp, dirichletZerosExp.data(), ndofs);
+  std::vector<double> dirichletZeros_exp(subsetExp.getBoundaryNodeIndices().size() * ndofs, 0.0);
+  allocAMatMaps(subsetExp, meshMapsExp, dirichletZeros_exp.data(), ndofs);
   createAMat(subsetExp, matFreeExp, meshMapsExp);
   matFreeExp->set_matfree_type((par::MATFREE_TYPE) 1);
-  //TODO assemble
+  FEM::getAssembledAMat(subsetExp, poissonMat, matFreeExp);
   matFreeExp->finalize();
 
-  // split
-  std::vector<double> u_exp = gather_ndofs(const_ptr(u), subsetExp, ndofs);
+
+  //   vector -> ghost read -> split[A, B]
+  //          A -> resultA          B -> resultB
+  //   merge[resultA, resultB] -> ghost write -> result
+
+  // Ghost read:
+  const std::vector<double> gh_u = ghostRead(da, ndofs, u);
+  std::vector<double> gh_v_hybrid(gh_u.size(), 0);
+  // Split:
+  std::vector<double> u_exp = gather_ndofs(const_ptr(gh_u), subsetExp, ndofs);
+  // Matvec:
   std::vector<double> v_exp(u_exp.size(), 0);
-
-  // matvec
   matFreeExp->matvec(ptr(v_exp), const_ptr(u_exp), false);
-
-  // accumulate
-  scatter_ndofs_accumulate(const_ptr(v_exp), ptr(v_hybrid), subsetExp, ndofs);
+  // Unsplit [accumulate]:
+  scatter_ndofs_accumulate(const_ptr(v_exp), ptr(gh_v_hybrid), subsetExp, ndofs);
+  // Ghost write [accumulate]:
+  std::vector<double> v_hybrid = ghostWriteAccumulate(da, ndofs, gh_v_hybrid);
 
 
   // TODO subset implicit
 
+  printLocal(da, v_hybrid.data(), std::cout) << "------------------------------------\n";
 
-  print(da, v_hybrid.data(), std::cout) << "------------------------------------\n";
+  /// printLocal(da, v_pure.data(), std::cout) << "------------------------------------\n";
 
-  /// print(da, v_pure.data(), std::cout) << "------------------------------------\n";
+  //TODO compare pure vs hybrid
 
   delete da;
   _DestroyHcurve();
@@ -208,15 +243,43 @@ int main(int argc, char * argv[])
 
 
 template <typename NodeT>
-std::ostream & print(const ot::DA<dim> *da,
-                     const NodeT *vec,
-                     std::ostream & out)
+std::ostream & printLocal(const ot::DA<dim> *da,
+                          const NodeT *vec,
+                          std::ostream & out)
 {
   return ot::printNodes(
       da->getTNCoords() + da->getLocalNodeBegin(),
       da->getTNCoords() + da->getLocalNodeBegin() + da->getLocalNodalSz(),
       vec,
       da->getElementOrder(),
+      out);
+}
+
+template <typename NodeT>
+std::ostream & printGhosted(const ot::DA<dim> *da,
+                            const NodeT *vec,
+                            std::ostream & out)
+{
+  return ot::printNodes(
+      da->getTNCoords(),
+      da->getTNCoords() + da->getTotalNodalSz(),
+      vec,
+      da->getElementOrder(),
+      out);
+}
+
+
+// Note: subset is drawn from da ghosted vec.
+template <typename NodeT>
+std::ostream & print(const ot::LocalSubset<dim> subset,
+                     const NodeT *vec,
+                     std::ostream & out)
+{
+  return ot::printNodes(
+      &(*subset.relevantNodes().begin()),
+      &(*subset.relevantNodes().end()),
+      vec,
+      subset.da()->getElementOrder(),
       out);
 }
 
@@ -407,8 +470,118 @@ namespace ot
     aMat = nullptr;
   }
 
+
+
+  template <unsigned int dim, typename DT>
+  std::vector<DT> ghostRead(const DA<dim> *da, const int ndofs, const std::vector<DT> &localVec)
+  {
+    const size_t localSz = da->getLocalNodalSz();
+    const size_t localBegin = da->getLocalNodeBegin();
+    std::vector<DT> ghostedVec(ndofs * da->getTotalNodalSz(), 0);
+    std::copy_n(localVec.begin(), ndofs * localSz, ghostedVec.begin() + ndofs * localBegin);
+    da->template readFromGhostBegin<DT>(ghostedVec.data(), ndofs);
+    da->template readFromGhostEnd<DT>(ghostedVec.data(), ndofs);
+    return ghostedVec;
+  }
+
+  template <unsigned int dim, typename DT>
+  std::vector<DT> ghostWriteAccumulate(const DA<dim> *da, const int ndofs, const std::vector<DT> &ghostedVec)
+  {
+    const bool useAccumulate = true;
+    const size_t localBegin = da->getLocalNodeBegin();
+    const size_t localEnd = da->getLocalNodeEnd();
+    std::vector<DT> localVec(ghostedVec.begin(), ghostedVec.end());
+    da->template writeToGhostsBegin<VECType>(localVec.data(), ndofs);
+    da->template writeToGhostsEnd<VECType>(localVec.data(), ndofs, useAccumulate);
+    localVec.erase(localVec.begin() + ndofs * localEnd, localVec.end());
+    localVec.erase(localVec.begin(), localVec.begin() + ndofs * localBegin);
+    return localVec;
+  }
+
+  template <unsigned int dim, typename DT>
+  std::vector<DT> ghostWriteOverwrite(const DA<dim> *da, const int ndofs, const std::vector<DT> &ghostedVec)
+  {
+    const bool useAccumulate = false;
+    const size_t localBegin = da->getLocalNodeBegin();
+    const size_t localEnd = da->getLocalNodeEnd();
+    std::vector<DT> localVec(ghostedVec.begin(), ghostedVec.end());
+    da->template writeToGhostsBegin<VECType>(localVec.data(), ndofs);
+    da->template writeToGhostsEnd<VECType>(localVec.data(), ndofs, useAccumulate);
+    localVec.erase(localVec.begin() + ndofs * localEnd, localVec.end());
+    localVec.erase(localVec.begin(), localVec.begin() + ndofs * localBegin);
+    return localVec;
+  }
+
+
+
 }
 
+namespace FEM
+{
+
+  template <typename feMatLeafT, unsigned int dim, typename AMATType>
+  bool getAssembledAMat(
+      const ot::LocalSubset<dim> &subset,
+      feMatrix<feMatLeafT, dim> &fematrix,
+      AMATType* J)
+  {
+    using DT = typename AMATType::DTType;
+    using GI = typename AMATType::GIType;
+    using LI = typename AMATType::LIType;
+
+    if(subset.da()->isActive())
+    {
+      const size_t numLocElem = subset.getLocalElementSz();
+
+      /// preMat();
+      std::vector<unsigned char> elemNonzero(numLocElem, false);
+      ot::MatCompactRows matCompactRows = fematrix.collectMatrixEntries(
+          subset.relevantOctList(),
+          subset.relevantNodes(),
+          subset.getNodeLocalToGlobalMap(),  // identity
+          elemNonzero.data());
+      /// postMat();
+
+      const unsigned ndofs = matCompactRows.getNdofs();
+      const unsigned nPe = matCompactRows.getNpe();
+      const std::vector<ot::MatCompactRows::ScalarT> & entryVals = matCompactRows.getColVals();
+
+      typedef Eigen::Matrix<PetscScalar, Eigen::Dynamic, Eigen::Dynamic> EigenMat;
+      EigenMat* eMat[2] = {nullptr, nullptr};
+      eMat[0] = new EigenMat();
+      eMat[0]->resize(ndofs*nPe, ndofs*nPe);
+      const EigenMat * read_eMat[2] = {eMat[0], eMat[1]};
+
+      unsigned aggRow = 0;
+      for (unsigned int eid = 0; eid < numLocElem; ++eid)
+      {
+        if (elemNonzero[eid])
+        {
+          // Clear elemental matrix.
+          for(unsigned int r = 0; r < (nPe*ndofs); ++r)
+            for(unsigned int c = 0; c < (nPe*ndofs); ++c)
+              (*(eMat[0]))(r,c) = 0;
+
+          // Overwrite elemental matrix.
+          for (unsigned int r = 0; r < (nPe*ndofs); ++r)
+          {
+            for (unsigned int c = 0; c < (nPe*ndofs); ++c)
+              (*(eMat[0]))(r,c) = entryVals[aggRow * (nPe*ndofs) + c];
+            aggRow++;
+          }
+
+          LI n_i[1]={0};
+          LI n_j[1]={0};
+          J->set_element_matrix(eid, n_i, n_j, read_eMat, 1u);
+          // note that read_eMat[0] points to the same memory as eMat[0].
+        }
+      }
+
+      delete eMat[0];
+    }
+    PetscFunctionReturn(0);
+  }
+}  // namespace FEM
 
 
 

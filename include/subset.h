@@ -148,6 +148,7 @@ namespace ot
       size_t getLocalElementSz() const;
       size_t getLocalNodalSz() const;
       const std::vector<size_t> & getBoundaryNodeIndices() const;
+      const std::vector<RankI> getNodeLocalToGlobalMap() const;
 
       // ----------------------------------------------------
 
@@ -330,9 +331,9 @@ namespace ot
   }
 
   template <typename T, unsigned int dim>
-  std::vector<T> gather_ndofs(const T *input, const LocalSubset<dim> &subset, const size_t ndofs)
+  std::vector<T> gather_ndofs(const T *ghostedInput, const LocalSubset<dim> &subset, const size_t ndofs)
   {
-    return gather_ndofs(input, subset.originalIndices(), ndofs);
+    return gather_ndofs(ghostedInput, subset.originalIndices(), ndofs);
   }
 
 
@@ -356,31 +357,31 @@ namespace ot
 
   // scatter_ndofs()
   template <typename T, typename MergeNewOld, unsigned int dim>
-  void scatter_ndofs(const T *input, MergeNewOld merge, T *output, const LocalSubset<dim> &subset, const size_t ndofs)
+  void scatter_ndofs(const T *input, MergeNewOld merge, T *ghostedOutput, const LocalSubset<dim> &subset, const size_t ndofs)
   {
-    scatter_ndofs(input, merge, output, subset.originalIndices(), ndofs);
+    scatter_ndofs(input, merge, ghostedOutput, subset.originalIndices(), ndofs);
   }
 
   // scatter_ndofs()
   template <typename T, unsigned int dim>
-  void scatter_ndofs_overwrite(const T *input, T *output, const LocalSubset<dim> &subset, const size_t ndofs)
+  void scatter_ndofs_overwrite(const T *input, T *ghostedOutput, const LocalSubset<dim> &subset, const size_t ndofs)
   {
     scatter_ndofs(
         input,
         [](const T &in, const T &out) { return in; },
-        output,
+        ghostedOutput,
         subset,
         ndofs);
   }
 
   // scatter_ndofs()
   template <typename T, unsigned int dim>
-  void scatter_ndofs_accumulate(const T *input, T *output, const LocalSubset<dim> &subset, const size_t ndofs)
+  void scatter_ndofs_accumulate(const T *input, T *ghostedOutput, const LocalSubset<dim> &subset, const size_t ndofs)
   {
     scatter_ndofs(
         input,
         [](const T &in, const T &out) { return in + out; },
-        output,
+        ghostedOutput,
         subset,
         ndofs);
   }
@@ -452,6 +453,15 @@ namespace ot
   const std::vector<size_t> & LocalSubset<dim>::getBoundaryNodeIndices() const
   {
     return m_bdyNodeIds;
+  }
+
+  // LocalSubset::getNodeLocalToGlobalMap()
+  template <unsigned int dim>
+  const std::vector<RankI> LocalSubset<dim>::getNodeLocalToGlobalMap() const
+  {
+    std::vector<RankI> identityMap(this->getLocalNodalSz());
+    std::iota(identityMap.begin(), identityMap.end(), 0);
+    return identityMap;
   }
 
   // LocalSubset::getLocalElementSz()

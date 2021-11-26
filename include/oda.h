@@ -458,6 +458,8 @@ class DA
         /**@brief: get pointer to the (ghosted) array of nodal coordinates. */
         inline const TreeNode<C,dim> * getTNCoords() const { return &(*m_tnCoords.cbegin()); }
 
+        inline const std::vector<TreeNode<C, dim>> & nodes() const { return m_tnCoords; }
+
         /**@brief get pointer to the (ghosted) array of owning elements. */
         inline const DendroIntL * getNodeOwnerElements() const { return &(*m_ghostedNodeOwnerElements.cbegin()); }
 

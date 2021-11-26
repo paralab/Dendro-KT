@@ -96,6 +96,12 @@ protected:
          */
         ot::MatCompactRows collectMatrixEntries(unsigned char * elementNonzero = nullptr);
 
+        ot::MatCompactRows collectMatrixEntries(
+            const std::vector<ot::TreeNode<unsigned, dim>> &octList,
+            const std::vector<ot::TreeNode<unsigned, dim>> &nodes,
+            const std::vector<ot::RankI> &ghostedGlobalNodeId,
+            unsigned char * elementNonzero = nullptr);
+
 
 #ifdef BUILD_WITH_PETSC
 
@@ -575,24 +581,36 @@ class SubMatView
 template <typename LeafT, unsigned int dim>
 ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries(unsigned char * elementNonzero)
 {
-  const ot::DA<dim> &m_oda = *this->da();
-  const unsigned int eleOrder = m_oda.getElementOrder();
-  const unsigned int nPe = m_oda.getNumNodesPerElement();
+  return collectMatrixEntries(*this->m_octList,
+                              this->da()->nodes(),
+                              this->da()->getNodeLocalToGlobalMap(),
+                              elementNonzero);
+}
+
+
+template <typename LeafT, unsigned int dim>
+ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries(
+    const std::vector<ot::TreeNode<unsigned, dim>> &octList,
+    const std::vector<ot::TreeNode<unsigned, dim>> &nodes,
+    const std::vector<ot::RankI> &ghostedGlobalNodeId,
+    unsigned char * elementNonzero)
+{
+  const unsigned int eleOrder = this->da()->getElementOrder();
+  const unsigned int nPe = this->da()->getNumNodesPerElement();
   ot::MatCompactRows matRowChunks(nPe, m_uiDof);
 
   // Loop over all elements, adding row chunks from elemental matrices.
   // Get the node indices on an element using MatvecBaseIn<dim, unsigned int, false>.
 
-  if (m_oda.isActive())
+  if (this->da()->isActive())
   {
     using CoordT = typename ot::DA<dim>::C;
     using ot::RankI;
     using ScalarT = typename ot::MatCompactRows::ScalarT;
     using IndexT = typename ot::MatCompactRows::IndexT;
 
-    const size_t ghostedNodalSz = m_oda.getTotalNodalSz();
-    const ot::TreeNode<CoordT, dim> *odaCoords = m_oda.getTNCoords();
-    const std::vector<RankI> &ghostedGlobalNodeId = m_oda.getNodeLocalToGlobalMap();
+    const size_t ghostedNodalSz = nodes.size();
+    const ot::TreeNode<CoordT, dim> *odaCoords = nodes.data();
 
     std::vector<ot::MatRecord> elemRecords;
     std::vector<IndexT> rowIdxBuffer;
@@ -604,7 +622,7 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries(unsigned char * el
     std::vector<ScalarT> wksp_mat((nPe*m_uiDof) * (nPe*m_uiDof));
 
     if (elementNonzero != nullptr)
-      for (size_t elemIdx = 0; elemIdx < this->m_octList->size(); ++elemIdx)
+      for (size_t elemIdx = 0; elemIdx < octList.size(); ++elemIdx)
         elementNonzero[elemIdx] = false;
 
     size_t elemIdx = 0;
@@ -617,8 +635,8 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries(unsigned char * el
                                                    padLevel,
                                                    odaCoords,
                                                    &(*ghostedGlobalNodeId.cbegin()),
-                                                   &(*this->m_octList->cbegin()),
-                                                   this->m_octList->size());
+                                                   &(*octList.cbegin()),
+                                                   octList.size());
 
     // Iterate over all leafs of the local part of the tree.
     while (!treeLoopIn.isFinished())
