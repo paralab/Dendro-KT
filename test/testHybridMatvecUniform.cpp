@@ -92,7 +92,7 @@ namespace ot
   std::vector<DT> ghostWriteOverwrite(const DA<dim> *da, const int ndofs, const std::vector<DT> &ghostedVec);
 }
 
-namespace FEM
+namespace fem
 {
   template <typename feMatLeafT, unsigned int dim, typename AMATType>
   bool getAssembledAMat(
@@ -108,6 +108,7 @@ namespace FEM
 int main(int argc, char * argv[])
 {
   PetscInitialize(&argc, &argv, NULL, NULL);
+  DendroScopeBegin();
   _InitializeHcurve(dim);
 
   MPI_Comm comm = PETSC_COMM_WORLD;
@@ -178,13 +179,6 @@ int main(int argc, char * argv[])
   typedef par::aMat<par::aMatFree<double, unsigned long, unsigned int>, double, unsigned long, unsigned int>  aMatFree; // aMat type taking aMatBased as derived class
   typedef par::Maps<double,unsigned long,unsigned int> aMatMaps;
 
-  //TODO subset: boundary, allocAMatMaps, createAMat, createVector, split/merge
-  // TODO assemble elemental matrices for subset
-  // TODO separate the boundary handling
-  // future (not this test): find dependent and independent local element sets
-  // future (not this test): explore streaming
-
-
   // whole da
   aMatFree* stMatFree=NULL;
   aMatMaps* meshMaps=NULL;
@@ -204,7 +198,7 @@ int main(int argc, char * argv[])
   allocAMatMaps(subsetExp, meshMapsExp, dirichletZeros_exp.data(), ndofs);
   createAMat(subsetExp, matFreeExp, meshMapsExp);
   matFreeExp->set_matfree_type((par::MATFREE_TYPE) 1);
-  FEM::getAssembledAMat(subsetExp, poissonMat, matFreeExp);
+  fem::getAssembledAMat(subsetExp, poissonMat, matFreeExp);
   matFreeExp->finalize();
 
 
@@ -215,27 +209,49 @@ int main(int argc, char * argv[])
   // Ghost read:
   const std::vector<double> gh_u = ghostRead(da, ndofs, u);
   std::vector<double> gh_v_hybrid(gh_u.size(), 0);
+
   // Split:
   std::vector<double> u_exp = gather_ndofs(const_ptr(gh_u), subsetExp, ndofs);
-  // Matvec:
+  std::vector<double> u_imp = gather_ndofs(const_ptr(gh_u), subsetImp, ndofs);
+
+  // Explicit matvec:
   std::vector<double> v_exp(u_exp.size(), 0);
   matFreeExp->matvec(ptr(v_exp), const_ptr(u_exp), false);
+
+  // Implicit matvec:
+  std::vector<double> v_imp(u_imp.size(), 0);
+  const auto eleOp = [&poissonMat] (
+      const VECType *in,    VECType *out, unsigned int ndofs,
+      const double *coords, double scale, bool isElementBoundary)
+  {
+    return poissonMat.elementalMatVec(in, out, ndofs, coords, scale, isElementBoundary);
+  };
+  fem::matvec(
+      u_imp.data(), v_imp.data(), ndofs,
+      subsetImp.relevantNodes().data(), subsetImp.relevantNodes().size(),
+      subsetImp.relevantOctList().data(), subsetImp.relevantOctList().size(),
+      fem::EleOpT<double>(eleOp), 1.0, da->getReferenceElement());
+
   // Unsplit [accumulate]:
   scatter_ndofs_accumulate(const_ptr(v_exp), ptr(gh_v_hybrid), subsetExp, ndofs);
+  scatter_ndofs_accumulate(const_ptr(v_imp), ptr(gh_v_hybrid), subsetImp, ndofs);
   // Ghost write [accumulate]:
   std::vector<double> v_hybrid = ghostWriteAccumulate(da, ndofs, gh_v_hybrid);
 
-
-  // TODO subset implicit
-
-  printLocal(da, v_hybrid.data(), std::cout) << "------------------------------------\n";
-
+  /// printLocal(da, v_hybrid.data(), std::cout) << "------------------------------------\n";
   /// printLocal(da, v_pure.data(), std::cout) << "------------------------------------\n";
 
-  //TODO compare pure vs hybrid
+  // Compare hybrid vs pure.
+  double maxDiff = 0;
+  for (size_t ii = 0; ii < v_pure.size(); ++ii)
+    if (fabs(v_hybrid[ii] - v_pure[ii]) > maxDiff)
+      maxDiff = fabs(v_hybrid[ii] - v_pure[ii]);
+  const bool success = (maxDiff < 1e-10);
+  printf("Difference is %s%f (%.0e)%s\n", (success ? GRN : RED), maxDiff, maxDiff, NRM);
 
   delete da;
   _DestroyHcurve();
+  DendroScopeEnd();
   PetscFinalize();
 
   return 0;
@@ -516,7 +532,7 @@ namespace ot
 
 }
 
-namespace FEM
+namespace fem
 {
 
   template <typename feMatLeafT, unsigned int dim, typename AMATType>
@@ -581,7 +597,7 @@ namespace FEM
     }
     PetscFunctionReturn(0);
   }
-}  // namespace FEM
+}  // namespace fem
 
 
 
