@@ -1092,6 +1092,7 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
     rootFile << "set title \"" << fileprefix << "\"\n";
     for (int r = 0; r < nProc; ++r)
       rootFile << "load \"" << fileprefix << "_" << r << ".txt\"\n";
+    rootFile << "set size square\n";
     rootFile << "set key off\n";
     rootFile << "set xrange [0:" << (1u << fineLev) << "]\n";
     rootFile << "set yrange [0:" << (1u << fineLev) << "]\n";
