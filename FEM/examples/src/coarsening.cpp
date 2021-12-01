@@ -92,28 +92,43 @@ int main_dim(int argc, char *argv[])
   MPI_Comm comm = PETSC_COMM_WORLD;
   const int eleOrder = 1;
   const unsigned int ndofs = 1;
-  const double sfc_tol = 0.3;
+  const double sfc_tol = 1.0/32;
   using DTree_t = ot::DistTree<uint, dim>;
   /// using DA_t = ot::DA<dim>;
 
   if (argc < 4)
     usage(argv[0]);
   const int domainOption = str2int(argv[2]);
-  const int fineLevel = str2int(argv[3]);
+  const int widthLevel = str2int(argv[3]);
 
   ibm::DomainDecider domainDecider;
+  int fineLevel = widthLevel;
   switch(domainOption)
   {
-    case 0: domainDecider = domainCube<dim>(); break;
-    case 1: domainDecider = domainChannel<dim>(1); break;
-    case 2: domainDecider = domainChannel<dim>(2); break;
-    case 3: domainDecider = domainLeg<dim>(1); break;
-    case 4: domainDecider = domainLeg<dim>(2); break;
+    case 0: domainDecider = domainCube<dim>();
+            break;
+    case 1: domainDecider = domainChannel<dim>(widthLevel);
+            break;
+    case 2: domainDecider = domainChannel<dim>(widthLevel); fineLevel++;
+            break;
+    case 3: domainDecider = domainLeg<dim>(widthLevel);
+            break;
+    case 4: domainDecider = domainLeg<dim>(widthLevel); fineLevel++;
+            break;
     default: usage(argv[0]);
   }
 
+  // Finest level octree (stratum=0).
   DTree_t dtree = DTree_t::constructSubdomainDistTree(
       fineLevel, domainDecider, comm, sfc_tol);
+  const size_t localFineOctants = dtree.getFilteredTreePartSz(0);
+
+  // Add a coarser grid (stratum=1).
+  DTree_t surrogateDTree;
+  const std::vector<ot::OCT_FLAGS::Refine> coarsen(
+      localFineOctants, ot::OCT_FLAGS::OCT_COARSEN);
+  DTree_t::defineCoarsenedGrid(
+      dtree, surrogateDTree, coarsen, ot::GridAlignment::CoarseByFine, sfc_tol);
 
   _DestroyHcurve();
   DendroScopeEnd();
@@ -179,9 +194,9 @@ static void usage(const char *arg0)
 
   if (mpiRank == 0)
     std::cout << "Usage: " << arg0
-              << "  dim(2-4)"
-              << "  domain(0=cube,1=box2,2=box4,3=leg2,4=leg4)"
-              << "  fineLevel"
+              << "\n    dim(2-4)"
+              << "\n    domain(0=cube,1=channelBase,2=channelSubdiv1,3=legsBases,4=legsSubdiv1)"
+              << "\n    widthLevel"
               << "\n";
 
 #ifdef BUILD_WITH_PETSC
