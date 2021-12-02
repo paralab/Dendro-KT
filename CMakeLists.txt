@@ -209,6 +209,7 @@ set(DENDRO_KT_INC include/dendro.h
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
                   array/include/arraySlice.h
+                  FEM/include/subset_amat.h
                   FEM/include/da_matvec.h
                   FEM/include/matvec.h
                   FEM/include/tensor.h
@@ -609,11 +610,17 @@ if(BUILD_EXAMPLES)
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonGMG.h
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/idx.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/aabb.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/gridWrapper.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/vector.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/petscVector.h
                   ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/ke_matrix.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/fe_vector.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonEq_amat.cpp)
     add_executable(exPoissonEq_amat ${SRC_FILES})
     set_property(TARGET exPoissonEq_amat PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+    target_include_directories(exPoissonEq_amat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include)
     target_include_directories(exPoissonEq_amat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
     target_include_directories(exPoissonEq_amat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
     target_include_directories(exPoissonEq_amat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/include)

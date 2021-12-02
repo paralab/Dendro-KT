@@ -8,6 +8,7 @@
 #include "refel.h"
 #include "tensor.h"
 #include <set>
+#include "subset_amat.h"
 
 // Dendro examples
 #include "poissonMat.h"
@@ -56,31 +57,6 @@ const NodeT * const_ptr(const std::vector<NodeT> &vec) { return vec.data(); }
 
 namespace ot
 {
-  template <unsigned dim>  // hides ::dim.
-  std::vector<size_t> createE2NMapping(
-      const LocalSubset<dim> &sub);
-
-  template <unsigned int dim,
-            typename DT, typename GI, typename LI>
-  void allocAMatMaps(
-      const LocalSubset<dim> &subset,
-      par::Maps<DT, GI, LI>* &meshMaps,
-      const DT *prescribedLocalBoundaryVals,
-      unsigned int dof);
-
-  template <unsigned int dim,
-           typename DT, typename GI, typename LI>
-  void createAMat(
-      const LocalSubset<dim> &subset,
-      par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI>* &aMat,
-      par::Maps<DT, GI, LI>* &meshMaps);
-
-  template <unsigned int dim,
-            typename DT, typename LI, typename GI>
-  void destroyAMat(
-      const LocalSubset<dim> &subset,
-      par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI>* &aMat);
-
 
   template <unsigned int dim, typename DT>
   std::vector<DT> ghostRead(const DA<dim> *da, const int ndofs, const std::vector<DT> &localVec);
@@ -92,14 +68,6 @@ namespace ot
   std::vector<DT> ghostWriteOverwrite(const DA<dim> *da, const int ndofs, const std::vector<DT> &ghostedVec);
 }
 
-namespace fem
-{
-  template <typename feMatLeafT, unsigned int dim, typename AMATType>
-  bool getAssembledAMat(
-      const ot::LocalSubset<dim> &subset,
-      feMatrix<feMatLeafT, dim> &fematrix,
-      AMATType* J);
-}
 
 
 //
@@ -323,171 +291,6 @@ std::vector<bool> boundaryFlags(
 namespace ot
 {
 
-  //
-  // createE2NMapping()
-  //
-  template <unsigned dim>
-  std::vector<size_t> createE2NMapping(
-      const LocalSubset<dim> &sub)
-  {
-    const std::vector<TreeNode<unsigned, dim>> & octs = sub.relevantOctList();
-    const std::vector<TreeNode<unsigned, dim>> & nodes = sub.relevantNodes();
-
-    std::vector<unsigned> indices(nodes.size());
-    std::iota(indices.begin(), indices.end(), 0);
-
-    const int nPe = sub.da()->getNumNodesPerElement();
-    const int eleOrder = sub.da()->getElementOrder();
-    const int singleDof = 1;
-
-    MatvecBaseIn<dim, unsigned, false> eleLoop(
-        nodes.size(),
-        singleDof,
-        eleOrder,
-        false, 0, 
-        nodes.data(),
-        indices.data(),
-        octs.data(),
-        octs.size());
-
-    std::vector<size_t> e2nMapping;
-
-    while (!eleLoop.isFinished())
-    {
-      // For each element...
-      if (eleLoop.isPre() && eleLoop.subtreeInfo().isLeaf())
-      {
-        const unsigned *nodeIdxs = eleLoop.subtreeInfo().readNodeValsIn();
-
-        // For each node on the element...
-        for (unsigned ii = 0; ii < nPe; ++ii)
-          e2nMapping.push_back(nodeIdxs[ii]);  // set the node id.
-        eleLoop.next();
-      }
-      else
-        eleLoop.step();
-    }
-
-    return e2nMapping;
-  }
-
-
-
-  //TODO subset amat: boundary, allocAMatMaps, createAMat, createVector, split/merge
-
-
-  /** @note: Because indices are local rather than global,
-   *         the resulting aMat cannot be assembled over petsc.
-   */
-  template <unsigned int dim,
-            typename DT, typename GI, typename LI>
-  void allocAMatMaps(
-      const LocalSubset<dim> &subset,
-      par::Maps<DT, GI, LI>* &meshMaps,
-      const DT *prescribedLocalBoundaryVals,
-      unsigned int dof)
-  {
-    using CoordType = unsigned int;
-    if (subset.da()->isActive())
-    {
-      MPI_Comm selfComm = MPI_COMM_SELF;
-      const std::vector<size_t> e2n_cg = createE2NMapping(subset);
-
-      const LI cgSz = subset.getLocalNodalSz();
-      const LI localElems = subset.getLocalElementSz();
-      const LI nPe = subset.da()->getNumNodesPerElement();
-      const LI dofPe = nPe * dof; // dof per elem
-      const LI localNodes = subset.getLocalNodalSz();
-
-      // dof_per_elem
-      LI * dof_per_elem = new LI[localElems];
-      for (LI i = 0; i < localElems; ++i)
-        dof_per_elem[i] = dofPe;
-
-      // dofmap_local ([element][element dof] --> vec dof).
-      LI** dofmap_local = new LI*[localElems];
-      for(LI i = 0; i < localElems; ++i)
-        dofmap_local[i] = new LI[dof_per_elem[i]];
-
-      for (LI ele = 0; ele < localElems; ++ele)
-        for (LI node = 0; node < nPe; ++node)
-          for (LI v = 0; v < dof; ++v)
-            dofmap_local[ele][dof*node + v] = dof * e2n_cg[ele*nPe + node] + v;
-
-      // There are no ghost nodes, only local.
-      const LI valid_local_dof = dof * localNodes;
-
-      // Create local_to_global_dofM
-      // (extension of LocalToGlobalMap to dofs)
-      // (except LocalToGlobalMap is the identity).
-      std::vector<GI> local_to_global_dofM(cgSz * dof);
-      std::iota(local_to_global_dofM.begin(),
-                local_to_global_dofM.end(),
-                0);
-      const GI dof_start_global = 0;
-      const GI dof_end_global   = dof * localNodes - 1;
-      const GI total_dof_global = dof * localNodes;
-
-      // Boundary data (using global dofs, which in this case are local dofs).
-      const std::vector<size_t> &ghostedBoundaryIndices = subset.getBoundaryNodeIndices();
-      std::vector<GI> global_boundary_dofs(ghostedBoundaryIndices.size() * dof);
-      for (size_t ii = 0; ii < ghostedBoundaryIndices.size(); ++ii)
-        for (LI v = 0; v < dof; ++v)
-          global_boundary_dofs[dof * ii + v] =
-              dof * ghostedBoundaryIndices[ii] + v;
-
-      // Define output meshMaps.
-      meshMaps = new par::Maps<DT, GI, LI>(selfComm);
-
-      meshMaps->set_map(
-          localElems,
-          dofmap_local,
-          dof_per_elem,
-          valid_local_dof,
-          local_to_global_dofM.data(),
-          dof_start_global,
-          dof_end_global,
-          total_dof_global);
-
-      meshMaps->set_bdr_map(
-          global_boundary_dofs.data(),
-          const_cast<DT *>( prescribedLocalBoundaryVals ),  // hack until AMat fixes const
-          global_boundary_dofs.size());
-
-      // cleanup.
-      for(LI i = 0; i < localElems; ++i)
-          delete [] dofmap_local[i];
-      delete [] dofmap_local;
-    }
-  }
-
-
-  // createAMat()
-  template <unsigned int dim, typename DT, typename GI, typename LI>
-  void createAMat(
-      const LocalSubset<dim> &subset,
-      par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI>* &aMat,
-      par::Maps<DT, GI, LI>* &meshMaps)
-  {
-    aMat = nullptr;
-    if (subset.da()->isActive())
-      aMat = new par::aMatFree<DT, GI, LI>(*meshMaps, par::BC_METH::BC_IMATRIX);
-  }
-
-
-  // destroyAMat()
-  template <unsigned int dim, typename DT, typename LI, typename GI>
-  void destroyAMat(
-      const LocalSubset<dim> &subset,
-      par::aMat<par::aMatFree<DT, GI, LI>, DT, GI, LI>* &aMat)
-  {
-    if (aMat != nullptr)
-      delete aMat;
-    aMat = nullptr;
-  }
-
-
-
   template <unsigned int dim, typename DT>
   std::vector<DT> ghostRead(const DA<dim> *da, const int ndofs, const std::vector<DT> &localVec)
   {
@@ -527,83 +330,4 @@ namespace ot
     localVec.erase(localVec.begin(), localVec.begin() + ndofs * localBegin);
     return localVec;
   }
-
-
-
 }
-
-namespace fem
-{
-
-  template <typename feMatLeafT, unsigned int dim, typename AMATType>
-  bool getAssembledAMat(
-      const ot::LocalSubset<dim> &subset,
-      feMatrix<feMatLeafT, dim> &fematrix,
-      AMATType* J)
-  {
-    using DT = typename AMATType::DTType;
-    using GI = typename AMATType::GIType;
-    using LI = typename AMATType::LIType;
-
-    if(subset.da()->isActive())
-    {
-      const size_t numLocElem = subset.getLocalElementSz();
-
-      /// preMat();
-      std::vector<unsigned char> elemNonzero(numLocElem, false);
-      ot::MatCompactRows matCompactRows = fematrix.collectMatrixEntries(
-          subset.relevantOctList(),
-          subset.relevantNodes(),
-          subset.getNodeLocalToGlobalMap(),  // identity
-          elemNonzero.data());
-      /// postMat();
-
-      const unsigned ndofs = matCompactRows.getNdofs();
-      const unsigned nPe = matCompactRows.getNpe();
-      const std::vector<ot::MatCompactRows::ScalarT> & entryVals = matCompactRows.getColVals();
-
-      typedef Eigen::Matrix<PetscScalar, Eigen::Dynamic, Eigen::Dynamic> EigenMat;
-      EigenMat* eMat[2] = {nullptr, nullptr};
-      eMat[0] = new EigenMat();
-      eMat[0]->resize(ndofs*nPe, ndofs*nPe);
-      const EigenMat * read_eMat[2] = {eMat[0], eMat[1]};
-
-      unsigned aggRow = 0;
-      for (unsigned int eid = 0; eid < numLocElem; ++eid)
-      {
-        if (elemNonzero[eid])
-        {
-          // Clear elemental matrix.
-          for(unsigned int r = 0; r < (nPe*ndofs); ++r)
-            for(unsigned int c = 0; c < (nPe*ndofs); ++c)
-              (*(eMat[0]))(r,c) = 0;
-
-          // Overwrite elemental matrix.
-          for (unsigned int r = 0; r < (nPe*ndofs); ++r)
-          {
-            for (unsigned int c = 0; c < (nPe*ndofs); ++c)
-              (*(eMat[0]))(r,c) = entryVals[aggRow * (nPe*ndofs) + c];
-            aggRow++;
-          }
-
-          LI n_i[1]={0};
-          LI n_j[1]={0};
-          J->set_element_matrix(eid, n_i, n_j, read_eMat, 1u);
-          // note that read_eMat[0] points to the same memory as eMat[0].
-        }
-      }
-
-      delete eMat[0];
-    }
-    PetscFunctionReturn(0);
-  }
-}  // namespace fem
-
-
-
-
-
-
-
-
-

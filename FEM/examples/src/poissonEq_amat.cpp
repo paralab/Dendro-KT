@@ -9,6 +9,10 @@
 #include "point.h"
 #include "poissonMat.h"
 #include "poissonGMG.h"
+#include "idx.h"
+#include "gridWrapper.h"
+#include "vector.h"
+#include "petscVector.h"
 // bug: if petsc is included (with logging)
 //  before dendro parUtils then it triggers
 //  dendro macros that use undefined variables.
@@ -38,80 +42,16 @@ using Eigen::Matrix;
 constexpr int DIM = 2;
 
 
-
-
-template <typename Functor, typename Iterator>
-struct MapRange
-{
-  Functor m_functor;
-  Iterator m_begin;
-  Iterator m_end;
-
-  template <typename InRange>
-  MapRange(const Functor &functor, InRange &&in_range)
-    : m_functor(functor),
-      m_begin(std::begin(in_range)),
-      m_end(std::end(in_range))
-  {}
-
-  struct Token
-  {
-    Iterator it;
-    auto operator*() -> decltype(m_functor(*it)) { return m_functor(*it); }
-    bool operator!=(const Token &that) const { return this->it != that.it; }
-  };
-
-  Token begin() const { return Token{m_begin}; }
-  Token end() const { return Token{m_end}; }
-
-  MapRange(const MapRange &) = default;
-  MapRange(MapRange &&) = default;
-  MapRange & operator=(const MapRange &) = default;
-  MapRange & operator=(MapRange &&) = default;
-};
-
-template <typename Functor, typename InRange>
-MapRange<Functor, InRange> map(
-    const Functor &functor, InRange &&in_range)
-{
-  return MapRange<Functor, decltype(std::begin(in_range))>(
-      functor, std::forward<InRange>(in_range));
-}
-
-
-
-
-class LocalIdx
-{
-  public:
-    size_t m_idx;
-    explicit LocalIdx(size_t idx) : m_idx(idx) {}
-    operator size_t() const { return m_idx; }
-};
-
-class GhostedIdx
-{
-  public:
-    size_t m_idx;
-    explicit GhostedIdx(size_t idx) : m_idx(idx) {}
-    operator size_t() const { return m_idx; }
-};
-
-
-template <int dim>
-class AABB
-{
-  protected:
-    Point<dim> m_min;
-    Point<dim> m_max;
-
-  public:
-    AABB(const Point<dim> &min, const Point<dim> &max) : m_min(min), m_max(max) { }
-    const Point<dim> & min() const { return m_min; }
-    const Point<dim> & max() const { return m_max; }
-};
-
-
+using idx::LocalIdx;
+using idx::GhostedIdx;
+using ot::GridWrapper;
+using ot::Vector;
+using ot::LocalVector;
+using ot::GhostedVector;
+using ot::PetscVector;
+using ot::LocalPetscVector;
+using ot::copyToPetscVector;
+using ot::copyFromPetscVector;
 
 template <unsigned int dim>
 ot::DistTree<unsigned int, dim> fringeExample(
@@ -121,332 +61,10 @@ template <unsigned int dim>
 ot::DistTree<unsigned int, dim> tinyExample(
     int fineLevel, MPI_Comm comm, double sfc_tol);
 
-
-//
-// ConstMeshPointers  (wrapper)
-//
-template <unsigned int dim>
-class ConstMeshPointers
-{
-  private:
-    const ot::DistTree<unsigned int, dim> *m_distTree;
-    const ot::MultiDA<dim> *m_multiDA;
-    const unsigned m_stratum;
-
-  public:
-    // ConstMeshPointers constructor
-    ConstMeshPointers(const ot::DistTree<unsigned int, dim> *distTree,
-                      const ot::MultiDA<dim> *multiDA,
-                      unsigned stratum = 0)
-      : m_distTree(distTree), m_multiDA(multiDA), m_stratum(stratum)
-    {}
-
-    // Copy constructor and copy assignment.
-    ConstMeshPointers(const ConstMeshPointers &other) = default;
-    ConstMeshPointers & operator=(const ConstMeshPointers &other) = default;
-
-    // distTree()
-    const ot::DistTree<unsigned int, dim> * distTree() const { return m_distTree; }
-
-    // numElements()
-    size_t numElements() const
-    {
-      return m_distTree->getTreePartFiltered(m_stratum).size();
-    }
-
-    // da()
-    const ot::DA<dim> * da() const { return &((*m_multiDA)[m_stratum]); }
-
-    // multiDA()
-    const ot::MultiDA<dim> * multiDA() const { return m_multiDA; }
-
-    unsigned stratum() const { return m_stratum; }
-
-    // printSummary()
-    std::ostream & printSummary(std::ostream & out, const std::string &pre = "", const std::string &post = "") const;
-
-    // --------------------------------------------------------------------
-
-    // local2ghosted
-    GhostedIdx local2ghosted(const LocalIdx &local) const
-    {
-      return GhostedIdx(da()->getLocalNodeBegin() + local);
-    }
-
-    std::array<double, dim> nodeCoord(const LocalIdx &local, const AABB<dim> &aabb) const
-    {
-      // Floating point coordinates in the unit cube.
-      std::array<double, dim> coord;
-      ot::treeNode2Physical( da()->getTNCoords()[local2ghosted(local)],
-                             da()->getElementOrder(),
-                             coord.data() );
-
-      // Coordinates in the box represented by aabb.
-      for (int d = 0; d < dim; ++d)
-        coord[d] = coord[d] * (aabb.max().x(d) - aabb.min().x(d)) + aabb.min().x(d);
-
-      return coord;
-    }
-
-    std::array<double, dim> nodeCoord(const GhostedIdx &ghosted, const AABB<dim> &aabb) const
-    {
-      // Floating point coordinates in the unit cube.
-      std::array<double, dim> coord;
-      ot::treeNode2Physical( da()->getTNCoords()[ghosted],
-                             da()->getElementOrder(),
-                             coord.data() );
-
-      // Coordinates in the box represented by aabb.
-      for (int d = 0; d < dim; ++d)
-        coord[d] = coord[d] * (aabb.max().x(d) - aabb.min().x(d)) + aabb.min().x(d);
-
-      return coord;
-    }
-};
-
-//
-// Vector  (wrapper)
-//
-template <typename ValT>
-class Vector
-{
-  private:
-    std::vector<ValT> m_data;
-    bool m_isGhosted = false;
-    size_t m_ndofs = 1;
-    unsigned long long m_globalNodeRankBegin = 0;
-
-  protected:
-    Vector(size_t size, bool isGhosted, size_t ndofs, unsigned long long globalRankBegin)
-      : m_data(size), m_isGhosted(isGhosted), m_ndofs(ndofs), m_globalNodeRankBegin(globalRankBegin)
-    { }
-
-  public:
-    // Vector constructor
-    template <unsigned int dim>
-    Vector(const ConstMeshPointers<dim> &mesh, bool isGhosted, size_t ndofs, const ValT *input = nullptr)
-    : m_isGhosted(isGhosted), m_ndofs(ndofs)
-    {
-      mesh.da()->createVector(m_data, false, isGhosted, ndofs);
-      if (input != nullptr)
-        std::copy_n(input, m_data.size(), m_data.begin());
-      m_globalNodeRankBegin = mesh.da()->getGlobalRankBegin();
-    }
-
-    // data()
-    std::vector<ValT> & data() { return m_data; }
-    const std::vector<ValT> & data() const { return m_data; }
-
-    // isGhosted()
-    bool isGhosted() const { return m_isGhosted; }
-
-    // ndofs()
-    size_t ndofs() const { return m_ndofs; }
-
-    // ptr()
-    ValT * ptr() { return m_data.data(); }
-    const ValT * ptr() const { return m_data.data(); }
-
-    // size()
-    size_t size() const { return m_data.size(); }
-
-    // globalRankBegin();
-    unsigned long long globalRankBegin() const { return m_globalNodeRankBegin; }
-};
-
-template <typename ValT>
-class LocalVector : public Vector<ValT>
-{
-  protected:
-    LocalVector(size_t size, size_t ndofs, unsigned long long globalRankBegin)
-      : Vector<ValT>::Vector(size, false, ndofs, globalRankBegin)
-    { }
-
-  public:
-    template <unsigned int dim>
-    LocalVector(const ConstMeshPointers<dim> &mesh, size_t ndofs, const ValT *input = nullptr)
-    : Vector<ValT>(mesh, false, ndofs, input)
-    {}
-
-    ValT & operator()(const LocalIdx &local, size_t dof = 0) {
-      return this->ptr()[local * this->ndofs() + dof];
-    }
-    const ValT & operator()(const LocalIdx &local, size_t dof = 0) const {
-      return this->ptr()[local * this->ndofs() + dof];
-    }
-
-    ValT & operator[](const LocalIdx &local) { return (*this)(local, 0); }
-    const ValT & operator[](const LocalIdx &local) const { return (*this)(local, 0); }
-
-    LocalVector operator+(const LocalVector &b) const {
-      const LocalVector &a = *this;
-      LocalVector c(this->size(), this->ndofs(), this->globalRankBegin());
-      assert(sizes_match(a, b));
-      for (size_t i = 0; i < this->size(); ++i)
-        c[LocalIdx(i)] = a[LocalIdx(i)] + b[LocalIdx(i)];
-      return c;
-    }
-
-    LocalVector operator-(const LocalVector &b) const {
-      const LocalVector &a = *this;
-      LocalVector c(this->size(), this->ndofs(), this->globalRankBegin());
-      assert(sizes_match(a, b));
-      for (size_t i = 0; i < this->size(); ++i)
-        c[LocalIdx(i)] = a[LocalIdx(i)] - b[LocalIdx(i)];
-      return c;
-    }
-
-    static bool sizes_match(const LocalVector &a, const LocalVector &b)
-    {
-      return a.size() == b.size();
-    }
-};
-
-template <typename ValT>
-class GhostedVector : public Vector<ValT>
-{
-  public:
-    template <unsigned int dim>
-    GhostedVector(const ConstMeshPointers<dim> &mesh, size_t ndofs, const ValT *input = nullptr)
-    : Vector<ValT>(mesh, true, ndofs, input)
-    {}
-
-    ValT & operator[](const GhostedIdx &ghosted) { return this->ptr()[ghosted]; }
-    const ValT & operator[](const GhostedIdx &ghosted) const { return this->ptr()[ghosted]; }
-};
-
-
-//
-// PetscVector  (wrapper)
-//
-template <typename ValT>
-class PetscVector
-{
-  private:
-    Vec m_data;
-    size_t m_size;
-    bool m_isGhosted;
-    size_t m_ndofs = 1;
-    unsigned long long m_globalNodeRankBegin = 0;
-
-  public:
-    // PetscVector constructor
-    template <unsigned int dim>
-    PetscVector(const ConstMeshPointers<dim> &mesh, bool isGhosted, size_t ndofs, const ValT *input = nullptr)
-    : m_size(
-        isGhosted ?
-        mesh.da()->getTotalNodalSz() * ndofs : mesh.da()->getLocalNodalSz() * ndofs),
-      m_isGhosted(isGhosted),
-      m_ndofs(ndofs)
-    {
-      mesh.da()->petscCreateVector(m_data, false, isGhosted, ndofs);
-      if (input != nullptr)
-      {
-        const size_t localSz = ndofs * mesh.da()->getLocalNodalSz();
-        const size_t localBegin = ndofs * mesh.da()->getLocalNodeBegin();
-        if (isGhosted)
-          input += localBegin;
-
-        ValT *array;
-        VecGetArray(m_data, &array);
-        std::copy_n(input, localSz, array);
-        VecRestoreArray(m_data, &array);
-      }
-      m_globalNodeRankBegin = mesh.da()->getGlobalRankBegin();
-    }
-
-    // vec()
-    Vec vec() { return m_data; }
-    const Vec vec() const { return m_data; }  // doesn't really enforce const
-
-    // isGhosted()
-    bool isGhosted() const { return m_isGhosted; }
-
-    // ndofs()
-    size_t ndofs() const { return m_ndofs; }
-
-    // size()
-    size_t size() const { return m_size; }
-
-    // globalRankBegin();
-    unsigned long long globalRankBegin() const { return m_globalNodeRankBegin; }
-};
-
-template <typename ValT>
-class LocalPetscVector : public PetscVector<ValT>
-{
-  public:
-    template <unsigned int dim>
-    LocalPetscVector(const ConstMeshPointers<dim> &mesh, size_t ndofs, const ValT *input = nullptr)
-    : PetscVector<ValT>(mesh, false, ndofs, input)
-    {}
-};
-
-
-template <typename ValT>
-void copyToPetscVector(LocalPetscVector<ValT> &petscVec, const LocalVector<ValT> &vector)
-{
-  ValT *array;
-  VecGetArray(petscVec.vec(), &array);
-  std::copy_n(vector.ptr(), petscVec.size(), array);
-  VecRestoreArray(petscVec.vec(), &array);
-}
-
-template <typename ValT>
-void copyFromPetscVector(LocalVector<ValT> &vector, const LocalPetscVector<ValT> &petscVec)
-{
-  ValT *array;
-  VecGetArray(petscVec.vec(), &array);
-  std::copy_n(array, vector.size(), vector.ptr());
-  VecRestoreArray(petscVec.vec(), &array);
-}
-
-
 template <unsigned int dim, typename NodeT>
-std::ostream & print(const ConstMeshPointers<dim> &mesh,
+std::ostream & print(const GridWrapper<dim> &mesh,
                      const LocalVector<NodeT> &vec,
                      std::ostream & out = std::cout);
-
-
-//
-// ElementLoopIn  (wrapper)
-//
-template <unsigned int dim, typename ValT>
-class ElementLoopIn
-{
-  private:
-    ot::MatvecBaseIn<dim, ValT> m_loop;
-  public:
-    ElementLoopIn(const ConstMeshPointers<dim> &mesh,
-                  const Vector<ValT> &ghostedVec);
-    ot::MatvecBaseIn<dim, ValT> & loop() { return m_loop; }
-};
-
-//
-// ElementLoopOut  (wrapper)
-//
-template <unsigned int dim, typename ValT>
-class ElementLoopOut
-{
-  private:
-    ot::MatvecBaseOut<dim, ValT, true> m_loop;
-  public:
-    ElementLoopOut(const ConstMeshPointers<dim> &mesh, unsigned int ndofs);
-    ot::MatvecBaseOut<dim, ValT, true> & loop() { return m_loop; }
-};
-
-//
-// ElementLoopOutOverwrite  (wrapper)
-//
-template <unsigned int dim, typename ValT>
-class ElementLoopOutOverwrite
-{
-  private:
-    ot::MatvecBaseOut<dim, ValT, false> m_loop;
-  public:
-    ElementLoopOutOverwrite(const ConstMeshPointers<dim> &mesh, unsigned int ndofs);
-    ot::MatvecBaseOut<dim, ValT, false> & loop() { return m_loop; }
-};
 
 
 struct AMatWrapper
@@ -461,7 +79,7 @@ struct AMatWrapper
   // ------------------------------------
 
   template <unsigned int dim>
-  AMatWrapper(const ConstMeshPointers<dim> &mesh,
+  AMatWrapper(const GridWrapper<dim> &mesh,
               PoissonEq::PoissonMat<dim> &poissonMat,
               const double * boundaryValues,
               int ndofs = 1)
@@ -496,31 +114,31 @@ struct Equation
     Equation(const AABB<dim> &aabb) : m_min(aabb.min()), m_max(aabb.max()) { }
 
     template <typename ValT>
-    void matvec(const ConstMeshPointers<dim> &mesh, const LocalVector<ValT> &in, LocalVector<ValT> &out);
+    void matvec(const GridWrapper<dim> &mesh, const LocalVector<ValT> &in, LocalVector<ValT> &out);
 
     template <typename ValT>
-    void rhsvec(const ConstMeshPointers<dim> &mesh, const LocalVector<ValT> &in, LocalVector<ValT> &out);
+    void rhsvec(const GridWrapper<dim> &mesh, const LocalVector<ValT> &in, LocalVector<ValT> &out);
 
     template <typename ValT>
-    void assembleDiag(const ConstMeshPointers<dim> &mesh, LocalVector<ValT> &diag_out);
+    void assembleDiag(const GridWrapper<dim> &mesh, LocalVector<ValT> &diag_out);
 
-    void dirichlet(const ConstMeshPointers<dim> &mesh, const double *prescribed_vals);
+    void dirichlet(const GridWrapper<dim> &mesh, const double *prescribed_vals);
 
     // TODO make private again...
-    AMatWrapper & atOrInsertAMat(const ConstMeshPointers<dim> &mesh) const;
+    AMatWrapper & atOrInsertAMat(const GridWrapper<dim> &mesh) const;
 
   private:
     //temporary
     static int ndofs() { return 1; }
 
-    const Key key(const ConstMeshPointers<dim> &mesh) const;
+    const Key key(const GridWrapper<dim> &mesh) const;
     PoissonEq::PoissonMat<dim> & atOrInsertPoissonMat(
-        const ConstMeshPointers<dim> &mesh) const;
+        const GridWrapper<dim> &mesh) const;
     PoissonEq::PoissonVec<dim> & atOrInsertPoissonVec(
-        const ConstMeshPointers<dim> &mesh) const;
+        const GridWrapper<dim> &mesh) const;
 
     std::vector<double> & atOrInsertDirichletVec(
-        const ConstMeshPointers<dim> &mesh) const;
+        const GridWrapper<dim> &mesh) const;
 
     mutable std::map<Key, PoissonEq::PoissonMat<dim>> m_poissonMats;
     mutable std::map<Key, PoissonEq::PoissonVec<dim>> m_poissonVecs;
@@ -602,7 +220,7 @@ int main(int argc, char * argv[])
   using uint = unsigned int;
   using DTree_t = ot::DistTree<uint, DIM>;
   using DA_t = ot::DA<DIM>;
-  using Mesh_t = ConstMeshPointers<DIM>;
+  using Mesh_t = GridWrapper<DIM>;
 
   const uint fineLevel = 3;
   const size_t dummyInt = 100;
@@ -921,14 +539,14 @@ std::vector<bool> boundaryFlags(
 
 
 template <unsigned int dim>
-const typename Equation<dim>::Key Equation<dim>::key(const ConstMeshPointers<dim> &mesh) const
+const typename Equation<dim>::Key Equation<dim>::key(const GridWrapper<dim> &mesh) const
 {
   return Key{DistTreeAddrT(mesh.distTree()), StratumT(mesh.stratum())};
 }
 
 template <unsigned int dim>
 PoissonEq::PoissonMat<dim> & Equation<dim>::atOrInsertPoissonMat(
-    const ConstMeshPointers<dim> &mesh) const
+    const GridWrapper<dim> &mesh) const
 {
   const std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
 
@@ -949,7 +567,7 @@ PoissonEq::PoissonMat<dim> & Equation<dim>::atOrInsertPoissonMat(
 
 template <unsigned int dim>
 PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
-    const ConstMeshPointers<dim> &mesh) const
+    const GridWrapper<dim> &mesh) const
 {
   const Key key = this->key(mesh);
   if (m_poissonVecs.find(key) == m_poissonVecs.end())
@@ -966,7 +584,7 @@ PoissonEq::PoissonVec<dim> & Equation<dim>::atOrInsertPoissonVec(
 }
 
 template <unsigned int dim>
-AMatWrapper & Equation<dim>::atOrInsertAMat(const ConstMeshPointers<dim> &mesh) const
+AMatWrapper & Equation<dim>::atOrInsertAMat(const GridWrapper<dim> &mesh) const
 {
   // Dirichlet boundary conditions, assume dirichlet() already called, else 0.
   std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
@@ -983,7 +601,7 @@ AMatWrapper & Equation<dim>::atOrInsertAMat(const ConstMeshPointers<dim> &mesh) 
 
 template <unsigned int dim>
 std::vector<double> & Equation<dim>::atOrInsertDirichletVec(
-        const ConstMeshPointers<dim> &mesh) const
+        const GridWrapper<dim> &mesh) const
 {
   const Key key = this->key(mesh);
   if (m_dirichletVecs.find(key) == m_dirichletVecs.end())
@@ -1000,7 +618,7 @@ std::vector<double> & Equation<dim>::atOrInsertDirichletVec(
 template <unsigned int dim>
 template <typename ValT>
 void Equation<dim>::matvec(
-    const ConstMeshPointers<dim> &mesh,
+    const GridWrapper<dim> &mesh,
     const LocalVector<ValT> &in,
     LocalVector<ValT> &out)
 {
@@ -1017,7 +635,7 @@ void Equation<dim>::matvec(
 template <unsigned int dim>
 template <typename ValT>
 void Equation<dim>::rhsvec(
-    const ConstMeshPointers<dim> &mesh,
+    const GridWrapper<dim> &mesh,
     const LocalVector<ValT> &in,
     LocalVector<ValT> &out)
 {
@@ -1033,7 +651,7 @@ void Equation<dim>::rhsvec(
 
 template <unsigned int dim>
 template <typename ValT>
-void Equation<dim>::assembleDiag(const ConstMeshPointers<dim> &mesh, LocalVector<ValT> &diag_out)
+void Equation<dim>::assembleDiag(const GridWrapper<dim> &mesh, LocalVector<ValT> &diag_out)
 {
   if (diag_out.ndofs() != this->ndofs())
     throw std::logic_error("ndofs not supported");
@@ -1045,7 +663,7 @@ void Equation<dim>::assembleDiag(const ConstMeshPointers<dim> &mesh, LocalVector
 }
 
 template <unsigned int dim>
-void Equation<dim>::dirichlet(const ConstMeshPointers<dim> &mesh, const double *prescribed_vals)
+void Equation<dim>::dirichlet(const GridWrapper<dim> &mesh, const double *prescribed_vals)
 {
   std::vector<double> &dirichletVec = this->atOrInsertDirichletVec(mesh);
 
@@ -1059,7 +677,7 @@ void Equation<dim>::dirichlet(const ConstMeshPointers<dim> &mesh, const double *
 
 
 template <unsigned int dim, typename NodeT>
-std::ostream & print(const ConstMeshPointers<dim> &mesh,
+std::ostream & print(const GridWrapper<dim> &mesh,
                      const LocalVector<NodeT> &vec,
                      std::ostream & out)
 {
@@ -1074,56 +692,6 @@ std::ostream & print(const ConstMeshPointers<dim> &mesh,
 
 
 
-
-
-
-
-// ElementLoopIn::ElementLoopIn()
-template <unsigned int dim, typename ValT>
-ElementLoopIn<dim, ValT>::ElementLoopIn(
-    const ConstMeshPointers<dim> &mesh,
-    const Vector<ValT> &ghostedVec)
-  :
-    m_loop(mesh.da()->getTotalNodalSz(),
-           ghostedVec.ndofs(),
-           mesh.da()->getElementOrder(),
-           false,
-           0,
-           mesh.da()->getTNCoords(),
-           ghostedVec.ptr(),
-           mesh.distTree()->getTreePartFiltered().data(),
-           mesh.distTree()->getTreePartFiltered().size())
-{ }
-
-// ElementLoopOut::ElementLoopOut()
-template <unsigned int dim, typename ValT>
-ElementLoopOut<dim, ValT>::ElementLoopOut(
-    const ConstMeshPointers<dim> &mesh, unsigned int ndofs)
-  :
-    m_loop(mesh.da()->getTotalNodalSz(),
-           ndofs,
-           mesh.da()->getElementOrder(),
-           false,
-           0,
-           mesh.da()->getTNCoords(),
-           mesh.distTree()->getTreePartFiltered().data(),
-           mesh.distTree()->getTreePartFiltered().size())
-{ }
-
-// ElementLoopOutOverwrite::ElementLoopOutOverwrite()
-template <unsigned int dim, typename ValT>
-ElementLoopOutOverwrite<dim, ValT>::ElementLoopOutOverwrite(
-    const ConstMeshPointers<dim> &mesh, unsigned int ndofs)
-  :
-    m_loop(mesh.da()->getTotalNodalSz(),
-           ndofs,
-           mesh.da()->getElementOrder(),
-           false,
-           0,
-           mesh.da()->getTNCoords(),
-           mesh.distTree()->getTreePartFiltered().data(),
-           mesh.distTree()->getTreePartFiltered().size())
-{ }
 
 
 
