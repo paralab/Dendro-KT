@@ -40,6 +40,18 @@ namespace ot
         mesh.da()->createVector(m_data, false, isGhosted, ndofs);
         if (input != nullptr)
           std::copy_n(input, m_data.size(), m_data.begin());
+        else
+          std::fill(m_data.begin(), m_data.end(), 0);
+        m_globalNodeRankBegin = mesh.da()->getGlobalRankBegin();
+      }
+
+      // Vector constructor from temporary std::vector
+      template <unsigned int dim>
+      Vector(const GridWrapper<dim> &mesh, bool isGhosted, size_t ndofs, std::vector<ValT> &&input)
+      : m_isGhosted(isGhosted), m_ndofs(ndofs)
+      {
+        std::swap(m_data, input);
+        mesh.da()->createVector(m_data, false, isGhosted, ndofs); //ensure size
         m_globalNodeRankBegin = mesh.da()->getGlobalRankBegin();
       }
 
@@ -80,6 +92,11 @@ namespace ot
       template <unsigned int dim>
       LocalVector(const GridWrapper<dim> &mesh, size_t ndofs, const ValT *input = nullptr)
       : Vector<ValT>(mesh, false, ndofs, input)
+      {}
+
+      template <unsigned int dim>
+      LocalVector(const GridWrapper<dim> &mesh, size_t ndofs, std::vector<ValT> &&input)
+      : Vector<ValT>(mesh, false, ndofs, std::move(input))
       {}
 
       ValT & operator()(const idx::LocalIdx &local, size_t dof = 0) {
@@ -131,9 +148,39 @@ namespace ot
       : Vector<ValT>(mesh, true, ndofs, input)
       {}
 
+      template <unsigned int dim>
+      GhostedVector(const GridWrapper<dim> &mesh, size_t ndofs, std::vector<ValT> &&input)
+      : Vector<ValT>(mesh, true, ndofs, std::move(input))
+      {}
+
       ValT & operator[](const idx::GhostedIdx &ghosted) { return this->ptr()[ghosted]; }
       const ValT & operator[](const idx::GhostedIdx &ghosted) const { return this->ptr()[ghosted]; }
   };
+
+
+  template <unsigned int dim, typename ValT>
+  GhostedVector<ValT> makeGhosted(const GridWrapper<dim> &grid, LocalVector<ValT> &&local)
+  {
+    const DA<dim> *da = grid.da();
+    std::vector<ValT> &vec = local.data();
+    vec.reserve(da->getTotalNodalSz() * local.ndofs());
+    vec.insert(vec.begin(), da->getPreNodalSz(), 0);
+    vec.insert(vec.end(), da->getPostNodalSz(), 0);
+    return GhostedVector<ValT>(grid, local.ndofs(), std::move(vec));
+  }
+
+  template <unsigned int dim, typename ValT>
+  LocalVector<ValT> makeLocal(const GridWrapper<dim> &grid, GhostedVector<ValT> &&ghosted)
+  {
+    const DA<dim> *da = grid.da();
+    const size_t localBegin = da->getLocalNodeBegin();
+    const size_t localEnd = da->getLocalNodeEnd();
+    const size_t ndofs = ghosted.ndofs();
+    std::vector<ValT> &vec = ghosted.data();
+    vec.erase(vec.begin() + localEnd * ndofs, vec.end());
+    vec.erase(vec.begin(), vec.begin() + localBegin * ndofs);
+    return LocalVector<ValT>(grid, ndofs, std::move(vec));
+  }
 }
 
 #endif//DENDRO_KT_VECTOR_H
