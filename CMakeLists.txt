@@ -595,11 +595,18 @@ if(BUILD_EXAMPLES)
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonGMG.h
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/idx.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/aabb.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/gridWrapper.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/vector.h
+                  ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/petscVector.h
                   ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/ke_matrix.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/fe_vector.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonGMG_amat.cpp)
     add_executable(exPoissonGMG_amat ${SRC_FILES})
     set_property(TARGET exPoissonGMG_amat PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+    target_include_directories(exPoissonGMG_amat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include)
+    target_include_directories(exPoissonGMG_amat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
     target_include_directories(exPoissonGMG_amat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
     target_include_directories(exPoissonGMG_amat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/include)
     target_link_libraries(exPoissonGMG_amat dendroKT ${MPI_LIBRARIES} m)
