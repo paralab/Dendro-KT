@@ -68,6 +68,16 @@ namespace fem
       const ot::LocalSubset<dim> &subset,
       feMatrix<feMatLeafT, dim> &fematrix,
       AMATType* J);
+
+  using EigenMat = ::Eigen::Matrix<PetscScalar, Eigen::Dynamic, Eigen::Dynamic>;
+
+  template <typename feMatLeafT, unsigned int dim>
+  std::vector<EigenMat> subsetEigens(
+      const ot::LocalSubset<dim> &subset,
+      feMatrix<feMatLeafT, dim> &fematrix);
+
+  template <typename AMATType>
+  bool getAssembledAMat(const std::vector<EigenMat> &e_mats, AMATType* J);
 }
 
 
@@ -266,7 +276,6 @@ namespace fem
       const unsigned nPe = matCompactRows.getNpe();
       const std::vector<ot::MatCompactRows::ScalarT> & entryVals = matCompactRows.getColVals();
 
-      typedef Eigen::Matrix<PetscScalar, Eigen::Dynamic, Eigen::Dynamic> EigenMat;
       EigenMat* eMat[2] = {nullptr, nullptr};
       eMat[0] = new EigenMat();
       eMat[0]->resize(ndofs*nPe, ndofs*nPe);
@@ -301,6 +310,55 @@ namespace fem
     }
     PetscFunctionReturn(0);
   }
+
+
+  // subsetEigens()
+  template <typename feMatLeafT, unsigned int dim>
+  std::vector<EigenMat> subsetEigens(
+      const ot::LocalSubset<dim> &subset,
+      feMatrix<feMatLeafT, dim> &fematrix)
+  {
+    std::vector<EigenMat> e_mats;
+    if(subset.da()->isActive())
+    {
+      const size_t numLocElem = subset.getLocalElementSz();
+
+      std::vector<unsigned char> elemNonzero(numLocElem, false);
+      ot::MatCompactRows matCompactRows = fematrix.collectMatrixEntries(
+          subset.relevantOctList(),
+          subset.relevantNodes(),
+          subset.getNodeLocalToGlobalMap(),  // identity
+          elemNonzero.data());
+
+      const int dofPe = matCompactRows.getNdofs() * matCompactRows.getNpe();
+      const std::vector<ot::MatCompactRows::ScalarT> & entryVals = matCompactRows.getColVals();
+
+      e_mats.resize(numLocElem);
+      size_t aggRow = 0;
+      for (size_t eid = 0; eid < numLocElem; ++eid)
+      {
+        if (elemNonzero[eid])
+        {
+          e_mats[eid].resize(dofPe, dofPe);
+          for (int r = 0; r < dofPe; ++r, ++aggRow)
+            for (int c = 0; c < dofPe; ++c)
+              e_mats[eid](r,c) = entryVals[aggRow * dofPe + c];
+        }
+      }
+    }
+    return e_mats;
+  }
+
+  template <typename AMATType>
+  bool getAssembledAMat(const std::vector<EigenMat> &e_mats, AMATType* J)
+  {
+    for (size_t eid = 0; eid < e_mats.size(); ++eid)
+      if (e_mats[eid].size() > 0)
+        J->set_element_matrix(eid, e_mats[eid], 0, 0, 1);
+    PetscFunctionReturn(0);
+  }
+
+
 }
 
 
