@@ -67,9 +67,7 @@ void test_locTreeSort()
   std::cout << "=============================\n";
 
   // Sort them with locTreeSort().
-  ///std::vector<ot::TreeNode<T,dim>> sortedPoints;
-  ///ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), &(*points.end()), sortedPoints, 0, eLev, 0);
-  ot::SFC_Tree<T,dim>::locTreeSort(&(*points.begin()), 0, points.size(), 0, eLev, 0);
+  ot::SFC_Tree<T,dim>::locTreeSort(points);
 
   std::vector<ot::TreeNode<T,dim>> &sortedPoints = points;
 
@@ -233,15 +231,12 @@ void test_locTreeConstruction(int numPoints)
 
   const T leafLevel = m_uiMaxDepth;
 
-  // TODO The fact that this starts at level 1 and it works,
-  //      might indicate I am confused about what constitutes `root'
-  //      and what is the range of allowable addresses.
   ot::SFC_Tree<T,dim>::locTreeConstruction(
       &(*points.begin()), tree,
       maxPtsPerRegion,
       0, (unsigned int) points.size(),
       1, leafLevel,
-      0,
+      ot::SFC_State<dim>::root(),
       TreeNode());
 
   for (TreeNode pt : points)

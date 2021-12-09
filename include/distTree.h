@@ -61,6 +61,13 @@ namespace ot
           MPI_Comm comm,
           double sfc_tol = 0.3);
 
+      // Non-uniform, coarse where 2:1-balancing permits.
+      static DistTree minimalSubdomainDistTree(
+          unsigned int finestLevel,
+          const ::ibm::DomainDecider &domainDecider_phys,
+          MPI_Comm comm,
+          double sfc_tol = 0.3);
+
       template <typename D>
       static DistTree constructDistTreeByFunc(
           std::function<void(const D *, D *)> func,

@@ -27,22 +27,22 @@ namespace ot
 //
 //   Based on Dendro4 sfcSort.h SFC_bucketing().
 //
-template<typename T, unsigned int D>
+template<typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
+SFC_Tree<T,dim>:: SFC_bucketing(TreeNode<T,dim> *points,
                           RankI begin, RankI end,
                           LevI lev,
-                          RotI pRot,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          SFC_State<dim> sfc,
+                          std::array<RankI, 1+nchild(dim)> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd)
 {
 
   //TODO transfer the comments to the fully configurable templated version of this method.
 
-  SFC_bucketing_impl<KeyFunIdentity_TN<T,D>, TreeNode<T,D>, TreeNode<T,D>>(
-      points, begin, end, lev, pRot,
-      KeyFunIdentity_TN<T,D>(), true, true,
+  SFC_bucketing_impl<KeyFunIdentity_TN<T,dim>, TreeNode<T,dim>, TreeNode<T,dim>>(
+      points, begin, end, lev, sfc,
+      KeyFunIdentity_TN<T,dim>(), true, true,
       outSplitters,
       outAncStart, outAncEnd);
 
@@ -51,8 +51,8 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
 ///   // of the SFC, and yield the positions of the splitters.
 ///   // ==
 /// 
-///   using TreeNode = TreeNode<T,D>;
-///   constexpr char numChildren = TreeNode::numChildren;
+///   using TreeNode = TreeNode<T,dim>;
+///   constexpr char numChildren = nchild(dim);
 ///   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 /// 
 ///   //
@@ -143,28 +143,28 @@ SFC_Tree<T,D>:: SFC_bucketing(TreeNode<T,D> *points,
 }
 
 
-template<typename T, unsigned int D>
+template<typename T, unsigned int dim>
 void
-SFC_Tree<T,D>::SFC_locateBuckets(const TreeNode<T,D> *points,
+SFC_Tree<T,dim>::SFC_locateBuckets(const TreeNode<T,dim> *points,
                                  RankI begin, RankI end,
                                  LevI lev,
-                                 RotI pRot,
-                                 std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                                 SFC_State<dim> sfc,
+                                 std::array<RankI, 1+nchild(dim)> &outSplitters,
                                  RankI &outAncStart,
                                  RankI &outAncEnd)
 {
-  SFC_locateBuckets_impl<KeyFunIdentity_TN<T,D>, TreeNode<T,D>, TreeNode<T,D>>(
-      points, begin, end, lev, pRot,
-      KeyFunIdentity_TN<T,D>(), true, true,
+  SFC_locateBuckets_impl<KeyFunIdentity_TN<T,dim>, TreeNode<T,dim>, TreeNode<T,dim>>(
+      points, begin, end, lev, sfc,
+      KeyFunIdentity_TN<T,dim>(), true, true,
       outSplitters,
       outAncStart, outAncEnd);
 }
 
 
 
-template<typename T, unsigned int D>
+template<typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
+SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
@@ -176,7 +176,7 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
   distTreePartition(points, 0, loadFlexibility, comm);
 
   // Finish with a local TreeSort to ensure all points are in order.
-  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
+  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
 
   /// // DEBUG: print out all the points.  // This debugging section will break.
   /// { std::vector<char> spaces(m_uiMaxDepth*rProc+1, ' ');
@@ -188,9 +188,9 @@ SFC_Tree<T,D>:: distTreeSort(std::vector<TreeNode<T,D>> &points,
 }
 
 
-template<typename T, unsigned int D>
+template<typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
+SFC_Tree<T,dim>:: distTreePartition(std::vector<TreeNode<T,dim>> &points,
                           unsigned int noSplitThresh,
                           double loadFlexibility,
                           MPI_Comm comm)
@@ -204,26 +204,26 @@ SFC_Tree<T,D>:: distTreePartition(std::vector<TreeNode<T,D>> &points,
 
   par::SendRecvSchedule sched = distTreePartitionSchedule(points, noSplitThresh, loadFlexibility, comm);
 
-  std::vector<TreeNode<T,D>> origPoints = points;   // Sendbuffer is a copy.
+  std::vector<TreeNode<T,dim>> origPoints = points;   // Sendbuffer is a copy.
 
   size_t sizeNew = sched.rdispls.back() + sched.rcounts.back();
   points.resize(sizeNew);
 
-  par::Mpi_Alltoallv<TreeNode<T,D>>(
+  par::Mpi_Alltoallv<TreeNode<T,dim>>(
       &origPoints[0], &sched.scounts[0], &sched.sdispls[0],
       &points[0],     &sched.rcounts[0], &sched.rdispls[0],
       comm);
 
-  //TODO figure out the 'staged' part with k-parameter.
+  //Future: Use Mpi_Alltoallv_Kway()
 
   // After this process, distTreeSort or distTreeConstruction
   // picks up with a local sorting or construction operation.
   // TODO Need to have the global buckets for that to work.
 }
 
-template<typename T, unsigned int D>
+template<typename T, unsigned int dim>
 par::SendRecvSchedule
-SFC_Tree<T,D>:: distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
+SFC_Tree<T,dim>:: distTreePartitionSchedule(std::vector<TreeNode<T,dim>> &points,
                           unsigned int noSplitThresh,
                           double loadFlexibility,
                           MPI_Comm comm)
@@ -254,13 +254,12 @@ SFC_Tree<T,D>:: distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
     // Note: distTreePartition() is only responsible for partitioning the points,
     // which is a no-op with nProc==1.
 
-    /// locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, 0);
+    /// locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
     return par::SendRecvSchedule{};
   }
 
-  using TreeNode = TreeNode<T,D>;
-  constexpr char numChildren = TreeNode::numChildren;
-  constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
+  using TreeNode = TreeNode<T,dim>;
+  constexpr char numChildren = nchild(dim);
 
   // The outcome of the BFT will be a list of splitters, i.e. refined buckets.
   std::vector<unsigned int> splitters(nProc, 0);
@@ -274,8 +273,7 @@ SFC_Tree<T,D>:: distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
   // Phase 1: move down the levels until we have roughly enough buckets
   //   to test our load-balancing criterion.
   const int initNumBuckets = nProc;
-  const BucketInfo<RankI> rootBucket = {0, 0, 0, (RankI) points.size()};
-  newBuckets.push_back(rootBucket);
+  newBuckets.push_back(BucketInfo<RankI>::root(points.size()));
         // No-runaway, in case we run out of points.
         // It is `<' because refining m_uiMaxDepth would make (m_uiMaxDepth+1).
 
@@ -463,9 +461,9 @@ SFC_Tree<T,D>:: distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
 }
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
+SFC_Tree<T,dim>:: treeBFTNextLevel(TreeNode<T,dim> *points,
       std::vector<BucketInfo<RankI>> &bftQueue)
 {
   if (bftQueue.size() == 0)
@@ -473,8 +471,8 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
 
   const LevI startLev = bftQueue[0].lev;
 
-  using TreeNode = TreeNode<T,D>;
-  constexpr char numChildren = TreeNode::numChildren;
+  using TreeNode = TreeNode<T,dim>;
+  constexpr char numChildren = nchild(dim);
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 
   while (bftQueue[0].lev == startLev)
@@ -488,7 +486,7 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
     RankI ancStart, ancEnd;
     if (front.begin < front.end)
     {
-      SFC_bucketing(points, front.begin, front.end, front.lev+1, front.rot_id, childSplitters, ancStart, ancEnd);
+      SFC_bucketing(points, front.begin, front.end, front.lev+1, SFC_State<dim>(front.rot), childSplitters, ancStart, ancEnd);
 
       // Put 'ancestor' points one of the closest sibling bucket.
       const bool ancestorsFirst = true;
@@ -503,14 +501,14 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
     }
 
     // Enqueue our children in the next level.
-    const ChildI * const rot_perm = &rotations[front.rot_id*rotOffset + 0*numChildren];
-    const RotI * const orientLookup = &HILBERT_TABLE[front.rot_id*numChildren];
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    const SFC_State<dim> sfc(front.rot);
+    for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
     {
-      ChildI child = rot_perm[child_sfc];
-      RotI cRot = orientLookup[child];
-      BucketInfo<RankI> childBucket =
-          {cRot, front.lev+1, childSplitters[child_sfc+0], childSplitters[child_sfc+1]};
+      BucketInfo<RankI> childBucket = {
+          sfc.subcurve(child_sfc).state(),
+          front.lev+1,
+          childSplitters[child_sfc+0],
+          childSplitters[child_sfc+1] };
 
       bftQueue.push_back(childBucket);
     }
@@ -521,53 +519,40 @@ SFC_Tree<T,D>:: treeBFTNextLevel(TreeNode<T,D> *points,
 //
 // locTreeConstruction()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
-                                  std::vector<TreeNode<T,D>> &tree,
+SFC_Tree<T,dim>:: locTreeConstruction(TreeNode<T,dim> *points,
+                                  std::vector<TreeNode<T,dim>> &tree,
                                   RankI maxPtsPerRegion,
                                   RankI begin, RankI end,
                                   LevI sLev,
                                   LevI eLev,
-                                  RotI pRot,
-                                  TreeNode<T,D> pNode)
+                                  SFC_State<dim> sfc,
+                                  TreeNode<T,dim> pNode)
 {
   // Most of this code is copied from locTreeSort().
 
   if (end <= begin) { return; }
 
-  constexpr char numChildren = TreeNode<T,D>::numChildren;
-  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
-
-  using TreeNode = TreeNode<T,D>;
+  constexpr char numChildren = nchild(dim);
 
   // Reorder the buckets on sLev (current level).
   std::array<RankI, numChildren+1> tempSplitters;
   RankI ancStart, ancEnd;
-  SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters, ancStart, ancEnd);
+  SFC_bucketing(points, begin, end, sLev, sfc, tempSplitters, ancStart, ancEnd);
   // The array `tempSplitters' has numChildren+2 slots, which includes the
   // beginning, middles, and end of the range of children, and ancestors are in front.
 
-  // Lookup tables to apply rotations.
-  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
-
-  TreeNode cNode = pNode.getFirstChildMorton();
+  TreeNode<T,dim> cNode = pNode.getFirstChildMorton();
 
   if (sLev < eLev)  // This means eLev is further from the root level than sLev.
   {
     // We satisfy the completeness property because we iterate over
     // all possible children here. For each child, append either
     // a leaf orthant or a non-empty complete subtree.
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
     {
-      // Columns of HILBERT_TABLE are indexed by the Morton rank.
-      // According to Dendro4 TreeNode.tcc:199 they are.
-      // (There are possibly inconsistencies in the old code...?
-      // Don't worry, we can regenerate the table later.)
-      ChildI child = rot_perm[child_sfc];
-      RotI cRot = orientLookup[child];
-      cNode.setMortonIndex(child);
+      cNode.setMortonIndex(sfc.child_num(child_sfc));
 
       if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] > maxPtsPerRegion)
       {
@@ -577,7 +562,7 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
             points, tree, maxPtsPerRegion,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
-            cRot,
+            sfc.subcurve(child_sfc),
             cNode);
       }
       else
@@ -589,10 +574,9 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
   }
   else   // We have reached eLev. Violate `maxPtsPerRegion' to satisfy completeness.
   {
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
     {
-      ChildI child = rot_perm[child_sfc];
-      cNode.setMortonIndex(child);
+      cNode.setMortonIndex(sfc.child_num(child_sfc));
       tree.push_back(cNode);
     }
   }
@@ -603,44 +587,36 @@ SFC_Tree<T,D>:: locTreeConstruction(TreeNode<T,D> *points,
 //
 // locTreeConstructionWithFilter(points)
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: locTreeConstructionWithFilter(
+SFC_Tree<T,dim>:: locTreeConstructionWithFilter(
                                   const ibm::DomainDecider &decider,
-                                  TreeNode<T,D> *points,
-                                  std::vector<TreeNode<T,D>> &tree,
+                                  TreeNode<T,dim> *points,
+                                  std::vector<TreeNode<T,dim>> &tree,
                                   RankI maxPtsPerRegion,
                                   RankI begin, RankI end,
                                   LevI sLev,
                                   LevI eLev,
-                                  RotI pRot,
-                                  TreeNode<T,D> pNode)
+                                  SFC_State<dim> sfc,
+                                  TreeNode<T,dim> pNode)
 {
   if (end <= begin) { return; }
 
-  constexpr char numChildren = TreeNode<T,D>::numChildren;
-  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
-
-  using TreeNode = TreeNode<T,D>;
+  constexpr char numChildren = nchild(dim);
 
   std::array<RankI, numChildren+1> tempSplitters;
   RankI ancStart, ancEnd;
-  SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters, ancStart, ancEnd);
+  SFC_bucketing(points, begin, end, sLev, sfc, tempSplitters, ancStart, ancEnd);
 
-  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
-
-  TreeNode cNode = pNode.getFirstChildMorton();
+  TreeNode<T,dim> cNode = pNode.getFirstChildMorton();
 
   if (sLev < eLev)  // This means eLev is further from the root level than sLev.
   {
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
     {
-      ChildI child = rot_perm[child_sfc];
-      RotI cRot = orientLookup[child];
-      cNode.setMortonIndex(child);
+      cNode.setMortonIndex(sfc.child_num(child_sfc));
 
-      double physCoords[D];
+      double physCoords[dim];
       double physSize;
       treeNode2Physical(cNode, physCoords, physSize);
 
@@ -655,7 +631,7 @@ SFC_Tree<T,D>:: locTreeConstructionWithFilter(
               points, tree, maxPtsPerRegion,
               tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
               sLev+1, eLev,
-              cRot,
+              sfc.subcurve(child_sfc),
               cNode);
         }
         else
@@ -668,12 +644,11 @@ SFC_Tree<T,D>:: locTreeConstructionWithFilter(
   }
   else   // We have reached eLev. Violate `maxPtsPerRegion' to satisfy completeness.
   {
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
     {
-      ChildI child = rot_perm[child_sfc];
-      cNode.setMortonIndex(child);
+      cNode.setMortonIndex(sfc.child_num(child_sfc));
 
-      double physCoords[D];
+      double physCoords[dim];
       double physSize;
       treeNode2Physical(cNode, physCoords, physSize);
 
@@ -690,36 +665,27 @@ SFC_Tree<T,D>:: locTreeConstructionWithFilter(
 //
 // locTreeConstructionWithFilter()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
+SFC_Tree<T,dim>:: locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
                                                bool refineAll,
-                                               std::vector<TreeNode<T,D>> &tree,
+                                               std::vector<TreeNode<T,dim>> &tree,
                                                LevI sLev,
                                                LevI eLev,
-                                               RotI pRot,
-                                               TreeNode<T,D> pNode)
+                                               SFC_State<dim> sfc,
+                                               TreeNode<T,dim> pNode)
 {
-  constexpr char numChildren = TreeNode<T,D>::numChildren;
-  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
+  constexpr char numChildren = nchild(dim);
 
-  using TreeNode = TreeNode<T,D>;
-
-  // Lookup tables to apply rotations.
-  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
-
-  TreeNode cNode = pNode.getFirstChildMorton();
+  TreeNode<T,dim> cNode = pNode.getFirstChildMorton();
 
   if (sLev < eLev)  // This means eLev is further from the root level than sLev.
   {
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
     {
-      ChildI child = rot_perm[child_sfc];
-      RotI cRot = orientLookup[child];
-      cNode.setMortonIndex(child);
+      cNode.setMortonIndex(sfc.child_num(child_sfc));
 
-      double physCoords[D];
+      double physCoords[dim];
       double physSize;
       treeNode2Physical(cNode, physCoords, physSize);
 
@@ -730,7 +696,7 @@ SFC_Tree<T,D>:: locTreeConstructionWithFilter( const ibm::DomainDecider &decider
         if (childRegion == ibm::INTERCEPTED ||
             childRegion == ibm::OUT && refineAll)
         {
-          locTreeConstructionWithFilter( decider, refineAll, tree, sLev + 1, eLev, cRot, cNode);
+          locTreeConstructionWithFilter( decider, refineAll, tree, sLev + 1, eLev, sfc.subcurve(child_sfc), cNode);
         }
         else
         {
@@ -742,12 +708,11 @@ SFC_Tree<T,D>:: locTreeConstructionWithFilter( const ibm::DomainDecider &decider
   }
   else   // sLev == eLev. Append all children.
   {
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
     {
-      ChildI child = rot_perm[child_sfc];
-      cNode.setMortonIndex(child);
+      cNode.setMortonIndex(sfc.child_num(child_sfc));
 
-      double physCoords[D];
+      double physCoords[dim];
       double physSize;
       treeNode2Physical(cNode, physCoords, physSize);
 
@@ -761,10 +726,10 @@ SFC_Tree<T,D>:: locTreeConstructionWithFilter( const ibm::DomainDecider &decider
 }  // end function
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+SFC_Tree<T,dim>:: distTreeConstruction(std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm)
@@ -784,7 +749,8 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
   locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
                       0, (RankI) points.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
-                      0, TreeNode<T,D>());
+                      SFC_State<dim>::root(),
+                      TreeNode<T,dim>());
   // When (sLev,eLev)==(0,m_uiMaxDepth), nodes with level m_uiMaxDepth+1 are created.
   // This must be leading to incorrect ancestry tests because duplicates do
   // not always get removed properly in that case.
@@ -796,12 +762,12 @@ SFC_Tree<T,D>:: distTreeConstruction(std::vector<TreeNode<T,D>> &points,
 }
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: distTreeConstructionWithFilter(
+SFC_Tree<T,dim>:: distTreeConstructionWithFilter(
     const ibm::DomainDecider &decider,
-    std::vector<TreeNode<T,D>> &points,
-    std::vector<TreeNode<T,D>> &tree,
+    std::vector<TreeNode<T,dim>> &points,
+    std::vector<TreeNode<T,dim>> &tree,
     RankI maxPtsPerRegion,
     double loadFlexibility,
     MPI_Comm comm)
@@ -822,17 +788,18 @@ SFC_Tree<T,D>:: distTreeConstructionWithFilter(
                       &(*points.begin()), tree, maxPtsPerRegion,
                       0, (RankI) points.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
-                      0, TreeNode<T,D>());
+                      SFC_State<dim>::root(),
+                      TreeNode<T,dim>());
 
   distRemoveDuplicates(tree, loadFlexibility, false, comm);
 }
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider,
+SFC_Tree<T,dim>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider,
                                                bool refineAll,
-                                               std::vector<TreeNode<T,D>> &tree,
+                                               std::vector<TreeNode<T,dim>> &tree,
                                                LevI eLev,
                                                double loadFlexibility,
                                                MPI_Comm comm)
@@ -841,15 +808,15 @@ SFC_Tree<T,D>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
 
-  constexpr char numChildren = TreeNode<T,D>::numChildren;
+  constexpr char numChildren = nchild(dim);
   constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
 
-  std::vector<TreeNode<T,D>> leafs;
+  std::vector<TreeNode<T,dim>> leafs;
 
   struct SubtreeList
   {
-    std::vector<TreeNode<T,D>> oct;
-    std::vector<RotI> rot;
+    std::vector<TreeNode<T,dim>> oct;
+    std::vector<sfc::RotIndex::Type> rot;
 
     void swap(SubtreeList &other)
     {
@@ -873,7 +840,7 @@ SFC_Tree<T,D>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider
 
   if (rProc == 0)
   {
-    uncommittedSubtrees.oct.push_back(TreeNode<T,D>());
+    uncommittedSubtrees.oct.push_back(TreeNode<T,dim>());
     uncommittedSubtrees.rot.push_back(0);
   }
 
@@ -881,20 +848,14 @@ SFC_Tree<T,D>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider
   {
     for (size_t ii = 0; ii < uncommittedSubtrees.oct.size(); ++ii)
     {
-      // Lookup tables to apply rotations.
-      const RotI pRot = uncommittedSubtrees.rot[ii];
-      const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-      const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+      const SFC_State<dim> sfc(sfc::RotIndex(uncommittedSubtrees.rot[ii]));
+      TreeNode<T,dim> cNode = uncommittedSubtrees.oct[ii].getFirstChildMorton();
 
-      TreeNode<T,D> cNode = uncommittedSubtrees.oct[ii].getFirstChildMorton();
-
-      for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+      for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
       {
-        ChildI child = rot_perm[child_sfc];
-        RotI cRot = orientLookup[child];
-        cNode.setMortonIndex(child);
+        cNode.setMortonIndex(sfc.child_num(child_sfc));
 
-        double physCoords[D];
+        double physCoords[dim];
         double physSize;
         treeNode2Physical(cNode, physCoords, physSize);
 
@@ -906,7 +867,7 @@ SFC_Tree<T,D>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider
               childRegion == ibm::OUT && refineAll)
           {
             refined.oct.push_back(cNode);
-            refined.rot.push_back(cRot);
+            refined.rot.push_back(sfc.subcurve(child_sfc).state());
           }
           else
             leafs.push_back(cNode);
@@ -945,9 +906,9 @@ SFC_Tree<T,D>::distTreeConstructionWithFilter( const ibm::DomainDecider &decider
 
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree, double loadFlexibility, bool strict, MPI_Comm comm)
+SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, double loadFlexibility, bool strict, MPI_Comm comm)
 {
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
@@ -978,13 +939,13 @@ SFC_Tree<T,D>:: distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree, double lo
     // or an ancestor of, the beginning of the next processors portion of the tree.
 
     // Exchange to test if our end is a duplicate.
-    TreeNode<T,D> nextBegin;
+    TreeNode<T,dim> nextBegin;
     MPI_Request request;
     MPI_Status status;
     if (rNE > 0)
-      par::Mpi_Isend<TreeNode<T,D>>(&(*tree.begin()), 1, rNE-1, 0, nonemptys, &request);
+      par::Mpi_Isend<TreeNode<T,dim>>(&(*tree.begin()), 1, rNE-1, 0, nonemptys, &request);
     if (rNE < nNE-1)
-      par::Mpi_Recv<TreeNode<T,D>>(&nextBegin, 1, rNE+1, 0, nonemptys, &status);
+      par::Mpi_Recv<TreeNode<T,dim>>(&nextBegin, 1, rNE+1, 0, nonemptys, &status);
 
     // If so, delete our end.
     if (rNE > 0)
@@ -996,18 +957,18 @@ SFC_Tree<T,D>:: distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree, double lo
 }
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes)
+SFC_Tree<T,dim>:: locRemoveDuplicates(std::vector<TreeNode<T,dim>> &tnodes)
 {
-  const TreeNode<T,D> *tEnd = &(*tnodes.end());
-  TreeNode<T,D> *tnCur = &(*tnodes.begin());
+  const TreeNode<T,dim> *tEnd = &(*tnodes.end());
+  TreeNode<T,dim> *tnCur = &(*tnodes.begin());
   size_t numUnique = 0;
 
   while (tnCur < tEnd)
   {
     // Find next leaf.
-    TreeNode<T,D> *tnNext;
+    TreeNode<T,dim> *tnNext;
     while ((tnNext = tnCur + 1) < tEnd &&
         (*tnCur == *tnNext || tnCur->isAncestor(*tnNext)))
       tnCur++;
@@ -1024,18 +985,18 @@ SFC_Tree<T,D>:: locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes)
 }
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,D>> &tnodes)
+SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes)
 {
-  const TreeNode<T,D> *tEnd = &(*tnodes.end());
-  TreeNode<T,D> *tnCur = &(*tnodes.begin());
+  const TreeNode<T,dim> *tEnd = &(*tnodes.end());
+  TreeNode<T,dim> *tnCur = &(*tnodes.begin());
   size_t numUnique = 0;
 
   while (tnCur < tEnd)
   {
     // Find next leaf.
-    TreeNode<T,D> *tnNext;
+    TreeNode<T,dim> *tnNext;
     while ((tnNext = tnCur + 1) < tEnd &&
         (*tnCur == *tnNext))  // Strict equality only; ancestors retained.
       tnCur++;
@@ -1055,8 +1016,8 @@ SFC_Tree<T,D>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,D>> &tnodes)
 //
 // distCoalesceSiblings()
 //
-template <typename T, unsigned int D>
-void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
+template <typename T, unsigned int dim>
+void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
                                            MPI_Comm comm_ )
 {
   MPI_Comm comm = comm_;
@@ -1086,8 +1047,8 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
 
 
     // Assess breakage on front and back.
-    TreeNode<T, D> locFrontParent = tree.front().getParent();
-    TreeNode<T, D> locBackParent = tree.back().getParent();
+    TreeNode<T, dim> locFrontParent = tree.front().getParent();
+    TreeNode<T, dim> locBackParent = tree.back().getParent();
     bool locFrontIsBroken = false;
     bool locBackIsBroken = false;
 
@@ -1119,7 +1080,7 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
 
 
     // Check with left and right ranks to see if an exchange is needed.
-    TreeNode<T, D> leftParent, rightParent;
+    TreeNode<T, dim> leftParent, rightParent;
     bool leftIsBroken, rightIsBroken;
 
     bool exchangeLeft = false;
@@ -1187,9 +1148,9 @@ void SFC_Tree<T, D>::distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
 }
 
 
-template <typename T, unsigned int D>
-std::vector<TreeNode<T, D>>
-SFC_Tree<T, D>::locRemesh( const std::vector<TreeNode<T, D>> &inTree,
+template <typename T, unsigned int dim>
+std::vector<TreeNode<T, dim>>
+SFC_Tree<T, dim>::locRemesh( const std::vector<TreeNode<T, dim>> &inTree,
                            const std::vector<OCT_FLAGS::Refine> &refnFlags )
 {
   // TODO need to finally make a seperate minimal balancing tree routine
@@ -1197,9 +1158,9 @@ SFC_Tree<T, D>::locRemesh( const std::vector<TreeNode<T, D>> &inTree,
   // For now, this hack should work because we remove duplicates.
   // With a proper level-respecting treeBalancing() routine, don't need to
   // make all siblings of all treeNodes for OCT_NO_CHANGE and OCT_COARSEN.
-  constexpr ChildI NumChildren = 1u << D;
-  std::vector<TreeNode<T, D>> outTree;
-  std::vector<TreeNode<T, D>> seed;
+  constexpr ChildI NumChildren = 1u << dim;
+  std::vector<TreeNode<T, dim>> outTree;
+  std::vector<TreeNode<T, dim>> seed;
   for (size_t i = 0; i < inTree.size(); ++i)
   {
     switch(refnFlags[i])
@@ -1224,22 +1185,22 @@ SFC_Tree<T, D>::locRemesh( const std::vector<TreeNode<T, D>> &inTree,
     }
   }
 
-  SFC_Tree<T, D>::locTreeSort(seed);
-  SFC_Tree<T, D>::locRemoveDuplicates(seed);
-  SFC_Tree<T, D>::locTreeBalancing(seed, outTree, 1);
+  SFC_Tree<T, dim>::locTreeSort(seed);
+  SFC_Tree<T, dim>::locRemoveDuplicates(seed);
+  SFC_Tree<T, dim>::locTreeBalancing(seed, outTree, 1);
 
   return outTree;
 }
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
+SFC_Tree<T, dim>::distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &inTree,
                                        const std::vector<OCT_FLAGS::Refine> &refnFlags,
-                                       std::vector<TreeNode<T, D>> &outTree,
+                                       std::vector<TreeNode<T, dim>> &outTree,
                                        double loadFlexibility,
                                        MPI_Comm comm )
 {
-  constexpr ChildI NumChildren = 1u << D;
+  constexpr ChildI NumChildren = 1u << dim;
 
   outTree.clear();
 
@@ -1248,7 +1209,7 @@ SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree
   // For now, this hack should work because we remove duplicates.
   // With a proper level-respecting treeBalancing() routine, don't need to
   // make all siblings of all treeNodes for OCT_NO_CHANGE and OCT_COARSEN.
-  std::vector<TreeNode<T, D>> seed;
+  std::vector<TreeNode<T, dim>> seed;
   for (size_t i = 0; i < inTree.size(); ++i)
   {
     switch(refnFlags[i])
@@ -1273,32 +1234,32 @@ SFC_Tree<T, D>::distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree
     }
   }
 
-  SFC_Tree<T, D>::distTreeSort(seed, loadFlexibility, comm);
-  SFC_Tree<T, D>::distRemoveDuplicates(seed, loadFlexibility, RM_DUPS_AND_ANC, comm);
-  SFC_Tree<T, D>::distTreeBalancing(seed, outTree, 1, loadFlexibility, comm);
-  SFC_Tree<T, D>::distCoalesceSiblings(outTree, comm);
+  SFC_Tree<T, dim>::distTreeSort(seed, loadFlexibility, comm);
+  SFC_Tree<T, dim>::distRemoveDuplicates(seed, loadFlexibility, RM_DUPS_AND_ANC, comm);
+  SFC_Tree<T, dim>::distTreeBalancing(seed, outTree, 1, loadFlexibility, comm);
+  SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
 }
 
-template <typename T, unsigned int D>
-std::vector<TreeNode<T, D>> SFC_Tree<T, D>::getSurrogateGrid(
+template <typename T, unsigned int dim>
+std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::getSurrogateGrid(
     RemeshPartition remeshPartition,
-    const std::vector<TreeNode<T, D>> &oldTree,
-    const std::vector<TreeNode<T, D>> &newTree,
+    const std::vector<TreeNode<T, dim>> &oldTree,
+    const std::vector<TreeNode<T, dim>> &newTree,
     MPI_Comm comm)
 {
-  std::vector<TreeNode<T, D>> surrogateTree;
+  std::vector<TreeNode<T, dim>> surrogateTree;
 
   if (remeshPartition == SurrogateInByOut)  // old default
   {
     // Create a surrogate tree, which is identical to the oldTree,
     // but partitioned to match the newTree.
-    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(oldTree, newTree, comm);
+    surrogateTree = SFC_Tree<T, dim>::getSurrogateGrid(oldTree, newTree, comm);
   }
   else
   {
     // Create a surrogate tree, which is identical to the newTree,
     // but partitioned to match the oldTree.
-    surrogateTree = SFC_Tree<T, D>::getSurrogateGrid(newTree, oldTree, comm);
+    surrogateTree = SFC_Tree<T, dim>::getSurrogateGrid(newTree, oldTree, comm);
   }
 
   return surrogateTree;
@@ -1425,11 +1386,11 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
 //
 // propagateNeighbours()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
+SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
 {
-  std::vector<std::vector<TreeNode<T,D>>> treeLevels = stratifyTree(srcNodes);
+  std::vector<std::vector<TreeNode<T,dim>>> treeLevels = stratifyTree(srcNodes);
   srcNodes.clear();
 
   ///std::cout << "Starting at        level " << m_uiMaxDepth << ", level size \t " << treeLevels[m_uiMaxDepth].size() << "\n";  //DEBUG
@@ -1441,10 +1402,10 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
 
     const size_t oldLevelSize = treeLevels[lp].size();
 
-    for (const TreeNode<T,D> &tn : treeLevels[l])
+    for (const TreeNode<T,dim> &tn : treeLevels[l])
     {
       // Append neighbors of parent.
-      TreeNode<T,D> tnParent = tn.getParent();
+      TreeNode<T,dim> tnParent = tn.getParent();
       treeLevels[lp].push_back(tnParent);
       tnParent.appendAllNeighbours(treeLevels[lp]);
 
@@ -1452,7 +1413,7 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
     }
 
     // TODO Consider more efficient algorithms for removing duplicates from lp level.
-    locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, 0);
+    locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, SFC_State<dim>::root());
     locRemoveDuplicates(treeLevels[lp]);
 
     ///const size_t newLevelSize = treeLevels[lp].size();
@@ -1461,12 +1422,12 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
 
   // Reserve space before concatenating all the levels.
   size_t newSize = 0;
-  for (const std::vector<TreeNode<T,D>> &trLev : treeLevels)
+  for (const std::vector<TreeNode<T,dim>> &trLev : treeLevels)
     newSize += trLev.size();
   srcNodes.reserve(newSize);
 
   // Concatenate all the levels.
-  for (const std::vector<TreeNode<T,D>> &trLev : treeLevels)
+  for (const std::vector<TreeNode<T,dim>> &trLev : treeLevels)
     srcNodes.insert(srcNodes.end(), trLev.begin(), trLev.end());
 }
 
@@ -1474,10 +1435,10 @@ SFC_Tree<T,D>:: propagateNeighbours(std::vector<TreeNode<T,D>> &srcNodes)
 //
 // locTreeBalancing()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: locTreeBalancing(std::vector<TreeNode<T,D>> &points,
-                                 std::vector<TreeNode<T,D>> &tree,
+SFC_Tree<T,dim>:: locTreeBalancing(std::vector<TreeNode<T,dim>> &points,
+                                 std::vector<TreeNode<T,dim>> &tree,
                                  RankI maxPtsPerRegion)
 {
   const LevI leafLevel = m_uiMaxDepth;
@@ -1485,15 +1446,17 @@ SFC_Tree<T,D>:: locTreeBalancing(std::vector<TreeNode<T,D>> &points,
   locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
                       0, (RankI) points.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
-                      0, TreeNode<T,D>());
+                      SFC_State<dim>::root(),
+                      TreeNode<T,dim>());
 
   propagateNeighbours(tree);
 
-  std::vector<TreeNode<T,D>> newTree;
+  std::vector<TreeNode<T,dim>> newTree;
   locTreeConstruction(&(*tree.begin()), newTree, 1,
                       0, (RankI) tree.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
-                      0, TreeNode<T,D>());
+                      SFC_State<dim>::root(),
+                      TreeNode<T,dim>());
 
   tree = newTree;
 }
@@ -1501,12 +1464,12 @@ SFC_Tree<T,D>:: locTreeBalancing(std::vector<TreeNode<T,D>> &points,
 //
 // locTreeBalancingWithFilter()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: locTreeBalancingWithFilter(
+SFC_Tree<T,dim>:: locTreeBalancingWithFilter(
                                  const ibm::DomainDecider &decider,
-                                 std::vector<TreeNode<T,D>> &points,
-                                 std::vector<TreeNode<T,D>> &tree,
+                                 std::vector<TreeNode<T,dim>> &points,
+                                 std::vector<TreeNode<T,dim>> &tree,
                                  RankI maxPtsPerRegion)
 {
   const LevI leafLevel = m_uiMaxDepth;
@@ -1516,17 +1479,19 @@ SFC_Tree<T,D>:: locTreeBalancingWithFilter(
                       &(*points.begin()), tree, maxPtsPerRegion,
                       0, (RankI) points.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
-                      0, TreeNode<T,D>());
+                      SFC_State<dim>::root(),
+                      TreeNode<T,dim>());
 
   propagateNeighbours(tree);
 
-  std::vector<TreeNode<T,D>> newTree;
+  std::vector<TreeNode<T,dim>> newTree;
   locTreeConstructionWithFilter(
                       decider,
                       &(*tree.begin()), newTree, 1,
                       0, (RankI) tree.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
-                      0, TreeNode<T,D>());
+                      SFC_State<dim>::root(),
+                      TreeNode<T,dim>());
 
   tree = newTree;
 }
@@ -1535,10 +1500,10 @@ SFC_Tree<T,D>:: locTreeBalancingWithFilter(
 //
 // distTreeBalancing()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+SFC_Tree<T,dim>:: distTreeBalancing(std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm)
@@ -1550,7 +1515,7 @@ SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
   distTreeConstruction(points, tree, maxPtsPerRegion, loadFlexibility, comm);
   propagateNeighbours(tree);
   distRemoveDuplicates(tree, loadFlexibility, true, comm);   // Duplicate neighbours could cause over-refinement.
-  std::vector<TreeNode<T,D>> newTree;
+  std::vector<TreeNode<T,dim>> newTree;
   distTreeConstruction(tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
 
   tree = newTree;
@@ -1559,12 +1524,12 @@ SFC_Tree<T,D>:: distTreeBalancing(std::vector<TreeNode<T,D>> &points,
 //
 // distTreeBalancingWithFilter()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: distTreeBalancingWithFilter(
+SFC_Tree<T,dim>:: distTreeBalancingWithFilter(
                                    const ibm::DomainDecider &decider,
-                                   std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+                                   std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm)
@@ -1576,7 +1541,7 @@ SFC_Tree<T,D>:: distTreeBalancingWithFilter(
   distTreeConstructionWithFilter(decider, points, tree, maxPtsPerRegion, loadFlexibility, comm);
   propagateNeighbours(tree);
   distRemoveDuplicates(tree, loadFlexibility, true, comm);   // Duplicate neighbours could cause over-refinement.
-  std::vector<TreeNode<T,D>> newTree;
+  std::vector<TreeNode<T,dim>> newTree;
   distTreeConstructionWithFilter(decider, tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
 
   tree = newTree;
@@ -1587,11 +1552,11 @@ SFC_Tree<T,D>:: distTreeBalancingWithFilter(
 //
 // getContainingBlocks() - Used for tagging points on the processor boundary.
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
+SFC_Tree<T,dim>:: getContainingBlocks(TreeNode<T,dim> *points,
                                   RankI begin, RankI end,
-                                  const TreeNode<T,D> *splitters,
+                                  const TreeNode<T,dim> *splitters,
                                   int numSplitters,
                                   std::vector<int> &outBlocks)
 {
@@ -1600,7 +1565,7 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
       begin, end,
       splitters,
       0, numSplitters,
-      1, 0,
+      1, SFC_State<dim>::root(),
       dummyNumPrevBlocks, outBlocks.size(), outBlocks);
 }
 
@@ -1616,13 +1581,13 @@ namespace util {
 //
 // getContainingBlocks() - recursive implementation (inorder traversal).
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
+SFC_Tree<T,dim>:: getContainingBlocks(TreeNode<T,dim> *points,
                                   RankI begin, RankI end,
-                                  const TreeNode<T,D> *splitters,
+                                  const TreeNode<T,dim> *splitters,
                                   RankI sBegin, RankI sEnd,
-                                  LevI lev, RotI pRot,
+                                  LevI lev, SFC_State<dim> sfc,
                                   int &numPrevBlocks,
                                   const int startSize,
                                   std::vector<int> &outBlocks)
@@ -1631,16 +1596,12 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
   // If a bucket contains points but no splitters, the points belong to the block of the most recent splitter.
   // If a bucket contains points and splitters, divide and conquer by refining the bucket and recursing.
   // In an ancestor or leaf bucket, contained splitters and points are equal, so splitter <= point.
-  constexpr ChildI numChildren = TreeNode<T,D>::numChildren;
-  constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
-  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  const ChildI *rot_inv = &rotations[pRot*rotOffset + 1*numChildren];
-  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
+  constexpr ChildI numChildren = nchild(dim);
 
   // Bucket points.
   std::array<RankI, 1+numChildren> pointBuckets;
   RankI ancStart, ancEnd;
-  SFC_bucketing(points, begin, end, lev, pRot, pointBuckets, ancStart, ancEnd);
+  SFC_bucketing(points, begin, end, lev, sfc, pointBuckets, ancStart, ancEnd);
 
   // Count splitters.
   std::array<RankI, numChildren> numSplittersInBucket;
@@ -1651,7 +1612,10 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
     if (splitters[s].getLevel() < lev)
       numAncSplitters++;
     else
-      numSplittersInBucket[rot_inv[splitters[s].getMortonIndex(lev)]]++;
+      numSplittersInBucket[
+          sfc.child_rank(sfc::ChildNum(
+              splitters[s]
+                  .getMortonIndex(lev)))]++;
   }
 
 
@@ -1663,17 +1627,14 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
   // Mark splitters in child buckets.
   if (lev < m_uiMaxDepth)
   {
-    for (ChildI child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < numChildren; ++child_sfc)
     {
       if (pointBuckets[child_sfc+1] > pointBuckets[child_sfc])
       {
-        ChildI child = rot_perm[child_sfc];   // Get cRot in case we recurse.
-        RotI cRot = orientLookup[child];      //
-
         if (numSplittersInBucket[child_sfc] > 0)
           getContainingBlocks(points, pointBuckets[child_sfc], pointBuckets[child_sfc+1],
               splitters, numPrevBlocks, numPrevBlocks + numSplittersInBucket[child_sfc],
-              lev+1, cRot,
+              lev+1, sfc.subcurve(child_sfc),
               numPrevBlocks, startSize, outBlocks);
         else
           util::markProcNeighbour(numPrevBlocks - 1, startSize, outBlocks);
@@ -1700,13 +1661,13 @@ SFC_Tree<T,D>:: getContainingBlocks(TreeNode<T,D> *points,
 
 
 /** @brief Successively computes 0th child in SFC order to given level. */
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>::firstDescendant(TreeNode<T,D> &parent,
+SFC_Tree<T,dim>::firstDescendant(TreeNode<T,dim> &parent,
                                RotI &pRot,
                                LevI descendantLev)
 {
-  constexpr unsigned int NUM_CHILDREN = 1u << D;
+  constexpr unsigned int NUM_CHILDREN = 1u << dim;
   constexpr unsigned int rotOffset = 2*NUM_CHILDREN;  // num columns in rotations[].
 
   while (parent.getLevel() < descendantLev)
@@ -1722,13 +1683,13 @@ SFC_Tree<T,D>::firstDescendant(TreeNode<T,D> &parent,
 
 
 /** @brief Successively computes (n-1)th child in SFC order to given level. */
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 void
-SFC_Tree<T,D>::lastDescendant(TreeNode<T,D> &parent,
+SFC_Tree<T,dim>::lastDescendant(TreeNode<T,dim> &parent,
                               RotI &pRot,
                               LevI descendantLev)
 {
-  constexpr unsigned int NUM_CHILDREN = 1u << D;
+  constexpr unsigned int NUM_CHILDREN = 1u << dim;
   constexpr unsigned int rotOffset = 2*NUM_CHILDREN;  // num columns in rotations[].
 
   while (parent.getLevel() < descendantLev)
@@ -1744,8 +1705,8 @@ SFC_Tree<T,D>::lastDescendant(TreeNode<T,D> &parent,
 
 
 // define static data member bucketStableAux
-template <typename T, unsigned int D>
-std::vector<char> SFC_Tree<T, D>::bucketStableAux;
+template <typename T, unsigned int dim>
+std::vector<char> SFC_Tree<T, dim>::bucketStableAux;
 
 
 // Template instantiations.

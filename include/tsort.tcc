@@ -13,28 +13,25 @@ namespace ot
 //
 // locTreeSort()
 //
-template<typename T, unsigned int D>
+template<typename T, unsigned int dim>
 template <class PointType>
 void
-SFC_Tree<T,D>:: locTreeSort(PointType *points,
+SFC_Tree<T,dim>:: locTreeSort(PointType *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
-                          RotI pRot)
+                          SFC_State<dim> sfc)
 {
   //// Recursive Depth-first, similar to Most Significant Digit First. ////
 
   if (end <= begin) { return; }
 
-  constexpr char numChildren = TreeNode<T,D>::numChildren;
-  constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
-
   // Reorder the buckets on sLev (current level).
-  std::array<RankI, numChildren+1> tempSplitters;
+  std::array<RankI, nchild(dim)+1> tempSplitters;
   RankI ancStart, ancEnd;
   /// SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters, ancStart, ancEnd);
   SFC_bucketing_impl<KeyFunIdentity_Pt<PointType>, PointType, PointType>(
-      points, begin, end, sLev, pRot,
+      points, begin, end, sLev, sfc,
       KeyFunIdentity_Pt<PointType>(), true, true,
       tempSplitters,
       ancStart, ancEnd);
@@ -43,23 +40,12 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
   // beginning, middles, and end of the range of children.
   // Ancestor splitters are is ancStart and ancEnd, not tempSplitters.
 
-  // Lookup tables to apply rotations.
-  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
-
   if (sLev < eLev)  // This means eLev is further from the root level than sLev.
   {
     // Recurse.
     // Use the splitters to specify ranges for the next level of recursion.
-    for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
+    for (char child_sfc = 0; child_sfc < nchild(dim); child_sfc++)
     {
-      // Columns of HILBERT_TABLE are indexed by the Morton rank.
-      // According to Dendro4 TreeNode.tcc:199 they are.
-      // (There are possibly inconsistencies in the old code...?
-      // Don't worry, we can regenerate the table later.)
-      ChildI child = rot_perm[child_sfc];
-      RotI cRot = orientLookup[child];
-
       if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
         continue;
 
@@ -68,14 +54,14 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
         locTreeSort(points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
-            cRot);
+            sfc.subcurve(sfc::SubIndex(child_sfc)));
       }
       else   // Special handling if we have to consider the domain boundary.
       {
         locTreeSort(points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
-            pRot);
+            sfc);
       }
     }
   }
@@ -85,14 +71,14 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
 //
 // locTreeSort() (with parallel companion array)
 //
-template<typename T, unsigned int D>
+template<typename T, unsigned int dim>
 template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
 void
-SFC_Tree<T,D>:: locTreeSort(PointType *points,
+SFC_Tree<T,dim>:: locTreeSort(PointType *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
-                          RotI pRot,
+                          SFC_State<dim> sfc,
                           KeyFun keyfun,
                           Companion* ... companions
                           )
@@ -101,14 +87,14 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
 
   if (end <= begin) { return; }
 
-  constexpr char numChildren = TreeNode<T,D>::numChildren;
+  constexpr char numChildren = nchild(dim);
   constexpr unsigned int rotOffset = 2*numChildren;  // num columns in rotations[].
 
   // Reorder the buckets on sLev (current level).
   std::array<RankI, numChildren+1> tempSplitters;
   RankI ancStart, ancEnd;
   SFC_bucketing_general<KeyFun, PointType, KeyType, useCompanions, Companion...>(
-      points, begin, end, sLev, pRot,
+      points, begin, end, sLev, sfc,
       keyfun, true, true,
       tempSplitters,
       ancStart, ancEnd,
@@ -119,23 +105,12 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
   // beginning, middles, and end of the range of children.
   // Ancestor splitters are is ancStart and ancEnd, not tempSplitters.
 
-  // Lookup tables to apply rotations.
-  const ChildI * const rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  const RotI * const orientLookup = &HILBERT_TABLE[pRot*numChildren];
-
   if (sLev < eLev)  // This means eLev is further from the root level than sLev.
   {
     // Recurse.
     // Use the splitters to specify ranges for the next level of recursion.
     for (char child_sfc = 0; child_sfc < numChildren; child_sfc++)
     {
-      // Columns of HILBERT_TABLE are indexed by the Morton rank.
-      // According to Dendro4 TreeNode.tcc:199 they are.
-      // (There are possibly inconsistencies in the old code...?
-      // Don't worry, we can regenerate the table later.)
-      ChildI child = rot_perm[child_sfc];
-      RotI cRot = orientLookup[child];
-
       if (tempSplitters[child_sfc+1] - tempSplitters[child_sfc+0] <= 1)
         continue;
 
@@ -145,7 +120,7 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
             (points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
-            cRot,                         // This branch uses cRot.
+            sfc.subcurve(sfc::SubIndex(child_sfc)),  // This branch uses cRot.
             keyfun,
             companions...
             );
@@ -156,7 +131,7 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
             (points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
-            pRot,                         // This branch uses pRot.
+            sfc,                         // This branch uses pRot.
             keyfun,
             companions...
             );
@@ -169,24 +144,24 @@ SFC_Tree<T,D>:: locTreeSort(PointType *points,
 //
 // SFC_bucketing_impl()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 template <class KeyFun, typename PointType, typename KeyType>
 void
-SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
+SFC_Tree<T,dim>:: SFC_bucketing_impl(PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
-                          RotI pRot,
+                          SFC_State<dim> sfc,
                           KeyFun keyfun,
                           bool separateAncestors,
                           bool ancestorsFirst,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          std::array<RankI, 1+nchild(dim)> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd)
 {
   // Call the "companion" implementation without giving or using companions.
-  SFC_Tree<T,D>::template SFC_bucketing_general<KeyFun, PointType, KeyType, false, int>(
+  SFC_Tree<T,dim>::template SFC_bucketing_general<KeyFun, PointType, KeyType, false, int>(
       points,
-      begin, end, lev, pRot,
+      begin, end, lev, sfc,
       keyfun, separateAncestors, ancestorsFirst,
       outSplitters, outAncStart, outAncEnd,
       (int*) nullptr
@@ -196,17 +171,17 @@ SFC_Tree<T,D>:: SFC_bucketing_impl(PointType *points,
 
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 template <class KeyFun, typename PointType, typename KeyType, typename CompanionHead, typename... CompanionTail>
-void SFC_Tree<T, D>::SFC_bucketStable(
+void SFC_Tree<T, dim>::SFC_bucketStable(
     const PointType *points,
     RankI begin,
     RankI end,
     LevI lev,
     KeyFun keyfun,
     bool separateAncestors,
-    const std::array<RankI, TreeNode<T,D>::numChildren+1> &offsets,     // last idx represents ancestors.
-    const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+    const std::array<RankI, nchild(dim)+1> &offsets,     // last idx represents ancestors.
+    const std::array<RankI, nchild(dim)+1> &bucketEnds,  // last idx represents ancestors.
     CompanionHead * companionHead,
     CompanionTail* ... companionTail)
 {
@@ -235,29 +210,29 @@ void SFC_Tree<T, D>::SFC_bucketStable(
 }
 
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 template <class KeyFun, typename PointType, typename KeyType, typename ValueType>
-void SFC_Tree<T, D>::SFC_bucketStable(
+void SFC_Tree<T, dim>::SFC_bucketStable(
     const PointType *points,
     RankI begin,
     RankI end,
     LevI lev,
     KeyFun keyfun,
     bool separateAncestors,
-    std::array<RankI, TreeNode<T,D>::numChildren+1> offsets,            // last idx represents ancestors.
-    const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+    std::array<RankI, nchild(dim)+1> offsets,            // last idx represents ancestors.
+    const std::array<RankI, nchild(dim)+1> &bucketEnds,  // last idx represents ancestors.
     ValueType *values)
 {
-  SFC_Tree<T, D>::bucketStableAux.resize(sizeof(ValueType) * (end - begin));
-  ValueType *auxv = reinterpret_cast<ValueType*>(SFC_Tree<T, D>::bucketStableAux.data());
+  SFC_Tree<T, dim>::bucketStableAux.resize(sizeof(ValueType) * (end - begin));
+  ValueType *auxv = reinterpret_cast<ValueType*>(SFC_Tree<T, dim>::bucketStableAux.data());
 
   // Bucket to aux[]
   for (size_t ii = begin; ii < end; ++ii)
   {
-    const TreeNode<T,D> key = keyfun(points[ii]);
+    const TreeNode<T,dim> key = keyfun(points[ii]);
     const unsigned char destBucket
         = (separateAncestors && key.getLevel() < lev)
-          ? TreeNode<T,D>::numChildren
+          ? nchild(dim)
           : key.getMortonIndex(lev);
     assert(offsets[destBucket] < bucketEnds[destBucket]);
     auxv[(offsets[destBucket]++) - begin] = values[ii];
@@ -274,53 +249,52 @@ void SFC_Tree<T, D>::SFC_bucketStable(
 //
 // SFC_bucketing_general()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
 void
-SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points,
+SFC_Tree<T,dim>:: SFC_bucketing_general(PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
-                          RotI pRot,
+                          SFC_State<dim> sfc,
                           KeyFun keyfun,
                           bool separateAncestors,
                           bool ancestorsFirst,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          std::array<RankI, 1+nchild(dim)> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd,
                           Companion* ... companions
                           )
 {
-  using TreeNode = TreeNode<T,D>;
-  constexpr char numChildren = TreeNode::numChildren;
+  using TreeNode = TreeNode<T,dim>;
+  constexpr char numChildren = nchild(dim);
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 
   // -- Reconstruct offsets and bucketEnds from returned splitters. -- //
   SFC_locateBuckets_impl<KeyFun,PointType,KeyType>(
-      points, begin, end, lev, pRot,
+      points, begin, end, lev, sfc,
       keyfun, separateAncestors, ancestorsFirst,
       outSplitters, outAncStart, outAncEnd);
 
   std::array<RankI, numChildren+1> offsets, bucketEnds;  // Last idx represents ancestors.
 
-  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
-  for (ChildI child_sfc = 0; child_sfc < numChildren; child_sfc++)
+  for (sfc::SubIndex child_sfc(0); child_sfc < nchild(dim); ++child_sfc)
   {
-    ChildI child = rot_perm[child_sfc];
-    offsets[child] = outSplitters[child_sfc];
-    bucketEnds[child] = outSplitters[child_sfc+1];
+    sfc::ChildNum child_m = sfc.child_num(child_sfc);
+    offsets[child_m] = outSplitters[child_sfc];
+    bucketEnds[child_m] = outSplitters[child_sfc+1];
   }
   offsets[numChildren] = outAncStart;
   bucketEnds[numChildren] = outAncEnd;
 
   // Perform bucketing using computed bucket offsets.
   if (useCompanions)
-    SFC_Tree<T, D>::SFC_bucketStable<KeyFun, PointType, KeyType>(
+    SFC_Tree<T, dim>::SFC_bucketStable<KeyFun, PointType, KeyType>(
         points, begin, end, lev, keyfun,
         separateAncestors,
         offsets, bucketEnds,
         companions...);
   // Wait to bucket the keys until all companions have been bucketed.
-  SFC_Tree<T, D>::SFC_bucketStable<KeyFun, PointType, KeyType>(
+  SFC_Tree<T, dim>::SFC_bucketStable<KeyFun, PointType, KeyType>(
       points, begin, end, lev, keyfun,
       separateAncestors,
       offsets, bucketEnds,
@@ -331,22 +305,22 @@ SFC_Tree<T,D>:: SFC_bucketing_general(PointType *points,
 //
 // SFC_locateBuckets_impl()
 //
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 template <class KeyFun, typename PointType, typename KeyType>
 void
-SFC_Tree<T,D>:: SFC_locateBuckets_impl(const PointType *points,
+SFC_Tree<T,dim>:: SFC_locateBuckets_impl(const PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
-                          RotI pRot,
+                          SFC_State<dim> sfc,
                           KeyFun keyfun,
                           bool separateAncestors,
                           bool ancestorsFirst,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          std::array<RankI, 1+nchild(dim)> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd)
 {
-  using TreeNode = TreeNode<T,D>;
-  constexpr char numChildren = TreeNode::numChildren;
+  using TreeNode = TreeNode<T,dim>;
+  constexpr char numChildren = nchild(dim);
   constexpr char rotOffset = 2*numChildren;  // num columns in rotations[].
 
   std::array<int, numChildren> counts;
@@ -368,11 +342,10 @@ SFC_Tree<T,D>:: SFC_locateBuckets_impl(const PointType *points,
   else
     accum = begin;                                   // Else first child is front.
 
-  const ChildI *rot_perm = &rotations[pRot*rotOffset + 0*numChildren];
   ChildI child_sfc = 0;
   for ( ; child_sfc < numChildren; child_sfc++)
   {
-    ChildI child = rot_perm[child_sfc];
+    ChildI child = sfc.child_num(sfc::SubIndex(child_sfc));
     outSplitters[child_sfc] = accum;
     /// offsets[child] = accum;           // Start of bucket. Moving marker.
     accum += counts[child];

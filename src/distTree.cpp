@@ -549,7 +549,7 @@ namespace ot
         for (const TreeNode<T, dim> &nbr : nbrBuffer)
           stratDisq[lp].push_back(nbr.getParent());
 
-        SFC_Tree<T, dim>::locTreeSort(&(*stratDisq[lp].begin()), 0, stratDisq[lp].size(), 1, lp, 0);
+        SFC_Tree<T, dim>::locTreeSort(&(*stratDisq[lp].begin()), 0, stratDisq[lp].size(), 1, lp, SFC_State<dim>::root());
         SFC_Tree<T, dim>::locRemoveDuplicates(stratDisq[lp]);
 
         num_disq += stratDisq[lp].size();

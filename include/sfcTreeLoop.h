@@ -274,11 +274,9 @@ namespace ot
           // Push incident child frames in reverse order.
           for (ChildI child_sfc_rev = 0; child_sfc_rev < NumChildren; child_sfc_rev++)
           {
-            const ChildI child_sfc = NumChildren-1 - child_sfc_rev;
-            const RotI pRot = parentFrame.m_pRot;
-            const ot::ChildI * const rot_perm = &rotations[pRot*2*NumChildren + 0*NumChildren];
-            const ot::ChildI child_m = rot_perm[child_sfc];
-            const ChildI cRot = HILBERT_TABLE[pRot*NumChildren + child_m];
+            const sfc::SubIndex child_sfc(NumChildren-1 - child_sfc_rev);
+            const SFC_State<dim> sfc = parentFrame.m_sfc;
+            const sfc::ChildNum child_m = sfc.child_num(child_sfc);
 
             if (parentFrame.m_extantChildren & (1u << child_m))
             {
@@ -290,7 +288,7 @@ namespace ot
                   &parentFrame,
                   child_sfc,
                   parentFrame.m_currentSubtree.getChildMorton(child_m),
-                  cRot);
+                  sfc.child_curve(child_m));
               parentFrame.m_numExtantChildren++;
             }
           }
@@ -449,7 +447,7 @@ namespace ot
 
         // Initializes m_rootTreeSplitters, preparing for pushing root frame, and later reset() operations.
         RankI ancStart, ancEnd;
-        SFC_Tree<C, dim>::SFC_locateBuckets(m_treePartPtr, 0, localTreeSz, 0+1, 0, m_rootTreeSplitters, ancStart, ancEnd); 
+        SFC_Tree<C, dim>::SFC_locateBuckets(m_treePartPtr, 0, localTreeSz, 0+1, SFC_State<dim>::root(), m_rootTreeSplitters, ancStart, ancEnd); 
 
         // This statement initializes references in the first stack frame
         // to refer to our member variables. If these member variables are
@@ -477,10 +475,10 @@ namespace ot
       const FrameT & getCurrentFrame() const { return m_stack.back(); }
       FrameT & getCurrentFrame() { return m_stack.back(); }
 
-      RotI getCurrentRotation() const
+      SFC_State<dim> getCurrentRotation() const
       {
         assert (m_stack.size() > 0);
-        return m_stack.back().m_pRot;
+        return m_stack.back().m_sfc;
       }
 
   };
@@ -515,7 +513,6 @@ namespace ot
           m_treePartPtr(treePartPtr),
           m_treeSplitters(rootTreeSplitters)
       {
-        m_pRot = 0;
         m_isPre = true;
         m_extantChildren = 0u;
         m_numExtantChildren = 0;
@@ -533,14 +530,14 @@ namespace ot
       }
 
       // Frame()
-      Frame(Frame *parentFrame, ChildI child, TreeNode<C,dim> &&subtree, RotI pRot)
+      Frame(Frame *parentFrame, ChildI child, TreeNode<C,dim> &&subtree, SFC_State<dim> sfc)
         : i(parentFrame->i.childData[child]),
           o(parentFrame->o.childData[child]),
           mySummaryHandle(parentFrame->childSummaries[child]),
           m_parentFrame(parentFrame),
           m_currentSubtree(subtree),
           m_sfcChildNum(child),
-          m_pRot(pRot)
+          m_sfc(sfc)
       {
         m_isPre = true;
         m_extantChildren = 0u;
@@ -553,7 +550,7 @@ namespace ot
                                             parentFrame->m_treeSplitters[child],
                                             parentFrame->m_treeSplitters[child+1],
                                             m_currentSubtree.getLevel()+1,
-                                            m_pRot,
+                                            m_sfc,
                                             m_treeSplitters,
                                             ancStart, ancEnd); 
 
@@ -653,12 +650,9 @@ namespace ot
       {
         ExtantCellFlagT extantFlag = 0u;
 
-        constexpr unsigned int rotOffset = 2*(1 << dim);  // num columns in rotations[].
-        const ChildI * const rot_perm = &rotations[m_pRot*rotOffset + 0];
-
-        for (ChildI child_sfc = 0; child_sfc < (1 << dim); ++child_sfc)
+        for (sfc::SubIndex child_sfc(0); child_sfc < nchild(dim); ++child_sfc)
         {
-          const ChildI child_m = rot_perm[child_sfc];
+          const sfc::ChildNum child_m = m_sfc.child_num(child_sfc);
           extantFlag |= (m_treeSplitters[child_sfc+1] > m_treeSplitters[child_sfc]) << child_m;
         }
 
@@ -676,7 +670,7 @@ namespace ot
       TreeNode<C,dim> m_currentSubtree;
       ChildI m_sfcChildNum;
       bool m_isPre;
-      RotI m_pRot;
+      SFC_State<dim> m_sfc;
       unsigned int m_numExtantChildren;
       ExtantCellFlagT m_extantChildren;
       const TreeNode<C, dim> * m_treePartPtr;
@@ -769,12 +763,12 @@ namespace ot
       IterateNodesToChildren(const TreeNode<unsigned int, dim> &subtree,
                              const TreeNode<unsigned int, dim> *nodesBegin,
                              size_t numParentNodes,
-                             RotI pRot,
+                             SFC_State<dim> sfc,
                              ExtantCellFlagT subtreeChildren = ((1u << (1u<<dim)) - 1)
                              )
         : m_subtree(subtree),
           m_nodesBegin(nodesBegin),
-          m_rot_inv(&rotations[pRot*2*(1u<<dim) + 1*(1u<<dim)]),
+          m_rot_inv(&rotations[sfc.state().get()*2*(1u<<dim) + 1*(1u<<dim)]),
           m_numParentNodes(numParentNodes),
           m_pNodeIdx(0),
           m_virtChildIdx(0),
@@ -818,7 +812,7 @@ namespace ot
 
       static IterateNodesToChildren end()
       {
-        return IterateNodesToChildren(TreeNode<unsigned int, dim>(), nullptr, 0, 0);
+        return IterateNodesToChildren(TreeNode<unsigned int, dim>(), nullptr, 0, SFC_State<dim>::root());
       }
 
       bool operator!=(const IterateNodesToChildren &other) const
