@@ -17,6 +17,9 @@
 
 #include "meshLoop.h"
 
+#include <vector>
+#include <set>
+
 
 namespace ot
 {
@@ -582,6 +585,41 @@ SFC_Tree<T,dim>:: locTreeConstruction(TreeNode<T,dim> *points,
   }
 
 }  // end function
+
+
+template <typename T, unsigned int dim>
+void SFC_Tree<T, dim>::locCompleteResolved(
+      const TreeNode<T, dim> *octants,
+      std::vector<TreeNode<T, dim>> &tree,
+      RankI begin, RankI end,
+      SFC_State<dim> sfc,
+      TreeNode<T,dim> pNode)
+{
+  if (end <= begin)  // No required resolution.
+  {
+    tree.push_back(pNode);
+    return;
+  }
+
+  // Find buckets on sLev (current level).
+  std::array<RankI, nchild(dim)+1> tempSplitters;
+  RankI ancStart, ancEnd;
+  SFC_locateBuckets(octants, begin, end, pNode.getLevel()+1, sfc, tempSplitters, ancStart, ancEnd);
+
+  if (ancStart < ancEnd)        // Reached required resolution.
+    tree.push_back(pNode);
+  else                          // Keep subdividing.
+    for (sfc::SubIndex child_sfc(0); child_sfc < nchild(dim); ++child_sfc)
+      locCompleteResolved(
+          octants, tree,
+          tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
+          sfc.subcurve(child_sfc),
+          pNode.getChildMorton(sfc.child_num(child_sfc)));
+}
+
+
+
+
 
 
 //
@@ -1545,6 +1583,94 @@ SFC_Tree<T,dim>:: distTreeBalancingWithFilter(
   distTreeConstructionWithFilter(decider, tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
 
   tree = newTree;
+}
+
+
+//
+// locMinimalBalanced()
+//
+template <typename T, unsigned int dim>
+void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
+{
+  using Oct = TreeNode<T, dim>;
+  using OctList = std::vector<Oct>;
+
+  if (tree.size() == 0)
+    return;
+
+  OctList resolution;
+
+  // Propagate neighbors by levels
+  {
+    std::set<int> levels;
+    std::map<int, OctList> octLevels;
+    for (const Oct &oct : tree)
+    {
+      levels.insert(oct.getLevel());
+      octLevels[oct.getLevel()].push_back(oct);
+    }
+
+    const int coarsest = *levels.begin(),  finest = *levels.rbegin();
+    for (int level = finest; level > coarsest; --level)
+    {
+      OctList &parentList = octLevels[level-1];
+      for (const Oct &oct : octLevels[level])
+        oct.getParent().appendAllNeighbours(parentList);
+      locTreeSort(parentList);
+      locRemoveDuplicates(parentList);
+    }
+
+    size_t sumSizes = 0;
+    for (const std::pair<int, OctList> &lev_list : octLevels)
+      sumSizes += lev_list.second.size();
+
+    resolution.reserve(sumSizes);
+    for (const std::pair<int, OctList> &lev_list : octLevels)
+      resolution.insert(resolution.end(), lev_list.second.begin(), lev_list.second.end());
+  }
+  locTreeSort(resolution);
+  locRemoveDuplicates(resolution);
+  locResolveTree(tree, resolution);
+}
+
+
+//
+// locResolveTree()
+//
+template <typename T, unsigned int dim>
+void SFC_Tree<T, dim>::locResolveTree(
+    std::vector<TreeNode<T, dim>> &tree,
+    const std::vector<TreeNode<T, dim>> &res)
+{
+  using Oct = TreeNode<T, dim>;
+  using OctList = std::vector<Oct>;
+  const OctList input = tree;
+  tree.clear();
+
+  MeshLoopInterface_Sorted<T, dim, true, true, false> overInput(input);
+  MeshLoopInterface_Sorted<T, dim, true, true, false> overRes(res);
+  while (!overInput.isFinished())
+  {
+    const MeshLoopFrame<T, dim> &frameInput = overInput.getTopConst();
+    const MeshLoopFrame<T, dim> &frameRes = overRes.getTopConst();
+    if (frameInput.isLeaf())
+    {
+      if (frameInput.getTotalCount() > 0)  // Ignore non-domain
+        locCompleteResolved(
+            &(*res.cbegin()),
+            tree,
+            frameRes.getBeginIdx(), frameRes.getEndIdx(),
+            SFC_State<dim>(sfc::RotIndex(frameInput.getPRot())),
+            input[frameInput.getBeginIdx()]);
+      overInput.next();
+      overRes.next();
+    }
+    else
+    {
+      overInput.step();
+      overRes.step();
+    }
+  }
 }
 
 

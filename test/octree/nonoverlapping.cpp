@@ -56,8 +56,15 @@ int main(int argc, char * argv[])
 
   // Test the octree.
   const OctList & octList = distTree.getTreePartFiltered();
-  ot::quadTreeToGnuplot(octList, fineLevel, "sphereSet", comm);
-  const size_t overlapSize = size(localOverlappingOct(octList, comm));
+
+  OctList balanceTest = octList;
+  ot::SFC_Tree<uint, DIM>::locMinimalBalanced(balanceTest);
+
+  ot::quadTreeToGnuplot(octList, fineLevel, "input", comm);
+  ot::quadTreeToGnuplot(balanceTest, fineLevel, "balanced", comm);
+
+  /// const size_t overlapSize = size(localOverlappingOct(octList, comm));
+  const size_t overlapSize = size(localOverlappingOct(balanceTest, comm));
   bool success = overlapSize == 0;
 
   // Report.

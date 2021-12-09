@@ -498,6 +498,14 @@ struct SFC_Tree
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
+  static void locCompleteResolved(
+      const TreeNode<T, dim> *octants,
+      std::vector<TreeNode<T, dim>> &tree,  // expects empty
+      RankI begin, RankI end,
+      SFC_State<dim> sfc,
+      TreeNode<T,dim> pNode);
+
+
   static void locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
                                              TreeNode<T,dim> *points,
                                              std::vector<TreeNode<T,dim>> &tree,
@@ -623,6 +631,13 @@ struct SFC_Tree
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm);
+
+  /** Maintains effective domain, splitting octants that violate 2:1-balance. */
+  static void locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree);
+
+  /** Maintains effective domain, splitting octants larger than res octants. */
+  static void locResolveTree(std::vector<TreeNode<T, dim>> &tree,
+                             const std::vector<TreeNode<T, dim>> &res);
 
   // -------------------------------------------------------------
 
