@@ -51,12 +51,12 @@ int main(int argc, char * argv[])
   const int fineLevel = 7;
   const double sfc_tol = 0.1;
   ot::DistTree<uint, DIM> distTree =
-      ot::DistTree<uint, DIM>::constructSubdomainDistTree(
+      ot::DistTree<uint, DIM>::minimalSubdomainDistTree(
           fineLevel, sphereSet, comm, sfc_tol);
 
   // Test the octree.
   const OctList & octList = distTree.getTreePartFiltered();
-  /// ot::quadTreeToGnuplot(octList, fineLevel, "sphereSet", comm);
+  ot::quadTreeToGnuplot(octList, fineLevel, "sphereSet", comm);
   const size_t overlapSize = size(localOverlappingOct(octList, comm));
   bool success = overlapSize == 0;
 

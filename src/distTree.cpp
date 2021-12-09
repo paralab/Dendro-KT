@@ -1014,6 +1014,77 @@ namespace ot
 
 
 
+  template <typename T, unsigned int dim>
+  DistTree<T, dim>  DistTree<T, dim>::minimalSubdomainDistTree(
+          unsigned int finestLevel,
+          const ::ibm::DomainDecider &domainDecider,
+          MPI_Comm comm,
+          double sfc_tol)
+  {
+    int rProc, nProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+    using Oct = TreeNode<T, dim>;
+    using OctList = std::vector<Oct>;
+
+    /// std::vector<TreeNode<T, dim>> treePart;
+    OctList treeFinal, treeIntercepted, finerIntercepted;
+    OctList octDescendants;
+
+    if (rProc == 0)
+      treeIntercepted.emplace_back(); // Root
+
+    unsigned int level = 0;
+    const unsigned int jump = 3;
+
+    while (level < finestLevel)
+    {
+      // Extend deeper.
+      finerIntercepted.clear();
+      unsigned int nextLevel = fmin(finestLevel, level + jump);
+      for (const Oct &tn : treeIntercepted)
+      {
+        octDescendants.clear();
+        addMortonDescendants(nextLevel, tn, octDescendants);
+
+        double phycd[dim];
+        double physz;
+        for (const Oct &descendant : octDescendants)
+        {
+          treeNode2Physical(descendant, phycd, physz);
+          const ibm::Partition partition = domainDecider(phycd, physz);
+
+          if (partition == ibm::OUT)
+            treeFinal.push_back(descendant);
+          else if (partition == ibm::INTERCEPTED)
+            finerIntercepted.push_back(descendant);
+        }
+      }
+
+      // Re-partition.
+      SFC_Tree<T, dim>::distTreeSort(finerIntercepted, sfc_tol, comm);
+
+      std::swap(treeIntercepted, finerIntercepted);
+      level = nextLevel;
+    }
+
+    // Union, re-partition.
+    treeFinal.insert(treeFinal.end(), treeIntercepted.begin(), treeIntercepted.end());
+    treeIntercepted.clear();
+    treeIntercepted.shrink_to_fit();
+    SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
+    //XXX buggy until add 2:1-balancing here
+    SFC_Tree<T, dim>::distCoalesceSiblings(treeFinal, comm);
+
+    DistTree<T, dim> dtree(treeFinal, comm);
+    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+
+    return dtree;
+  }
+
+
+
   // Explicit instantiations
   template class DistTree<unsigned int, 2u>;
   template class DistTree<unsigned int, 3u>;
