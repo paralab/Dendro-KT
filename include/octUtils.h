@@ -32,9 +32,9 @@ namespace ot
      * @param[in] numPoints: number of treeNodes need to be generated.
      * */
     template <typename T, unsigned int dim, bool useRandom=true>
-    inline std::vector<ot::TreeNode<T,dim>> getPts(unsigned int numPoints, unsigned int sLev = m_uiMaxDepth, unsigned int eLev = m_uiMaxDepth)
+    inline std::vector<TreeNode<T,dim>> getPts(unsigned int numPoints, unsigned int sLev = m_uiMaxDepth, unsigned int eLev = m_uiMaxDepth)
     {
-        std::vector<ot::TreeNode<T,dim>> points;
+        std::vector<TreeNode<T,dim>> points;
         std::array<T,dim> uiCoords;
 
         //const T maxCoord = (1u << MAX_LEVEL) - 1;
@@ -65,8 +65,8 @@ namespace ot
                 dc = (dc < coordClampLow ? coordClampLow : dc > coordClampHi ? coordClampHi : dc);
                 u = (T) dc;
             }
-            //ot::TreeNode<T,dim> tn(uiCoords, leafLevel);
-            ot::TreeNode<T,dim> tn(uiCoords, distLevel(gen));
+            //TreeNode<T,dim> tn(uiCoords, leafLevel);
+            TreeNode<T,dim> tn(uiCoords, distLevel(gen));
             points.push_back(tn);
         }
 
@@ -78,14 +78,14 @@ namespace ot
      * @brief  Separate a list of TreeNodes into separate vectors by level.
      */
     template <typename T, unsigned int dim>
-    inline std::vector<std::vector<ot::TreeNode<T,dim>>>
-        stratifyTree(const std::vector<ot::TreeNode<T,dim>> &tree)
+    inline std::vector<std::vector<TreeNode<T,dim>>>
+        stratifyTree(const std::vector<TreeNode<T,dim>> &tree)
     {
-      std::vector<std::vector<ot::TreeNode<T,dim>>> treeLevels;
+      std::vector<std::vector<TreeNode<T,dim>>> treeLevels;
 
       treeLevels.resize(m_uiMaxDepth + 1);
 
-      for (ot::TreeNode<T,dim> tn : tree)
+      for (TreeNode<T,dim> tn : tree)
         treeLevels[tn.getLevel()].push_back(tn);
 
       return treeLevels;
@@ -102,7 +102,7 @@ namespace ot
      * @param[in] tolernace: tolerance value for slice extraction.
      * */
      template<typename T, unsigned int dim>
-     void sliceKTree(const ot::TreeNode<T,dim> * in,std::vector<ot::TreeNode<T,dim>> & out,unsigned int numNodes, unsigned int sDim, T sliceVal)
+     void sliceKTree(const TreeNode<T,dim> * in,std::vector<TreeNode<T,dim>> & out,unsigned int numNodes, unsigned int sDim, T sliceVal)
      {
 
          out.clear();
@@ -121,10 +121,10 @@ namespace ot
       * @pre template parameter dim must be greater than 1.
       */
      template <typename T, unsigned int dim>
-     void projectSliceKTree(const ot::TreeNode<T,dim> *in, std::vector<ot::TreeNode<T, dim-1>> &out,
+     void projectSliceKTree(const TreeNode<T,dim> *in, std::vector<TreeNode<T, dim-1>> &out,
          unsigned int numNodes, unsigned int sliceDim, T sliceVal)
      {
-       std::vector<ot::TreeNode<T,dim>> sliceVector;
+       std::vector<TreeNode<T,dim>> sliceVector;
        sliceKTree(in, sliceVector, numNodes, sliceDim, sliceVal);
 
        // Lower the dimension.
@@ -138,8 +138,8 @@ namespace ot
        }
 
        out.clear();
-       ot::TreeNode<T, dim-1> tempNode;
-       for (const ot::TreeNode<T,dim> &sliceNode : sliceVector)
+       TreeNode<T, dim-1> tempNode;
+       for (const TreeNode<T,dim> &sliceNode : sliceVector)
        {
          permuteDims<T, dim, dim-1>(dim-1, sliceNode, selectDimSrc, tempNode, selectDimDst);
          out.push_back(tempNode);
@@ -257,7 +257,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,
                     const unsigned int numVars,
                     const unsigned int* varIndex,
                     const unsigned int numInterpVars,
-                    std::vector<ot::TreeNode<T,dim>> & nodes,
+                    std::vector<TreeNode<T,dim>> & nodes,
                     unsigned int maxDepth,
                     const double & interp_tol,
                     const double sfc_tol,
@@ -266,7 +266,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,
 
 
 template <typename DofT, typename TNT, unsigned int dim>
-std::vector<ot::TreeNode<TNT, dim>> function2BalancedOctree(
+std::vector<TreeNode<TNT, dim>> function2BalancedOctree(
     std::function<void(const DofT *, DofT *)> func,
     const unsigned int dofSz,
     const unsigned int maxDepth,
@@ -280,7 +280,7 @@ std::vector<ot::TreeNode<TNT, dim>> function2BalancedOctree(
     varIndex[ii] = ii;
 
   // Get a complete tree sufficiently granular to represent func with accuracy interp_tol.
-  std::vector<ot::TreeNode<TNT, dim>> completeTree;
+  std::vector<TreeNode<TNT, dim>> completeTree;
   function2Octree<TNT, dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, maxDepth, interp_tol, sfc_tol, order, comm);
 
   return completeTree;
@@ -288,7 +288,7 @@ std::vector<ot::TreeNode<TNT, dim>> function2BalancedOctree(
 
 
 template <typename T, unsigned int dim>
-void function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<ot::TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm )
+void function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm )
 {
   int size, rank;
   MPI_Comm_size(comm, &size);
@@ -298,7 +298,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
 
   // "nodes" meaning TreeNodes here.
   nodes.clear();
-  std::vector<ot::TreeNode<T,dim>> nodes_new;
+  std::vector<TreeNode<T,dim>> nodes_new;
 
   unsigned int depth = 1;
   unsigned int num_intersected=1;
@@ -311,7 +311,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
   double* dist_child_ip=new double[numVars*nodesPerElement];
 
   // "nodes" meaning element nodes here.
-  std::vector<ot::TreeNode<T,dim>> tmpENodes(nodesPerElement);
+  std::vector<TreeNode<T,dim>> tmpENodes(nodesPerElement);
   tmpENodes.clear();
   double ptCoords[dim];
 
@@ -324,7 +324,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
   if (!rank) {
     // root does the initial refinement
     //std::cout<<"initial ref:"<<std::endl;
-    ot::TreeNode<T,dim> root;
+    TreeNode<T,dim> root;
     for (unsigned int cnum = 0; cnum < NUM_CHILDREN; cnum++)
       nodes.push_back(root.getChildMorton(cnum));
 
@@ -343,7 +343,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
 
         // Evaluate fx() on positions of (e)nodes of elem.
         tmpENodes.clear();
-        ot::Element<T,dim>(elem).appendNodes(elementOrder, tmpENodes);
+        Element<T,dim>(elem).appendNodes(elementOrder, tmpENodes);
         for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
         {
           for (int d = 0; d < dim; d++)
@@ -357,11 +357,11 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
         // Interpolate each parent->child and check if within error tolerance.
         for(unsigned int cnum=0;cnum<NUM_CHILDREN;cnum++)
         {
-          ot::TreeNode<T,dim> elemChild = elem.getChildMorton(cnum);
+          TreeNode<T,dim> elemChild = elem.getChildMorton(cnum);
 
           // Evaluate fx() on positions of (e)nodes of elemChild.
           tmpENodes.clear();
-          ot::Element<T,dim>(elemChild).appendNodes(elementOrder, tmpENodes);
+          Element<T,dim>(elemChild).appendNodes(elementOrder, tmpENodes);
           for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
           {
             for (int d = 0; d < dim; d++)
@@ -407,7 +407,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
 
   // TODO do proper load balancing.
   numOcts = totalNumOcts/size + (rank < totalNumOcts%size);
-  par::scatterValues<ot::TreeNode<T,dim>>(nodes, nodes_new, numOcts, comm);
+  par::scatterValues<TreeNode<T,dim>>(nodes, nodes_new, numOcts, comm);
   std::swap(nodes, nodes_new);
   nodes_new.clear();
 
@@ -416,7 +416,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
   par::Mpi_Bcast(&depth, 1, 0, comm);
   num_intersected=1;
 
-  ot::TreeNode<T,dim> root;
+  TreeNode<T,dim> root;
 
   while ( (num_intersected > 0 ) && (depth < maxDepth) ) {
     if(!rank)std::cout << "Depth: " << depth << " n = " << nodes.size() << std::endl;
@@ -431,7 +431,7 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
 
       // Evaluate fx() on positions of (e)nodes of elem.
       tmpENodes.clear();
-      ot::Element<T,dim>(elem).appendNodes(elementOrder, tmpENodes);
+      Element<T,dim>(elem).appendNodes(elementOrder, tmpENodes);
       for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
       {
         for (int d = 0; d < dim; d++)
@@ -447,11 +447,11 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
       // Interpolate each parent->child and check if within error tolerance.
       for(unsigned int cnum=0;cnum<NUM_CHILDREN;cnum++)
       {
-        ot::TreeNode<T,dim> elemChild = elem.getChildMorton(cnum);
+        TreeNode<T,dim> elemChild = elem.getChildMorton(cnum);
 
         // Evaluate fx() on positions of (e)nodes of elemChild.
         tmpENodes.clear();
-        ot::Element<T,dim>(elemChild).appendNodes(elementOrder, tmpENodes);
+        Element<T,dim>(elemChild).appendNodes(elementOrder, tmpENodes);
         for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
         {
           for (int d = 0; d < dim; d++)
@@ -493,11 +493,11 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
     // Dendro-KT distTreeSort() doesn't remove duplicates automatically;
     // however, distTreeConstruction() does. Calling distTreeConstruction()
     // on an already complete tree should do exactly what we want.
-    ot::SFC_Tree<T,dim>::distRemoveDuplicates(nodes, sfc_tol, false, comm);
+    SFC_Tree<T,dim>::distRemoveDuplicates(nodes, sfc_tol, false, comm);
 
     // This is buggy because distTreeConstruction doesn't respect maxPtsPerRegion,
     // because distTreePartition() doesn't respect noSplitThresh.
-    /// ot::SFC_Tree<T,dim>::distTreeConstruction(nodes, nodes_new, 1, sfc_tol, comm);
+    /// SFC_Tree<T,dim>::distTreeConstruction(nodes, nodes_new, 1, sfc_tol, comm);
 
     par::Mpi_Allreduce(&num_intersected,&num_intersected_g,1,MPI_MAX,comm);
     num_intersected=num_intersected_g;
@@ -512,14 +512,14 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
 
 
 template <typename T, unsigned int dim>
-std::ostream & printNodeCoords(const ot::TreeNode<T, dim> *coordBegin,
-                          const ot::TreeNode<T, dim> *coordEnd,
+std::ostream & printNodeCoords(const TreeNode<T, dim> *coordBegin,
+                          const TreeNode<T, dim> *coordEnd,
                           unsigned int order = 1,
                           std::ostream & out = std::cout)
 {
   using NodeT = std::array<T, dim>;
 
-  ot::TreeNode<T, dim> subdomain;
+  TreeNode<T, dim> subdomain;
   unsigned int deepestLev = 0;
   const unsigned int numNodes = coordEnd - coordBegin;
   using YXV = std::pair<std::pair<T,T>, NodeT>;
@@ -538,7 +538,7 @@ std::ostream & printNodeCoords(const ot::TreeNode<T, dim> *coordBegin,
     zipped.push_back(YXV{{top - coordBegin[ii].getX(1), coordBegin[ii].getX(0)},
                          {coordBegin[ii].getX(0), coordBegin[ii].getX(1)} });
   }
-  subdomain = ot::TreeNode<T, dim>();
+  subdomain = TreeNode<T, dim>();
   const T origin[2] = {subdomain.getX(0), top - subdomain.getX(1)};
 
   // Increase resolution for order.
@@ -604,13 +604,13 @@ std::ostream & printNodeCoords(const ot::TreeNode<T, dim> *coordBegin,
 
   // TODO add parameter for ndofs
 template <typename T, unsigned int dim, typename NodeT>
-std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
-                          const ot::TreeNode<T, dim> *coordEnd,
+std::ostream & printNodes(const TreeNode<T, dim> *coordBegin,
+                          const TreeNode<T, dim> *coordEnd,
                           const NodeT *valBegin,
                           unsigned int order = 1,
                           std::ostream & out = std::cout)
 {
-  ot::TreeNode<T, dim> subdomain;
+  TreeNode<T, dim> subdomain;
   unsigned int deepestLev = 0;
   const unsigned int numNodes = coordEnd - coordBegin;
   using YXV = std::pair<std::pair<T,T>, NodeT>;
@@ -628,7 +628,7 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
 
     zipped.push_back(YXV{{top - coordBegin[ii].getX(1), coordBegin[ii].getX(0)}, valBegin[ii]});
   }
-  subdomain = ot::TreeNode<T, dim>();
+  subdomain = TreeNode<T, dim>();
   const T origin[2] = {subdomain.getX(0), top - subdomain.getX(1)};
 
   // Increase resolution for order.
@@ -691,14 +691,14 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
 
 
 template <typename T, unsigned int dim, typename NodeT>
-std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
-                          const ot::TreeNode<T, dim> *coordEnd,
+std::ostream & printNodes(const TreeNode<T, dim> *coordBegin,
+                          const TreeNode<T, dim> *coordEnd,
                           const NodeT *valBegin,
                           const char **colors,
                           unsigned int order = 1,
                           std::ostream & out = std::cout)
 {
-  ot::TreeNode<T, dim> subdomain;
+  TreeNode<T, dim> subdomain;
   unsigned int deepestLev = 0;
   const unsigned int numNodes = coordEnd - coordBegin;
   using YXVC = std::pair<std::pair<T,T>, std::pair<NodeT, const char *>>;
@@ -716,7 +716,7 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
 
     zipped.push_back(YXVC{{top - coordBegin[ii].getX(1), coordBegin[ii].getX(0)}, {valBegin[ii], colors[ii]}});
   }
-  subdomain = ot::TreeNode<T, dim>();
+  subdomain = TreeNode<T, dim>();
   const T origin[2] = {subdomain.getX(0), top - subdomain.getX(1)};
 
   // Increase resolution for order.
@@ -801,7 +801,7 @@ std::ostream & printNodes(const ot::TreeNode<T, dim> *coordBegin,
  * @returns the global number of ranks holding broken siblings.
  */
 template <typename T, unsigned int dim>
-int checkSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm nonempty_comm)
+int checkSiblingLeafsTogether(std::vector<TreeNode<T, dim>> &tree, MPI_Comm nonempty_comm)
 {
   bool isSender, isReceiver;
   RankI srcRankFirst, srcRankLast, destRank;
@@ -824,7 +824,7 @@ int checkSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm 
 
 
 template <typename T, unsigned int dim>
-void checkSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree,
+void checkSiblingLeafsTogether(std::vector<TreeNode<T, dim>> &tree,
                                MPI_Comm nonemptys,
                                bool &isReceiver,
                                bool &isSender,
@@ -998,7 +998,7 @@ void checkSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree,
 
 
 template <typename T, unsigned int dim>
-void keepSiblingLeafsTogether(std::vector<ot::TreeNode<T, dim>> &tree, MPI_Comm comm)
+void keepSiblingLeafsTogether(std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
 {
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
