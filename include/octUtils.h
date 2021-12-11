@@ -1106,19 +1106,24 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
   std::stringstream filename;
   filename << fileprefix << "_" << rProc << ".txt";
 
-  const char * const palette[8] = {"#E41A1C",
-                                   "#377EB8",
-                                   "#4DAF4A",
-                                   "#984EA3",
-                                   "#FF7F00",
-                                   "#FFFF33",
-                                   "#A65628",
-                                   "#F781BF"};
+  const char * const palette[8] = {"E41A1C",
+                                   "377EB8",
+                                   "4DAF4A",
+                                   "984EA3",
+                                   "FF7F00",
+                                   "FFFF33",
+                                   "A65628",
+                                   "F781BF"};
 
   std::ofstream treePartFile(filename.str());
   elemIndex++;
+
+  const double maxPadding = 0.00;
+  const bool alpha = "FF";
+
   for (const TreeNode<T, dim> quad : treePart)
   {
+    const double pad = maxPadding * (1u << (fineLev - quad.getLevel()));
     const T minX = quad.minX(0) >> (m_uiMaxDepth - fineLev);
     const T minY = quad.minX(1) >> (m_uiMaxDepth - fineLev);
     const T maxX = quad.maxX(0) >> (m_uiMaxDepth - fineLev);
@@ -1128,10 +1133,10 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
     const double centerY = 0.5 * (double(minY) + double(maxY));
 
     treePartFile << "set object " << elemIndex << " rect from "
-                 << minX << "," << minY << " to "
-                 << maxX << "," << maxY
+                 << minX+pad << "," << minY+pad << " to "
+                 << maxX-pad << "," << maxY-pad
                  << " back"
-                 << " fillcolor rgb \"" << palette[rProc] << "\""
+                 << " fillcolor rgb \"#" << alpha << palette[rProc] << "\""
                  << " linewidth 1"
                  << "\n";
 
