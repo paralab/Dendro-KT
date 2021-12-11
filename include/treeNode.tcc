@@ -329,7 +329,7 @@ inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &othe
   {
     unsigned int diff = other.m_uiCoords[d] ^ m_uiCoords[d];
     // Using log2 gives the index of the highest '1'. We want one above that.
-    unsigned int depth = m_uiMaxDepth - log2((diff << 1) | 1u);
+    unsigned int depth = m_uiMaxDepth - int(log2((diff << 1) | 1u));
     depth_rt = (depth < depth_rt ? depth : depth_rt);  // Minimum of depths.
   }
   return depth_rt;

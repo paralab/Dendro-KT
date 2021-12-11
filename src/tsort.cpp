@@ -249,13 +249,13 @@ std::pair<size_t, size_t> SFC_Tree<T, dim>::tsearch_equal_range(
   } range = {{end, end}, false, false};
 
   using Oct = TreeNode<T, dim>;
-  const auto level = [](const Oct &oct) -> bool { return oct.getLevel(); };
+  const auto level = [](const Oct &oct) -> LevI { return oct.getLevel(); };
   const auto cnum = [](const Oct &oct, LevI l) -> sfc::ChildNum
       { return sfc::ChildNum(oct.getMortonIndex(l)); };
   const auto coarserLevel = [](const Oct &a, const Oct &b) -> LevI
       { return fminf(a.getLevel(), b.getLevel()); };
   const auto shareSubtree = [](LevI l, const Oct &a, const Oct &b) -> bool
-      { return a.getCommonAncestorDepth(b) >= l; };
+      { return l <= a.getCommonAncestorDepth(b); };
 
   const Oct * &x = sortedOcts;  // alias for brevity
   LevI lp = sLev - 1;
@@ -279,7 +279,7 @@ std::pair<size_t, size_t> SFC_Tree<T, dim>::tsearch_equal_range(
         ++lp;
       }
 
-      if (lp >= lBoth)
+      if (lp == lBoth)
         if (level(x[i]) == level(key))
           range.equal(i),  ++i;
         else if (level(x[i]) > level(key))
