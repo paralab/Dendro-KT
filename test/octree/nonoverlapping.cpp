@@ -60,8 +60,12 @@ int main(int argc, char * argv[])
   OctList balanceTest = octList;
   ot::SFC_Tree<uint, DIM>::locMinimalBalanced(balanceTest);
 
+  OctList unstable = ot::SFC_Tree<uint, DIM>::unstableOctants(
+      balanceTest, (commRank > 0), (commRank < commSize-1));
+
   ot::quadTreeToGnuplot(octList, fineLevel, "input", comm);
   ot::quadTreeToGnuplot(balanceTest, fineLevel, "balanced", comm);
+  ot::quadTreeToGnuplot(unstable, fineLevel, "unstable", comm);
 
   /// const size_t overlapSize = size(localOverlappingOct(octList, comm));
   const size_t overlapSize = size(localOverlappingOct(balanceTest, comm));

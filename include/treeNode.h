@@ -163,7 +163,7 @@ namespace ot {
       void setMortonIndex(unsigned char child);
 
       /**@brief Returns the greatest depth at which the other node shares an ancestor.*/
-      unsigned int getCommonAncestorDepth(const TreeNode &other);
+      unsigned int getCommonAncestorDepth(const TreeNode &other) const;
 
       /**@brief set the octant flag*/
       int setFlag(unsigned int w);

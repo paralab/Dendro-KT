@@ -399,6 +399,38 @@ struct SFC_Tree
                                 RankI &outAncEnd);
 
 
+  // -----
+
+  /** Return index to first element _not less than_ key. */
+  static size_t tsearch_lower_bound(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const TreeNode<T, dim> &key);
+
+  /** Return index to first element _greater than_ key. */
+  static size_t tsearch_upper_bound(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const TreeNode<T, dim> &key);
+
+  /** Find first geq and first greater. */
+  static std::pair<size_t, size_t> tsearch_equal_range(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const TreeNode<T, dim> &key);
+
+  /** Find first geq and first greater. */
+  // Only handles octants, not boundary points.
+  static std::pair<size_t, size_t> tsearch_equal_range(
+      const TreeNode<T, dim> *sortedOcts,
+      const TreeNode<T, dim> &key,
+      size_t begin, size_t end,
+      LevI sLev,
+      SFC_State<dim> sfc);
+
+
+  // -----
+
+
+
+
   // Notes:
   //   - points will be replaced/resized with globally sorted data.
   static void distTreeSort(std::vector<TreeNode<T,dim>> &points,
@@ -638,6 +670,14 @@ struct SFC_Tree
   /** Maintains effective domain, splitting octants larger than res octants. */
   static void locResolveTree(std::vector<TreeNode<T, dim>> &tree,
                              const std::vector<TreeNode<T, dim>> &res);
+
+  /** Assumes sorted balanced tree.
+   * Returns octants whose potential neighbors are not strictly contained
+   * in the SFC domain spanned by {first..last}. */
+  static std::vector<TreeNode<T, dim>> unstableOctants(
+      const std::vector<TreeNode<T, dim>> &tree,
+      const bool dangerLeft = true,     // mark unstable if go outside first
+      const bool dangerRight = true);   // mark unstable if go outside last
 
   // -------------------------------------------------------------
 

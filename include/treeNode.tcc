@@ -321,7 +321,7 @@ inline void TreeNode<T,dim>::setMortonIndex(unsigned char child)
 }
 
 template <typename T, unsigned int dim>
-inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &other)
+inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &other) const
 {
   unsigned int depth_rt = m_uiMaxDepth;
   #pragma unroll(dim)

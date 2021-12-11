@@ -164,6 +164,141 @@ SFC_Tree<T,dim>::SFC_locateBuckets(const TreeNode<T,dim> *points,
 }
 
 
+//
+// tsearch_lower_bound()
+//
+template <typename T, unsigned int dim>
+size_t SFC_Tree<T, dim>::tsearch_lower_bound(
+    const std::vector<TreeNode<T, dim>> &sortedOcts,
+    const TreeNode<T, dim> &key)
+{
+  return tsearch_equal_range(
+      &(*sortedOcts.begin()),
+      key,
+      0, sortedOcts.size(),
+      1, SFC_State<dim>::root()).first;
+}
+
+
+//
+// tsearch_upper_bound()
+//
+template <typename T, unsigned int dim>
+size_t SFC_Tree<T, dim>::tsearch_upper_bound(
+    const std::vector<TreeNode<T, dim>> &sortedOcts,
+    const TreeNode<T, dim> &key)
+{
+  return tsearch_equal_range(
+      &(*sortedOcts.begin()),
+      key,
+      0, sortedOcts.size(),
+      1, SFC_State<dim>::root()).second;
+}
+
+
+//
+// tsearch_equal_range()
+//
+template <typename T, unsigned int dim>
+std::pair<size_t, size_t> SFC_Tree<T, dim>::tsearch_equal_range(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const TreeNode<T, dim> &key)
+{
+  return tsearch_equal_range(
+      &(*sortedOcts.begin()),
+      key,
+      0, sortedOcts.size(),
+      1, SFC_State<dim>::root());
+}
+
+
+//
+// tsearch_equal_range()  (implementation for all 3 bounds)
+//
+template <typename T, unsigned int dim>
+std::pair<size_t, size_t> SFC_Tree<T, dim>::tsearch_equal_range(
+      const TreeNode<T, dim> *sortedOcts,
+      const TreeNode<T, dim> &key,
+      size_t begin, size_t end,
+      LevI sLev,
+      SFC_State<dim> sfc)
+{
+  // Keep track of both first greater_or_equal and first greater.
+  // If greater is found before equal, then it is also greater_or_equal.
+  // The search is over when both have been found, so filled()==true.
+  struct ERange {
+    bool filled() const { return m_found_geq && m_found_greater; }
+    std::pair<size_t, size_t> const pair() { return {m_geq_g[0], m_geq_g[1]}; }
+
+    void equal(const size_t idx_eq) {
+      if (m_found_geq) return;
+      m_geq_g[0] = idx_eq;
+      m_found_geq = true;
+    }
+
+    void greater(const size_t idx_greater) {
+      if (m_found_greater) return;
+      m_geq_g[m_found_geq] = idx_greater;
+      m_found_geq = true;
+      m_geq_g[1] = idx_greater;
+      m_found_greater = true;
+    }
+
+    size_t m_geq_g[2];  bool m_found_geq;  bool m_found_greater;
+
+  } range = {{end, end}, false, false};
+
+  using Oct = TreeNode<T, dim>;
+  const auto level = [](const Oct &oct) -> bool { return oct.getLevel(); };
+  const auto cnum = [](const Oct &oct, LevI l) -> sfc::ChildNum
+      { return sfc::ChildNum(oct.getMortonIndex(l)); };
+  const auto coarserLevel = [](const Oct &a, const Oct &b) -> LevI
+      { return fminf(a.getLevel(), b.getLevel()); };
+  const auto shareSubtree = [](LevI l, const Oct &a, const Oct &b) -> bool
+      { return a.getCommonAncestorDepth(b) >= l; };
+
+  const Oct * &x = sortedOcts;  // alias for brevity
+  LevI lp = sLev - 1;
+  size_t i = begin;
+
+  // Pre:  forall(j < i), x[j] < key;
+  //       lp <= level(key);
+  //       lp == 0  or  subtree{lp}(x[i-1]) == subtree{lp}(key)
+  while (i < end && !range.filled())
+  {
+    if (level(x[i]) < lp or !shareSubtree(lp, x[i], key))
+      range.greater(i);
+    else
+    {
+      // Pre: lp <= level(x[i]), level(key);
+      //      subtree{lp}(x[i]) == subtree{lp}(key)
+      const LevI lBoth = coarserLevel(x[i], key);
+      while (lp < lBoth and shareSubtree(lp + 1, x[i], key))
+      {
+        sfc = sfc.child_curve(cnum(key, lp + 1));
+        ++lp;
+      }
+
+      if (lp >= lBoth)
+        if (level(x[i]) == level(key))
+          range.equal(i),  ++i;
+        else if (level(x[i]) > level(key))
+          range.greater(i);
+        else
+          ++i;
+      else
+        if (sfc.child_rank(cnum(x[i], lp + 1))
+            > sfc.child_rank(cnum(key, lp + 1)))
+          range.greater(i);
+        else
+          ++i;
+    }
+  }
+
+  return range.pair();
+}
+
+
 
 template<typename T, unsigned int dim>
 void
@@ -1618,6 +1753,14 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
         oct.getParent().appendAllNeighbours(parentList);
       locTreeSort(parentList);
       locRemoveDuplicates(parentList);
+
+      // future:
+      //   separate parentGiven and parentAux
+      //     (childGiven, childAux |--> parentAux)
+      //   and trim parentAux: delete an octant in parentAux if
+      //     - overlaps with an octant in parentGiven, or
+      //     - is not a descendant of a leaf in the given tree.
+      //       (might need some kind of fast HashTree search.)
     }
 
     size_t sumSizes = 0;
@@ -1672,6 +1815,92 @@ void SFC_Tree<T, dim>::locResolveTree(
     }
   }
 }
+
+
+//
+// unstableOctants()
+//
+template <typename T, unsigned int dim>
+std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
+    const std::vector<TreeNode<T, dim>> &tree,
+    const bool dangerLeft,
+    const bool dangerRight)
+{
+  using Oct = TreeNode<T, dim>;
+  using OctList = std::vector<Oct>;
+
+  if (!dangerLeft && !dangerRight)
+    return OctList();
+  if (tree.size() == 0)
+    return OctList();
+
+  const Oct front = tree.front(),  back = tree.back();
+
+  // Want all oct of (oct, nbr) such that
+  //   nbr.isAncestor(front)  or  (nbr < front)  or
+  //   nbr.isAncestor(back)   or  (nbr > back)
+  // Can test ancestry immediately, but comparisons need sort.
+
+  std::vector<char> isUnstable(tree.size(), false);
+  OctList octNbr;
+  OctList allNbr;
+  std::vector<size_t> allSrc;
+  for (size_t i = 0; i < tree.size(); ++i)
+  {
+    octNbr.clear();
+    tree[i].appendAllNeighbours(octNbr);
+
+    bool knownUnstable = false;
+    for (const Oct &nbr : octNbr)
+      if ((dangerLeft && nbr.isAncestor(front))
+          || (dangerRight && nbr.isAncestor(back)))
+        knownUnstable = true;
+
+    if (knownUnstable)
+      isUnstable[i] = true;
+    else//unknown
+    {
+      allNbr.insert(allNbr.end(), octNbr.begin(), octNbr.end());
+      allSrc.insert(allSrc.end(), octNbr.size(), i);
+    }
+  }
+  locTreeSort(allNbr, allSrc);
+
+  if (dangerLeft)
+  {
+    // Points to first element not less than front.
+    // Strict ancestors of front already handled above.
+    const size_t lbound = tsearch_lower_bound(allNbr, front);
+    for (size_t n = 0; n < lbound; ++n)
+      isUnstable[allSrc[n]] = true;
+  }
+  if (dangerRight)
+  {
+    // Deepest last descendant in true SFC order.
+    SFC_State<dim> backSFC;
+    Oct backDLD = back;
+    while (backDLD.getLevel() < m_uiMaxDepth)
+    {
+      const sfc::ChildNum cnum(backSFC.child_num(sfc::SubIndex(nchild(dim)-1)));
+      backDLD = backDLD.getChildMorton(cnum);
+      backSFC = backSFC.child_curve(cnum);
+    }
+
+    // Points to first element greater than back.
+    // Strict ancestors of back already handled above.
+    /// const size_t ubound = tsearch_upper_bound(allNbr, back);  // after oct range start in SFC
+    const size_t ubound = tsearch_upper_bound(allNbr, backDLD);   // after oct range end in SFC
+    for (size_t n = ubound; n < allNbr.size(); ++n)
+      isUnstable[allSrc[n]] = true;
+  }
+
+  OctList unstable;
+  for (size_t i = 0; i < tree.size(); ++i)
+    if (isUnstable[i])
+      unstable.push_back(tree[i]);
+  return unstable;
+}
+
 
 
 
