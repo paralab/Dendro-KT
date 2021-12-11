@@ -190,9 +190,27 @@ std::ostream & printtn(const TreeNode<T, dim> &tn, unsigned int eLev, std::ostre
 }
 
 
+template <typename T, unsigned int dim>
+TreeNode<T, dim> dld(const TreeNode<T, dim> &oct)
+{
+  int level = 0;
+  SFC_State<dim> sfc;
+  while (level < oct.getLevel())
+    sfc = sfc.child_curve(sfc::ChildNum(oct.getMortonIndex(++level)));
 
+  TreeNode<T, dim> descendant = oct;
+  while (descendant.getLevel() < m_uiMaxDepth)
+  {
+    const sfc::ChildNum cnum(sfc.child_num(sfc::SubIndex(nchild(dim)-1)));
+    descendant = descendant.getChildMorton(cnum);
+    sfc = sfc.child_curve(cnum);
+  }
 
+  return descendant;
 }
+
+
+}//end namespace ot
 
 
 #endif//DENDRO_KT_TNUTILS_H

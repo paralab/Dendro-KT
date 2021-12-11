@@ -1877,14 +1877,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
   if (dangerRight)
   {
     // Deepest last descendant in true SFC order.
-    SFC_State<dim> backSFC;
-    Oct backDLD = back;
-    while (backDLD.getLevel() < m_uiMaxDepth)
-    {
-      const sfc::ChildNum cnum(backSFC.child_num(sfc::SubIndex(nchild(dim)-1)));
-      backDLD = backDLD.getChildMorton(cnum);
-      backSFC = backSFC.child_curve(cnum);
-    }
+    Oct backDLD = dld(back);
 
     // Points to first element greater than back.
     // Strict ancestors of back already handled above.
