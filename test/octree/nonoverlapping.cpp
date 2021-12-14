@@ -63,6 +63,13 @@ int main(int argc, char * argv[])
   OctList unstable = ot::SFC_Tree<uint, DIM>::unstableOctants(
       balanceTest, (commRank > 0), (commRank < commSize-1));
 
+  const bool sorted = mpi_and(ot::isLocallySorted(balanceTest), comm);
+  if (commRank == 0)
+    fprintf(stdout, "%sTree is locally %s.%s\n",
+        (sorted ? GRN : RED),
+        (sorted ? "sorted" : "not sorted"),
+        NRM);
+
   const bool balanced = ot::is2to1Balanced(balanceTest, comm);
   if (commRank == 0)
     fprintf(stdout, "%sTree is %s.%s\n",

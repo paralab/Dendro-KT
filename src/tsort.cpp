@@ -2228,4 +2228,53 @@ template bool is2to1Balanced<unsigned, 3u>(const std::vector<TreeNode<unsigned, 
 template bool is2to1Balanced<unsigned, 4u>(const std::vector<TreeNode<unsigned, 4u>> &, MPI_Comm);
 
 
+
+template <typename T, unsigned int dim>
+bool isLocallySorted(const std::vector<TreeNode<T, dim>> &octList)
+{
+  return octList.size() == lenContainedSorted<T, dim>(
+      &(*octList.cbegin()),
+      0, octList.size(),
+      TreeNode<T, dim>(),
+      SFC_State<dim>::root());
+}
+template bool isLocallySorted<unsigned, 2u>(const std::vector<TreeNode<unsigned, 2u>> &);
+template bool isLocallySorted<unsigned, 3u>(const std::vector<TreeNode<unsigned, 3u>> &);
+template bool isLocallySorted<unsigned, 4u>(const std::vector<TreeNode<unsigned, 4u>> &);
+
+
+template <typename T, unsigned int dim>
+size_t lenContainedSorted(
+    const TreeNode<T, dim> *octList,
+    size_t begin, size_t end,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc)
+{
+  if (begin == end)
+    return 0;
+  const size_t parBegin = begin;
+  while (begin < end && octList[begin] == subtree)
+    ++begin;
+  if (begin < end && subtree.isAncestor(octList[begin]))
+  {
+    for (sfc::SubIndex c(0); c < nchild(dim); ++c)
+      begin += lenContainedSorted<T, dim>(
+          octList, begin, end,
+          subtree.getChildMorton(sfc.child_num(c)),
+          sfc.subcurve(c));
+  }
+  return begin - parBegin;
+}
+
+template size_t lenContainedSorted<unsigned, 2u>(
+    const TreeNode<unsigned, 2u> *, size_t, size_t, TreeNode<unsigned, 2u>, SFC_State<2u>);
+template size_t lenContainedSorted<unsigned, 3u>(
+    const TreeNode<unsigned, 3u> *, size_t, size_t, TreeNode<unsigned, 3u>, SFC_State<3u>);
+template size_t lenContainedSorted<unsigned, 4u>(
+    const TreeNode<unsigned, 4u> *, size_t, size_t, TreeNode<unsigned, 4u>, SFC_State<4u>);
+
+
+
+
+
 } // namspace ot

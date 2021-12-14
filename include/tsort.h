@@ -754,7 +754,15 @@ struct SFC_Tree
 template <typename T, unsigned int dim>
 bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm);
 
+template <typename T, unsigned int dim>
+bool isLocallySorted(const std::vector<TreeNode<T, dim>> &octList);
 
+template <typename T, unsigned int dim>
+size_t lenContainedSorted(
+    const TreeNode<T, dim> *octList,
+    size_t begin, size_t end,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc);
 
 } // namespace ot
 
