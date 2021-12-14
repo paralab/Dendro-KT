@@ -253,12 +253,14 @@ namespace ot {
       /**@brief max coord of the octant (rightmost corner)*/
       std::array<T,dim> maxX() const;
 
+      inline T length() const;
+
      /**
        @brief Return neighbor at the same level.
        @author Masado Ishii
        @tparam offsets Specify relative position as (-1,0,+1) for each dimension.
       */
-      template <bool includeDomBdry = false>
+      template <bool includeCubeBdry = false>
       TreeNode getNeighbour(std::array<signed char,dim> offsets) const;
 
       /**
@@ -266,15 +268,18 @@ namespace ot {
         @author Masado Ishii
         @tparam offsets Specify dimension of adjacency and relative position \ as (-1,0,+1) for that dimension.
         */
-      template <bool includeDomBdry = false>
+      template <bool includeCubeBdry = false>
       TreeNode getNeighbour(unsigned int d, signed char offset) const;
 
       /**
         @brief Append in-bounds neighbors of node to node list.
         @author Masado Ishii
        */
-      template <bool includeDomBdry = false>
+      template <bool includeCubeBdry = false>
       void appendAllNeighbours(std::vector<TreeNode> &nodeList) const;
+
+      template <bool includeCubeBdry = false>
+      void appendCoarseNeighbours(std::vector<TreeNode> &nodeList) const;
 
       /**
        @brief Append in-bounds neighbours of node to node list. Considered as points, so points on the domain boundary are included.

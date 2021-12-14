@@ -204,6 +204,13 @@ struct KeyFunIdentity_maxDepth
 };
 
 
+template <typename T, int dim>
+struct PartitionSplitters
+{
+  std::vector<TreeNode<T, dim>> m_firsts;
+};
+
+
 template <typename T, unsigned int dim>
 struct SFC_Tree
 {
@@ -488,6 +495,29 @@ struct SFC_Tree
       bool isActive,
       std::vector<int> &activeList);
 
+  /**
+   * @brief Allgather the first TreeNode from every processor.
+   * @description
+   *        An empty rank is represented by getting its successor's splitter,
+   *        or the root TreeNode if it has no successor.
+   *        This method does not call MPI_Comm_split().
+   */
+
+  static PartitionSplitters<T, dim> allgatherSplitters(
+      bool nonempty,
+      const TreeNode<T, dim> &front,
+      MPI_Comm comm,
+      std::vector<int> *activeList = nullptr);
+
+  /**
+   * @brief Map a set of treeNodes in the domain to the partition ranks
+   *        that own them. Repeat splitters are allowed.
+   *        Empty ranks in the partition are allowed.
+   */
+  static std::vector<int> treeNode2PartitionRank(
+      const std::vector<TreeNode<T, dim>> &treeNodes,
+      const PartitionSplitters<T, dim> &partitionSplitters);
+
 
   /** @brief Map any collection of treeNodes in the domain
    *         to the partition ranks that own them.
@@ -717,6 +747,13 @@ struct SFC_Tree
                              LevI descendantLev);
 
 };
+
+
+
+/** Assumes tree is a distributed tree with no overlaps. */
+template <typename T, unsigned int dim>
+bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm);
+
 
 
 } // namespace ot

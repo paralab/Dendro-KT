@@ -2006,6 +2006,93 @@ SFC_Tree<T,dim>:: getContainingBlocks(TreeNode<T,dim> *points,
 }
 
 
+template <typename T, unsigned int dim>
+PartitionSplitters<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
+    bool nonempty_,
+    const TreeNode<T, dim> &front_,
+    MPI_Comm comm,
+    std::vector<int> *activeList)
+{
+  int commSize, commRank;
+  MPI_Comm_size(comm, &commSize);
+  MPI_Comm_rank(comm, &commRank);
+
+  std::vector<TreeNode<T, dim>> splitters(commSize);
+  std::vector<char> isNonempty(commSize, false);
+  const TreeNode<T, dim> front = (nonempty_ ? front_ : TreeNode<T, dim>());
+  const char nonempty = nonempty_;
+  par::Mpi_Allgather(&front, &(*splitters.begin()), 1, comm);
+  par::Mpi_Allgather(&nonempty, &(*isNonempty.begin()), 1, comm);
+
+  for (int r = commSize - 2; r >= 0; --r)
+    if (!isNonempty[r])
+      splitters[r] = splitters[r + 1];
+
+  if (activeList != nullptr)
+  {
+    activeList->clear();
+    for (int r = 0; r < commSize; ++r)
+      if (isNonempty[r])
+        activeList->push_back(r);
+  }
+
+  PartitionSplitters<T, dim> partition;
+  partition.m_firsts = splitters;
+  return partition;
+}
+
+
+//
+// treeNode2PartitionRank()  -- relative to global splitters, empty ranks allowed.
+//
+template <typename T, unsigned int dim>
+std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
+    const std::vector<TreeNode<T, dim>> &treeNodes,
+    const PartitionSplitters<T, dim> &partitionSplitters)
+{
+  // Result
+  std::vector<int> rankIds(treeNodes.size(), 0);
+
+  std::vector<TreeNode<T, dim>> splitters = partitionSplitters.m_firsts;
+
+  // Root as a valid splitter would be a special case indicating 0 owns all.
+  if (splitters[0] == TreeNode<T, dim>())
+    return rankIds;
+
+  // Tail splitters of empty ranks should be ignored.
+  auto splitTail = splitters.crbegin();
+  while (splitTail != splitters.crend() && *splitTail == TreeNode<T, dim>())
+    ++splitTail;
+  const size_t numSplitters = std::distance(splitTail, splitters.crend());
+
+  if (numSplitters == 1)
+    return rankIds;
+
+  // Concatenate [splitters | elements]  (rely on stable sort, splitters come first.)
+  std::vector<TreeNode<T, dim>> keys;
+  splitters.resize(numSplitters);
+  keys.insert(keys.end(), splitters.cbegin(), splitters.cend());
+  keys.insert(keys.end(), treeNodes.cbegin(), treeNodes.cend());
+
+  // Indices into result, which we use after sorting. [{-1,...-1} | indices]
+  std::vector<size_t> indices(keys.size());
+  std::fill(indices.begin(), indices.begin() + numSplitters, -1);
+  std::iota(indices.begin() + numSplitters, indices.end(), 0);
+
+  SFC_Tree<T, dim>::locTreeSort(keys, indices);  // Assumed to be stable.
+
+  int rank = -1;
+  for (size_t ii = 0; ii < keys.size(); ++ii)
+    if (indices[ii] == -1)
+      ++rank;
+    else
+      rankIds[indices[ii]] = rank;
+
+  return rankIds;
+}
+
+
+
 
 
 /** @brief Successively computes 0th child in SFC order to given level. */
@@ -2062,6 +2149,83 @@ template struct SFC_Tree<unsigned int, 2>;
 template struct SFC_Tree<unsigned int, 3>;
 template struct SFC_Tree<unsigned int, 4>;
 
+
+// --------------------------------------------------------------------------
+
+template <typename T, unsigned int dim>
+bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree_, MPI_Comm comm)
+{
+  using Oct = TreeNode<T, dim>;
+  using OctList = std::vector<Oct>;
+
+  const auto locSortUniq = [](OctList &octList) {
+    SFC_Tree<T, dim>::locTreeSort(octList);
+    SFC_Tree<T, dim>::locRemoveDuplicates(octList);
+  };
+
+  OctList tree = tree_;
+  locSortUniq(tree);
+
+  // Create coarse neighbor search keys.
+  OctList keys;
+  for (const Oct &oct : tree)
+    oct.appendCoarseNeighbours(keys);
+  locSortUniq(keys);
+
+  // The tree is not balanced if and only if the tree has a strict ancestor
+  // of any of the coarse keys.
+  // Search for keys by the tree partition.
+  // If an ancestor of a key exists in the tree, then the partition
+  // of the process owning the ancestor would also cover the key.
+  // (The opposite might not be true..
+  // we can't force an ancestor onto every rank that begins with a descendant).
+
+  // Distribute keys by the tree partition.
+  std::vector<int> keyDest = SFC_Tree<T, dim>::treeNode2PartitionRank(
+      keys,
+      SFC_Tree<T, dim>::allgatherSplitters(
+          tree.size() > 0, tree.front(), comm) );
+  keys = par::sendAll(keys, keyDest, comm);
+  locSortUniq(keys);
+
+  // Find strict ancestors in the tree.
+  char locBalanced = true;
+  MeshLoopInterface_Sorted<T, dim, true, true, false> overTree(tree);
+  MeshLoopInterface_Sorted<T, dim, true, true, false> overKeys(keys);
+  while (!overTree.isFinished() && locBalanced)
+  {
+    const MeshLoopFrame<T, dim> &frameTree = overTree.getTopConst();
+    const MeshLoopFrame<T, dim> &frameKeys = overKeys.getTopConst();
+    if (frameTree.getTotalCount() == 0 || frameKeys.getTotalCount() == 0)
+    {
+      overTree.next();
+      overKeys.next();
+    }
+    else if (frameTree.isLeaf())
+    {
+      const size_t treeIdx = frameTree.getBeginIdx();
+      for (size_t i = frameKeys.getBeginIdx(); i < frameKeys.getEndIdx(); ++i)
+        if (tree[treeIdx].getLevel() < keys[i].getLevel())
+          locBalanced = false;
+
+      overTree.next();
+      overKeys.next();
+    }
+    else
+    {
+      overTree.step();
+      overKeys.step();
+    }
+  }
+
+  char globBalanced = locBalanced;
+  par::Mpi_Allreduce(&locBalanced, &globBalanced, 1, MPI_LAND, comm);
+  return globBalanced;
+}
+
+template bool is2to1Balanced<unsigned, 2u>(const std::vector<TreeNode<unsigned, 2u>> &, MPI_Comm);
+template bool is2to1Balanced<unsigned, 3u>(const std::vector<TreeNode<unsigned, 3u>> &, MPI_Comm);
+template bool is2to1Balanced<unsigned, 4u>(const std::vector<TreeNode<unsigned, 4u>> &, MPI_Comm);
 
 
 } // namspace ot

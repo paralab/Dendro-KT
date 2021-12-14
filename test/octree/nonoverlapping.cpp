@@ -63,6 +63,13 @@ int main(int argc, char * argv[])
   OctList unstable = ot::SFC_Tree<uint, DIM>::unstableOctants(
       balanceTest, (commRank > 0), (commRank < commSize-1));
 
+  const bool balanced = ot::is2to1Balanced(balanceTest, comm);
+  if (commRank == 0)
+    fprintf(stdout, "%sTree is %s.%s\n",
+        (balanced ? GRN : RED),
+        (balanced ? "balanced" : "not balanced"),
+        NRM);
+
   ot::quadTreeToGnuplot(octList, fineLevel, "input", comm);
   ot::quadTreeToGnuplot(balanceTest, fineLevel, "balanced", comm);
   ot::quadTreeToGnuplot(unstable, fineLevel, "unstable", comm);

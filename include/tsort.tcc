@@ -443,7 +443,6 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::dist_bcastSplitters(
 
 
 
-
 //
 // treeNode2PartitionRank()  -- relative to active splitters
 //
