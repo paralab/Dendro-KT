@@ -300,6 +300,114 @@ std::pair<size_t, size_t> SFC_Tree<T, dim>::tsearch_equal_range(
 
 
 
+template <typename X>
+struct Segment
+{
+  X *ptr = nullptr;
+  size_t begin = 0;
+  size_t end = 0;
+
+  Segment(X *ptr_, size_t begin_, size_t end_)
+    : ptr(ptr_), begin(begin_), end(end_) {}
+
+  bool nonempty() const       { return begin < end; }
+  bool empty() const          { return !nonempty(); }
+  const X & operator*() const { return ptr[begin]; }
+  X & operator*()             { return ptr[begin]; }
+  Segment & operator++()      { ++begin; return *this; }
+};
+
+
+/* Appends info for all keys in subtree and advances both sequences past subtree. */
+template <typename T, unsigned int dim>
+void overlaps_lower_bound_rec(
+    Segment<const TreeNode<T, dim>> &sortedOcts,
+    Segment<const TreeNode<T, dim>> &uniqKeys,
+    std::vector<size_t> &lineage,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<size_t> &beginOverlapsBounds,
+    std::vector<size_t> &overlapsBounds);
+
+//
+// overlaps_lower_bound()
+//
+template <typename T, unsigned int dim>
+void SFC_Tree<T, dim>::overlaps_lower_bound(
+    const std::vector<TreeNode<T, dim>> &sortedOcts,
+    const std::vector<TreeNode<T, dim>> &uniqKeys,
+    std::vector<size_t> &beginOverlapsBounds,
+    std::vector<size_t> &overlapsBounds)
+{
+  using Oct = TreeNode<T, dim>;
+
+  Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
+  Segment<const Oct> segUniqKeys(&(*uniqKeys.cbegin()), 0, uniqKeys.size());
+  std::vector<size_t> lineage;
+  beginOverlapsBounds.clear();
+  overlapsBounds.clear();
+
+  overlaps_lower_bound_rec<T, dim>(
+      segSortedOcts,
+      segUniqKeys,
+      lineage,
+      Oct(),
+      SFC_State<dim>::root(),
+      beginOverlapsBounds,
+      overlapsBounds);
+}
+
+template <typename T, unsigned int dim>
+void overlaps_lower_bound_rec(
+    Segment<const TreeNode<T, dim>> &sortedOcts,
+    Segment<const TreeNode<T, dim>> &uniqKeys,
+    std::vector<size_t> &lineage,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<size_t> &beginOverlapsBounds,
+    std::vector<size_t> &overlapsBounds)
+{
+  // As leaf(s)
+  while (uniqKeys.nonempty() && subtree == *uniqKeys)
+  {
+    beginOverlapsBounds.push_back(overlapsBounds.size());
+    overlapsBounds.push_back(sortedOcts.begin);
+    overlapsBounds.insert(overlapsBounds.end(), lineage.begin(), lineage.end());
+    ++uniqKeys;
+  }
+  size_t pushed = 0;
+  while (sortedOcts.nonempty() && subtree == *sortedOcts)
+  {
+    lineage.push_back(sortedOcts.begin);
+    ++pushed;
+    ++sortedOcts;
+  }
+
+  // As subtree
+  if (uniqKeys.nonempty() && subtree.isAncestor(*uniqKeys))
+  {
+    // Traverse child subtrees.
+    for (sfc::SubIndex c(0); c < nchild(dim); ++c)
+      overlaps_lower_bound_rec<T, dim>(
+          sortedOcts, uniqKeys, lineage,
+          subtree.getChildMorton(sfc.child_num(c)),
+          sfc.subcurve(c),
+          beginOverlapsBounds,
+          overlapsBounds);
+  }
+  else
+  {
+    // Skip subtree in sortedOcts.
+    while (sortedOcts.nonempty() && subtree.isAncestor(*sortedOcts))
+      ++sortedOcts;
+  }
+  while (pushed-- > 0)
+    lineage.pop_back();
+}
+
+
+
+
 template<typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,

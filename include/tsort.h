@@ -433,6 +433,24 @@ struct SFC_Tree
       SFC_State<dim> sfc);
 
 
+  /** For each key, returns two things from sortedOcts:
+   *    - The index of the first element not less than the key, and
+   *    - a list of zero or more indices of ancestor octants (appended).
+   *  From these, the subset of sortedOcts overlapping each key can be recovered.
+   *  Strict ancestor overlaps may be dispersed in the input,
+   *  while inclusive descendant overlaps must occur in a contiguous sequence.
+   *
+   * @param sortedOcts [in] A sorted list of octants, not necessarily unique.
+   * @param uniqKeys [in] A sorted list of unique, nonoverlapping octants.
+   * @param beginOverlapsBounds [out] Begining of segment in overlapsBounds for each key.
+   * @param overlapsBounds [out] Concatenated lists of ancestor overlaps and lower bounds.
+   */
+  static void overlaps_lower_bound(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &uniqKeys,
+      std::vector<size_t> &beginOverlapsBounds,
+      std::vector<size_t> &overlapsBounds);
+
   // -----
 
 
