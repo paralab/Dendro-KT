@@ -21,6 +21,7 @@ using MortonRange = std::pair<std::array<uint, DIM>, std::array<uint, DIM>>;
 
 bool sizeAligned(const OctList &octList, MPI_Comm comm);
 OctList localOverlappingOct(const OctList &octList, MPI_Comm comm);
+bool equalCoverage(const OctList &octListA, const OctList &octListB, MPI_Comm comm);
 
 size_t size(const OctList &octList);
 MortonLevel mortonEncode(const Oct &oct);
@@ -67,42 +68,44 @@ int main(int argc, char * argv[])
   OctList unstable = ot::SFC_Tree<uint, DIM>::unstableOctants(
       balanceTest, (commRank > 0), (commRank < commSize-1));
 
+  const auto printTest = [](bool success, const std::string &prefix, const std::string &condition) {
+    fprintf(stdout, "%s%s %s%s%s\n", success ? GRN : RED,
+        prefix.c_str(), success ? "" : "not ", condition.c_str(), NRM);
+  };
+  const auto printNeutral = [](bool success, const std::string &prefix, const std::string &condition) {
+    fprintf(stdout, "%s %s%s\n",
+        prefix.c_str(), success ? "" : "not ", condition.c_str());
+  };
+
   const bool sorted = mpi_and(ot::isLocallySorted(balanceTest), comm);
   if (commRank == 0)
-    fprintf(stdout, "%sTree is locally %s.%s\n",
-        (sorted ? GRN : RED),
-        (sorted ? "sorted" : "not sorted"),
-        NRM);
+    printTest(sorted, "locMinimalBalaned() is", "sorted");
 
   const bool balanced = ot::is2to1Balanced(balanceTest, comm);
   if (commRank == 0)
-    fprintf(stdout, "%sTree is %s.%s\n",
-        (balanced ? GRN : RED),
-        (balanced ? "balanced" : "not balanced"),
-        NRM);
+    printNeutral(balanced, "locMinimalBalaned() is", "distBalanced");
 
   OctList distBalanceTest = octList;
   ot::SFC_Tree<uint, DIM>::distMinimalBalanced(distBalanceTest, sfc_tol, comm);
-  const bool distBalanced = ot::is2to1Balanced(balanceTest, comm);
+  const bool distBalanced = ot::is2to1Balanced(distBalanceTest, comm);
   if (commRank == 0)
-    fprintf(stdout, "%sDistributed version is %s.%s\n",
-        (distBalanced ? GRN : RED),
-        (distBalanced ? "balanced" : "not balanced"),
-        NRM);
+    printTest(distBalanced, "distMinimalBalanced() is", "distBalanced");
+
+  const bool balancedCoverTree = equalCoverage(octList, distBalanceTest, comm);
+  if (commRank == 0)
+    printTest(balancedCoverTree, "distMinimalBalanced()", "covers same as input");
 
   /// const bool testedOverlapper = mpi_and(testOverlapper(unstable), comm);
   /// if (commRank == 0)
-  ///   fprintf(stdout, "%sOverlaps %s.%s\n",
-  ///       (testedOverlapper ? GRN : RED),
-  ///       (testedOverlapper ? "agree" : "do not agree"),
-  ///       NRM);
+  ///   printTest(testedOverlapper, "Overlaps", "agree");
 
   ot::quadTreeToGnuplot(octList, fineLevel, "input", comm);
   ot::quadTreeToGnuplot(balanceTest, fineLevel, "balanced", comm);
   ot::quadTreeToGnuplot(unstable, fineLevel, "unstable", comm);
 
   /// const size_t overlapSize = size(localOverlappingOct(octList, comm));
-  const size_t overlapSize = size(localOverlappingOct(balanceTest, comm));
+  /// const size_t overlapSize = size(localOverlappingOct(balanceTest, comm));
+  const size_t overlapSize = size(localOverlappingOct(distBalanceTest, comm));
   bool success = overlapSize == 0;
 
   // Report.
@@ -293,4 +296,54 @@ bool testOverlapper(const OctList &octList)
 }
 
 
+bool equalCoverage(const OctList &octListA_, const OctList &octListB_, MPI_Comm comm)
+{
+  OctList octListA = octListA_;
+  ot::SFC_Tree<uint, DIM>::distCoalesceSiblings(octListA, comm);
+
+  std::vector<int> dest = ot::SFC_Tree<uint, DIM>::treeNode2PartitionRank(
+      octListB_,
+      ot::SFC_Tree<uint, DIM>::allgatherSplitters(
+          octListA.size() > 0, octListA.front(), comm) );
+  OctList octListB = par::sendAll(octListB_, dest, comm);
+  ot::SFC_Tree<uint, DIM>::locTreeSort(octListB);
+
+  OctList octListUnion;
+  octListUnion.insert(octListUnion.end(), octListA.cbegin(), octListA.cend());
+  octListUnion.insert(octListUnion.end(), octListB.cbegin(), octListB.cend());
+  ot::SFC_Tree<uint, DIM>::locTreeSort(octListUnion);
+  ot::SFC_Tree<uint, DIM>::locRemoveDuplicates(octListUnion);
+
+  std::vector<size_t> overlapIdx;
+  std::vector<bool> missing(octListUnion.size(), false);
+
+  bool unionInA = true;
+  ot::Overlaps<uint, DIM> intersectA(octListA, octListUnion);
+  for (size_t i = 0; i < octListUnion.size(); ++i)
+  {
+    intersectA.keyOverlaps(i, overlapIdx);
+    const bool coversOct = overlapIdx.size() > 0
+        && octListA[overlapIdx[0]].isAncestorInclusive(octListUnion[i]);
+    unionInA &= coversOct;
+    missing[i] = missing[i] || !coversOct;
+  }
+
+  bool unionInB = true;
+  ot::Overlaps<uint, DIM> intersectB(octListB, octListUnion);
+  for (size_t i = 0; i < octListUnion.size(); ++i)
+  {
+    intersectB.keyOverlaps(i, overlapIdx);
+    const bool coversOct = overlapIdx.size() > 0
+        && octListB[overlapIdx[0]].isAncestorInclusive(octListUnion[i]);
+    unionInB &= coversOct;
+    missing[i] = missing[i] || !coversOct;
+  }
+
+  OctList missingOcts;
+  for (size_t i = 0; i < octListUnion.size(); ++i)
+    if (missing[i])
+      missingOcts.push_back(octListUnion[i]);
+
+  return mpi_and(unionInA && unionInB, comm);
+}
 

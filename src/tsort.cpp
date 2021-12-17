@@ -546,6 +546,8 @@ void SFC_Tree<T, dim>::removeDescendants(
            sortedKeys[keyIdx].isAncestorInclusive(sortedOcts[i]))
       ++i;
   }
+  while (i < sortedOcts.size())
+    sortedOcts[kept++] = sortedOcts[i++];
   sortedOcts.resize(kept);
 }
 
@@ -586,9 +588,11 @@ void SFC_Tree<T, dim>::removeEqual(
   {
     while (i < lowerBounds[keyIdx])
       sortedOcts[kept++] = sortedOcts[i++];
-    while (i < sortedOcts.size() && sortedKeys[keyIdx] == sortedOcts[i])
+    while (i < sortedOcts.size() && sortedOcts[i] == sortedKeys[keyIdx])
       ++i;
   }
+  while (i < sortedOcts.size())
+    sortedOcts[kept++] = sortedOcts[i++];
   sortedOcts.resize(kept);
 }
 
@@ -2816,8 +2820,9 @@ std::vector<IntRange> SFC_Tree<T, dim>::treeNode2PartitionRanks(
     splitters.push_back(partition.m_fronts[active[ar]]);
     splitters.push_back(partition.m_backs[active[ar]]);
   }
+  assert(isLocallySorted(splitters));
 
-  // Sort if not already sorted.
+  // Sort treeNodes if not already sorted.
   const bool sorted = isLocallySorted<T, dim>(treeNodes_);
   std::vector<TreeNode<T, dim>> sortedTreeNodes;
   std::vector<size_t> src;
@@ -2830,6 +2835,7 @@ std::vector<IntRange> SFC_Tree<T, dim>::treeNode2PartitionRanks(
   }
   const std::vector<TreeNode<T, dim>> &treeNodes =
       (sorted ? treeNodes_ : sortedTreeNodes);
+  assert(treeNodes.size() == treeNodes_.size());
 
   // Lower bound: For each octant in treeNodes, first splitter equal or greater.
   std::vector<size_t> lowerBounds = lower_bound(splitters, treeNodes);
@@ -2842,7 +2848,7 @@ std::vector<IntRange> SFC_Tree<T, dim>::treeNode2PartitionRanks(
   for (size_t i = 0; i < treeNodes.size(); ++i)
   {
     size_t j = lowerBounds[i];
-    if (j < splitters.size() && j % 2 == 0)  // back splitter
+    if (j < splitters.size() && j % 2 == 1)  // back splitter
       ranges[i].include(j/2);
     while (j < splitters.size()
         && treeNodes[i].isAncestorInclusive(splitters[j]))
@@ -2959,35 +2965,18 @@ bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree_, MPI_Comm comm)
   keys = par::sendAll(keys, keyDest, comm);
   locSortUniq(keys);
 
-  // Find strict ancestors in the tree.
+  // Find strict descendants of tree[i] in keys.
+  /// std::vector<TreeNode<T, dim>> offenders;
   char locBalanced = true;
-  MeshLoopInterface_Sorted<T, dim, true, true, false> overTree(tree);
-  MeshLoopInterface_Sorted<T, dim, true, true, false> overKeys(keys);
-  while (!overTree.isFinished() && locBalanced)
-  {
-    const MeshLoopFrame<T, dim> &frameTree = overTree.getTopConst();
-    const MeshLoopFrame<T, dim> &frameKeys = overKeys.getTopConst();
-    if (frameTree.getTotalCount() == 0 || frameKeys.getTotalCount() == 0)
-    {
-      overTree.next();
-      overKeys.next();
-    }
-    else if (frameTree.isLeaf())
-    {
-      const size_t treeIdx = frameTree.getBeginIdx();
-      for (size_t i = frameKeys.getBeginIdx(); i < frameKeys.getEndIdx(); ++i)
-        if (tree[treeIdx].getLevel() < keys[i].getLevel())
-          locBalanced = false;
-
-      overTree.next();
-      overKeys.next();
-    }
-    else
-    {
-      overTree.step();
-      overKeys.step();
-    }
-  }
+  std::vector<size_t> lowerBounds = SFC_Tree<T, dim>::lower_bound(keys, tree);
+  for (size_t i = 0; i < tree.size(); ++i)
+    for (size_t j = lowerBounds[i]; j < keys.size() && tree[i].isAncestorInclusive(keys[j]); ++j)
+      if (tree[i].isAncestor(keys[j]))
+      {
+        locBalanced = false;
+        /// offenders.push_back(tree[i]);
+        break;
+      }
 
   char globBalanced = locBalanced;
   par::Mpi_Allreduce(&locBalanced, &globBalanced, 1, MPI_LAND, comm);
