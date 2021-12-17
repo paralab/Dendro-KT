@@ -459,6 +459,15 @@ struct SFC_Tree
       const std::vector<TreeNode<T, dim>> &sortedOcts,
       const std::vector<TreeNode<T, dim>> &uniqKeys);
 
+  /** Removes octs in sortedOcts that descend from any key in uniqKeys. */
+  static void removeDescendants(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &uniqKeys);
+
+  /** Removes octs in sortedOcts that do not descend from any key in uniqKeys. */
+  static void retainDescendants(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &uniqKeys);
 
   // -----
 

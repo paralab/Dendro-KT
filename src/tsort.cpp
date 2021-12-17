@@ -519,6 +519,54 @@ void lower_bound_rec(
 }
 
 
+//
+// removeDescendants()
+//
+template <typename T, unsigned dim>
+void SFC_Tree<T, dim>::removeDescendants(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &uniqKeys)
+{
+  const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, uniqKeys);
+  size_t kept = 0;
+  size_t i = 0;
+  for (size_t keyIdx = 0; keyIdx < uniqKeys.size(); ++keyIdx)
+  {
+    while (i < lowerBounds[keyIdx])
+      sortedOcts[kept++] = sortedOcts[i++];
+    while (i < sortedOcts.size() &&
+           uniqKeys[keyIdx].isAncestorInclusive(sortedOcts[i]))
+      ++i;
+  }
+  sortedOcts.resize(kept);
+}
+
+//
+// retainDescendants()
+//
+template <typename T, unsigned dim>
+void SFC_Tree<T, dim>::retainDescendants(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &uniqKeys)
+{
+  const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, uniqKeys);
+  size_t kept = 0;
+  size_t i = 0;
+  for (size_t keyIdx = 0; keyIdx < uniqKeys.size(); ++keyIdx)
+  {
+    while (i < lowerBounds[keyIdx])
+      ++i;
+    while (i < sortedOcts.size() &&
+           uniqKeys[keyIdx].isAncestorInclusive(sortedOcts[i]))
+      sortedOcts[kept++] = sortedOcts[i++];
+  }
+  sortedOcts.resize(kept);
+}
+
+
+
+
+
 
 template<typename T, unsigned int dim>
 void
