@@ -81,6 +81,22 @@ int main(int argc, char * argv[])
         (balanced ? "balanced" : "not balanced"),
         NRM);
 
+  OctList distBalanceTest = octList;
+  ot::SFC_Tree<uint, DIM>::distMinimalBalanced(distBalanceTest, sfc_tol, comm);
+  const bool distBalanced = ot::is2to1Balanced(balanceTest, comm);
+  if (commRank == 0)
+    fprintf(stdout, "%sDistributed version is %s.%s\n",
+        (distBalanced ? GRN : RED),
+        (distBalanced ? "balanced" : "not balanced"),
+        NRM);
+
+  /// const bool testedOverlapper = mpi_and(testOverlapper(unstable), comm);
+  /// if (commRank == 0)
+  ///   fprintf(stdout, "%sOverlaps %s.%s\n",
+  ///       (testedOverlapper ? GRN : RED),
+  ///       (testedOverlapper ? "agree" : "do not agree"),
+  ///       NRM);
+
   ot::quadTreeToGnuplot(octList, fineLevel, "input", comm);
   ot::quadTreeToGnuplot(balanceTest, fineLevel, "balanced", comm);
   ot::quadTreeToGnuplot(unstable, fineLevel, "unstable", comm);

@@ -322,7 +322,7 @@ struct Segment
 template <typename T, unsigned int dim>
 void overlaps_lower_bound_rec(
     Segment<const TreeNode<T, dim>> &sortedOcts,
-    Segment<const TreeNode<T, dim>> &uniqKeys,
+    Segment<const TreeNode<T, dim>> &sortedKeys,
     std::vector<size_t> &lineage,
     TreeNode<T, dim> subtree,
     SFC_State<dim> sfc,
@@ -333,7 +333,7 @@ void overlaps_lower_bound_rec(
 template <typename T, unsigned int dim>
 void lower_bound_rec(
     Segment<const TreeNode<T, dim>> &sortedOcts,
-    Segment<const TreeNode<T, dim>> &uniqKeys,
+    Segment<const TreeNode<T, dim>> &sortedKeys,
     TreeNode<T, dim> subtree,
     SFC_State<dim> sfc,
     std::vector<size_t> &lowerBounds);
@@ -344,10 +344,10 @@ void lower_bound_rec(
 template <typename T, int dim>
 Overlaps<T, dim>::Overlaps(
     const std::vector<TreeNode<T, dim>> &sortedOcts,
-    const std::vector<TreeNode<T, dim>> &uniqKeys)
+    const std::vector<TreeNode<T, dim>> &sortedKeys)
   :
     m_sortedOcts(sortedOcts),
-    m_uniqKeys(uniqKeys)
+    m_sortedKeys(sortedKeys)
 {
   /** For each key, returns two things from sortedOcts:
    *    - The index of the first element not less than the key, and
@@ -357,20 +357,20 @@ Overlaps<T, dim>::Overlaps(
    *  while inclusive descendant overlaps must occur in a contiguous sequence.
    *
    * @param sortedOcts [in] A sorted list of octants, not necessarily unique.
-   * @param uniqKeys [in] A sorted list of unique, nonoverlapping octants.
+   * @param sortedKeys [in] A sorted list of octants, not necessarily unique.
    * @param beginOverlaps [out] Begining of segment in overlaps for each key.
    * @param overlaps [out] Concatenated lists of ancestor overlaps and lower bounds.
    */
   using Oct = TreeNode<T, dim>;
   Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
-  Segment<const Oct> segUniqKeys(&(*uniqKeys.cbegin()), 0, uniqKeys.size());
+  Segment<const Oct> segSortedKeys(&(*sortedKeys.cbegin()), 0, sortedKeys.size());
   std::vector<size_t> lineage;
   m_beginOverlaps.clear();
   m_overlaps.clear();
 
   overlaps_lower_bound_rec<T, dim>(
       segSortedOcts,
-      segUniqKeys,
+      segSortedKeys,
       lineage,
       Oct(),
       SFC_State<dim>::root(),
@@ -385,6 +385,19 @@ void Overlaps<T, dim>::keyOverlaps(
   // Index 0 of the search result indicates possible descendant overlaps.
   // Index 1 and above of the search result indicate ancestor overlaps.
   // Put ancestors first to maintain sorted order.
+  overlapIdxs.clear();
+  keyOverlapsAncestors(keyIdx, overlapIdxs);
+  size_t descendant = m_overlaps[m_beginOverlaps[keyIdx] + 0];
+  while (descendant < m_sortedOcts.size() &&
+         m_sortedKeys[keyIdx].isAncestorInclusive(m_sortedOcts[descendant]))
+    overlapIdxs.push_back(descendant++);
+}
+
+template <typename T, int dim>
+void Overlaps<T, dim>::keyOverlapsAncestors(
+    const size_t keyIdx, std::vector<size_t> &overlapIdxs)
+{
+  // Index 1 and above of the search result indicate ancestor overlaps.
   const size_t listSize =
       (keyIdx < m_beginOverlaps.size() - 1 ?
           m_beginOverlaps[keyIdx + 1] - m_beginOverlaps[keyIdx] :
@@ -393,11 +406,6 @@ void Overlaps<T, dim>::keyOverlaps(
   overlapIdxs.clear();
   for (size_t j = 1; j < listSize; ++j)
     overlapIdxs.push_back(m_overlaps[m_beginOverlaps[keyIdx] + j]);
-
-  size_t descendant = m_overlaps[m_beginOverlaps[keyIdx] + 0];
-  while (descendant < m_sortedOcts.size() &&
-         m_uniqKeys[keyIdx].isAncestorInclusive(m_sortedOcts[descendant]))
-    overlapIdxs.push_back(descendant++);
 }
 
 template class Overlaps<unsigned, 2>;
@@ -413,16 +421,16 @@ template class Overlaps<unsigned, 4>;
 template <typename T, unsigned int dim>
 std::vector<size_t> SFC_Tree<T, dim>::lower_bound(
     const std::vector<TreeNode<T, dim>> &sortedOcts,
-    const std::vector<TreeNode<T, dim>> &uniqKeys)
+    const std::vector<TreeNode<T, dim>> &sortedKeys)
 {
   using Oct = TreeNode<T, dim>;
   Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
-  Segment<const Oct> segUniqKeys(&(*uniqKeys.cbegin()), 0, uniqKeys.size());
+  Segment<const Oct> segSortedKeys(&(*sortedKeys.cbegin()), 0, sortedKeys.size());
   std::vector<size_t> lowerBounds;
 
   lower_bound_rec<T, dim>(
       segSortedOcts,
-      segUniqKeys,
+      segSortedKeys,
       Oct(),
       SFC_State<dim>::root(),
       lowerBounds);
@@ -434,7 +442,7 @@ std::vector<size_t> SFC_Tree<T, dim>::lower_bound(
 template <typename T, unsigned int dim>
 void overlaps_lower_bound_rec(
     Segment<const TreeNode<T, dim>> &sortedOcts,
-    Segment<const TreeNode<T, dim>> &uniqKeys,
+    Segment<const TreeNode<T, dim>> &sortedKeys,
     std::vector<size_t> &lineage,
     TreeNode<T, dim> subtree,
     SFC_State<dim> sfc,
@@ -442,12 +450,12 @@ void overlaps_lower_bound_rec(
     std::vector<size_t> &overlapsBounds)
 {
   // As leaf(s)
-  while (uniqKeys.nonempty() && subtree == *uniqKeys)
+  while (sortedKeys.nonempty() && subtree == *sortedKeys)
   {
     beginOverlapsBounds.push_back(overlapsBounds.size());
     overlapsBounds.push_back(sortedOcts.begin);
     overlapsBounds.insert(overlapsBounds.end(), lineage.begin(), lineage.end());
-    ++uniqKeys;
+    ++sortedKeys;
   }
   size_t pushed = 0;
   while (sortedOcts.nonempty() && subtree == *sortedOcts)
@@ -458,12 +466,12 @@ void overlaps_lower_bound_rec(
   }
 
   // As subtree
-  if (uniqKeys.nonempty() && subtree.isAncestor(*uniqKeys))
+  if (sortedKeys.nonempty() && subtree.isAncestor(*sortedKeys))
   {
     // Traverse child subtrees.
     for (sfc::SubIndex c(0); c < nchild(dim); ++c)
       overlaps_lower_bound_rec<T, dim>(
-          sortedOcts, uniqKeys, lineage,
+          sortedOcts, sortedKeys, lineage,
           subtree.getChildMorton(sfc.child_num(c)),
           sfc.subcurve(c),
           beginOverlapsBounds,
@@ -483,16 +491,16 @@ void overlaps_lower_bound_rec(
 template <typename T, unsigned int dim>
 void lower_bound_rec(
     Segment<const TreeNode<T, dim>> &sortedOcts,
-    Segment<const TreeNode<T, dim>> &uniqKeys,
+    Segment<const TreeNode<T, dim>> &sortedKeys,
     TreeNode<T, dim> subtree,
     SFC_State<dim> sfc,
     std::vector<size_t> &lowerBounds)
 {
   // As leaf(s)
-  while (uniqKeys.nonempty() && subtree == *uniqKeys)
+  while (sortedKeys.nonempty() && subtree == *sortedKeys)
   {
     lowerBounds.push_back(sortedOcts.begin);
-    ++uniqKeys;
+    ++sortedKeys;
   }
   while (sortedOcts.nonempty() && subtree == *sortedOcts)
   {
@@ -500,12 +508,12 @@ void lower_bound_rec(
   }
 
   // As subtree
-  if (uniqKeys.nonempty() && subtree.isAncestor(*uniqKeys))
+  if (sortedKeys.nonempty() && subtree.isAncestor(*sortedKeys))
   {
     // Traverse child subtrees.
     for (sfc::SubIndex c(0); c < nchild(dim); ++c)
       lower_bound_rec<T, dim>(
-          sortedOcts, uniqKeys,
+          sortedOcts, sortedKeys,
           subtree.getChildMorton(sfc.child_num(c)),
           sfc.subcurve(c),
           lowerBounds);
@@ -525,17 +533,17 @@ void lower_bound_rec(
 template <typename T, unsigned dim>
 void SFC_Tree<T, dim>::removeDescendants(
       std::vector<TreeNode<T, dim>> &sortedOcts,
-      const std::vector<TreeNode<T, dim>> &uniqKeys)
+      const std::vector<TreeNode<T, dim>> &sortedKeys)
 {
-  const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, uniqKeys);
+  const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, sortedKeys);
   size_t kept = 0;
   size_t i = 0;
-  for (size_t keyIdx = 0; keyIdx < uniqKeys.size(); ++keyIdx)
+  for (size_t keyIdx = 0; keyIdx < sortedKeys.size(); ++keyIdx)
   {
     while (i < lowerBounds[keyIdx])
       sortedOcts[kept++] = sortedOcts[i++];
     while (i < sortedOcts.size() &&
-           uniqKeys[keyIdx].isAncestorInclusive(sortedOcts[i]))
+           sortedKeys[keyIdx].isAncestorInclusive(sortedOcts[i]))
       ++i;
   }
   sortedOcts.resize(kept);
@@ -547,17 +555,17 @@ void SFC_Tree<T, dim>::removeDescendants(
 template <typename T, unsigned dim>
 void SFC_Tree<T, dim>::retainDescendants(
       std::vector<TreeNode<T, dim>> &sortedOcts,
-      const std::vector<TreeNode<T, dim>> &uniqKeys)
+      const std::vector<TreeNode<T, dim>> &sortedKeys)
 {
-  const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, uniqKeys);
+  const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, sortedKeys);
   size_t kept = 0;
   size_t i = 0;
-  for (size_t keyIdx = 0; keyIdx < uniqKeys.size(); ++keyIdx)
+  for (size_t keyIdx = 0; keyIdx < sortedKeys.size(); ++keyIdx)
   {
     while (i < lowerBounds[keyIdx])
       ++i;
     while (i < sortedOcts.size() &&
-           uniqKeys[keyIdx].isAncestorInclusive(sortedOcts[i]))
+           sortedKeys[keyIdx].isAncestorInclusive(sortedOcts[i]))
       sortedOcts[kept++] = sortedOcts[i++];
   }
   sortedOcts.resize(kept);
@@ -2163,6 +2171,277 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
 }
 
 
+std::vector<int> recvFromActive(
+    const std::vector<int> &activeList,
+    const std::vector<int> &sendToActive,
+    MPI_Comm comm)
+{
+  //future: choose a better collective pattern
+
+  int commSize, commRank;
+  MPI_Comm_size(comm, &commSize);
+  MPI_Comm_rank(comm, &commRank);
+
+  std::map<int, int> invActive;
+  for (int ar = 0; ar < activeList.size(); ++ar)
+    invActive[activeList[ar]] = ar;
+
+  assert(invActive.find(commRank) != invActive.end());
+
+  std::vector<int> sendToSizes(commSize, 0);
+  for (const int arSend : sendToActive)
+    sendToSizes[activeList[arSend]] = 1;
+
+  int recvFromSz = 0;
+  {
+    std::vector<int> recvFromSizes(commSize, 0);
+    par::Mpi_Allreduce( &(*sendToSizes.cbegin()),
+                        &(*recvFromSizes.begin()),
+                        commSize, MPI_SUM, comm );
+    recvFromSz = recvFromSizes[commRank];
+  }
+
+  std::set<int> recvFromGlobal;
+  std::vector<MPI_Request> requests(sendToActive.size());
+  for (size_t i = 0; i < sendToActive.size(); ++i)
+    par::Mpi_Isend((int*)nullptr, 0, activeList[sendToActive[i]], 0, comm, &requests[i]);
+  for (size_t j = 0; j < recvFromSz; ++j)
+  {
+    MPI_Status status;
+    par::Mpi_Recv((int*)nullptr, 0, MPI_ANY_SOURCE, 0, comm, &status);
+    recvFromGlobal.insert(status.MPI_SOURCE);
+  }
+  for (MPI_Request &request : requests)
+    MPI_Wait(&request, MPI_STATUS_IGNORE);
+
+  std::vector<int> recvFromActive;
+  for (int r : recvFromGlobal)
+    recvFromActive.push_back(invActive[r]);
+
+  return recvFromActive;
+}
+
+
+struct P2PPartners
+{
+  const std::vector<int> m_dest;
+  const std::vector<int> m_src;
+  MPI_Comm m_comm;
+
+  P2PPartners(const std::vector<int> &dest,
+              const std::vector<int> &src,
+              MPI_Comm comm)
+    : m_dest(dest), m_src(src), m_comm(comm)
+  {}
+
+  size_t nDest() const { return m_dest.size(); }
+  size_t nSrc() const { return m_src.size(); }
+};
+
+
+struct P2PScalar
+{
+  const std::vector<int> &m_dest;
+  const std::vector<int> &m_src;
+  MPI_Comm m_comm;
+
+  using ScalarT = int;
+  static constexpr int LEN = 1;
+  std::vector<ScalarT> m_sendScalar;
+  std::vector<ScalarT> m_recvScalar;
+  std::vector<MPI_Request> m_requests;
+
+  P2PScalar(const P2PPartners *partners)
+    : m_dest(partners->m_dest), m_src(partners->m_src), m_comm(partners->m_comm),
+      m_sendScalar(LEN * partners->nDest()),
+      m_recvScalar(LEN * partners->nSrc()),
+      m_requests(partners->nDest())
+  { }
+
+  void send(int destIdx, ScalarT scalar) {
+    m_sendScalar[destIdx] = scalar;  // future: LEN > 1
+    par::Mpi_Isend(&(m_sendScalar[destIdx]), LEN, m_dest[destIdx], 0, m_comm, &m_requests[destIdx]);
+  }
+
+  ScalarT recv(int srcIdx) {
+    MPI_Status status;
+    par::Mpi_Recv(&(m_recvScalar[srcIdx]), LEN, m_src[srcIdx], 0, m_comm, &status);
+    return m_recvScalar[srcIdx];
+  }
+
+  void recv(int srcIdx, ScalarT &scalar) {
+    scalar = this->recv(srcIdx);
+  }
+
+  void wait_all() {
+    for (MPI_Request &request : m_requests)
+      MPI_Wait(&request, MPI_STATUS_IGNORE);
+  }
+};
+
+
+template <typename X>
+struct P2PVector
+{
+  const std::vector<int> &m_dest;
+  const std::vector<int> &m_src;
+  MPI_Comm m_comm;
+
+  std::vector<MPI_Request> m_requests;
+
+  P2PVector(const P2PPartners *partners)
+    : m_dest(partners->m_dest), m_src(partners->m_src), m_comm(partners->m_comm),
+      m_requests(partners->nDest())
+  { }
+
+  void send(int destIdx, const std::vector<X> &vector) {
+    par::Mpi_Isend(&(*vector.cbegin()), vector.size(), m_dest[destIdx], 0, m_comm, &m_requests[destIdx]);
+  }
+
+  void recv(int srcIdx, std::vector<X> &vector) {
+    MPI_Status status;
+    par::Mpi_Recv(&(*vector.begin()), vector.size(), m_src[srcIdx], 0, m_comm, &status);
+  }
+
+  void wait_all() {
+    for (MPI_Request &request : m_requests)
+      MPI_Wait(&request, MPI_STATUS_IGNORE);
+  }
+};
+
+
+
+
+
+template <typename T, unsigned dim>
+void SFC_Tree<T, dim>::distMinimalBalanced(
+      std::vector<TreeNode<T, dim>> &tree, double sfc_tol, MPI_Comm comm)
+{
+  // Based on the distributed balancing routines in:
+  // @article{doi:10.1137/070681727,
+  //   author = {Sundar, Hari and Sampath, Rahul S. and Biros, George},
+  //   title = {Bottom-Up Construction and 2:1 Balance Refinement of Linear Octrees in Parallel},
+  //   journal = {SIAM Journal on Scientific Computing},
+  //   year = {2008},
+  //   volume = {30}, number = {5}, pages = {2675-2708},
+  //   doi = {10.1137/070681727}, URL = { https://doi.org/10.1137/070681727 }
+  // }
+
+  using Oct = TreeNode<T, dim>;
+  using OctList = std::vector<Oct>;
+
+  int commSize, commRank;
+  MPI_Comm_size(comm, &commSize);
+  MPI_Comm_rank(comm, &commRank);
+
+  const bool isActive = tree.size() > 0;
+
+  locMinimalBalanced(tree);
+
+  // The unstable octants (processor boundary octants) may need to be refined.
+  const OctList unstableOwned = unstableOctants(tree, commRank > 0, commRank < commSize - 1);
+
+  // Splitters of active ranks.
+  std::vector<int> active;
+  const PartitionFrontBack<T, dim> partition =
+      allgatherSplitters(tree.size() > 0, tree.front(), tree.back(), comm, &active);
+
+  std::map<int, int> invActive;
+  for (int ar = 0; ar < active.size(); ++ar)
+    invActive[active[ar]] = ar;
+
+  // Find insulation layers of unstable octs.
+  // Source indices later used to effectively undo the sort.
+  OctList insulationOfOwned;
+  std::vector<size_t> beginInsulationOfOwned, endInsulationOfOwned;
+  for (const Oct &u : unstableOwned)
+  {
+    beginInsulationOfOwned.push_back(insulationOfOwned.size());
+    u.appendAllNeighbours(insulationOfOwned);
+    endInsulationOfOwned.push_back(insulationOfOwned.size());
+  }
+
+  // Every insulation octant overlaps a range of active ranks.
+  // Expect return indices relative to active list.
+  std::vector<IntRange> insulationProcRanges =
+      treeNode2PartitionRanks(insulationOfOwned, partition, &active);
+
+  // Round 1: Destinations and sending.
+  std::set<int> queryDestSet;
+  std::map<int, std::vector<Oct>> sendQueryInform;
+  std::map<int, std::vector<Oct>> sendInformOnly;
+  for (size_t ui = 0; ui < unstableOwned.size(); ++ui)
+  {
+    std::set<int> unstableProcSet;
+    for (size_t i = beginInsulationOfOwned[ui];
+                i < endInsulationOfOwned[ui]; ++i)
+      for (int r = insulationProcRanges[i].min;
+               r <= insulationProcRanges[i].max; ++r)
+        unstableProcSet.insert(r);
+    if (isActive)
+      unstableProcSet.erase(invActive[commRank]);  // Don't send to self.
+
+    if (unstableProcSet.size() == 1)  // Insulation of ui completed in 1st round.
+      sendInformOnly[*unstableProcSet.begin()].push_back(unstableOwned[ui]);
+    else
+      for (int r : unstableProcSet)
+        sendQueryInform[r].push_back(unstableOwned[ui]);
+
+    queryDestSet.insert(unstableProcSet.cbegin(), unstableProcSet.cend());
+  }
+
+  std::vector<int> queryDest(queryDestSet.cbegin(), queryDestSet.cend());
+  std::vector<int> querySrc = recvFromActive(active, queryDest, comm);
+
+  std::map<int, std::vector<Oct>> recvQueryInform;
+  std::map<int, std::vector<Oct>> recvInformOnly;
+  {
+    std::vector<int> queryDestGlobal, querySrcGlobal;
+    for (int r : queryDest)  queryDestGlobal.push_back(active[r]);
+    for (int r : querySrc)   querySrcGlobal.push_back(active[r]);
+    P2PPartners partners(queryDestGlobal, querySrcGlobal, comm);
+
+    // Sizes
+    P2PScalar szInformOnly(&partners), szQueryInform(&partners);
+    for (int i = 0; i < queryDest.size(); ++i)
+    {
+      szInformOnly.send(i, sendInformOnly[queryDest[i]].size());
+      szQueryInform.send(i, sendQueryInform[queryDest[i]].size());
+    }
+    for (int j = 0; j < querySrc.size(); ++j)
+    {
+      recvInformOnly[querySrc[j]].resize(szInformOnly.recv(j));
+      recvQueryInform[querySrc[j]].resize(szQueryInform.recv(j));
+    }
+    szInformOnly.wait_all();
+    szQueryInform.wait_all();
+
+    // Data
+    P2PVector<Oct> vcInformOnly(&partners), vcQueryInform(&partners);
+    for (int i = 0; i < queryDest.size(); ++i)
+    {
+      vcInformOnly.send(i, sendInformOnly[queryDest[i]]);
+      vcQueryInform.send(i, sendQueryInform[queryDest[i]]);
+    }
+    for (int j = 0; j < querySrc.size(); ++j)
+    {
+      vcInformOnly.recv(j, recvInformOnly[querySrc[j]]);
+      vcQueryInform.recv(j, recvQueryInform[querySrc[j]]);
+    }
+    vcInformOnly.wait_all();
+    vcInformOnly.wait_all();
+  }
+
+  //TODO Round 2:
+  //   cat queries
+  //   insulationOfRemote, procOwners
+  //   unstable overlapping insulationOfRemote -> sendQueryAnswer
+}
+
+
+
+
+
 
 
 //
@@ -2275,7 +2554,7 @@ SFC_Tree<T,dim>:: getContainingBlocks(TreeNode<T,dim> *points,
 
 
 template <typename T, unsigned int dim>
-PartitionSplitters<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
+PartitionFront<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
     bool nonempty_,
     const TreeNode<T, dim> &front_,
     MPI_Comm comm,
@@ -2304,8 +2583,51 @@ PartitionSplitters<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
         activeList->push_back(r);
   }
 
-  PartitionSplitters<T, dim> partition;
-  partition.m_firsts = splitters;
+  PartitionFront<T, dim> partition;
+  partition.m_fronts = splitters;
+  return partition;
+}
+
+template <typename T, unsigned int dim>
+PartitionFrontBack<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
+    bool nonempty_,
+    const TreeNode<T, dim> &front_,
+    const TreeNode<T, dim> &back_,
+    MPI_Comm comm,
+    std::vector<int> *activeList)
+{
+  int commSize, commRank;
+  MPI_Comm_size(comm, &commSize);
+  MPI_Comm_rank(comm, &commRank);
+
+  std::vector<TreeNode<T, dim>> fronts(commSize);
+  std::vector<TreeNode<T, dim>> backs(commSize);
+  std::vector<char> isNonempty(commSize, false);
+  const TreeNode<T, dim> front = (nonempty_ ? front_ : TreeNode<T, dim>());
+  const TreeNode<T, dim> back = (nonempty_ ? back_ : TreeNode<T, dim>());
+  const char nonempty = nonempty_;
+  par::Mpi_Allgather(&front, &(*fronts.begin()), 1, comm);
+  par::Mpi_Allgather(&back, &(*backs.begin()), 1, comm);
+  par::Mpi_Allgather(&nonempty, &(*isNonempty.begin()), 1, comm);
+
+  for (int r = commSize - 2; r >= 0; --r)
+    if (!isNonempty[r])
+    {
+      fronts[r] = fronts[r + 1];
+      backs[r] = fronts[r + 1];   // To maintain ordering: f[r]<=b[r]<=f[r+1]
+    }
+
+  if (activeList != nullptr)
+  {
+    activeList->clear();
+    for (int r = 0; r < commSize; ++r)
+      if (isNonempty[r])
+        activeList->push_back(r);
+  }
+
+  PartitionFrontBack<T, dim> partition;
+  partition.m_fronts = fronts;
+  partition.m_backs = backs;
   return partition;
 }
 
@@ -2316,12 +2638,12 @@ PartitionSplitters<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
 template <typename T, unsigned int dim>
 std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
     const std::vector<TreeNode<T, dim>> &treeNodes,
-    const PartitionSplitters<T, dim> &partitionSplitters)
+    const PartitionFront<T, dim> &partitionSplitters)
 {
   // Result
   std::vector<int> rankIds(treeNodes.size(), 0);
 
-  std::vector<TreeNode<T, dim>> splitters = partitionSplitters.m_firsts;
+  std::vector<TreeNode<T, dim>> splitters = partitionSplitters.m_fronts;
 
   // Root as a valid splitter would be a special case indicating 0 owns all.
   if (splitters[0] == TreeNode<T, dim>())
@@ -2359,7 +2681,74 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
   return rankIds;
 }
 
+//
+// treeNode2PartitionRanks()  -- relative to active list, empty ranks allowed in partition.
+//
+template <typename T, unsigned int dim>
+std::vector<IntRange> SFC_Tree<T, dim>::treeNode2PartitionRanks(
+    const std::vector<TreeNode<T, dim>> &treeNodes_,
+    const PartitionFrontBack<T, dim> &partition,
+    const std::vector<int> *activePtr)
+{
+  if (treeNodes_.size() == 0)
+    return std::vector<IntRange>();
 
+  const std::vector<int> &active = *activePtr;  // future: recover active
+
+  // Active splitters.
+  std::vector<TreeNode<T, dim>> splitters;
+  for (int ar = 0; ar < active.size(); ++ar)
+  {
+    splitters.push_back(partition.m_fronts[active[ar]]);
+    splitters.push_back(partition.m_backs[active[ar]]);
+  }
+
+  // Sort if not already sorted.
+  const bool sorted = isLocallySorted<T, dim>(treeNodes_);
+  std::vector<TreeNode<T, dim>> sortedTreeNodes;
+  std::vector<size_t> src;
+  if (!sorted)
+  {
+    sortedTreeNodes = treeNodes_;
+    src.resize(sortedTreeNodes.size());
+    std::iota(src.begin(), src.end(), 0);
+    locTreeSort(sortedTreeNodes, src);
+  }
+  const std::vector<TreeNode<T, dim>> &treeNodes =
+      (sorted ? treeNodes_ : sortedTreeNodes);
+
+  // Lower bound: For each octant in treeNodes, first splitter equal or greater.
+  std::vector<size_t> lowerBounds = lower_bound(splitters, treeNodes);
+
+  // Overlapped processes for each octant:
+  //   - oct.isAncestorInclusive(fronts[r])  OR
+  //   - oct.isAncestorInclusive(backs[r])   OR
+  //   - lower_bound(fronts[r]) < oct < lowerBound(backs[r])
+  std::vector<IntRange> ranges(treeNodes.size());
+  for (size_t i = 0; i < treeNodes.size(); ++i)
+  {
+    size_t j = lowerBounds[i];
+    if (j < splitters.size() && j % 2 == 0)  // back splitter
+      ranges[i].include(j/2);
+    while (j < splitters.size()
+        && treeNodes[i].isAncestorInclusive(splitters[j]))
+    {
+      ranges[i].include(j/2);
+      ++j;
+    }
+  }
+
+  // Undo sort if not originally sorted.
+  if (!sorted)
+  {
+    std::vector<IntRange> unsortedRanges(ranges.size());
+    for (size_t i = 0; i < src.size(); ++i)
+      unsortedRanges[src[i]] = ranges[i];
+    std::swap(ranges, unsortedRanges);
+  }
+
+  return ranges;
+}
 
 
 

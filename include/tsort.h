@@ -205,9 +205,27 @@ struct KeyFunIdentity_maxDepth
 
 
 template <typename T, int dim>
-struct PartitionSplitters
+struct PartitionFront
 {
-  std::vector<TreeNode<T, dim>> m_firsts;
+  std::vector<TreeNode<T, dim>> m_fronts;
+};
+
+template <typename T, int dim>
+struct PartitionFrontBack
+{
+  std::vector<TreeNode<T, dim>> m_fronts;
+  std::vector<TreeNode<T, dim>> m_backs;
+
+  PartitionFront<T, dim> fronts() const { return { m_fronts }; }
+};
+
+struct IntRange
+{
+  int min = std::numeric_limits<int>::max();
+  int max = std::numeric_limits<int>::min();
+  void include(int x) { min = x<min ? x : min;  max = x>max ? x : max; }
+  bool nonempty() const { return min <= max; }
+  bool empty() const { return !nonempty(); }
 };
 
 
@@ -216,17 +234,19 @@ class Overlaps
 {
   protected:
     const std::vector<TreeNode<T, dim>> &m_sortedOcts;
-    const std::vector<TreeNode<T, dim>> &m_uniqKeys;
+    const std::vector<TreeNode<T, dim>> &m_sortedKeys;
     std::vector<size_t> m_beginOverlaps;
     std::vector<size_t> m_overlaps;
 
   public:
-    // Requires lifetime of sortedOcts and uniqKeys to persist
+    // Requires lifetime of sortedOcts and sortedKeys to persist
     // at least until final call to keyOverlaps().
     Overlaps( const std::vector<TreeNode<T, dim>> &sortedOcts,
-              const std::vector<TreeNode<T, dim>> &uniqKeys );
+              const std::vector<TreeNode<T, dim>> &sortedKeys );
 
     void keyOverlaps(const size_t keyIdx, std::vector<size_t> &overlapIdxs);
+
+    void keyOverlapsAncestors(const size_t keyIdx, std::vector<size_t> &overlapIdxs);
 };
 
 
@@ -457,17 +477,17 @@ struct SFC_Tree
    *  performing all searches simultaneously in a single pass. */
   static std::vector<size_t> lower_bound(
       const std::vector<TreeNode<T, dim>> &sortedOcts,
-      const std::vector<TreeNode<T, dim>> &uniqKeys);
+      const std::vector<TreeNode<T, dim>> &sortedKeys);
 
-  /** Removes octs in sortedOcts that descend from any key in uniqKeys. */
+  /** Removes octs in sortedOcts that descend from any key in sortedKeys. */
   static void removeDescendants(
       std::vector<TreeNode<T, dim>> &sortedOcts,
-      const std::vector<TreeNode<T, dim>> &uniqKeys);
+      const std::vector<TreeNode<T, dim>> &sortedKeys);
 
-  /** Removes octs in sortedOcts that do not descend from any key in uniqKeys. */
+  /** Removes octs in sortedOcts that do not descend from any key in sortedKeys. */
   static void retainDescendants(
       std::vector<TreeNode<T, dim>> &sortedOcts,
-      const std::vector<TreeNode<T, dim>> &uniqKeys);
+      const std::vector<TreeNode<T, dim>> &sortedKeys);
 
   // -----
 
@@ -539,9 +559,20 @@ struct SFC_Tree
    *        This method does not call MPI_Comm_split().
    */
 
-  static PartitionSplitters<T, dim> allgatherSplitters(
+  static PartitionFront<T, dim> allgatherSplitters(
       bool nonempty,
       const TreeNode<T, dim> &front,
+      MPI_Comm comm,
+      std::vector<int> *activeList = nullptr);
+
+  /**
+   * @brief Allgather first and last TreeNode.
+   *        An empty rank's front and back are both set to successor's front.
+   */
+  static PartitionFrontBack<T, dim> allgatherSplitters(
+      bool nonempty,
+      const TreeNode<T, dim> &front,
+      const TreeNode<T, dim> &back,
       MPI_Comm comm,
       std::vector<int> *activeList = nullptr);
 
@@ -552,7 +583,19 @@ struct SFC_Tree
    */
   static std::vector<int> treeNode2PartitionRank(
       const std::vector<TreeNode<T, dim>> &treeNodes,
-      const PartitionSplitters<T, dim> &partitionSplitters);
+      const PartitionFront<T, dim> &partitionSplitters);
+
+  /**
+   * @brief Map a set of treeNodes in the domain to ranges of the
+   *        partition ranks that they overlap. Repeat splitters
+   *        are allowed. Empty ranks in the partition are allowed.
+   *        To avoid sending data to inactive ranks,
+   *        the return indices are relative to the active list.
+   */
+  static std::vector<IntRange> treeNode2PartitionRanks(
+      const std::vector<TreeNode<T, dim>> &treeNodes,
+      const PartitionFrontBack<T, dim> &partitionSplitters,
+      const std::vector<int> *active);
 
 
   /** @brief Map any collection of treeNodes in the domain
@@ -744,6 +787,9 @@ struct SFC_Tree
       const std::vector<TreeNode<T, dim>> &tree,
       const bool dangerLeft = true,     // mark unstable if go outside first
       const bool dangerRight = true);   // mark unstable if go outside last
+
+  static void distMinimalBalanced(
+      std::vector<TreeNode<T, dim>> &tree, double sfc_tol, MPI_Comm comm);
 
   // -------------------------------------------------------------
 
