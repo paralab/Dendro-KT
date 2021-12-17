@@ -256,38 +256,18 @@ bool testOverlapper(const OctList &octList)
   // Method 2: Get overlaps via O(n+m) search.
   std::vector<std::vector<Oct>> overlapsLinear;
   std::vector<Oct> catOverlapsLinear;
-  std::vector<size_t> beginOverlapsBounds, overlapsBounds;
-  ot::SFC_Tree<uint, DIM>::overlaps_lower_bound(
-      neighbours, octList, beginOverlapsBounds, overlapsBounds);
-  const auto listSize = [&](size_t octIdx) {
-        return octIdx < beginOverlapsBounds.size() - 1 ?
-            beginOverlapsBounds[octIdx + 1] - beginOverlapsBounds[octIdx] :
-            overlapsBounds.size() - beginOverlapsBounds[octIdx];
-  };
-  const auto listLookup = [&](size_t octIdx, size_t listIdx) {
-        return overlapsBounds[beginOverlapsBounds[octIdx] + listIdx];
-  };
+  ot::Overlaps<uint, DIM> overlaps(neighbours, octList);
+  std::vector<size_t> overlapIdxs;
   for (size_t i = 0; i < octList.size(); ++i)
   {
-    // Index 0 of the search result indicates possible descendant overlaps.
-    // Index 1 and above of the search result indicate ancestor overlaps.
-    // Put ancestors first to maintain sorted order.
-
     std::vector<Oct> octOverlaps;
-    for (size_t j = 1; j < listSize(i); ++j)
-      octOverlaps.push_back(neighbours[listLookup(i, j)]);
-    auto descendant = neighbours.begin() + listLookup(i, 0);
-    while (descendant != neighbours.end() && octList[i].isAncestorInclusive(*descendant))
-    {
-      octOverlaps.push_back(*descendant);
-      ++descendant;
-    }
+    overlaps.keyOverlaps(i, overlapIdxs);
+    for (size_t nbrIdx : overlapIdxs)
+      octOverlaps.push_back(neighbours[nbrIdx]);
     overlapsLinear.push_back(octOverlaps);
     catOverlapsLinear.insert(catOverlapsLinear.end(),
         octOverlaps.cbegin(), octOverlaps.cend());
   }
-
-  assert(catOverlapsLinear.size() >= beginOverlapsBounds.size() - octList.size());
 
   printf("|overlapsBrute|==%lu  |overlapsLinear|==%lu\n",
       catOverlapsBrute.size(), catOverlapsLinear.size());

@@ -329,23 +329,44 @@ void overlaps_lower_bound_rec(
     std::vector<size_t> &beginOverlapsBounds,
     std::vector<size_t> &overlapsBounds);
 
-//
-// overlaps_lower_bound()
-//
+/* Appends lower bound for all keys in subtree and advances both sequences past subtree. */
 template <typename T, unsigned int dim>
-void SFC_Tree<T, dim>::overlaps_lower_bound(
-    const std::vector<TreeNode<T, dim>> &sortedOcts,
-    const std::vector<TreeNode<T, dim>> &uniqKeys,
-    std::vector<size_t> &beginOverlapsBounds,
-    std::vector<size_t> &overlapsBounds)
-{
-  using Oct = TreeNode<T, dim>;
+void lower_bound_rec(
+    Segment<const TreeNode<T, dim>> &sortedOcts,
+    Segment<const TreeNode<T, dim>> &uniqKeys,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<size_t> &lowerBounds);
 
+
+
+
+template <typename T, int dim>
+Overlaps<T, dim>::Overlaps(
+    const std::vector<TreeNode<T, dim>> &sortedOcts,
+    const std::vector<TreeNode<T, dim>> &uniqKeys)
+  :
+    m_sortedOcts(sortedOcts),
+    m_uniqKeys(uniqKeys)
+{
+  /** For each key, returns two things from sortedOcts:
+   *    - The index of the first element not less than the key, and
+   *    - a list of zero or more indices of ancestor octants (appended).
+   *  From these, the subset of sortedOcts overlapping each key can be recovered.
+   *  Strict ancestor overlaps may be dispersed in the input,
+   *  while inclusive descendant overlaps must occur in a contiguous sequence.
+   *
+   * @param sortedOcts [in] A sorted list of octants, not necessarily unique.
+   * @param uniqKeys [in] A sorted list of unique, nonoverlapping octants.
+   * @param beginOverlaps [out] Begining of segment in overlaps for each key.
+   * @param overlaps [out] Concatenated lists of ancestor overlaps and lower bounds.
+   */
+  using Oct = TreeNode<T, dim>;
   Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
   Segment<const Oct> segUniqKeys(&(*uniqKeys.cbegin()), 0, uniqKeys.size());
   std::vector<size_t> lineage;
-  beginOverlapsBounds.clear();
-  overlapsBounds.clear();
+  m_beginOverlaps.clear();
+  m_overlaps.clear();
 
   overlaps_lower_bound_rec<T, dim>(
       segSortedOcts,
@@ -353,10 +374,63 @@ void SFC_Tree<T, dim>::overlaps_lower_bound(
       lineage,
       Oct(),
       SFC_State<dim>::root(),
-      beginOverlapsBounds,
-      overlapsBounds);
+      m_beginOverlaps,
+      m_overlaps);
 }
 
+template <typename T, int dim>
+void Overlaps<T, dim>::keyOverlaps(
+    const size_t keyIdx, std::vector<size_t> &overlapIdxs)
+{
+  // Index 0 of the search result indicates possible descendant overlaps.
+  // Index 1 and above of the search result indicate ancestor overlaps.
+  // Put ancestors first to maintain sorted order.
+  const size_t listSize =
+      (keyIdx < m_beginOverlaps.size() - 1 ?
+          m_beginOverlaps[keyIdx + 1] - m_beginOverlaps[keyIdx] :
+          m_overlaps.size() - m_beginOverlaps[keyIdx]);
+
+  overlapIdxs.clear();
+  for (size_t j = 1; j < listSize; ++j)
+    overlapIdxs.push_back(m_overlaps[m_beginOverlaps[keyIdx] + j]);
+
+  size_t descendant = m_overlaps[m_beginOverlaps[keyIdx] + 0];
+  while (descendant < m_sortedOcts.size() &&
+         m_uniqKeys[keyIdx].isAncestorInclusive(m_sortedOcts[descendant]))
+    overlapIdxs.push_back(descendant++);
+}
+
+template class Overlaps<unsigned, 2>;
+template class Overlaps<unsigned, 3>;
+template class Overlaps<unsigned, 4>;
+
+
+
+
+//
+// lower_bound()
+//
+template <typename T, unsigned int dim>
+std::vector<size_t> SFC_Tree<T, dim>::lower_bound(
+    const std::vector<TreeNode<T, dim>> &sortedOcts,
+    const std::vector<TreeNode<T, dim>> &uniqKeys)
+{
+  using Oct = TreeNode<T, dim>;
+  Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
+  Segment<const Oct> segUniqKeys(&(*uniqKeys.cbegin()), 0, uniqKeys.size());
+  std::vector<size_t> lowerBounds;
+
+  lower_bound_rec<T, dim>(
+      segSortedOcts,
+      segUniqKeys,
+      Oct(),
+      SFC_State<dim>::root(),
+      lowerBounds);
+
+  return lowerBounds;
+}
+
+// overlaps_lower_bound_rec()
 template <typename T, unsigned int dim>
 void overlaps_lower_bound_rec(
     Segment<const TreeNode<T, dim>> &sortedOcts,
@@ -405,6 +479,44 @@ void overlaps_lower_bound_rec(
     lineage.pop_back();
 }
 
+// lower_bound_rec()
+template <typename T, unsigned int dim>
+void lower_bound_rec(
+    Segment<const TreeNode<T, dim>> &sortedOcts,
+    Segment<const TreeNode<T, dim>> &uniqKeys,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<size_t> &lowerBounds)
+{
+  // As leaf(s)
+  while (uniqKeys.nonempty() && subtree == *uniqKeys)
+  {
+    lowerBounds.push_back(sortedOcts.begin);
+    ++uniqKeys;
+  }
+  while (sortedOcts.nonempty() && subtree == *sortedOcts)
+  {
+    ++sortedOcts;
+  }
+
+  // As subtree
+  if (uniqKeys.nonempty() && subtree.isAncestor(*uniqKeys))
+  {
+    // Traverse child subtrees.
+    for (sfc::SubIndex c(0); c < nchild(dim); ++c)
+      lower_bound_rec<T, dim>(
+          sortedOcts, uniqKeys,
+          subtree.getChildMorton(sfc.child_num(c)),
+          sfc.subcurve(c),
+          lowerBounds);
+  }
+  else
+  {
+    // Skip subtree in sortedOcts.
+    while (sortedOcts.nonempty() && subtree.isAncestor(*sortedOcts))
+      ++sortedOcts;
+  }
+}
 
 
 

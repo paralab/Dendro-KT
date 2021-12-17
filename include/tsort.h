@@ -211,6 +211,25 @@ struct PartitionSplitters
 };
 
 
+template <typename T, int dim>
+class Overlaps
+{
+  protected:
+    const std::vector<TreeNode<T, dim>> &m_sortedOcts;
+    const std::vector<TreeNode<T, dim>> &m_uniqKeys;
+    std::vector<size_t> m_beginOverlaps;
+    std::vector<size_t> m_overlaps;
+
+  public:
+    // Requires lifetime of sortedOcts and uniqKeys to persist
+    // at least until final call to keyOverlaps().
+    Overlaps( const std::vector<TreeNode<T, dim>> &sortedOcts,
+              const std::vector<TreeNode<T, dim>> &uniqKeys );
+
+    void keyOverlaps(const size_t keyIdx, std::vector<size_t> &overlapIdxs);
+};
+
+
 template <typename T, unsigned int dim>
 struct SFC_Tree
 {
@@ -433,23 +452,13 @@ struct SFC_Tree
       SFC_State<dim> sfc);
 
 
-  /** For each key, returns two things from sortedOcts:
-   *    - The index of the first element not less than the key, and
-   *    - a list of zero or more indices of ancestor octants (appended).
-   *  From these, the subset of sortedOcts overlapping each key can be recovered.
-   *  Strict ancestor overlaps may be dispersed in the input,
-   *  while inclusive descendant overlaps must occur in a contiguous sequence.
-   *
-   * @param sortedOcts [in] A sorted list of octants, not necessarily unique.
-   * @param uniqKeys [in] A sorted list of unique, nonoverlapping octants.
-   * @param beginOverlapsBounds [out] Begining of segment in overlapsBounds for each key.
-   * @param overlapsBounds [out] Concatenated lists of ancestor overlaps and lower bounds.
-   */
-  static void overlaps_lower_bound(
+
+  /** Returns lower bound (rank) of each key relative to sortedOcts,
+   *  performing all searches simultaneously in a single pass. */
+  static std::vector<size_t> lower_bound(
       const std::vector<TreeNode<T, dim>> &sortedOcts,
-      const std::vector<TreeNode<T, dim>> &uniqKeys,
-      std::vector<size_t> &beginOverlapsBounds,
-      std::vector<size_t> &overlapsBounds);
+      const std::vector<TreeNode<T, dim>> &uniqKeys);
+
 
   // -----
 
