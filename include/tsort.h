@@ -489,6 +489,11 @@ struct SFC_Tree
       std::vector<TreeNode<T, dim>> &sortedOcts,
       const std::vector<TreeNode<T, dim>> &sortedKeys);
 
+  /** Removes octs in sortedOcts that equal any key in sortedKeys. */
+  static void removeEqual(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &sortedKeys);
+
   // -----
 
 

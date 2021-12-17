@@ -571,7 +571,26 @@ void SFC_Tree<T, dim>::retainDescendants(
   sortedOcts.resize(kept);
 }
 
-
+//
+// removeEqual()
+//
+template <typename T, unsigned dim>
+void SFC_Tree<T, dim>::removeEqual(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &sortedKeys)
+{
+  const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, sortedKeys);
+  size_t kept = 0;
+  size_t i = 0;
+  for (size_t keyIdx = 0; keyIdx < sortedKeys.size(); ++keyIdx)
+  {
+    while (i < lowerBounds[keyIdx])
+      sortedOcts[kept++] = sortedOcts[i++];
+    while (i < sortedOcts.size() && sortedKeys[keyIdx] == sortedOcts[i])
+      ++i;
+  }
+  sortedOcts.resize(kept);
+}
 
 
 
@@ -2350,6 +2369,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   for (int ar = 0; ar < active.size(); ++ar)
     invActive[active[ar]] = ar;
 
+  // (Round 1)
   // Find insulation layers of unstable octs.
   // Source indices later used to effectively undo the sort.
   OctList insulationOfOwned;
@@ -2366,7 +2386,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   std::vector<IntRange> insulationProcRanges =
       treeNode2PartitionRanks(insulationOfOwned, partition, &active);
 
-  // Round 1: Destinations and sending.
+  // (Round 1)  Stage queries to be sent.
   std::set<int> queryDestSet;
   std::map<int, std::vector<Oct>> sendQueryInform;
   std::map<int, std::vector<Oct>> sendInformOnly;
@@ -2395,10 +2415,12 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   std::map<int, std::vector<Oct>> recvQueryInform;
   std::map<int, std::vector<Oct>> recvInformOnly;
+
+  // (Round 1)  Send/recv
+  std::vector<int> queryDestGlobal, querySrcGlobal;
+  for (int r : queryDest)  queryDestGlobal.push_back(active[r]);
+  for (int r : querySrc)   querySrcGlobal.push_back(active[r]);
   {
-    std::vector<int> queryDestGlobal, querySrcGlobal;
-    for (int r : queryDest)  queryDestGlobal.push_back(active[r]);
-    for (int r : querySrc)   querySrcGlobal.push_back(active[r]);
     P2PPartners partners(queryDestGlobal, querySrcGlobal, comm);
 
     // Sizes
@@ -2416,7 +2438,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
     szInformOnly.wait_all();
     szQueryInform.wait_all();
 
-    // Data
+    // Payload
     P2PVector<Oct> vcInformOnly(&partners), vcQueryInform(&partners);
     for (int i = 0; i < queryDest.size(); ++i)
     {
@@ -2429,13 +2451,105 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
       vcQueryInform.recv(j, recvQueryInform[querySrc[j]]);
     }
     vcInformOnly.wait_all();
-    vcInformOnly.wait_all();
+    vcQueryInform.wait_all();
   }
 
-  //TODO Round 2:
-  //   cat queries
-  //   insulationOfRemote, procOwners
-  //   unstable overlapping insulationOfRemote -> sendQueryAnswer
+  // (Round 2)  Recreate the insulation layers of remote unstable query octants.
+  OctList insulationRemote;
+  std::vector<int> insulationRemoteOrigin;
+  for (int r : querySrc)
+  {
+    const size_t oldSz = insulationRemote.size();
+    for (const Oct &remoteUnstable : recvQueryInform[r])
+      remoteUnstable.appendAllNeighbours(insulationRemote);
+    const size_t newSz = insulationRemote.size();
+    std::fill_n(std::back_inserter(insulationRemoteOrigin), newSz - oldSz, r);
+  }
+  locTreeSort(insulationRemote, insulationRemoteOrigin);
+
+  // Need to send owned unstable octants that overlap with remote insulation.
+  Overlaps<T, dim> insRemotePerUnstableOwned(
+      insulationRemote, unstableOwned);
+
+  std::map<int, std::vector<Oct>> sendQueryAnswer;
+  std::vector<size_t> overlapIdxs;
+  std::set<int> octAnswerProcs;
+  for (size_t ui = 0; ui < unstableOwned.size(); ++ui)
+  {
+    overlapIdxs.clear();
+    insRemotePerUnstableOwned.keyOverlapsAncestors(ui, overlapIdxs);
+
+    octAnswerProcs.clear();
+    for (size_t insIdx : overlapIdxs)
+      octAnswerProcs.insert(insulationRemoteOrigin[insIdx]);  // future: Use scatter not gather
+    for (int r : octAnswerProcs)
+      sendQueryAnswer[r].push_back(unstableOwned[ui]);
+  }
+
+  // Do not need to send if already sent.
+  for (int r : querySrc)
+  {
+    removeEqual(sendQueryAnswer[r], sendInformOnly[r]);
+    removeEqual(sendQueryAnswer[r], sendQueryInform[r]);
+  }
+
+  // (Round 2)  Send/recv
+  std::map<int, std::vector<Oct>> recvQueryAnswer;
+  {
+    P2PPartners partners(querySrcGlobal, queryDestGlobal, comm);
+
+    // Sizes
+    P2PScalar szQueryAnswer(&partners);
+    for (int i = 0; i < querySrc.size(); ++i)
+      szQueryAnswer.send(i, sendQueryAnswer[querySrc[i]].size());
+    for (int j = 0; j < queryDest.size(); ++j)
+      recvQueryAnswer[queryDest[j]].resize(szQueryAnswer.recv(j));
+    szQueryAnswer.wait_all();
+
+    // Payload
+    P2PVector<Oct> vcQueryAnswer(&partners);
+    for (int i = 0; i < querySrc.size(); ++i)
+      vcQueryAnswer.send(i, sendQueryAnswer[querySrc[i]]);
+    for (int j = 0; j < queryDest.size(); ++j)
+      vcQueryAnswer.recv(j, recvQueryAnswer[queryDest[j]]);
+    vcQueryAnswer.wait_all();
+  }
+
+  // Construct received insulation layers of unstable octants.
+  const auto appendVec = [](OctList &into, const OctList &from) {
+    into.insert(into.end(), from.cbegin(), from.cend());
+  };
+
+  OctList unstablePlus;
+  {
+    size_t total = unstableOwned.size();
+    for (int r : querySrc)
+    {
+      total += recvInformOnly[r].size();
+      total += recvQueryInform[r].size();
+    }
+    for (int r : queryDest)
+      total += recvQueryAnswer[r].size();
+    unstablePlus.reserve(total);
+  }
+  appendVec(unstablePlus, unstableOwned);
+  for (int r : querySrc)
+  {
+    appendVec(unstablePlus, recvInformOnly[r]);
+    appendVec(unstablePlus, recvQueryInform[r]);
+  }
+  for (int r : queryDest)
+    appendVec(unstablePlus, recvQueryAnswer[r]);
+
+  // Balance unstable octants against received insulation.
+  locTreeSort(unstablePlus);
+  locMinimalBalanced(unstablePlus);
+  retainDescendants(unstablePlus, unstableOwned);
+
+  // Replace unstable with unstable balanced.
+  removeEqual(tree, unstableOwned);
+  appendVec(tree, unstablePlus);
+  locTreeSort(tree);
 }
 
 
