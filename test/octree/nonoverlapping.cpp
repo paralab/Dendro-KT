@@ -102,6 +102,7 @@ int main(int argc, char * argv[])
   ot::quadTreeToGnuplot(octList, fineLevel, "input", comm);
   ot::quadTreeToGnuplot(balanceTest, fineLevel, "balanced", comm);
   ot::quadTreeToGnuplot(unstable, fineLevel, "unstable", comm);
+  ot::quadTreeToGnuplot(distBalanceTest, fineLevel, "distBalanced", comm);
 
   /// const size_t overlapSize = size(localOverlappingOct(octList, comm));
   /// const size_t overlapSize = size(localOverlappingOct(balanceTest, comm));
