@@ -1755,6 +1755,8 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
   outTree = inTree;
   locTreeSort(res);
   SFC_Tree<T, dim>::locMatchResolution(outTree, res);
+  SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);
+  SFC_Tree<T, dim>::distRemoveDuplicates(outTree, loadFlexibility, RM_DUPS_AND_ANC, comm);
   SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
   SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
 }
