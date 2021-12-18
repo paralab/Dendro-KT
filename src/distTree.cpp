@@ -81,6 +81,46 @@ namespace ot
 
 
   //
+  // distRemeshSubdomainViaWhole()
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::distRemeshSubdomainViaWhole( const DistTree &inTree,
+                                              const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                              DistTree &_outTree,
+                                              DistTree &_surrogateTree,
+                                              RemeshPartition remeshPartition,
+                                              double loadFlexibility)
+  {
+    MPI_Comm comm = inTree.m_comm;
+
+    const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();
+    std::vector<TreeNode<T, dim>> outTreeVec;
+
+    SFC_Tree<T, dim>::distRemeshWholeDomain(
+        inTreeVec, refnFlags, outTreeVec, loadFlexibility, comm);
+
+    // Filter and repartition based on filtered octlist,
+    // before fixing the octlist into a DistTree.
+    DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), outTreeVec);
+    SFC_Tree<T, dim>::distTreeSort(outTreeVec, loadFlexibility, comm);
+    SFC_Tree<T, dim>::distCoalesceSiblings(outTreeVec, comm);
+
+    std::vector<TreeNode<T, dim>> surrogateTreeVec =
+        SFC_Tree<T, dim>::getSurrogateGrid(
+            remeshPartition, inTreeVec, outTreeVec, comm);
+
+    DistTree outTree(outTreeVec, comm);
+    DistTree surrogateTree(surrogateTreeVec, comm, NoCoalesce);
+
+    outTree.filterTree(inTree.getDomainDecider());
+    surrogateTree.filterTree(inTree.getDomainDecider());
+
+    _outTree = outTree;
+    _surrogateTree = surrogateTree;
+  }
+
+
+  //
   // distRemeshSubdomain()
   //
   template <typename T, unsigned int dim>
@@ -96,7 +136,7 @@ namespace ot
     const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();
     std::vector<TreeNode<T, dim>> outTreeVec;
 
-    SFC_Tree<T, dim>::distRemeshWholeDomain(
+    SFC_Tree<T, dim>::distRemeshSubdomain(
         inTreeVec, refnFlags, outTreeVec, loadFlexibility, comm);
 
     // Filter and repartition based on filtered octlist,
@@ -1036,7 +1076,7 @@ namespace ot
       treeIntercepted.emplace_back(); // Root
 
     unsigned int level = 0;
-    const unsigned int jump = 3;
+    const unsigned int jump = 1;
 
     while (level < finestLevel)
     {
@@ -1074,7 +1114,8 @@ namespace ot
     treeIntercepted.clear();
     treeIntercepted.shrink_to_fit();
     SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
-    //XXX buggy until add 2:1-balancing here
+    SFC_Tree<T, dim>::distMinimalBalanced(treeFinal, sfc_tol, comm);
+    SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
     SFC_Tree<T, dim>::distCoalesceSiblings(treeFinal, comm);
 
     DistTree<T, dim> dtree(treeFinal, comm);

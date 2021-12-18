@@ -423,6 +423,9 @@ std::vector<size_t> SFC_Tree<T, dim>::lower_bound(
     const std::vector<TreeNode<T, dim>> &sortedOcts,
     const std::vector<TreeNode<T, dim>> &sortedKeys)
 {
+  assert(isLocallySorted(sortedOcts));
+  assert(isLocallySorted(sortedKeys));
+
   using Oct = TreeNode<T, dim>;
   Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
   Segment<const Oct> segSortedKeys(&(*sortedKeys.cbegin()), 0, sortedKeys.size());
@@ -1712,6 +1715,49 @@ SFC_Tree<T, dim>::distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &in
   SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
 }
 
+
+template <typename T, unsigned int dim>
+void
+SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTree,
+                                       const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                       std::vector<TreeNode<T, dim>> &outTree,
+                                       double loadFlexibility,
+                                       MPI_Comm comm )
+{
+  constexpr ChildI NumChildren = 1u << dim;
+
+  /// SFC_Tree<T, dim>::distCoalesceSiblings(inTree, comm);
+
+  std::vector<TreeNode<T, dim>> res;
+  for (size_t i = 0; i < inTree.size(); ++i)
+  {
+    switch(refnFlags[i])
+    {
+      case OCT_FLAGS::OCT_NO_CHANGE:
+        res.push_back(inTree[i]);
+        break;
+
+      case OCT_FLAGS::OCT_COARSEN:
+        res.push_back(inTree[i].getParent());
+        break;
+
+      case OCT_FLAGS::OCT_REFINE:
+        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
+          res.push_back(inTree[i].getChildMorton(child_m));
+        break;
+
+      default:
+        throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
+    }
+  }
+
+  outTree = inTree;
+  locTreeSort(res);
+  SFC_Tree<T, dim>::locMatchResolution(outTree, res);
+  SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
+  SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
+}
+
 template <typename T, unsigned int dim>
 std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::getSurrogateGrid(
     RemeshPartition remeshPartition,
@@ -2113,6 +2159,86 @@ void SFC_Tree<T, dim>::locResolveTree(
       overRes.step();
     }
   }
+}
+
+template <typename T, unsigned dim>
+void locMatchResolution_rec(
+    Segment<const TreeNode<T, dim>> &domain,
+    Segment<const TreeNode<T, dim>> &res,
+    bool complete,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<TreeNode<T, dim>> &outTree);
+
+//
+// locMatchResolution()
+//
+template <typename T, unsigned dim>
+void SFC_Tree<T, dim>::locMatchResolution(
+    std::vector<TreeNode<T, dim>> &tree, const std::vector<TreeNode<T, dim>> &res)
+{
+  assert(isLocallySorted(tree));
+  assert(isLocallySorted(res));
+
+  using Oct = TreeNode<T, dim>;
+  std::vector<Oct> domain;
+  std::swap(domain, tree);
+  Segment<const Oct> segDomain(&(*domain.cbegin()), 0, domain.size());
+  Segment<const Oct> segRes(&(*res.cbegin()), 0, res.size());
+  locMatchResolution_rec<T, dim>(
+      segDomain,
+      segRes,
+      false,
+      Oct(),
+      SFC_State<dim>::root(),
+      tree);
+}
+
+template <typename T, unsigned dim>
+void locMatchResolution_rec(
+    Segment<const TreeNode<T, dim>> &domain,
+    Segment<const TreeNode<T, dim>> &res,
+    bool complete,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<TreeNode<T, dim>> &outTree)
+{
+  if (complete or (domain.nonempty() and subtree.isAncestorInclusive(*domain)))
+  {
+    if (domain.nonempty() and *domain == subtree)
+      complete = true;
+
+    // Advance past parents
+    while (domain.nonempty() and *domain == subtree)
+      ++domain;
+    while (res.nonempty() and *res == subtree)
+      ++res;
+
+    if (res.nonempty() and subtree.isAncestor(*res))
+    {
+      // Advance past children in domain and res.
+      for (sfc::SubIndex c(0); c < nchild(dim); ++c)
+        locMatchResolution_rec<T, dim>(
+            domain, res, complete,
+            subtree.getChildMorton(sfc.child_num(c)),
+            sfc.subcurve(c),
+            outTree);
+    }
+    else
+    {
+      // Append leaf and advance past children in domain.
+      outTree.push_back(subtree);
+      while (domain.nonempty() and subtree.isAncestor(*domain))
+        ++domain;
+    }
+  }
+  else
+    // Advance past subtree in res.
+    while (res.nonempty() && subtree.isAncestorInclusive(*res))
+      ++res;
+
+  assert((domain.empty() or !subtree.isAncestorInclusive(*domain)));
+  assert((res.empty() or !subtree.isAncestorInclusive(*res)));
 }
 
 

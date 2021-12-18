@@ -83,6 +83,13 @@ namespace ot
       /** distRemeshSubdomain
        *  @brief: Uses DistTree filter function to carve out subdomain from remeshed tree.
        */
+      static void distRemeshSubdomainViaWhole( const DistTree &inTree,
+                                       const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                       DistTree &outTree,
+                                       DistTree &surrogateTree,
+                                       RemeshPartition remeshPartition,
+                                       double loadFlexibility );
+
       static void distRemeshSubdomain( const DistTree &inTree,
                                        const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                        DistTree &outTree,

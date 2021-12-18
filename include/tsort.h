@@ -732,6 +732,12 @@ struct SFC_Tree
                                      double loadFlexibility,
                                      MPI_Comm comm );
 
+  static void distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTree,
+                                     const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                     std::vector<TreeNode<T, dim>> &outTree,
+                                     double loadFlexibility,
+                                     MPI_Comm comm );
+
   // When remeshing with the SFC_Tree interface, surrogate grid is optional.
   // Use getSurrogateGrid method after distRemeshWholeDomain() to recover the surrogate.
   static std::vector<TreeNode<T, dim>> getSurrogateGrid(
@@ -784,6 +790,11 @@ struct SFC_Tree
   /** Maintains effective domain, splitting octants larger than res octants. */
   static void locResolveTree(std::vector<TreeNode<T, dim>> &tree,
                              const std::vector<TreeNode<T, dim>> &res);
+
+  /** Maintains or expands domain, splitting or coarsening the tree
+   *  to match the finest level in each leaf subtree of res. */
+  static void locMatchResolution( std::vector<TreeNode<T, dim>> &tree,
+                                   const std::vector<TreeNode<T, dim>> &res);
 
   /** Assumes sorted balanced tree.
    * Returns octants whose potential neighbors are not strictly contained
