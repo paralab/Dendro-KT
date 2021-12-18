@@ -1428,7 +1428,8 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
     if (rNE < nNE-1 && (tree.back() == nextBegin || !strict && tree.back().isAncestor(nextBegin)))
       tree.pop_back();
   }
-  MPI_Comm_free(&nonemptys);
+  if (nonemptys != MPI_COMM_NULL)
+    MPI_Comm_free(&nonemptys);
 }
 
 
