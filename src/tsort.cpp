@@ -2363,6 +2363,8 @@ std::vector<int> recvFromActive(
   for (MPI_Request &request : requests)
     MPI_Wait(&request, MPI_STATUS_IGNORE);
 
+  MPI_Barrier(comm);
+
   std::vector<int> recvFromActive;
   for (int r : recvFromGlobal)
     recvFromActive.push_back(invActive[r]);
