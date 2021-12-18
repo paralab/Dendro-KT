@@ -2338,7 +2338,7 @@ std::vector<int> recvFromActive(
   for (int ar = 0; ar < activeList.size(); ++ar)
     invActive[activeList[ar]] = ar;
 
-  assert(invActive.find(commRank) != invActive.end());
+  const bool isActive = invActive.find(commRank) != invActive.end();
 
   std::vector<int> sendToSizes(commSize, 0);
   for (const int arSend : sendToActive)
@@ -2351,6 +2351,12 @@ std::vector<int> recvFromActive(
                         &(*recvFromSizes.begin()),
                         commSize, MPI_SUM, comm );
     recvFromSz = recvFromSizes[commRank];
+  }
+
+  if (!isActive)
+  {
+    assert(sendToActive.size() == 0);
+    assert(recvFromSz == 0);
   }
 
   std::set<int> recvFromGlobal;
@@ -2504,6 +2510,8 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   for (int ar = 0; ar < active.size(); ++ar)
     invActive[active[ar]] = ar;
 
+  const int activeRank = (isActive ? invActive[commRank] : -1);
+
   // (Round 1)
   // Find insulation layers of unstable octs.
   // Source indices later used to effectively undo the sort.
@@ -2533,8 +2541,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
       for (int r = insulationProcRanges[i].min;
                r <= insulationProcRanges[i].max; ++r)
         unstableProcSet.insert(r);
-    if (isActive)
-      unstableProcSet.erase(invActive[commRank]);  // Don't send to self.
+    unstableProcSet.erase(activeRank);  // Don't send to self.
 
     if (unstableProcSet.size() == 1)  // Insulation of ui completed in 1st round.
       sendInformOnly[*unstableProcSet.begin()].push_back(unstableOwned[ui]);
