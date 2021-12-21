@@ -433,6 +433,11 @@ add_executable(tstOctreeNonoverlapping ${SRC_FILES})
 target_include_directories(tstOctreeNonoverlapping PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/octree)
 target_link_libraries(tstOctreeNonoverlapping dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testDollar.cpp)
+add_executable(tstDollar ${SRC_FILES})
+target_include_directories(tstDollar PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstDollar dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/matrix.h
               ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/matrix.cpp)
 add_executable(tstMatAssembly ${SRC_FILES})
