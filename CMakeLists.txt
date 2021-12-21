@@ -215,6 +215,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
 
 add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/dollar-master)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/zlib/inc)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/array/include)
