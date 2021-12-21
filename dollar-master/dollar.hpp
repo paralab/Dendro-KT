@@ -171,8 +171,11 @@ namespace dollar
     };
     class profiler
     {
-        std::vector<std::string> stack;
+        std::vector<int> stack;
         bool paused;
+
+        using URI = std::vector<int>;
+        const URI top_uri() const { return stack; }
 
         public:
 
@@ -186,17 +189,20 @@ namespace dollar
             pid_t pid = 0;
 #endif
             std::thread::id tid;
-            std::string title;
+            std::string short_title;
+            using FrameIdx = int;
+            FrameIdx index = 0;
+            FrameIdx parent_index = -1;
 
             info()
             {}
 
-            info( const std::string &title ) : title(title)
+            info( const std::string &short_title ) : short_title(short_title)
             {}
 
             inline friend
             std::ostream &operator<<( std::ostream &os, const info &k ) {
-                os << "title:" << tokenize(k.title, ";").back() << std::endl;
+                os << "title:" << k.short_title << std::endl;
                 os << "paused:" << k.paused << std::endl;
                 os << "hits:" << k.hits << std::endl;
                 os << "current:" << k.current << std::endl;
@@ -211,7 +217,7 @@ namespace dollar
             stack.reserve( DOLLAR_MAX_TRACES );
         }
 
-        info &in( const std::string &title ) {
+        info &in( const std::string &short_title ) {
 #ifdef _MSC_VER
             auto pid = _getpid();
 #else
@@ -219,18 +225,27 @@ namespace dollar
 #endif
             auto tid = std::this_thread::get_id();
 
+            const int title_id = index_title.index(short_title);
+
             //std::stringstream header;
             //header << pid << "/" << tid << "/" << title;
             //stack.push_back( stack.empty() ? header.str() : stack.back() + ";" + header.str() );
-            stack.push_back( stack.empty() ? title : stack.back() + ";" + title );
+            const URI parent_uri = top_uri();
+            stack.push_back( title_id );
+            const URI uri = top_uri();
 
-            auto &id = stack.back();
+            const bool found_parent_uri = counters.find(parent_uri) != counters.end();
+            const bool found_uri = counters.find(uri) != counters.end();
 
-            if( counters.find( id ) == counters.end() ) {
-                counters[ id ] = info ( stack.back() );
+            info::FrameIdx old_size = counters.size();
+            auto &sample = counters[ uri ];
+
+            if( !found_uri ) {
+                sample = info ( short_title );
+                sample.index = old_size;
+                if (found_parent_uri)
+                  sample.parent_index = counters[parent_uri].index;
             }
-
-            auto &sample = counters[ id ];
 
             sample.hits ++;
             sample.current = -dollar::now();
@@ -249,15 +264,9 @@ namespace dollar
 
         template<bool for_chrome>
         void print( std::ostream &out, const char *tab = ",", const char *feed = "\r\n" ) const {
-            auto inital_matches = []( const std::string &text, const std::string &abc ) -> unsigned {
-                unsigned c = 0;
-                for( auto end = (std::min)(text.size(), abc.size()), it = end - end; it < end; ++it, ++c ) {
-                    if( text[it] != abc[it] ) break;
-                }
-                return c;
-            };
-            auto starts_with = [&]( const std::string &text, const std::string &abc ) -> bool {
-                return inital_matches( text, abc ) == abc.size();
+            auto starts_with = [&]( const URI &uri, const URI &abc ) -> bool {
+                return abc.size() <= uri.size() &&
+                    std::mismatch(abc.begin(), abc.end(), uri.begin()).first == abc.end();
             };
 
             // create a copy of the class to modify it, so this method is still const
@@ -265,18 +274,19 @@ namespace dollar
 
             // finish any active scope
             while( !copy.stack.empty() ) {
-                auto &current = copy.counters[ stack.back() ];
+                auto &current = copy.counters[ copy.top_uri() ];
                 copy.out( current );
             }
 
             // update time hierarchically
             {
                 // sorted tree
-                std::vector< std::pair<std::string, info *> > az_tree;
+                std::vector< std::pair<URI, info *> > az_tree;
 
                 for( auto &it : copy.counters ) {
+                    const URI &uri = it.first;
                     auto &info = it.second;
-                    az_tree.emplace_back( info.title, &info );
+                    az_tree.emplace_back( uri, &info );
                 }
 
                 std::sort( az_tree.begin(), az_tree.end() );
@@ -303,7 +313,7 @@ namespace dollar
             // string2tree {
             static unsigned char pos = 0;
             info dummy; 
-            dummy.title = "/"; 
+            dummy.short_title = "/";
 #ifdef _MSC_VER
             dummy.pid = _getpid();
 #else
@@ -313,11 +323,10 @@ namespace dollar
             Node<info> root( std::string() + "\\|/-"[(++pos)%4], &dummy );
             for( auto it = copy.counters.begin(), end = copy.counters.end(); it != end; ++it ) {
                 auto &info = it->second;
-                list.push_back( info.title );
 
-                auto split = tokenize( info.title, ";" );
+                const std::vector<std::string> names = this->names(it->first);
 
-                auto &node = root.tree_recreate_branch( split );
+                auto &node = root.tree_recreate_branch( names );
                 node.value = &info;
             }
             std::stringstream ss;
@@ -337,16 +346,15 @@ namespace dollar
             size_t i = 0;
             if( for_chrome ) {
                 for( auto &cp : copy.counters ) {
-                    cp.second.title = tokenize( cp.second.title, ";" ).back();
-                    for( auto &ch : cp.second.title ) {
+                    for( auto &ch : cp.second.short_title ) {
                         if( ch == '\\' ) ch = '/';
                     }
                 }
             } else {
                 size_t x = 0;
                 for( auto &cp : copy.counters ) {
-                    cp.second.title = list[++x];
-                    for( auto &ch : cp.second.title ) {
+                    cp.second.short_title = list[++x];
+                    for( auto &ch : cp.second.short_title ) {
                         if( ch == '\\' ) ch = '/';
                     }
                 }               
@@ -370,7 +378,7 @@ namespace dollar
 #else
                     sprintf( &buffer[0], 
 #endif
-                    format.c_str(), ++i, it.second.title.c_str(), graph.c_str(), cpu, (float)(info.total * 1000), info.hits );
+                    format.c_str(), ++i, it.second.short_title.c_str(), graph.c_str(), cpu, (float)(info.total * 1000), info.hits );
                     out << &buffer[0];
                 }
             } else {
@@ -393,7 +401,7 @@ namespace dollar
                     [&]( const Node<info> &node ) { 
                         auto &info = *node.value;
                         double cpu = info.total * 100.0 / total;
-                        out << "{\"name\": \"" << info.title << "\"," 
+                        out << "{\"name\": \"" << info.short_title << "\","
                                 "\"cat\": \"" << "CPU,DOLLAR" << "\","
                                 "\"ph\": \"" << 'X' << "\","
                                 "\"pid\": " << info.pid << ","
@@ -407,7 +415,7 @@ namespace dollar
                     [&]( const Node<info> &node ) { 
                         auto &info = *node.value;
                         double cpu = info.total * 100.0 / total;
-                        out << "{\"name\": \"" << info.title << "\"," 
+                        out << "{\"name\": \"" << info.short_title << "\","
                                 "\"cat\": \"" << "CPU,DOLLAR" << "\","
                                 "\"ph\": \"" << 'B' << "\","
                                 "\"pid\": " << info.pid << ","
@@ -419,7 +427,7 @@ namespace dollar
                     [&]( const Node<info> &node ) { 
                         auto &info = *node.value;
                         double cpu = info.total * 100.0 / total;
-                        out << "{\"name\": \"" << info.title << "\"," 
+                        out << "{\"name\": \"" << info.short_title << "\","
                                 "\"cat\": \"" << "CPU,DOLLAR" << "\","
                                 "\"ph\": \"" << 'E' << "\","
                                 "\"pid\": " << info.pid << ","
@@ -448,7 +456,32 @@ namespace dollar
             paused = p;
         }
 
-        private: std::map< std::string, info > counters;
+        private:
+          std::map< URI, info > counters;
+
+          struct enumeration_map {
+            std::map<std::string, int> m_map;
+            int size() const { return int(m_map.size()); }
+            bool in(const std::string &s) const { return m_map.find(s) != m_map.end(); }
+            int index(const std::string &s) {
+              const int sz = size();
+              if (!in(s)) m_map[s] = sz;
+              return m_map[s];
+            }
+
+          } index_title;
+
+          std::vector<std::string> names(URI uri) const
+          {
+            std::vector<std::string> names;
+            while (uri.size() > 0)
+            {
+              names.push_back(counters.at(uri).short_title);
+              uri.pop_back();
+            }
+            std::reverse(names.begin(), names.end());
+            return names;
+          }
     };
 
     class sampler {
