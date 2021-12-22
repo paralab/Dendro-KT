@@ -26,6 +26,8 @@ int main() { $ // <-- put a dollar after every curly brace to determinate cpu co
 #ifdef $
 
 #include <iostream>
+#include <map>
+#include <vector>
 
 namespace dollar {
 
@@ -37,6 +39,9 @@ namespace dollar {
     inline void pause( bool paused ) {}
     inline bool is_paused() {}
     inline void clear() {}
+
+    struct profiler {  struct info {};  };
+    inline std::map<std::vector<int>, profiler::info> self_totals() {}
 
 };
 
@@ -264,47 +269,12 @@ namespace dollar
 
         template<bool for_chrome>
         void print( std::ostream &out, const char *tab = ",", const char *feed = "\r\n" ) const {
-            auto starts_with = [&]( const URI &uri, const URI &abc ) -> bool {
-                return abc.size() <= uri.size() &&
-                    std::mismatch(abc.begin(), abc.end(), uri.begin()).first == abc.end();
-            };
 
-            // create a copy of the class to modify it, so this method is still const
-            auto copy = *this;
-
-            // finish any active scope
-            while( !copy.stack.empty() ) {
-                auto &current = copy.counters[ copy.top_uri() ];
-                copy.out( current );
-            }
-
-            // update time hierarchically
-            {
-                // sorted tree
-                std::vector< std::pair<URI, info *> > az_tree;
-
-                for( auto &it : copy.counters ) {
-                    const URI &uri = it.first;
-                    auto &info = it.second;
-                    az_tree.emplace_back( uri, &info );
-                }
-
-                std::sort( az_tree.begin(), az_tree.end() );
-                std::reverse( az_tree.begin(), az_tree.end() );
-
-                // here's the magic
-                for( size_t i = 0; i < az_tree.size(); ++i ) {
-                    for( size_t j = i + 1; j < az_tree.size(); ++j ) {
-                        if( starts_with( az_tree[ i ].first, az_tree[ j ].first ) ) {
-                            az_tree[ j ].second->total -= az_tree[ i ].second->total;
-                        }
-                    }
-                }
-            }
+            std::map<URI, info> self_totals = this->self_totals();
 
             // calculate total accumulated time
             double total = 0;
-            for( auto &it : copy.counters ) {
+            for( auto &it : self_totals ) {
                 total += it.second.total;
             }
 
@@ -321,10 +291,10 @@ namespace dollar
 #endif
             dummy.tid = std::this_thread::get_id();
             Node<info> root( std::string() + "\\|/-"[(++pos)%4], &dummy );
-            for( auto it = copy.counters.begin(), end = copy.counters.end(); it != end; ++it ) {
+            for( auto it = self_totals.begin(), end = self_totals.end(); it != end; ++it ) {
                 auto &info = it->second;
 
-                const std::vector<std::string> names = this->names(it->first);
+                const std::vector<std::string> names = this->names(self_totals, it->first);
 
                 auto &node = root.tree_recreate_branch( names );
                 node.value = &info;
@@ -345,14 +315,14 @@ namespace dollar
             // prettify name/titles
             size_t i = 0;
             if( for_chrome ) {
-                for( auto &cp : copy.counters ) {
+                for( auto &cp : self_totals ) {
                     for( auto &ch : cp.second.short_title ) {
                         if( ch == '\\' ) ch = '/';
                     }
                 }
             } else {
                 size_t x = 0;
-                for( auto &cp : copy.counters ) {
+                for( auto &cp : self_totals ) {
                     cp.second.short_title = list[++x];
                     for( auto &ch : cp.second.short_title ) {
                         if( ch == '\\' ) ch = '/';
@@ -368,7 +338,7 @@ namespace dollar
                     sep = tab;
                 }
                 // loop
-                for( auto &it : copy.counters ) {
+                for( auto &it : self_totals ) {
                     auto &info = it.second;
                     double cpu = info.total * 100.0 / total;
                     int width(cpu*DOLLAR_CPUMETER_WIDTH/100);
@@ -440,6 +410,50 @@ namespace dollar
             }
         }
 
+        std::map<URI, info> self_totals() const {
+            auto starts_with = [&]( const URI &uri, const URI &abc ) -> bool {
+                return abc.size() <= uri.size() &&
+                    std::mismatch(abc.begin(), abc.end(), uri.begin()).first == abc.end();
+            };
+
+            // create a copy of the class to modify it, so this method is still const
+            auto copy = *this;
+
+            // finish any active scope
+            while( !copy.stack.empty() ) {
+                auto &current = copy.counters[ copy.top_uri() ];
+                copy.out( current );
+            }
+
+            // update time hierarchically
+            {
+                // sorted tree
+                std::vector< std::pair<URI, info *> > az_tree;
+
+                for( auto &it : copy.counters ) {
+                    const URI &uri = it.first;
+                    auto &info = it.second;
+                    az_tree.emplace_back( uri, &info );
+                }
+
+                std::sort( az_tree.begin(), az_tree.end() );
+                std::reverse( az_tree.begin(), az_tree.end() );
+
+                // here's the magic
+                for( size_t i = 0; i < az_tree.size(); ++i ) {
+                    for( size_t j = i + 1; j < az_tree.size(); ++j ) {
+                        if( starts_with( az_tree[ i ].first, az_tree[ j ].first ) ) {
+                            az_tree[ j ].second->total -= az_tree[ i ].second->total;
+                        }
+                    }
+                }
+            }
+            return copy.counters;
+        }
+
+
+
+
         void pause( bool paused_ ) {
             paused = paused_;
         }
@@ -471,7 +485,7 @@ namespace dollar
 
           } index_title;
 
-          std::vector<std::string> names(URI uri) const
+          static std::vector<std::string> names(const std::map<URI, info> &counters, URI uri)
           {
             std::vector<std::string> names;
             while (uri.size() > 0)
@@ -531,6 +545,10 @@ namespace dollar
 
     inline void clear() {
         singleton<profiler>()->clear();
+    }
+
+    inline std::map<std::vector<int>, profiler::info> self_totals() {
+        return singleton<profiler>()->self_totals();
     }
 }
 
