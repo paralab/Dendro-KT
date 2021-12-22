@@ -167,6 +167,8 @@ set(DENDRO_KT_INC include/dendro.h
                   include/sfcTreeLoop_matvec.h
                   include/sfcTreeLoop_matvec_io.h
                   include/meshLoop.h
+                  include/dollar_stat.h
+                  include/serialize.hpp
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
                   array/include/arraySlice.h
@@ -198,6 +200,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/distTree.cpp
                   src/tsearchCmpx.cpp
                   src/treeNode.cpp
+                  src/dollar_stat.cpp
                   IO/vtk/src/oct2vtk.cpp
                   IO/vtk/src/checkPoint.cpp
                   src/oda.cpp
@@ -215,6 +218,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
 
 add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/dollar-master)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/zlib/inc)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/array/include)
@@ -427,6 +431,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/remesh.cpp
 add_executable(tstOctreeRemesh ${SRC_FILES})
 target_include_directories(tstOctreeRemesh PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/octree)
 target_link_libraries(tstOctreeRemesh dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testDollar.cpp)
+add_executable(tstDollar ${SRC_FILES})
+target_include_directories(tstDollar PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstDollar dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/matrix.h
               ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/matrix.cpp)
