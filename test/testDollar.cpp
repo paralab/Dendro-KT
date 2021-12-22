@@ -53,17 +53,17 @@ int main(int argc, char *argv[])
 
   dollar::DollarStat dollar_stat(comm);
 
-  if (commRank == 0)
-  {
-    // Only root's data
-    std::ofstream file("chrome.json");
-    dollar::chrome(file);
-    dollar::csv(std::cout);
+  /// if (commRank == 0)
+  /// {
+  ///   // Only root's data
+  ///   std::ofstream file("chrome.json");
+  ///   dollar::chrome(file);
+  ///   dollar::csv(std::cout);
 
-    // Only root's data
-    std::cout << "\n";
-    dollar_stat.print(std::cout);
-  }
+  ///   // Only root's data
+  ///   std::cout << "\n";
+  ///   dollar_stat.print(std::cout);
+  /// }
   dollar::clear();
 
   // Collect mean, min, and max timings over all processes.
@@ -72,14 +72,19 @@ int main(int argc, char *argv[])
   dollar::DollarStat reduce_max = dollar_stat.mpi_reduce_max();
   if (commRank == 0)
   {
-    std::cout << "\n";
-    reduce_mean.print(std::cout);
+    std::ofstream file("mean_chrome.json");
+    reduce_mean.chrome(file);
 
-    std::cout << "\n";
-    reduce_min.print(std::cout);
+    std::cout << "\n" << "[Mean]\n";
+    reduce_mean.tsv(std::cout);
+    std::cout << "\n" << "[Min]\n";
+    reduce_mean.tsv(std::cout);
+    std::cout << "\n" << "[Max]\n";
+    reduce_mean.tsv(std::cout);
 
-    std::cout << "\n";
-    reduce_max.print(std::cout);
+    /// reduce_mean.print(std::cout);
+    /// reduce_min.print(std::cout);
+    /// reduce_max.print(std::cout);
   }
 
   _DestroyHcurve();

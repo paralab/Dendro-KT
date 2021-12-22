@@ -60,40 +60,6 @@ namespace dollar
   }
 
 
-  //
-  // DollarStat::print()
-  //
-  void DollarStat::print(std::ostream &out)
-  {
-    int max_length = 0;
-    for (const auto & it : m_totals)
-    {
-      const int length = it.second.short_title.size();
-      max_length = (length > max_length ? length : max_length);
-    }
-
-    int width_ms = 12;
-    int width_hits = 7;
-
-    std::stringstream ss;
-    char buf[1024];
-    sprintf(buf, "%*s, %*s, %*s, \n",
-        max_length, "name",
-        width_ms, "ms",
-        width_hits, "hits");
-    ss << std::string(buf);
-
-    for (const auto & it : m_totals)
-    {
-      const info & info = it.second;
-      sprintf(buf, "%*s, %*.3f, %*.1f, \n",
-          max_length, info.short_title.c_str(),
-          width_ms,   info.total * 1000,
-          width_hits, info.hits);
-      ss << std::string(buf);
-    }
-    out << ss.str();
-  }
 
 
   namespace detail
@@ -270,5 +236,240 @@ namespace dollar
 
     return DollarStat(m_comm, detail::mpi_reduce(m_totals, reducer_max, m_comm));
   }
+
+
+
+  //
+  // DollarStat::print()
+  //
+  void DollarStat::print(std::ostream &out)
+  {
+    int max_length = 0;
+    for (const auto & it : m_totals)
+    {
+      const int length = it.second.short_title.size();
+      max_length = (length > max_length ? length : max_length);
+    }
+
+    int width_ms = 12;
+    int width_hits = 7;
+
+    std::stringstream ss;
+    char buf[1024];
+    sprintf(buf, "%*s, %*s, %*s, \n",
+        max_length, "name",
+        width_ms, "ms",
+        width_hits, "hits");
+    ss << std::string(buf);
+
+    for (const auto & it : m_totals)
+    {
+      const info & info = it.second;
+      sprintf(buf, "%*s, %*.3f, %*.1f, \n",
+          max_length, info.short_title.c_str(),
+          width_ms,   info.total * 1000,
+          width_hits, info.hits);
+      ss << std::string(buf);
+    }
+    out << ss.str();
+  }
+
+  namespace detail
+  {
+    template<typename info>
+    struct Node {
+        std::string name;
+        info *value;
+        std::vector<Node> children;
+
+        Node( const std::string &name, info *value = 0 ) : name(name), value(value)
+        {}
+
+        size_t tree_printer( std::string indent, bool leaf, std::ostream &out ) {
+            size_t len = 0;
+            {
+              std::stringstream ss;
+              if( leaf ) {
+                  ss << indent << "+-" << name;
+                  indent += "  ";
+              } else {
+                  out << indent << "|-" << name;
+                  indent += "| ";
+              }
+              name = ss.str();
+              len = name.length();
+              ss << std::endl;
+              out << ss.str();
+            }
+            for( auto end = children.size(), it = end - end; it < end; ++it ) {
+                len = std::max(len, children[it].tree_printer( indent, it == (end - 1), out ));
+            }
+            return len;
+        }
+        size_t tree_printer( std::ostream &out = std::cout ) {
+            return tree_printer( "", true, out );
+        }
+        Node&tree_recreate_branch( const std::vector<std::string> &names ) {
+            auto *where = &(*this);
+            for( auto &name : names ) {
+                bool found = false;
+                for( auto &it : where->children ) {
+                    if( it.name == name ) {
+                        where = &it;
+                        found = true;
+                        break;
+                    }
+                }
+                if( !found ) {
+                    where->children.push_back( Node(name) );
+                    where = &where->children.back();
+                }
+            }
+            return *where;
+        }
+        template<typename FN0, typename FN1, typename FN2>
+        void tree_walker( const FN0 &method, const FN1 &pre_children, const FN2 &post_chilren  ) const {
+            if( children.empty() ) {
+                method( *this );
+            } else {
+                pre_children( *this );
+                for( auto &child : children ) {
+                    child.tree_walker( method, pre_children, post_chilren );
+                }
+                post_chilren( *this );
+            }
+        }
+    };
+  }//namespace detail
+
+  //
+  // DollarStat::print_tree() (adaptation of dollar::profiler::print())
+  //
+  template void DollarStat::print_tree<0>(std::ostream &, const char *, const char *) const;
+  template void DollarStat::print_tree<1>(std::ostream &, const char *, const char *) const;
+  template<bool for_chrome>
+  void DollarStat::print_tree( std::ostream &out, const char *tab, const char *feed ) const
+  {
+      std::map<URI, info> totals = m_totals;
+
+      // calculate total accumulated time
+      double total = 0;
+      for( auto &it : totals ) {
+          total += it.second.total;
+      }
+
+      static unsigned char pos = 0;
+      info dummy;
+      dummy.short_title = "/";
+      detail::Node<info> root( std::string() + "\\|/-"[(++pos)%4], &dummy );
+      for( auto it = totals.begin(), end = totals.end(); it != end; ++it ) {
+          auto &info = it->second;
+          auto &node = root.tree_recreate_branch( it->first );
+          node.value = &info;
+      }
+
+      if (!for_chrome)
+      {
+          // Tree printer
+          std::stringstream ss;
+          size_t maxlen = root.tree_printer( ss );
+
+          // Add post-padding
+          for( auto &cp : totals )
+          {
+              std::string &ti = cp.second.short_title;
+              /**/ if( maxlen > ti.size() ) ti += std::string( maxlen - ti.size(), ' ' );
+              else if( maxlen < ti.size() ) ti.resize( maxlen );
+          }
+      }
+
+      for( auto &cp : totals ) {
+          for( auto &ch : cp.second.short_title ) {
+              if( ch == '\\' ) ch = '/';
+          }
+      }
+
+      size_t i = 0;
+      if( !for_chrome ) {
+          std::string format, sep, graph, buffer(1024, '\0');
+          // pre-loop
+          for( auto &it : std::vector<std::string>{ "%4d.","%s","[%s]","%5.2f%% CPU","(%9.3fms)","%5.0f hits",feed } ) {
+              format += sep + it;
+              sep = tab;
+          }
+          // loop
+          for( auto &it : totals ) {
+              auto &info = it.second;
+              double cpu = info.total * 100.0 / total;
+              int width(cpu*DOLLAR_CPUMETER_WIDTH/100);
+              graph = std::string( width, '=' ) + std::string( DOLLAR_CPUMETER_WIDTH - width, '.' );
+#ifdef _MSC_VER
+              sprintf_s( &buffer[0], 1024,
+#else
+              sprintf( &buffer[0],
+#endif
+              format.c_str(), ++i, it.second.short_title.c_str(), graph.c_str(), cpu, (float)(info.total * 1000), info.hits );
+              out << &buffer[0];
+          }
+      } else {
+
+          // setup
+          out << "[" << std::endl;
+
+          // json array format
+          // [ref] https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview
+          // [ref] https://github.com/catapult-project/catapult/blob/master/tracing/tracing/base/color_scheme.html#L54
+
+          auto get_color = []( float pct ) {
+              return pct <= 16 ? "good":
+                     pct <= 33 ? "bad":
+                     "terrible";
+          };
+
+          double timestamp = 0;
+          int fake_pid = 0,  fake_tid = 0;
+          root.tree_walker(
+              [&]( const detail::Node<info> &node ) {
+                  auto &info = *node.value;
+                  double cpu = info.total * 100.0 / total;
+                  out << "{\"name\": \"" << info.short_title << "\","
+                          "\"cat\": \"" << "CPU,DOLLAR" << "\","
+                          "\"ph\": \"" << 'X' << "\","
+                          "\"pid\": " << fake_pid << ","
+                          "\"tid\": " << fake_tid << ","
+                          "\"ts\": " << (unsigned int)(timestamp * 1000 * 1000) << ","
+                          "\"dur\": " << (unsigned int)(info.total * 1000 * 1000) << ","
+                          "\"cname\": \"" << get_color(cpu) << "\"" "," <<
+                          "\"args\": {}},\n";
+                  timestamp += info.total;
+              },
+              [&]( const detail::Node<info> &node ) {
+                  auto &info = *node.value;
+                  double cpu = info.total * 100.0 / total;
+                  out << "{\"name\": \"" << info.short_title << "\","
+                          "\"cat\": \"" << "CPU,DOLLAR" << "\","
+                          "\"ph\": \"" << 'B' << "\","
+                          "\"pid\": " << fake_pid << ","
+                          "\"tid\": " << fake_tid << ","
+                          "\"ts\": " << (unsigned int)(timestamp * 1000 * 1000) << ","
+                          "\"args\": {}},\n";
+                  timestamp += info.total;
+              },
+              [&]( const detail::Node<info> &node ) {
+                  auto &info = *node.value;
+                  double cpu = info.total * 100.0 / total;
+                  out << "{\"name\": \"" << info.short_title << "\","
+                          "\"cat\": \"" << "CPU,DOLLAR" << "\","
+                          "\"ph\": \"" << 'E' << "\","
+                          "\"pid\": " << fake_pid << ","
+                          "\"tid\": " << fake_tid << ","
+                          "\"ts\": " << (unsigned int)((timestamp + info.total) * 1000 * 1000) << ","
+                          "\"cname\": \"" << get_color(cpu) << "\"" "," <<
+                          "\"args\": {}},\n";
+                  timestamp += info.total;
+              } );
+      }
+  }
+
 
 }//namesapce dollar
