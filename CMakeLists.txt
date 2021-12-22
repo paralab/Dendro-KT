@@ -167,6 +167,8 @@ set(DENDRO_KT_INC include/dendro.h
                   include/sfcTreeLoop_matvec.h
                   include/sfcTreeLoop_matvec_io.h
                   include/meshLoop.h
+                  include/dollar_stat.h
+                  include/serialize.hpp
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
                   array/include/arraySlice.h
@@ -198,6 +200,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/distTree.cpp
                   src/tsearchCmpx.cpp
                   src/treeNode.cpp
+                  src/dollar_stat.cpp
                   IO/vtk/src/oct2vtk.cpp
                   IO/vtk/src/checkPoint.cpp
                   src/oda.cpp
