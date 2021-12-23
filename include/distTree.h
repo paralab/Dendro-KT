@@ -68,6 +68,12 @@ namespace ot
           MPI_Comm comm,
           double sfc_tol = 0.3);
 
+      static DistTree minimalSubdomainDistTreeGrain(
+          size_t grainMin,
+          const ::ibm::DomainDecider &domainDecider_phys,
+          MPI_Comm comm,
+          double sfc_tol = 0.3);
+
       template <typename D>
       static DistTree constructDistTreeByFunc(
           std::function<void(const D *, D *)> func,
@@ -158,6 +164,7 @@ namespace ot
 
       int getNumStrata() const { return m_numStrata; }
 
+      MPI_Comm getComm() const { return m_comm; }
 
       // These deciders can be called directly.
 

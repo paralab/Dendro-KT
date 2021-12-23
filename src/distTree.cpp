@@ -1125,6 +1125,60 @@ namespace ot
   }
 
 
+  template <typename T, unsigned int dim>
+  DistTree<T, dim>  DistTree<T, dim>::minimalSubdomainDistTreeGrain(
+          size_t grainMin,
+          const ::ibm::DomainDecider &domainDecider,
+          MPI_Comm comm,
+          double sfc_tol)
+  {
+    int rProc, nProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+    using Oct = TreeNode<T, dim>;
+    using OctList = std::vector<Oct>;
+
+    OctList tree;
+    OctList nextLevel;
+
+    if (rProc == 0)
+      tree.emplace_back(); // Root
+    filterOctList(domainDecider, tree);
+
+    int saturated = bool(tree.size() > grainMin);
+    { int saturatedGlobal;
+      par::Mpi_Allreduce(&saturated, &saturatedGlobal, 1, MPI_LAND, comm);
+      saturated = saturatedGlobal;
+    }
+
+    while (!saturated)
+    {
+      nextLevel.clear();
+      for (const Oct &oct : tree)
+        if (oct.getIsOnTreeBdry())
+          addMortonDescendants(oct.getLevel() + 1, oct, nextLevel);
+      filterOctList(domainDecider, nextLevel);
+      tree.insert(tree.end(), nextLevel.begin(), nextLevel.end());
+      SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm);
+      SFC_Tree<T, dim>::distMinimalBalanced(tree, sfc_tol, comm);
+      SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm);
+      SFC_Tree<T, dim>::distCoalesceSiblings(tree, comm);
+
+      saturated = bool(tree.size() > grainMin);
+      { int saturatedGlobal;
+        par::Mpi_Allreduce(&saturated, &saturatedGlobal, 1, MPI_LAND, comm);
+        saturated = saturatedGlobal;
+      }
+    }
+
+    DistTree<T, dim> dtree(tree, comm);
+    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+
+    return dtree;
+  }
+
+
 
   // Explicit instantiations
   template class DistTree<unsigned int, 2u>;
