@@ -7,6 +7,7 @@
 #define DENDRO_KT_DOLLAR_STAT_H
 
 #include <dollar.hpp>
+#include <mpi.h>
 
 namespace dollar
 {
