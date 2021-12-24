@@ -22,13 +22,14 @@
 #include <sfcTreeLoop_matvec_io.h>
 #include <octUtils.h>
 #include <parUtils.h>
+#include <array>
 //#include <IO/VTU.h>
 constexpr unsigned int DIM = 3;
 typedef ot::TreeNode<unsigned int, DIM> TREENODE;
 constexpr unsigned int nchild = 1u << DIM;
 static constexpr double RADIUS = 0.45;
 static constexpr double scaling = 1.0; /// The octant Coords are scaled by 16 in each direction.
-static constexpr std::array<double, 3> DOMAIN{1.0/16, 1.0/16, 4.0/16}; /// Physical domain of 1 X 1 X 16 is carved out from [1,1,16]
+static constexpr std::array<double, 3> domain = {1.0/16, 1.0/16, 4.0/16}; /// Physical domain of 1 X 1 X 16 is carved out from [1,1,16]
 static unsigned int maxLevel;
 enum CREATION_STAGE : bool {
   INITIAL = true,
@@ -66,7 +67,7 @@ static void PrintBoundaryNodes(ot::DA<DIM> * octDA, const std::string & filename
     }
   }
 }
-static const auto DomainDecider = ot::DistTree<unsigned, 3>::BoxDecider(DOMAIN);
+static const auto DomainDecider = ot::DistTree<unsigned, 3>::BoxDecider(domain);
 
 /**
  * main()
