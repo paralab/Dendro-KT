@@ -55,7 +55,7 @@ namespace serialize
       template <typename ...TS>
       std::tuple<TS...> unpack()
       {
-        return { TS(m_values[m_iter++])... };
+        return std::make_tuple(TS(m_values[m_iter++])...);
       }
 
       template <typename ...TS>

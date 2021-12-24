@@ -51,10 +51,5 @@ struct SFC_Search
 };
 
 
-// Template instantiations.
-template struct SFC_Search<unsigned int, 2>;
-template struct SFC_Search<unsigned int, 3>;
-template struct SFC_Search<unsigned int, 4>;
-
 }  // namespace ot
 
