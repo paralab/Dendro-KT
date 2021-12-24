@@ -41,7 +41,7 @@ namespace type
     // Arithmetic
     StrongIndex & operator++() { ++m_i; return *this; }
     StrongIndex & operator+=(const T d) { m_i += d; return *this; }
-    StrongIndex operator+(const T d) const { return StrongIndex(m_i + d); }
+    /// StrongIndex operator+(const T d) const { return StrongIndex(m_i + d); }  // creates ambiguity
         // others as needed
   };
 };
@@ -88,7 +88,7 @@ struct SFC_State
   inline SFC_State subcurve(sfc::SubIndex i) const;         // traversal
   inline SFC_State child_curve(sfc::ChildNum cn) const;     // traversal
 
-  sfc::RotIndex m_rotation{0};
+  sfc::RotIndex m_rotation = sfc::RotIndex{0};
 };
 
 
