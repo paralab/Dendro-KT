@@ -293,10 +293,11 @@ namespace dollar
                   ss << indent << "+-" << name;
                   indent += "  ";
               } else {
-                  out << indent << "|-" << name;
+                  ss << indent << "|-" << name;
                   indent += "| ";
               }
               name = ss.str();
+              value->short_title = ss.str();
               len = name.length();
               ss << std::endl;
               out << ss.str();
