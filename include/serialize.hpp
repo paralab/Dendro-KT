@@ -55,7 +55,15 @@ namespace serialize
       template <typename ...TS>
       std::tuple<TS...> unpack()
       {
-        return std::make_tuple(TS(m_values[m_iter++])...);
+        std::tuple<TS...> init_list_keeps_order{TS(m_values[m_iter++])...};
+        return init_list_keeps_order;
+        /* https://en.cppreference.com/w/cpp/language/parameter_pack
+         * https://en.cppreference.com/w/cpp/language/list_initialization
+         * "Every initializer clause is sequenced before any initializer clause
+            that follows it in the braced-init-list. This is in contrast
+            with the arguments of a function call expression, which are unsequenced
+            (until C++17) indeterminately sequenced (since C++17)."
+         */
       }
 
       template <typename ...TS>
