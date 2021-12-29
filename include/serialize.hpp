@@ -48,8 +48,10 @@ namespace serialize
       void pack(TS&&...ts)
       {
         for (const T &t : {ts...})
+        {
           m_values.push_back(t);
-        ++m_count;
+          ++m_count;
+        }
       }
 
       template <typename ...TS>
