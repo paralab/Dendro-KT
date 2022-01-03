@@ -19,6 +19,7 @@
 #include "parUtils.h"
 #include "filterFunction.h"
 #include <stdio.h>
+#include <dollar.hpp>
 
 namespace type
 {

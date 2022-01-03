@@ -634,7 +634,7 @@ SFC_Tree<T,dim>:: distTreePartition(std::vector<TreeNode<T,dim>> &points,
                           unsigned int noSplitThresh,
                           double loadFlexibility,
                           MPI_Comm comm)
-{
+{DOLLAR("distTreePartition()")
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -1400,6 +1400,8 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
   else
     locRemoveDuplicatesStrict(tree);
 
+  {DOLLAR("distRemoveDuplicates():cleanup")
+
   // Some processors could end up being empty, so exclude them from communicator.
   MPI_Comm nonemptys;
   MPI_Comm_split(comm, (tree.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
@@ -1430,6 +1432,7 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
   }
   if (nonemptys != MPI_COMM_NULL)
     MPI_Comm_free(&nonemptys);
+  }
 }
 
 
@@ -1495,7 +1498,7 @@ SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes
 template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
                                            MPI_Comm comm_ )
-{
+{DOLLAR("distCoalesceSiblings()")
   MPI_Comm comm = comm_;
 
   int nProc, rProc;
@@ -1844,7 +1847,7 @@ std::vector<TreeNode<T, dim>>
 SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replicateGrid,
                                     const std::vector<TreeNode<T, dim>> &splittersFromGrid,
                                     MPI_Comm comm )
-{
+{DOLLAR("getSurrogateGrid()")
   std::vector<TreeNode<T, dim>> surrogateGrid;
 
   int nProc, rProc;
@@ -1855,16 +1858,20 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
   // make it more convenient to construct surrogate grid.
   const bool isSplitterGridActive = splittersFromGrid.size() > 0;
   MPI_Comm sgActiveComm;
+  {DOLLAR("[comm split]")
   MPI_Comm_split(comm, (isSplitterGridActive ? 1 : MPI_UNDEFINED), rProc, &sgActiveComm);
+  }
 
   std::vector<int> sgActiveList;
   std::vector<TreeNode<T, dim>> splitters;
+  {DOLLAR("[bcast splitters]")
   splitters = SFC_Tree<T, dim>::dist_bcastSplitters(
       &splittersFromGrid.front(),
       comm,
       sgActiveComm,
       isSplitterGridActive,
       sgActiveList);
+  }
 
   std::vector<int> surrogateSendCountsCompact = getSendcounts<T, dim>(replicateGrid, splitters);
   std::vector<int> surrogateSendCounts(nProc, 0);
@@ -1873,7 +1880,9 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
 
   std::vector<int> surrogateRecvCounts(nProc, 0);
 
+  {DOLLAR("[Alltoall sendcounts]")
   par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, comm);
+  }
 
   std::vector<int> surrogateSendDispls(1, 0);
   surrogateSendDispls.reserve(nProc + 1);
@@ -1889,6 +1898,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
   surrogateGrid.resize(surrogateRecvDispls.back());
 
   // Copy replicateGrid grid to surrogate grid.
+  {DOLLAR("[Alltoallv_sparse]")
   par::Mpi_Alltoallv_sparse(replicateGrid.data(),
                             surrogateSendCounts.data(),
                             surrogateSendDispls.data(),
@@ -1896,6 +1906,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
                             surrogateRecvCounts.data(),
                             surrogateRecvDispls.data(),
                             comm);
+  }
 
   if (sgActiveComm != MPI_COMM_NULL)
     MPI_Comm_free(&sgActiveComm);
@@ -1910,7 +1921,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
 template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
-{
+{DOLLAR("propagateNeighbours()")
   std::vector<std::vector<TreeNode<T,dim>>> treeLevels = stratifyTree(srcNodes);
   srcNodes.clear();
 
@@ -2074,7 +2085,7 @@ SFC_Tree<T,dim>:: distTreeBalancingWithFilter(
 //
 template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
-{
+{DOLLAR("locMinimalBalanced()")
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
 
@@ -2084,7 +2095,7 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
   OctList resolution;
 
   // Propagate neighbors by levels
-  {
+  {DOLLAR("locMinimalBalanced():propagate")
     std::set<int> levels;
     std::map<int, OctList> octLevels;
     for (const Oct &oct : tree)
@@ -2476,7 +2487,7 @@ struct P2PVector
 template <typename T, unsigned dim>
 void SFC_Tree<T, dim>::distMinimalBalanced(
       std::vector<TreeNode<T, dim>> &tree, double sfc_tol, MPI_Comm comm)
-{
+{DOLLAR("distMinimalBalanced()")
   // Based on the distributed balancing routines in:
   // @article{doi:10.1137/070681727,
   //   author = {Sundar, Hari and Sampath, Rahul S. and Biros, George},

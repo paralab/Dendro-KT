@@ -11,7 +11,6 @@
 #include "tnUtils.h"
 #include "treeNode.h"
 
-
 using uint = unsigned int;
 constexpr int DIM = 2;
 
@@ -104,7 +103,7 @@ int main(int argc, char * argv[])
         ///   printf("via whole: size(%lu)-->surr(%lu), size(%lu)\n",
         ///       size(set.inTree), size(set.surrogate), size(set.outTree));
 
-        ot::quadTreeToGnuplot(octList(set.outTree), fineLevel, "viaWhole" + std::to_string(refIt), comm);
+        /// ot::quadTreeToGnuplot(octList(set.outTree), fineLevel, "viaWhole" + std::to_string(refIt), comm);
       }
 
       // New: remesh subdomain without communicating void.
@@ -125,17 +124,17 @@ int main(int argc, char * argv[])
         ///   printf("subdomain: size(%lu)-->surr(%lu), size(%lu)\n",
         ///       size(set.inTree), size(set.surrogate), size(set.outTree));
 
-        ot::quadTreeToGnuplot(octList(set.outTree), fineLevel, "noVoid" + std::to_string(refIt), comm);
+        /// ot::quadTreeToGnuplot(octList(set.outTree), fineLevel, "noVoid" + std::to_string(refIt), comm);
       }
 
-      const size_t sizeViaWhole = size(viaWhole.outTree);
-      const size_t sizeNoVoid   = size(noVoid.outTree);
-      if (commRank == 0)
-        printf("[rep %d  it %d] via whole: size==%lu  subdomain: size==%lu\n",
-            repIt, refIt, sizeViaWhole, sizeNoVoid);
-      if (!mpi_and(viaWhole.outTree.getTreePartFiltered() == noVoid.outTree.getTreePartFiltered(), comm))
-        if (commRank == 0)
-          std::cout << RED "Different trees produced on iteration " << refIt << NRM "\n";
+      /// const size_t sizeViaWhole = size(viaWhole.outTree);
+      /// const size_t sizeNoVoid   = size(noVoid.outTree);
+      /// if (commRank == 0)
+      ///   printf("[rep %d  it %d] via whole: size==%lu  subdomain: size==%lu\n",
+      ///       repIt, refIt, sizeViaWhole, sizeNoVoid);
+      /// if (!mpi_and(viaWhole.outTree.getTreePartFiltered() == noVoid.outTree.getTreePartFiltered(), comm))
+      ///   if (commRank == 0)
+      ///     std::cout << RED "Different trees produced on iteration " << refIt << NRM "\n";
     }
   }
 
@@ -146,11 +145,11 @@ int main(int argc, char * argv[])
   /// dollar::DollarStat dollar_max = dollar_stat.mpi_reduce_max();
   if (commRank == 0)
   {
-    std::ofstream file("mean_chrome.json");
-    dollar_mean.chrome(file);
+    /// std::ofstream file("mean_chrome.json");
+    /// dollar_mean.chrome(file);
 
     std::cout << "\n" << "[Mean]\n";
-    dollar_mean.tsv(std::cout);
+    dollar_mean.text(std::cout);
   }
 
   _DestroyHcurve();
