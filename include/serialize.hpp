@@ -54,27 +54,18 @@ namespace serialize
         }
       }
 
-      template <typename ...TS>
-      std::tuple<TS...> unpack()
+      template <typename T0, typename ...TS>
+      void unpack(T0&& t0, TS&&...ts)
       {
-        std::tuple<TS...> init_list_keeps_order{TS(m_values[m_iter++])...};
-        return init_list_keeps_order;
-        /* https://en.cppreference.com/w/cpp/language/parameter_pack
-         * https://en.cppreference.com/w/cpp/language/list_initialization
-         * "Every initializer clause is sequenced before any initializer clause
-            that follows it in the braced-init-list. This is in contrast
-            with the arguments of a function call expression, which are unsequenced
-            (until C++17) indeterminately sequenced (since C++17)."
-         */
+        t0 = m_values[m_iter++];
+        this->unpack(ts...);
       }
+      // Note: Some compilers have a bug such that the braced-init-list
+      //   {TS(m_values[m_iter++])...}  might not be eval'd left-to-right.
 
-      template <typename ...TS>
-      void unpack(TS&&...ts)
-      {
-        std::tie(ts...) = this->unpack<TS...>();
-      }
+      void unpack() { }
 
-      T unpack1() { return std::get<0>(this->unpack<T>()); }
+      T unpack1() { T ret; this->unpack(ret); return ret; }
 
       void mpi_send(int dest, int tag, MPI_Comm comm)
       {
