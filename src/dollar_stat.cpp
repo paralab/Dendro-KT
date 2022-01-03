@@ -139,7 +139,7 @@ namespace dollar
       while (!key.end())
       {
         DollarStat::info & info = map[key.unpack()];
-        std::tie(info.hits, info.total) = hits_total.unpack<double, double>();
+        hits_total.unpack(info.hits, info.total);
         info.short_title = short_title.unpack();
       }
     }
