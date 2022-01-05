@@ -2159,7 +2159,6 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
   }
   locTreeSort(resolution);
   locRemoveDuplicates(resolution);
-  /// locResolveTree_OLD(tree, resolution);
   locResolveTree(tree, std::move(resolution));
 }
 
@@ -2299,46 +2298,6 @@ void locResolveTree_rec(
 }
 
 
-
-
-//
-// locResolveTree()
-//
-template <typename T, unsigned int dim>
-void /*SFC_Tree<T, dim>::*/locResolveTree_OLD(
-    std::vector<TreeNode<T, dim>> &tree,
-    const std::vector<TreeNode<T, dim>> &res)
-{
-  using Oct = TreeNode<T, dim>;
-  using OctList = std::vector<Oct>;
-  const OctList input = tree;
-  tree.clear();
-
-  MeshLoopInterface_Sorted<T, dim, true, true, false> overInput(input);
-  MeshLoopInterface_Sorted<T, dim, true, true, false> overRes(res);
-  while (!overInput.isFinished())
-  {
-    const MeshLoopFrame<T, dim> &frameInput = overInput.getTopConst();
-    const MeshLoopFrame<T, dim> &frameRes = overRes.getTopConst();
-    if (frameInput.isLeaf())
-    {
-      if (frameInput.getTotalCount() > 0)  // Ignore non-domain
-        locCompleteResolved(
-            &(*res.cbegin()),
-            tree,
-            frameRes.getBeginIdx(), frameRes.getEndIdx(),
-            SFC_State<dim>(sfc::RotIndex(frameInput.getPRot())),
-            input[frameInput.getBeginIdx()]);
-      overInput.next();
-      overRes.next();
-    }
-    else
-    {
-      overInput.step();
-      overRes.step();
-    }
-  }
-}
 
 template <typename T, unsigned dim>
 void locMatchResolution_rec(

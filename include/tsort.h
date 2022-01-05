@@ -792,10 +792,6 @@ struct SFC_Tree
   static void locResolveTree(std::vector<TreeNode<T, dim>> &tree,
                              std::vector<TreeNode<T, dim>> &&res);
 
-  /** Maintains effective domain, splitting octants larger than res octants. */
-  static void locResolveTree_OLD(std::vector<TreeNode<T, dim>> &tree,
-                             const std::vector<TreeNode<T, dim>> &res);
-
   /** Maintains or expands domain, splitting or coarsening the tree
    *  to match the finest level in each leaf subtree of res. */
   static void locMatchResolution( std::vector<TreeNode<T, dim>> &tree,
