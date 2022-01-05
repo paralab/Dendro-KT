@@ -2137,7 +2137,8 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
       OctList &parentList = octLevels[level-1];
       for (const Oct &oct : octLevels[level])
         oct.getParent().appendAllNeighbours(parentList);
-      locTreeSort(parentList);
+      /// locTreeSort(parentList);
+      locTreeSort(&(*parentList.begin()), 0, parentList.size(), 1, level-1, SFC_State<dim>::root());//we know the depth
       locRemoveDuplicates(parentList);
 
       // future:
