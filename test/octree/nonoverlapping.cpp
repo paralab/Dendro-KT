@@ -59,15 +59,6 @@ int main(int argc, char * argv[])
       ot::DistTree<uint, DIM>::minimalSubdomainDistTree(
           fineLevel, sphereSet, comm, sfc_tol);
 
-  // Test the octree.
-  const OctList & octList = distTree.getTreePartFiltered();
-
-  OctList balanceTest = octList;
-  ot::SFC_Tree<uint, DIM>::locMinimalBalanced(balanceTest);
-
-  OctList unstable = ot::SFC_Tree<uint, DIM>::unstableOctants(
-      balanceTest, (commRank > 0), (commRank < commSize-1));
-
   const auto printTest = [](bool success, const std::string &prefix, const std::string &condition) {
     fprintf(stdout, "%s%s %s%s%s\n", success ? GRN : RED,
         prefix.c_str(), success ? "" : "not ", condition.c_str(), NRM);
@@ -76,6 +67,15 @@ int main(int argc, char * argv[])
     fprintf(stdout, "%s %s%s\n",
         prefix.c_str(), success ? "" : "not ", condition.c_str());
   };
+
+  // Test the octree.
+  const OctList & octList = distTree.getTreePartFiltered();
+
+  OctList balanceTest = octList;
+  ot::SFC_Tree<uint, DIM>::locMinimalBalanced(balanceTest);
+
+  OctList unstable = ot::SFC_Tree<uint, DIM>::unstableOctants(
+      balanceTest, (commRank > 0), (commRank < commSize-1));
 
   const bool sorted = mpi_and(ot::isLocallySorted(balanceTest), comm);
   if (commRank == 0)

@@ -318,6 +318,33 @@ struct Segment
 };
 
 
+template <typename X>
+struct Keeper
+{
+  X *ptr = nullptr;
+  size_t begin = 0;
+  size_t end = 0;
+  size_t out = 0;
+  bool kept = false;
+
+  Keeper(X *ptr_, size_t begin_, size_t end_)
+    : ptr(ptr_), begin(begin_), end(end_), out(begin_) {}
+
+  bool nonempty() const       { return begin < end; }
+  bool empty() const          { return !nonempty(); }
+  const X & operator*() const { return ptr[begin]; }
+  X & operator*()             { return ptr[begin]; }
+  Keeper & operator++()       { ++begin; kept = false; return *this; }
+  void keep()                 { if (!kept) ptr[out++] = ptr[begin]; kept = true; }
+  void unkeep()               { --out; kept = false; }
+  bool can_store() const      { return out < begin; }
+  bool store(const X &x)      { return can_store() && (ptr[out++] = x, true); }
+};
+
+
+
+
+
 /* Appends info for all keys in subtree and advances both sequences past subtree. */
 template <typename T, unsigned int dim>
 void overlaps_lower_bound_rec(
@@ -2132,8 +2159,24 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
   }
   locTreeSort(resolution);
   locRemoveDuplicates(resolution);
-  locResolveTree(tree, resolution);
+  /// locResolveTree_OLD(tree, resolution);
+  locResolveTree(tree, std::move(resolution));
 }
+
+
+
+
+//
+// locResolveTree_rec()
+//
+template <typename T, unsigned int dim>
+void locResolveTree_rec(
+    Keeper<TreeNode<T, dim>> &domain,
+    Keeper<TreeNode<T, dim>> &res,
+    bool complete,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<TreeNode<T, dim>> &extra);
 
 
 //
@@ -2141,6 +2184,128 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
 //
 template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::locResolveTree(
+    std::vector<TreeNode<T, dim>> &tree,
+    std::vector<TreeNode<T, dim>> &&res)
+{
+  using Oct = TreeNode<T, dim>;
+  Keeper<Oct> keep_domain(&(*tree.begin()), 0, tree.size());
+  Keeper<Oct> keep_res(&(*res.begin()), 0, res.size());
+  std::vector<Oct> extra;
+
+  locResolveTree_rec<T, dim>(
+      keep_domain,
+      keep_res,
+      false,
+      Oct(),
+      SFC_State<dim>::root(),
+      extra);
+
+  tree.erase(tree.begin() + keep_domain.out, tree.end());
+  res.erase(res.begin() + keep_res.out, res.end());
+
+  if (res.size() > tree.size())
+    std::swap(tree, res);
+
+  tree.insert(tree.end(), res.begin(), res.end());
+  tree.insert(tree.end(), extra.begin(), extra.end());
+  res.clear();
+  extra.clear();
+
+  SFC_Tree<T, dim>::locTreeSort(tree);
+}
+
+
+//
+// locResolveTree_rec()
+//
+template <typename T, unsigned int dim>
+void locResolveTree_rec(
+    Keeper<TreeNode<T, dim>> &domain,  // sorted nonoverlapping
+    Keeper<TreeNode<T, dim>> &res,     // sorted, maybe overlapping
+    bool complete,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<TreeNode<T, dim>> &extra)
+{
+  using Oct = TreeNode<T, dim>;
+
+  struct SubtreeKeeper {
+    Keeper<Oct> &it;  const Oct &root;  const bool complete;
+    SubtreeKeeper(Keeper<Oct> &it_, const Oct &root_, bool complete_ = false)
+      :  it(it_), root(root_), complete(complete_) {}
+
+    bool has_root() const { return it.nonempty() and *it == root; }
+    bool nonempty() const { return complete or it.nonempty() and root.isAncestorInclusive(*it); }
+    bool empty() const    { return not nonempty(); }
+
+    // Return true if all subtree octants were kept in keeper, otherwise false.
+    bool keep_all() {
+      if (complete and (it.empty() or not root.isAncestorInclusive(*it))) return false;
+      while (it.nonempty() and root.isAncestorInclusive(*it))
+        it.keep(), ++it;
+      return true;
+    }
+  };
+
+  SubtreeKeeper dom_tree(domain, subtree, complete);
+  SubtreeKeeper res_tree(res, subtree);
+
+  if (dom_tree.empty())
+    // Advance past subtree in res.
+    while (res_tree.nonempty())
+      ++res_tree.it;
+  else
+  {
+    bool res_should_keep_root = false;
+    bool res_kept_root = false;
+
+    if (res_tree.has_root())
+      res_tree.it.keep(), res_kept_root = true;
+    while (res_tree.has_root())
+      ++res_tree.it;
+
+    // Leaf or empty. No more detail in res; conform to original domain.
+    if (res_tree.empty())
+    {
+      // Try to keep in dom, unless have to store root finer than dom.
+      // Then try to keep in res, if already there,
+      // otherwise insert copy of root into whichever has room,
+      // otherwise push into auxiliary vector.
+      if (not dom_tree.keep_all())
+        if (res_kept_root)
+          res_should_keep_root = true;
+        else if (not (res_tree.it.store(subtree) or dom_tree.it.store(subtree)))
+          extra.push_back(subtree);
+    }
+
+    if (res_kept_root and not res_should_keep_root)
+      res_tree.it.unkeep();
+
+    // When res has more detail, recurse on subtrees.
+    if (res_tree.nonempty())
+    {
+      complete = complete or dom_tree.has_root();
+      while (dom_tree.has_root())
+        ++dom_tree.it;
+
+      for (sfc::SubIndex c(0); c < nchild(dim); ++c)
+        locResolveTree_rec<T, dim>(
+            domain, res, complete,
+            subtree.getChildMorton(sfc.child_num(c)),
+            sfc.subcurve(c),
+            extra);
+    }
+  }
+}
+
+
+
+
+//
+// locResolveTree()
+//
+template <typename T, unsigned int dim>
+void /*SFC_Tree<T, dim>::*/locResolveTree_OLD(
     std::vector<TreeNode<T, dim>> &tree,
     const std::vector<TreeNode<T, dim>> &res)
 {
