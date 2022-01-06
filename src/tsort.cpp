@@ -2119,48 +2119,45 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
   if (tree.size() == 0)
     return;
 
-  OctList resolution = tree;
-  SFC_Tree<T, dim>::propagateNeighbours(resolution);
+  OctList resolution;
 
-  /// OctList resolution;
+  // Propagate neighbors by levels
+  {DOLLAR("locMinimalBalanced():propagate")
+    std::set<int> levels;
+    std::map<int, OctList> octLevels;
+    for (const Oct &oct : tree)
+    {
+      levels.insert(oct.getLevel());
+      octLevels[oct.getLevel()].push_back(oct);
+    }
 
-  /// // Propagate neighbors by levels
-  /// {DOLLAR("locMinimalBalanced():propagate")
-  ///   std::set<int> levels;
-  ///   std::map<int, OctList> octLevels;
-  ///   for (const Oct &oct : tree)
-  ///   {
-  ///     levels.insert(oct.getLevel());
-  ///     octLevels[oct.getLevel()].push_back(oct);
-  ///   }
+    const int coarsest = *levels.begin(),  finest = *levels.rbegin();
+    for (int level = finest; level > coarsest; --level)
+    {
+      OctList &parentList = octLevels[level-1];
+      for (const Oct &oct : octLevels[level])
+        oct.getParent().appendAllNeighbours(parentList);
+      /// locTreeSort(parentList);
+      locTreeSort(&(*parentList.begin()), 0, parentList.size(), 1, level-1, SFC_State<dim>::root());//we know the depth
+      locRemoveDuplicates(parentList);
 
-  ///   const int coarsest = *levels.begin(),  finest = *levels.rbegin();
-  ///   for (int level = finest; level > coarsest; --level)
-  ///   {
-  ///     OctList &parentList = octLevels[level-1];
-  ///     for (const Oct &oct : octLevels[level])
-  ///       oct.getParent().appendAllNeighbours(parentList);
-  ///     /// locTreeSort(parentList);
-  ///     locTreeSort(&(*parentList.begin()), 0, parentList.size(), 1, level-1, SFC_State<dim>::root());//we know the depth
-  ///     locRemoveDuplicates(parentList);
+      // future:
+      //   separate parentGiven and parentAux
+      //     (childGiven, childAux |--> parentAux)
+      //   and trim parentAux: delete an octant in parentAux if
+      //     - overlaps with an octant in parentGiven, or
+      //     - is not a descendant of a leaf in the given tree.
+      //       (might need some kind of fast HashTree search.)
+    }
 
-  ///     // future:
-  ///     //   separate parentGiven and parentAux
-  ///     //     (childGiven, childAux |--> parentAux)
-  ///     //   and trim parentAux: delete an octant in parentAux if
-  ///     //     - overlaps with an octant in parentGiven, or
-  ///     //     - is not a descendant of a leaf in the given tree.
-  ///     //       (might need some kind of fast HashTree search.)
-  ///   }
+    size_t sumSizes = 0;
+    for (const std::pair<int, OctList> &lev_list : octLevels)
+      sumSizes += lev_list.second.size();
 
-  ///   size_t sumSizes = 0;
-  ///   for (const std::pair<int, OctList> &lev_list : octLevels)
-  ///     sumSizes += lev_list.second.size();
-
-  ///   resolution.reserve(sumSizes);
-  ///   for (const std::pair<int, OctList> &lev_list : octLevels)
-  ///     resolution.insert(resolution.end(), lev_list.second.begin(), lev_list.second.end());
-  /// }
+    resolution.reserve(sumSizes);
+    for (const std::pair<int, OctList> &lev_list : octLevels)
+      resolution.insert(resolution.end(), lev_list.second.begin(), lev_list.second.end());
+  }
   locTreeSort(resolution);
   locRemoveDuplicates(resolution);
   locResolveTree(tree, std::move(resolution));
