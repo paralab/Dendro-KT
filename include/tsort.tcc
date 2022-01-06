@@ -13,10 +13,29 @@ namespace ot
 //
 // locTreeSort()
 //
+template<typename T, unsigned int dim, class PointType>
+void
+locTreeSort_rec(PointType *points,
+                          RankI begin, RankI end,
+                          LevI sLev,
+                          LevI eLev,
+                          SFC_State<dim> sfc);
+
 template<typename T, unsigned int dim>
 template <class PointType>
 void
 SFC_Tree<T,dim>:: locTreeSort(PointType *points,
+                          RankI begin, RankI end,
+                          LevI sLev,
+                          LevI eLev,
+                          SFC_State<dim> sfc)
+{DOLLAR("locSortOrCtor")
+  locTreeSort_rec<T, dim, PointType>(points, begin, end, sLev, eLev, sfc);
+}
+
+template<typename T, unsigned int dim, class PointType>
+void
+locTreeSort_rec(PointType *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
@@ -30,7 +49,7 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
   std::array<RankI, nchild(dim)+1> tempSplitters;
   RankI ancStart, ancEnd;
   /// SFC_bucketing(points, begin, end, sLev, pRot, tempSplitters, ancStart, ancEnd);
-  SFC_bucketing_impl<KeyFunIdentity_Pt<PointType>, PointType, PointType>(
+  SFC_Tree<T, dim>::template SFC_bucketing_impl<KeyFunIdentity_Pt<PointType>, PointType, PointType>(
       points, begin, end, sLev, sfc,
       KeyFunIdentity_Pt<PointType>(), true, true,
       tempSplitters,
@@ -51,14 +70,14 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
 
       if (sLev > 0)
       {
-        locTreeSort(points,
+        locTreeSort_rec<T, dim, PointType>(points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
             sfc.subcurve(sfc::SubIndex(child_sfc)));
       }
       else   // Special handling if we have to consider the domain boundary.
       {
-        locTreeSort(points,
+        locTreeSort_rec<T, dim, PointType>(points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
             sfc);
@@ -71,6 +90,17 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
 //
 // locTreeSort() (with parallel companion array)
 //
+template<typename T, unsigned int dim, class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
+void
+locTreeSort_rec(PointType *points,
+                          RankI begin, RankI end,
+                          LevI sLev,
+                          LevI eLev,
+                          SFC_State<dim> sfc,
+                          KeyFun keyfun,
+                          Companion* ... companions
+                          );
+
 template<typename T, unsigned int dim>
 template <class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
 void
@@ -82,6 +112,22 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
                           KeyFun keyfun,
                           Companion* ... companions
                           )
+{DOLLAR("locSortOrCtor")
+  locTreeSort_rec<T, dim, KeyFun, PointType, KeyType, useCompanions>(
+      points, begin, end, sLev, eLev, sfc, keyfun, companions...);
+}
+
+template<typename T, unsigned int dim, class KeyFun, typename PointType, typename KeyType, bool useCompanions, typename... Companion>
+void
+locTreeSort_rec(PointType *points,
+                          RankI begin, RankI end,
+                          LevI sLev,
+                          LevI eLev,
+                          SFC_State<dim> sfc,
+                          KeyFun keyfun,
+                          Companion* ... companions
+                          )
+
 {
   //// Recursive Depth-first, similar to Most Significant Digit First. ////
 
@@ -93,7 +139,7 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
   // Reorder the buckets on sLev (current level).
   std::array<RankI, numChildren+1> tempSplitters;
   RankI ancStart, ancEnd;
-  SFC_bucketing_general<KeyFun, PointType, KeyType, useCompanions, Companion...>(
+  SFC_Tree<T, dim>::template SFC_bucketing_general<KeyFun, PointType, KeyType, useCompanions, Companion...>(
       points, begin, end, sLev, sfc,
       keyfun, true, true,
       tempSplitters,
@@ -116,7 +162,7 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
 
       if (sLev > 0)
       {
-        locTreeSort<KeyFun, PointType, KeyType, useCompanions, Companion...>
+        locTreeSort_rec<T, dim, KeyFun, PointType, KeyType, useCompanions, Companion...>
             (points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
@@ -127,7 +173,7 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
       }
       else   // Special handling if we have to consider the domain boundary.
       {
-        locTreeSort<KeyFun, PointType, KeyType, useCompanions, Companion...>
+        locTreeSort_rec<T, dim, KeyFun, PointType, KeyType, useCompanions, Companion...>
             (points,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,

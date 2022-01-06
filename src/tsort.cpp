@@ -988,7 +988,32 @@ SFC_Tree<T,dim>:: treeBFTNextLevel(TreeNode<T,dim> *points,
 //
 template <typename T, unsigned int dim>
 void
+locTreeConstruction_rec(TreeNode<T,dim> *points,
+                                  std::vector<TreeNode<T,dim>> &tree,
+                                  RankI maxPtsPerRegion,
+                                  RankI begin, RankI end,
+                                  LevI sLev,
+                                  LevI eLev,
+                                  SFC_State<dim> sfc,
+                                  TreeNode<T,dim> pNode);
+
+template <typename T, unsigned int dim>
+void
 SFC_Tree<T,dim>:: locTreeConstruction(TreeNode<T,dim> *points,
+                                  std::vector<TreeNode<T,dim>> &tree,
+                                  RankI maxPtsPerRegion,
+                                  RankI begin, RankI end,
+                                  LevI sLev,
+                                  LevI eLev,
+                                  SFC_State<dim> sfc,
+                                  TreeNode<T,dim> pNode)
+{DOLLAR("locSortOrCtor")
+  locTreeConstruction_rec<T, dim>(points, tree, maxPtsPerRegion, begin, end, sLev, eLev, sfc, pNode);
+}
+
+template <typename T, unsigned int dim>
+void
+locTreeConstruction_rec(TreeNode<T,dim> *points,
                                   std::vector<TreeNode<T,dim>> &tree,
                                   RankI maxPtsPerRegion,
                                   RankI begin, RankI end,
@@ -1006,7 +1031,7 @@ SFC_Tree<T,dim>:: locTreeConstruction(TreeNode<T,dim> *points,
   // Reorder the buckets on sLev (current level).
   std::array<RankI, numChildren+1> tempSplitters;
   RankI ancStart, ancEnd;
-  SFC_bucketing(points, begin, end, sLev, sfc, tempSplitters, ancStart, ancEnd);
+  SFC_Tree<T, dim>::SFC_bucketing(points, begin, end, sLev, sfc, tempSplitters, ancStart, ancEnd);
   // The array `tempSplitters' has numChildren+2 slots, which includes the
   // beginning, middles, and end of the range of children, and ancestors are in front.
 
@@ -1025,7 +1050,7 @@ SFC_Tree<T,dim>:: locTreeConstruction(TreeNode<T,dim> *points,
       {
         // Recursively build a complete sub-tree out of this bucket's points.
         // Use the splitters to specify ranges for the next level of recursion.
-        locTreeConstruction(
+        locTreeConstruction_rec<T, dim>(
             points, tree, maxPtsPerRegion,
             tempSplitters[child_sfc+0], tempSplitters[child_sfc+1],
             sLev+1, eLev,
@@ -1427,7 +1452,7 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
   else
     locRemoveDuplicatesStrict(tree);
 
-  {DOLLAR("distRemoveDuplicates():cleanup")
+  {DOLLAR("distSiblingsOrEdgeDups")
 
   // Some processors could end up being empty, so exclude them from communicator.
   MPI_Comm nonemptys;
@@ -1525,7 +1550,7 @@ SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes
 template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
                                            MPI_Comm comm_ )
-{DOLLAR("distCoalesceSiblings()")
+{DOLLAR("distSiblingsOrEdgeDups()")
   MPI_Comm comm = comm_;
 
   int nProc, rProc;
@@ -1885,13 +1910,13 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
   // make it more convenient to construct surrogate grid.
   const bool isSplitterGridActive = splittersFromGrid.size() > 0;
   MPI_Comm sgActiveComm;
-  {DOLLAR("[comm split]")
+  {
   MPI_Comm_split(comm, (isSplitterGridActive ? 1 : MPI_UNDEFINED), rProc, &sgActiveComm);
   }
 
   std::vector<int> sgActiveList;
   std::vector<TreeNode<T, dim>> splitters;
-  {DOLLAR("[bcast splitters]")
+  {
   splitters = SFC_Tree<T, dim>::dist_bcastSplitters(
       &splittersFromGrid.front(),
       comm,
@@ -1907,7 +1932,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
 
   std::vector<int> surrogateRecvCounts(nProc, 0);
 
-  {DOLLAR("[Alltoall sendcounts]")
+  {
   par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, comm);
   }
 
@@ -1925,7 +1950,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
   surrogateGrid.resize(surrogateRecvDispls.back());
 
   // Copy replicateGrid grid to surrogate grid.
-  {DOLLAR("[Alltoallv_sparse]")
+  {
   par::Mpi_Alltoallv_sparse(replicateGrid.data(),
                             surrogateSendCounts.data(),
                             surrogateSendDispls.data(),
@@ -2389,7 +2414,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
     const std::vector<TreeNode<T, dim>> &tree,
     const bool dangerLeft,
     const bool dangerRight)
-{
+{DOLLAR("unstableOctants()")
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
 
@@ -2698,7 +2723,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   std::vector<int> queryDestGlobal, querySrcGlobal;
   for (int r : queryDest)  queryDestGlobal.push_back(active[r]);
   for (int r : querySrc)   querySrcGlobal.push_back(active[r]);
-  {
+  {DOLLAR("Round1:SendRecv")
     P2PPartners partners(queryDestGlobal, querySrcGlobal, comm);
 
     // Sizes
@@ -2735,6 +2760,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   // (Round 2)  Recreate the insulation layers of remote unstable query octants.
   OctList insulationRemote;
   std::vector<int> insulationRemoteOrigin;
+  {DOLLAR("Round2:Recreate")
   for (int r : querySrc)
   {
     const size_t oldSz = insulationRemote.size();
@@ -2744,6 +2770,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
     std::fill_n(std::back_inserter(insulationRemoteOrigin), newSz - oldSz, r);
   }
   locTreeSort(insulationRemote, insulationRemoteOrigin);
+  }
 
   // Need to send owned unstable octants that overlap with remote insulation.
   Overlaps<T, dim> insRemotePerUnstableOwned(
@@ -2773,7 +2800,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   // (Round 2)  Send/recv
   std::map<int, std::vector<Oct>> recvQueryAnswer;
-  {
+  {DOLLAR("Round2:SendRecv")
     P2PPartners partners(querySrcGlobal, queryDestGlobal, comm);
 
     // Sizes
@@ -2820,14 +2847,18 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
     appendVec(unstablePlus, recvQueryAnswer[r]);
 
   // Balance unstable octants against received insulation.
+  {DOLLAR("[Balance owned unstable]")
   locTreeSort(unstablePlus);
   locMinimalBalanced(unstablePlus);
   retainDescendants(unstablePlus, unstableOwned);
+  }
 
   // Replace unstable with unstable balanced.
+  {DOLLAR("[Unstable->Balanced]")
   removeEqual(tree, unstableOwned);
   appendVec(tree, unstablePlus);
   locTreeSort(tree);
+  }
 }
 
 
