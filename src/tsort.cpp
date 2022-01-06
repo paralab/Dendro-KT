@@ -2430,24 +2430,53 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
   //   nbr.isAncestor(back)   or  (nbr > back)
   // Can test ancestry immediately, but comparisons need sort.
 
+  // Optimization: If an octant has an ancestor residing in the partition
+  //               and sharing no sides with the octant, then it is stable.
+  const auto paddedAncestor = [](const Oct &oct) -> Oct {
+    if (oct.getLevel() == 0)
+      return oct;
+    const int height = m_uiMaxDepth - oct.getLevel();
+    int levDeviate = oct.getLevel();
+    for (int d = 0; d < dim; ++d)
+    {
+      T x = oct.getX(d);
+      x >>= height;
+      const int levDeviateLeft = (x == 0 ? 1 : oct.getLevel() - binOp::lowestOnePos(x));
+      x = ~x;
+      const int levDeviateRight = (x == 0 ? 1 : oct.getLevel() - binOp::lowestOnePos(x));
+      levDeviate = fmin(fmin(levDeviateLeft, levDeviateRight), levDeviate);
+    }
+    return oct.getAncestor(levDeviate - 1);
+  };
+
   std::vector<char> isUnstable(tree.size(), false);
   OctList octNbr;
   OctList allNbr;
   std::vector<size_t> allSrc;
   for (size_t i = 0; i < tree.size(); ++i)
   {
-    octNbr.clear();
-    tree[i].appendAllNeighbours(octNbr);
+    bool knownStable = false;
+    {
+      const Oct pad = paddedAncestor(tree[i]);
+      if (! ((dangerLeft && pad.isAncestor(front))
+             || (dangerRight && pad.isAncestor(back))) )
+        knownStable = true;
+    }
 
     bool knownUnstable = false;
-    for (const Oct &nbr : octNbr)
-      if ((dangerLeft && nbr.isAncestor(front))
-          || (dangerRight && nbr.isAncestor(back)))
-        knownUnstable = true;
+    if (!knownStable)
+    {
+      octNbr.clear();
+      tree[i].appendAllNeighbours(octNbr);
+      for (const Oct &nbr : octNbr)
+        if ((dangerLeft && nbr.isAncestor(front))
+            || (dangerRight && nbr.isAncestor(back)))
+          knownUnstable = true;
+    }
 
     if (knownUnstable)
       isUnstable[i] = true;
-    else//unknown
+    else if (!knownStable)//unknown
     {
       allNbr.insert(allNbr.end(), octNbr.begin(), octNbr.end());
       allSrc.insert(allSrc.end(), octNbr.size(), i);
