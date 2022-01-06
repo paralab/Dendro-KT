@@ -661,7 +661,7 @@ SFC_Tree<T,dim>:: distTreePartition(std::vector<TreeNode<T,dim>> &points,
                           unsigned int noSplitThresh,
                           double loadFlexibility,
                           MPI_Comm comm)
-{DOLLAR("distTreePartition()")
+{
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -1007,7 +1007,7 @@ SFC_Tree<T,dim>:: locTreeConstruction(TreeNode<T,dim> *points,
                                   LevI eLev,
                                   SFC_State<dim> sfc,
                                   TreeNode<T,dim> pNode)
-{DOLLAR("locSortOrCtor")
+{
   locTreeConstruction_rec<T, dim>(points, tree, maxPtsPerRegion, begin, end, sLev, eLev, sfc, pNode);
 }
 
@@ -1452,8 +1452,6 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
   else
     locRemoveDuplicatesStrict(tree);
 
-  {DOLLAR("distSiblingsOrEdgeDups")
-
   // Some processors could end up being empty, so exclude them from communicator.
   MPI_Comm nonemptys;
   MPI_Comm_split(comm, (tree.size() > 0 ? 1 : MPI_UNDEFINED), rProc, &nonemptys);
@@ -1484,7 +1482,6 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
   }
   if (nonemptys != MPI_COMM_NULL)
     MPI_Comm_free(&nonemptys);
-  }
 }
 
 
@@ -1550,7 +1547,7 @@ SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes
 template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
                                            MPI_Comm comm_ )
-{DOLLAR("distSiblingsOrEdgeDups()")
+{
   MPI_Comm comm = comm_;
 
   int nProc, rProc;
@@ -1899,7 +1896,7 @@ std::vector<TreeNode<T, dim>>
 SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replicateGrid,
                                     const std::vector<TreeNode<T, dim>> &splittersFromGrid,
                                     MPI_Comm comm )
-{DOLLAR("getSurrogateGrid()")
+{
   std::vector<TreeNode<T, dim>> surrogateGrid;
 
   int nProc, rProc;
@@ -1973,7 +1970,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
 template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
-{DOLLAR("propagateNeighbours()")
+{
   std::vector<std::vector<TreeNode<T,dim>>> treeLevels = stratifyTree(srcNodes);
   srcNodes.clear();
 
@@ -2133,7 +2130,7 @@ SFC_Tree<T,dim>:: distTreeBalancingWithFilter(
 //
 template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
-{DOLLAR("locMinimalBalanced()")
+{
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
 
@@ -2143,7 +2140,7 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
   OctList resolution;
 
   // Propagate neighbors by levels
-  {DOLLAR("locMinimalBalanced():propagate")
+  {
     std::set<int> levels;
     std::map<int, OctList> octLevels;
     for (const Oct &oct : tree)
@@ -2411,7 +2408,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
     const std::vector<TreeNode<T, dim>> &tree,
     const bool dangerLeft,
     const bool dangerRight)
-{DOLLAR("unstableOctants()")
+{
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
 
@@ -2663,7 +2660,7 @@ struct P2PVector
 template <typename T, unsigned dim>
 void SFC_Tree<T, dim>::distMinimalBalanced(
       std::vector<TreeNode<T, dim>> &tree, double sfc_tol, MPI_Comm comm)
-{DOLLAR("distMinimalBalanced()")
+{
   // Based on the distributed balancing routines in:
   // @article{doi:10.1137/070681727,
   //   author = {Sundar, Hari and Sampath, Rahul S. and Biros, George},
@@ -2749,7 +2746,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   std::vector<int> queryDestGlobal, querySrcGlobal;
   for (int r : queryDest)  queryDestGlobal.push_back(active[r]);
   for (int r : querySrc)   querySrcGlobal.push_back(active[r]);
-  {DOLLAR("Round1:SendRecv")
+  {
     P2PPartners partners(queryDestGlobal, querySrcGlobal, comm);
 
     // Sizes
@@ -2786,7 +2783,6 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   // (Round 2)  Recreate the insulation layers of remote unstable query octants.
   OctList insulationRemote;
   std::vector<int> insulationRemoteOrigin;
-  {DOLLAR("Round2:Recreate")
   for (int r : querySrc)
   {
     const size_t oldSz = insulationRemote.size();
@@ -2796,7 +2792,6 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
     std::fill_n(std::back_inserter(insulationRemoteOrigin), newSz - oldSz, r);
   }
   locTreeSort(insulationRemote, insulationRemoteOrigin);
-  }
 
   // Need to send owned unstable octants that overlap with remote insulation.
   Overlaps<T, dim> insRemotePerUnstableOwned(
@@ -2826,7 +2821,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   // (Round 2)  Send/recv
   std::map<int, std::vector<Oct>> recvQueryAnswer;
-  {DOLLAR("Round2:SendRecv")
+  {
     P2PPartners partners(querySrcGlobal, queryDestGlobal, comm);
 
     // Sizes
@@ -2873,18 +2868,14 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
     appendVec(unstablePlus, recvQueryAnswer[r]);
 
   // Balance unstable octants against received insulation.
-  {DOLLAR("[Balance owned unstable]")
   locTreeSort(unstablePlus);
   locMinimalBalanced(unstablePlus);
   retainDescendants(unstablePlus, unstableOwned);
-  }
 
   // Replace unstable with unstable balanced.
-  {DOLLAR("[Unstable->Balanced]")
   removeEqual(tree, unstableOwned);
   appendVec(tree, unstablePlus);
   locTreeSort(tree);
-  }
 }
 
 

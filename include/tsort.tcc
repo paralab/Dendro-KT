@@ -29,7 +29,7 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
                           LevI sLev,
                           LevI eLev,
                           SFC_State<dim> sfc)
-{DOLLAR("locSortOrCtor")
+{
   locTreeSort_rec<T, dim, PointType>(points, begin, end, sLev, eLev, sfc);
 }
 
@@ -112,7 +112,7 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
                           KeyFun keyfun,
                           Companion* ... companions
                           )
-{DOLLAR("locSortOrCtor")
+{
   locTreeSort_rec<T, dim, KeyFun, PointType, KeyType, useCompanions>(
       points, begin, end, sLev, eLev, sfc, keyfun, companions...);
 }
