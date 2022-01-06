@@ -255,6 +255,12 @@ template <typename T, unsigned int dim>
 struct SFC_Tree
 {
   template <class PointType>
+  static void locTreeSortInUnitCube(std::vector<PointType> &points)
+  {
+    SFC_Tree<T, dim>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 1, m_uiMaxDepth, SFC_State<dim>::root());
+  }
+
+  template <class PointType>
   static void locTreeSort(std::vector<PointType> &points)
   {
     SFC_Tree<T, dim>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());

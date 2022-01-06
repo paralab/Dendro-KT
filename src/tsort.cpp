@@ -1986,15 +1986,11 @@ SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
 
     const size_t oldLevelSize = treeLevels[lp].size();
 
-    for (const TreeNode<T,dim> &tn : treeLevels[l])
-    {
-      // Append neighbors of parent.
-      TreeNode<T,dim> tnParent = tn.getParent();
-      treeLevels[lp].push_back(tnParent);
-      tnParent.appendAllNeighbours(treeLevels[lp]);
-
-      /* Might need to intermittently remove duplicates... */
-    }
+    const std::vector<TreeNode<T, dim>> &childList = treeLevels[l];
+    std::vector<TreeNode<T, dim>> &parentList = treeLevels[lp];
+    for (size_t i = 0; i < childList.size(); ++i)
+      if (i == 0 || childList[i-1].getParent() != childList[i].getParent())
+        childList[i].getParent().appendAllNeighbours(parentList);
 
     // TODO Consider more efficient algorithms for removing duplicates from lp level.
     locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, SFC_State<dim>::root());
@@ -2159,10 +2155,12 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
     const int coarsest = *levels.begin(),  finest = *levels.rbegin();
     for (int level = finest; level > coarsest; --level)
     {
+      const OctList &childList = octLevels[level];
       OctList &parentList = octLevels[level-1];
-      for (const Oct &oct : octLevels[level])
-        oct.getParent().appendAllNeighbours(parentList);
-      locTreeSort(parentList);
+      for (size_t i = 0; i < childList.size(); ++i)
+        if (i == 0 || childList[i-1].getParent() != childList[i].getParent())
+          childList[i].getParent().appendAllNeighbours(parentList);
+      locTreeSortInUnitCube(parentList);
       locRemoveDuplicates(parentList);
 
       // future:
