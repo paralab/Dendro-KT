@@ -317,6 +317,18 @@ struct Segment
   Segment & operator++()      { ++begin; return *this; }
 };
 
+template <typename X>
+Segment<X> segment_all(std::vector<X> &vec)
+{
+  return Segment<X>{vec.data(), 0, vec.size()};
+}
+
+template <typename X>
+Segment<const X> segment_all(const std::vector<X> &vec)
+{
+  return Segment<const X>{vec.data(), 0, vec.size()};
+}
+
 
 template <typename X>
 struct Keeper
@@ -339,6 +351,7 @@ struct Keeper
   void unkeep()               { --out; kept = false; }
   bool can_store() const      { return out < begin; }
   bool store(const X &x)      { return can_store() && (ptr[out++] = x, true); }
+  bool adv_store(const X &x)  { operator++();  return store(x); }
 };
 
 
@@ -2125,6 +2138,491 @@ SFC_Tree<T,dim>:: distTreeBalancingWithFilter(
 }
 
 
+
+template <typename X>
+using VecVec = std::vector<std::vector<X>>;
+
+struct RangeUnion
+{
+  using Range = std::pair<size_t, size_t>;
+  std::vector<std::pair<size_t, size_t>> m_ranges;
+
+  RangeUnion() = default;
+  RangeUnion(const size_t n_ranges) : m_ranges(n_ranges, Range{0, 0})  {}
+
+  template <typename X>
+  RangeUnion(const std::vector<X> &xs) : m_ranges{ Range{0, xs.size()} }  {}
+
+  size_t n_ranges()      const { return m_ranges.size(); }
+  bool has(size_t i)     const { return i < n_ranges(); }
+  size_t begin(size_t i) const { return m_ranges[i].first; }
+  size_t end(size_t i)   const { return m_ranges[i].second; }
+  size_t & begin(size_t i)     { return m_ranges[i].first; }
+  size_t & end(size_t i)       { return m_ranges[i].second; }
+
+  struct It
+  {
+    public:
+      const RangeUnion *ru;
+      size_t outer;
+      size_t inner;
+    private:
+      void begin_range(size_t i) {
+        outer = i;
+        inner = ru->has(i) ? ru->begin(i) : -1;
+      }
+
+      void begin_valid() {
+        while (outer < ru->m_ranges.size() and inner == ru->end(outer))
+          begin_range(++outer);
+      }
+
+    public:
+      It(const RangeUnion *ru_) : ru(ru_)  { begin_range(0); begin_valid(); }
+      bool empty()    const { return outer == ru->m_ranges.size(); }
+      bool nonempty() const { return not empty(); }
+      It & operator++() { ++inner; begin_valid(); return *this; }
+
+      template <typename X>
+        const X & into(const VecVec<X> &xs) { return xs[outer][inner]; }
+      template <typename X>
+        X & into(VecVec<X> &xs)             { return xs[outer][inner]; }
+  };
+
+  It iterator() const { return It(this); }
+};
+
+
+template <int nbuckets>
+using Buckets = std::array<size_t, nbuckets + 1>;
+
+template <int nbuckets>
+struct BucketUnion
+{
+  static Buckets<nbuckets> empty_buckets() { return Buckets<nbuckets>{}; }
+
+  std::vector<Buckets<nbuckets>> m_buckets;
+
+  BucketUnion() = default;
+  BucketUnion(const size_t n_levels) : m_buckets(n_levels, empty_buckets())  {}
+
+  RangeUnion bucket(size_t bucket) const {
+    RangeUnion ru;
+    using Range = RangeUnion::Range;
+    for (const Buckets<nbuckets> &split : m_buckets)
+      ru.m_ranges.push_back(Range{split[bucket], split[bucket + 1]});
+    return ru;
+  }
+};
+
+
+template <int nbuckets, typename X, typename KeyMap>
+Buckets<nbuckets> bucket(X *xs, size_t begin, size_t end, KeyMap keymap)
+{
+  static std::vector<X> copies;
+  copies.resize(end - begin);
+  Buckets<nbuckets> buckets = {};
+  for (size_t i = begin; i < end; ++i)
+    ++buckets[keymap(xs[i])];
+  for (int b = 1; b < buckets.size(); ++b)
+    buckets[b] += buckets[b-1];
+  for (size_t i = end; i-- > begin; ) // backward
+    copies[--buckets[keymap(xs[i])]] = xs[i];
+  for (size_t i = begin; i < end; ++i)
+    xs[i] = copies[i - begin];
+  for (int b = 0; b < buckets.size(); ++b)
+    buckets[b] += begin;
+  return buckets;
+}
+
+template <int nbuckets, typename X, typename KeyMap>
+Buckets<nbuckets> bucket(std::vector<X> &xs, size_t begin, size_t end, KeyMap keymap)
+{
+  return bucket<nbuckets>(xs.data(), begin, end, keymap);
+}
+
+template <int nbuckets, typename X, typename KeyMap>
+Buckets<nbuckets> bucket(Segment<X> &xs, KeyMap keymap)
+{
+  return bucket<nbuckets>(xs.ptr, xs.begin, xs.end, keymap);
+}
+
+template <int nbuckets, typename X, typename KeyMap>
+BucketUnion<nbuckets> bucket(VecVec<X> &xs, const RangeUnion &ru, KeyMap keymap)
+{
+  BucketUnion<nbuckets> buckets;
+  for (size_t level = 0; level < ru.n_ranges(); ++level)
+    buckets.m_buckets.push_back(bucket<nbuckets>(xs[level], ru.begin(level), ru.end(level), keymap));
+  return buckets;
+}
+
+template <int nbuckets>
+class Bucketing
+{
+  size_t m_begin = 0;
+  mutable Buckets<nbuckets> m_buckets = {};
+  mutable bool m_done_counting = false;
+  mutable bool m_done_indexing = false;
+  size_t m_running_total = 0;
+
+  public:
+    Bucketing() = default;
+    Bucketing(size_t begin) : m_begin(begin)  {}
+
+    // Must iterate over elements in the same order on both passes.
+    void count(int bucket) {
+      assert(!m_done_counting);
+      ++m_buckets[bucket];
+      ++m_running_total;
+    }
+
+    size_t index(int bucket) {
+      finish_counting();
+      return m_buckets[bucket]++;
+    }
+
+    size_t total() const {
+      finish_counting();
+      return m_buckets[nbuckets] - m_buckets[0];
+    }
+
+    size_t running_total() const {
+      return m_running_total;
+    }
+
+    const Buckets<nbuckets> & buckets() const {
+      finish_indexing();
+      return m_buckets;
+    }
+
+  private:
+    void finish_counting() const
+    {
+      if (!m_done_counting)
+      {
+        for (int b = 1; b < m_buckets.size(); ++b)
+          m_buckets[b] += m_buckets[b-1];
+        for (int b = 0; b < m_buckets.size(); ++b)
+          m_buckets[b] += m_begin;
+        for (int b = nbuckets; b > 0; --b)
+          m_buckets[b] = m_buckets[b-1];
+        m_buckets[0] = m_begin;
+        m_done_counting = true;
+      }
+    }
+
+    void finish_indexing() const
+    {
+      if (!m_done_indexing)
+      {
+        assert(m_buckets[nbuckets-1] == m_buckets[nbuckets]);
+        for (int b = nbuckets; b > 0; --b)
+          m_buckets[b] = m_buckets[b-1];
+        m_buckets[0] = m_begin;
+        m_done_indexing = true;
+      }
+    }
+};
+
+// Append a set of buckets to output
+template <int nbuckets, typename X, typename ItemInBucket>
+Buckets<nbuckets> bucket_dup(
+    const VecVec<X> &xs,
+    const RangeUnion &ru,
+    ItemInBucket itemInBucket,
+    std::vector<X> &output)
+{
+  Bucketing<nbuckets> bucketing;
+  for (RangeUnion::It it = ru.iterator(); it.nonempty(); ++it)
+  {
+    const X &x = it.into(xs);
+    for (int b = 0; b < nbuckets; ++b)
+      if (itemInBucket(x, b))
+        bucketing.count(b);
+  }
+
+  output.resize(output.size() + bucketing.total());
+  X *out = &(*output.end() - bucketing.total());
+
+  // Forward on second pass.
+  for (RangeUnion::It it = ru.iterator(); it.nonempty(); ++it)
+  {
+    const X &x = it.into(xs);
+    for (int b = 0; b < nbuckets; ++b)
+      if (itemInBucket(x, b))
+        out[bucketing.index(b)] = x;
+  }
+
+  return bucketing.buckets();
+}
+
+// Sorts and duplicates the parents as needed.
+template <typename T, unsigned int dim>
+void appendNeighbours_rec(
+    const int octLevel,
+    Segment<TreeNode<T, dim>> interior,
+    VecVec<TreeNode<T, dim>> &exterior,
+    const RangeUnion &exterior_ranges,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<TreeNode<T, dim>> &neighbours)
+{
+  using Oct = TreeNode<T, dim>;
+  using OctList = std::vector<Oct>;
+
+  if (exterior_ranges.iterator().empty() and interior.empty())
+    return;
+
+  //
+  // Base case: Subtree is same level as octants.
+  //
+  if (subtree.getLevel() == octLevel)
+  {
+    if (exterior_ranges.iterator().nonempty())
+      neighbours.push_back(subtree);
+    return;
+  }
+
+
+  //
+  // Bucket subtree-internal octants.
+  //
+
+  // key: child number relative to subtree, permuted by sfc
+  const auto descend = [&subtree, &sfc](const Oct &oct) -> sfc::SubIndex {
+    const int childLevel = subtree.getLevel() + 1;
+    return sfc.child_rank(sfc::ChildNum(oct.getMortonIndex(childLevel)));
+  };
+
+  // Assumes no ancestors
+  Buckets<nchild(dim)> int_child_buckets =
+    bucket<nchild(dim)>(interior, descend);
+
+
+  //
+  // Bucket subtree-exterior octants (single child incidence).
+  //
+
+  std::array<TreeNode<T, dim>, nchild(dim)> morton_children;
+  for (int c = 0; c < nchild(dim); ++c)
+    morton_children[c] = subtree.getChildMorton(c);
+
+  // In the periodic case, need to eliminate non-unique children,
+  // since the recursion is unguided.
+  unsigned int periodic_axes = 0;
+  for (int d = 0; d < dim; ++d)
+    if (morton_children[1u << d] == morton_children[0])
+      periodic_axes |= (1u << d);
+
+  std::bitset<nchild(dim)> uniq_children;
+  for (int c = 0; c < nchild(dim); ++c)
+    if ((c & periodic_axes) == 0)
+      uniq_children[c] = true;
+
+  assert(uniq_children.all());  // Note: If periodic, remove assertion.
+
+  const auto incident = [&](const Oct &oct0, const Oct &oct1) -> bool {
+    int count_edge = 0,  count_overlaps = 0;
+    for (int d = 0; d < dim; ++d)
+      if (oct0.minX(d) == oct1.maxX(d) or oct1.minX(d) == oct0.maxX(d))
+        ++count_edge;
+      else if (oct0.minX(d) < oct1.maxX(d) and oct1.minX(d) < oct0.maxX(d))
+        ++count_overlaps;
+    return count_edge + count_overlaps == dim and count_edge >= 1;
+  };
+
+  // key: exclusively incident child number, or nchild(dim)
+  const auto incidence = [&](const Oct &oct) -> sfc::SubIndex {
+    int numIncident = 0;
+    sfc::ChildNum incidentChild(-1);
+    for (sfc::ChildNum c(0); c < nchild(dim); ++c)
+      if (incident(oct, morton_children[c])) { ++numIncident; incidentChild = c; }
+    return numIncident == 1 ? sfc.child_rank(incidentChild)
+                            : sfc::SubIndex(nchild(dim));
+  };
+
+  BucketUnion<nchild(dim) + 1> ext_child_buckets =
+      bucket<nchild(dim) + 1>(exterior, exterior_ranges, incidence);
+
+
+  //
+  // Duplicate subtree-exterior octants (multi-child) and cross-child octants.
+  //
+
+  Bucketing<nchild(dim) + 1> dup_bucketing;
+    // only nchild(dim) buckets used, but want to match ext_child_buckets.
+
+  const RangeUnion multi_child = ext_child_buckets.bucket(nchild(dim));
+
+  // Count multi-child exterior
+  for (RangeUnion::It it = multi_child.iterator(); it.nonempty(); ++it)
+  {
+    const Oct &oct = it.into(exterior);
+    for (sfc::ChildNum c(0); c < nchild(dim); ++c)
+      if (uniq_children[c] && incident(morton_children[c], oct))
+        dup_bucketing.count(sfc.child_rank(c));
+  }
+  // Count cross-child interior
+  for (size_t i = interior.begin; i < interior.end; ++i)
+  {
+    const Oct &oct = interior.ptr[i];
+    for (sfc::ChildNum c(0); c < nchild(dim); ++c)
+      if (uniq_children[c] && incident(morton_children[c], oct))
+        dup_bucketing.count(sfc.child_rank(c));
+  }
+
+  // Prepare child output vector.
+  OctList &children_exterior = exterior[subtree.getLevel() + 1];
+  children_exterior.resize(dup_bucketing.total());
+
+  // Duplicate multi-child exterior
+  for (RangeUnion::It it = multi_child.iterator(); it.nonempty(); ++it)
+  {
+    const Oct &oct = it.into(exterior);
+    for (sfc::ChildNum c(0); c < nchild(dim); ++c)
+      if (uniq_children[c] && incident(morton_children[c], oct))
+        children_exterior[dup_bucketing.index(sfc.child_rank(c))] = oct;
+  }
+  // Duplicate cross-child interior
+  for (size_t i = interior.begin; i < interior.end; ++i)
+  {
+    const Oct &oct = interior.ptr[i];
+    for (sfc::ChildNum c(0); c < nchild(dim); ++c)
+      if (uniq_children[c] && incident(morton_children[c], oct))
+        children_exterior[dup_bucketing.index(sfc.child_rank(c))] = oct;
+  }
+
+  // Recurse
+  ext_child_buckets.m_buckets.push_back(dup_bucketing.buckets());
+  for (sfc::SubIndex i(0); i < nchild(dim); ++i)
+  {
+    Segment<Oct> child_interior(interior.ptr,
+                                int_child_buckets[i],
+                                int_child_buckets[i+1]);
+
+    RangeUnion child_exterior = ext_child_buckets.bucket(i);
+
+    appendNeighbours_rec<T, dim>(
+        octLevel,
+        child_interior,
+        exterior,
+        child_exterior,
+        subtree.getChildMorton(sfc.child_num(i)),
+        sfc.subcurve(i),
+        neighbours);
+  }
+
+  ext_child_buckets.m_buckets.pop_back();
+  children_exterior.clear();
+}
+
+
+template <typename T, unsigned int dim>
+void appendNeighboursOfParents(
+    int octLevel,
+    const std::vector<TreeNode<T, dim>> &octList,  // assumes no ancestors
+    std::vector<TreeNode<T, dim>> &parentList)
+{
+  if (octLevel <= 1)
+    return;
+
+  // Parents. Unique within any sorted segment.
+  std::vector<TreeNode<T, dim>> parents = octList;
+  TreeNode<T, dim> lastKeptParent;
+  bool keptAParent = false;
+  Keeper<TreeNode<T, dim>> parentStore(&(*parents.begin()), 0, parents.size());
+  while (parentStore.nonempty())
+  {
+    TreeNode<T, dim> nextParent = (*parentStore).getParent();
+    if (not keptAParent or nextParent != lastKeptParent)
+    {
+      assert(parentStore.adv_store(nextParent));
+      keptAParent = true;
+      lastKeptParent = nextParent;
+    }
+    else
+      ++parentStore;
+  }
+  parents.erase(parents.begin() + parentStore.out, parents.end());
+
+  VecVec<TreeNode<T, dim>> exterior_aux(m_uiMaxDepth + 1);
+  RangeUnion exterior_range(exterior_aux[0]);
+
+  // Add neighbours.
+  appendNeighbours_rec<T, dim>(
+      octLevel - 1,
+      segment_all(parents),
+      exterior_aux,
+      exterior_range,
+      TreeNode<T, dim>(),
+      SFC_State<dim>::root(),
+      parentList);
+}
+
+
+
+template <typename T, unsigned int dim>
+void mergeSorted_rec(
+    Segment<const TreeNode<T, dim>> &first,
+    Segment<const TreeNode<T, dim>> &second,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc,
+    std::vector<TreeNode<T, dim>> &out)
+{
+  using Oct = TreeNode<T, dim>;
+
+  const auto equals_subtree = [&subtree](const Segment<const Oct> &seg) {
+    return seg.nonempty() and *seg == subtree;
+  };
+  const auto in_subtree = [&subtree](const Segment<const Oct> &seg) {
+    return seg.nonempty() and subtree.isAncestorInclusive(*seg);
+  };
+  const auto output = [&out](Segment<const Oct> &seg) {
+    out.push_back(*seg);  ++seg;
+  };
+
+
+  if (first.empty() and second.empty())
+    return;
+
+  while (equals_subtree(first))
+    output(first);
+  while (equals_subtree(second))
+    output(second);
+
+  if (not in_subtree(first))
+    while (in_subtree(second))
+      output(second);
+  else if (not in_subtree(second))
+    while (in_subtree(first))
+      output(first);
+  else
+    for (sfc::SubIndex i(0); i < nchild(dim); ++i)
+      mergeSorted_rec<T, dim>(
+          first, second,
+          subtree.getChildMorton(sfc.child_num(i)),
+          sfc.subcurve(i),
+          out);
+}
+
+
+template <typename T, unsigned int dim>
+void mergeSorted(std::vector<TreeNode<T, dim>> &octList, size_t prefix)
+{
+  using Oct = TreeNode<T, dim>;
+
+  static std::vector<Oct> output;
+  output.clear();
+  output.reserve(octList.size());
+
+  Segment<const Oct> first(octList.data(), 0, prefix);
+  Segment<const Oct> second(octList.data(), prefix, octList.size());
+  mergeSorted_rec<T, dim>(first, second, Oct(), SFC_State<dim>::root(), output);
+
+  std::swap(octList, output);
+}
+
+
 //
 // locMinimalBalanced()
 //
@@ -2154,11 +2652,14 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
     {
       const OctList &childList = octLevels[level];
       OctList &parentList = octLevels[level-1];
+      OctList copyParentList = octLevels[level-1];
+
+      {DOLLAR("copy_neighbors_and_sort")
       for (size_t i = 0; i < childList.size(); ++i)
         if (i == 0 || childList[i-1].getParent() != childList[i].getParent())
-          childList[i].getParent().appendAllNeighbours(parentList);
-      locTreeSortInUnitCube(parentList);
-      locRemoveDuplicates(parentList);
+          childList[i].getParent().appendAllNeighbours(copyParentList);
+      locTreeSortInUnitCube(copyParentList);
+      locRemoveDuplicates(copyParentList);
 
       // future:
       //   separate parentGiven and parentAux
@@ -2167,6 +2668,16 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
       //     - overlaps with an octant in parentGiven, or
       //     - is not a descendant of a leaf in the given tree.
       //       (might need some kind of fast HashTree search.)
+      }
+
+      {DOLLAR("recursive_add_neighbors")
+        const size_t prefix = parentList.size();
+        appendNeighboursOfParents<T, dim>(level, childList, parentList);
+        mergeSorted(parentList, prefix);
+        locRemoveDuplicates(parentList);
+      }
+
+      assert(copyParentList == parentList);
     }
 
     size_t sumSizes = 0;
