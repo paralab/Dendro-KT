@@ -2430,14 +2430,15 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
     if (oct.getLevel() == 0)
       return oct;
     const int height = m_uiMaxDepth - oct.getLevel();
+    const int rootMask = (1u << oct.getLevel()) - 1;
     int levDeviate = oct.getLevel();
     for (int d = 0; d < dim; ++d)
     {
       T x = oct.getX(d);
       x >>= height;
-      const int levDeviateLeft = (x == 0 ? 1 : oct.getLevel() - binOp::lowestOnePos(x));
+      const int levDeviateLeft = ((x & rootMask) == 0 ? 1 : (oct.getLevel() - binOp::lowestOnePos(x)));
       x = ~x;
-      const int levDeviateRight = (x == 0 ? 1 : oct.getLevel() - binOp::lowestOnePos(x));
+      const int levDeviateRight = ((x & rootMask) == 0 ? 1 : (oct.getLevel() - binOp::lowestOnePos(x)));
       levDeviate = fmin(fmin(levDeviateLeft, levDeviateRight), levDeviate);
     }
     return oct.getAncestor(levDeviate - 1);
