@@ -2652,23 +2652,6 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
     {
       const OctList &childList = octLevels[level];
       OctList &parentList = octLevels[level-1];
-      OctList copyParentList = octLevels[level-1];
-
-      {DOLLAR("copy_neighbors_and_sort")
-      for (size_t i = 0; i < childList.size(); ++i)
-        if (i == 0 || childList[i-1].getParent() != childList[i].getParent())
-          childList[i].getParent().appendAllNeighbours(copyParentList);
-      locTreeSortInUnitCube(copyParentList);
-      locRemoveDuplicates(copyParentList);
-
-      // future:
-      //   separate parentGiven and parentAux
-      //     (childGiven, childAux |--> parentAux)
-      //   and trim parentAux: delete an octant in parentAux if
-      //     - overlaps with an octant in parentGiven, or
-      //     - is not a descendant of a leaf in the given tree.
-      //       (might need some kind of fast HashTree search.)
-      }
 
       {DOLLAR("recursive_add_neighbors")
         const size_t prefix = parentList.size();
@@ -2676,8 +2659,6 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
         mergeSorted(parentList, prefix);
         locRemoveDuplicates(parentList);
       }
-
-      assert(copyParentList == parentList);
     }
 
     size_t sumSizes = 0;
