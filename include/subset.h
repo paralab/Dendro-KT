@@ -108,11 +108,12 @@ namespace ot
   {
     public:
       using C = unsigned int;
+      struct None {};
 
     protected:
       MPI_Comm m_comm = MPI_COMM_SELF;
 
-      const DA<dim> *m_da;
+      const DA<dim> *m_da = nullptr;
       std::vector<TreeNode<C, dim>> m_relevantOctList;
       // selected from DA total nodal vector, but treated as local nodes.
       std::vector<TreeNode<C, dim>> m_relevantNodes;
@@ -133,6 +134,9 @@ namespace ot
       LocalSubset(LocalSubset &&) = default;
       LocalSubset & operator=(const LocalSubset &) = default;
       LocalSubset & operator=(LocalSubset &&) = default;
+
+      LocalSubset(const DA<dim> *da, None);
+      static LocalSubset makeNone(const DA<dim> *da) { return {da, None()}; }
 
       const DA<dim> * da() const;
       const std::vector<TreeNode<unsigned, dim>> & relevantOctList() const;
@@ -412,6 +416,20 @@ namespace ot
       if (m_relevantNodes[ii].getIsOnTreeBdry())
         m_bdyNodeIds.push_back(ii);
   }
+
+
+  // LocalSubset::makeNone()
+  template <unsigned int dim>
+  LocalSubset<dim>::LocalSubset(
+      const DA<dim> *da, None)
+  :
+    m_da(da),
+    m_relevantOctList(),
+    m_originalIndices(),
+    m_relevantNodes(),
+    m_bdyNodeIds()
+  { }
+
 
   // LocalSubset::da()
   template <unsigned int dim>
