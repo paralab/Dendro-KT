@@ -597,6 +597,14 @@ namespace par {
   template <typename T>
     void bitonicSort(std::vector<T> & in, MPI_Comm comm) ;
 
+
+  template <typename T>
+  void shift(
+      MPI_Comm comm,
+      const T *srcLocal, size_t srcSizeLocal, DendroIntL srcBeginGlobal,
+            T *dstLocal, size_t dstSizeLocal, DendroIntL dstBeginGlobal,
+      int ndofs = 1);
+
   /**
    * @title Debugging MPI programs with the GNU debugger
    * @author Tom Fogal, University of Utah
