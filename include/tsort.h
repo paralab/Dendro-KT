@@ -20,6 +20,34 @@
 #include "filterFunction.h"
 #include <stdio.h>
 
+namespace type
+{
+  /**
+   * StrongIndex
+   * Based on pattern by Jonathan Boccara:
+   *    https://www.fluentcpp.com/2016/12/08/strong-types-for-strong-interfaces/
+   */
+  template <typename T, typename Unique>
+  struct StrongIndex
+  {
+    using Type = T;
+    T m_i;
+
+    // Construction & conversion
+    explicit StrongIndex(const T i) : m_i(i) {}
+    operator T() const { return m_i; }
+    T get() const { return m_i; }
+
+    // Arithmetic
+    StrongIndex & operator++() { ++m_i; return *this; }
+    StrongIndex & operator+=(const T d) { m_i += d; return *this; }
+    /// StrongIndex operator+(const T d) const { return StrongIndex(m_i + d); }  // creates ambiguity
+        // others as needed
+  };
+};
+
+
+
 namespace ot
 {
 
@@ -35,6 +63,90 @@ namespace OCT_FLAGS
 
 enum GridAlignment { CoarseByFine, FineByCoarse };
 enum RemeshPartition { SurrogateOutByIn, SurrogateInByOut };
+
+namespace sfc
+{
+  using ChildNum = type::StrongIndex<unsigned char, struct ChildNum_>;
+  using SubIndex = type::StrongIndex<unsigned char, struct SubIndex_>;
+  using RotIndex = type::StrongIndex<int, struct RotIndex_>;
+}
+
+template <int dim>
+struct SFC_State
+{
+  constexpr static int nchild() { return 1 << dim; }
+  static SFC_State root() { return SFC_State(); }
+
+  SFC_State() = default;
+
+  SFC_State(const sfc::RotIndex rotation)
+    : m_rotation(rotation)
+  {}
+  inline sfc::RotIndex state() const { return m_rotation; }
+
+  inline sfc::ChildNum child_num(sfc::SubIndex i) const;    // rot_perm
+  inline sfc::SubIndex child_rank(sfc::ChildNum cn) const;  // rot_inv
+  inline SFC_State subcurve(sfc::SubIndex i) const;         // traversal
+  inline SFC_State child_curve(sfc::ChildNum cn) const;     // traversal
+
+  sfc::RotIndex m_rotation = sfc::RotIndex{0};
+};
+
+
+template <int dim>
+sfc::ChildNum SFC_State<dim>::child_num(sfc::SubIndex i) const
+{
+  return sfc::ChildNum(rotations[(m_rotation * 2 + 0) * nchild() + i]);
+}
+
+template <int dim>
+sfc::SubIndex SFC_State<dim>::child_rank(sfc::ChildNum cn) const
+{
+  return sfc::SubIndex(rotations[(m_rotation * 2 + 1) * nchild() + cn]);
+}
+
+template <int dim>
+SFC_State<dim> SFC_State<dim>::child_curve(sfc::ChildNum cn) const
+{
+  return SFC_State{sfc::RotIndex(HILBERT_TABLE[m_rotation * nchild() + cn])};
+}
+
+template <int dim>
+SFC_State<dim> SFC_State<dim>::subcurve(sfc::SubIndex i) const
+{
+  return child_curve(child_num(i));
+}
+
+
+template <typename X>
+struct Segment
+{
+  X *ptr = nullptr;
+  size_t begin = 0;
+  size_t end = 0;
+
+  Segment(X *ptr_, size_t begin_, size_t end_)
+    : ptr(ptr_), begin(begin_), end(end_) {}
+
+  bool nonempty() const       { return begin < end; }
+  bool empty() const          { return !nonempty(); }
+  const X & operator*() const { return ptr[begin]; }
+  X & operator*()             { return ptr[begin]; }
+  Segment & operator++()      { ++begin; return *this; }
+};
+
+template <typename X>
+Segment<X> segment_all(std::vector<X> &vec)
+{
+  return Segment<X>{vec.data(), 0, vec.size()};
+}
+
+template <typename X>
+Segment<const X> segment_all(const std::vector<X> &vec)
+{
+  return Segment<const X>{vec.data(), 0, vec.size()};
+}
+
 
 
 //
