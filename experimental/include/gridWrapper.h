@@ -36,11 +36,14 @@ namespace ot
       // distTree()
       const ot::DistTree<unsigned int, dim> * distTree() const { return m_distTree; }
 
-      // numElements()
-      size_t numElements() const
+      // octList()
+      const std::vector<ot::TreeNode<unsigned int, dim>> & octList() const
       {
-        return m_distTree->getTreePartFiltered(m_stratum).size();
+        return m_distTree->getTreePartFiltered(m_stratum);
       }
+
+      // numElements()
+      size_t numElements() const { return octList().size(); }
 
       // da()
       const ot::DA<dim> * da() const { return &((*m_multiDA)[m_stratum]); }

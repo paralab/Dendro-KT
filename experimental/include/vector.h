@@ -109,6 +109,8 @@ namespace ot
       ValT & operator[](const idx::LocalIdx &local) { return (*this)(local, 0); }
       const ValT & operator[](const idx::LocalIdx &local) const { return (*this)(local, 0); }
 
+      // future: Use Eigen for value vectors and views.
+
       LocalVector operator+(const LocalVector &b) const {
         using idx::LocalIdx;
         const LocalVector &a = *this;
