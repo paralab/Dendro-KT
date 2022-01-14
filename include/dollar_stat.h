@@ -7,6 +7,7 @@
 #define DENDRO_KT_DOLLAR_STAT_H
 
 #include <dollar.hpp>
+#include <mpi.h>
 
 namespace dollar
 {
@@ -30,6 +31,15 @@ namespace dollar
       DollarStat mpi_reduce_max();
 
       void print(std::ostream &out = std::cout);
+
+      template<bool for_chrome = false>
+      void print_tree( std::ostream &out, const char *tab = ",", const char *feed = "\n" ) const;
+
+      void csv( std::ostream &os ) const      { this->print_tree<0>(os, ","); }
+      void tsv( std::ostream &os ) const      { this->print_tree<0>(os, "\t"); }
+      void markdown( std::ostream &os ) const { this->print_tree<0>(os, "|"); }
+      void text( std::ostream &os ) const     { this->print_tree<0>(os, " "); }
+      void chrome( std::ostream &os ) const   { this->print_tree<1>(os, ""); }
 
     private:
       MPI_Comm m_comm;
