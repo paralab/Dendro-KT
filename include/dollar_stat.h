@@ -19,10 +19,6 @@ namespace dollar
       struct info {
         double hits = 0;
         double total = 0;
-        double n_p2p = 0;
-        double n_coll = 0;
-        double bytes_sent = 0;
-        double bytes_rcvd = 0;
         std::string short_title;
       };
 

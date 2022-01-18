@@ -56,11 +56,6 @@ namespace dollar
       info.hits        = it.second.hits;
       info.total       = it.second.total;
       info.short_title = it.second.short_title;
-
-      info.n_p2p      = it.second.msg.n_p2p;
-      info.n_coll     = it.second.msg.n_coll;
-      info.bytes_sent = it.second.msg.bytes_sent;
-      info.bytes_rcvd = it.second.msg.bytes_rcvd;
     }
   }
 
@@ -77,23 +72,17 @@ namespace dollar
     {
       serialize::Pack<std::vector<std::string>> key;
       serialize::Pack<double> hits_total;
-      serialize::Pack<double> p2p_coll_sent_rcvd;
       serialize::Pack<std::string> short_title;
 
       for (const auto &it : map)
       {
         key.pack(it.first);
         hits_total.pack(it.second.hits, it.second.total);
-        p2p_coll_sent_rcvd.pack(it.second.n_p2p,
-                                it.second.n_coll,
-                                it.second.bytes_sent,
-                                it.second.bytes_rcvd);
         short_title.pack(it.second.short_title);
       }
 
       key.mpi_send(dest, tag, comm);
       hits_total.mpi_send(dest, tag, comm);
-      p2p_coll_sent_rcvd.mpi_send(dest, tag, comm);
       short_title.mpi_send(dest, tag, comm);
     }
 
@@ -107,19 +96,16 @@ namespace dollar
 
       serialize::Pack<std::vector<std::string>> key;
       serialize::Pack<double> hits_total;
-      serialize::Pack<double> p2p_coll_sent_rcvd;
       serialize::Pack<std::string> short_title;
 
       key.mpi_recv(src, tag, comm);
       hits_total.mpi_recv(src, tag, comm);
-      p2p_coll_sent_rcvd.mpi_recv(src, tag, comm);
       short_title.mpi_recv(src, tag, comm);
 
       while (!key.end())
       {
         DollarStat::info & info = map[key.unpack()];
         hits_total.unpack(info.hits, info.total);
-        p2p_coll_sent_rcvd.unpack(info.n_p2p, info.n_coll, info.bytes_sent, info.bytes_rcvd);
         info.short_title = short_title.unpack();
       }
     }
@@ -178,10 +164,6 @@ namespace dollar
         info & info = to_map[it.first];
         info.hits += it.second.hits;
         info.total += it.second.total;
-        info.n_p2p += it.second.n_p2p;
-        info.n_coll += it.second.n_coll;
-        info.bytes_sent += it.second.bytes_sent;
-        info.bytes_rcvd += it.second.bytes_rcvd;
         info.short_title = it.second.short_title;
       }
     };
@@ -196,10 +178,6 @@ namespace dollar
     {
       it.second.hits /= commSize;
       it.second.total /= commSize;
-      it.second.n_p2p /= commSize;
-      it.second.n_coll /= commSize;
-      it.second.bytes_sent /= commSize;
-      it.second.bytes_rcvd /= commSize;
     }
 
     return DollarStat(m_comm, totals);
@@ -220,10 +198,6 @@ namespace dollar
         {
           info.hits = fminf(info.hits, it.second.hits);
           info.total = fminf(info.total, it.second.total);
-          info.n_p2p = fminf(info.n_p2p, it.second.n_p2p);
-          info.n_coll = fminf(info.n_coll, it.second.n_coll);
-          info.bytes_sent = fminf(info.bytes_sent, it.second.bytes_sent);
-          info.bytes_rcvd = fminf(info.bytes_rcvd, it.second.bytes_rcvd);
           info.short_title = it.second.short_title;
         }
         else
@@ -251,10 +225,6 @@ namespace dollar
         {
           info.hits = fmaxf(info.hits, it.second.hits);
           info.total = fmaxf(info.total, it.second.total);
-          info.n_p2p = fmaxf(info.n_p2p, it.second.n_p2p);
-          info.n_coll = fmaxf(info.n_coll, it.second.n_coll);
-          info.bytes_sent = fmaxf(info.bytes_sent, it.second.bytes_sent);
-          info.bytes_rcvd = fmaxf(info.bytes_rcvd, it.second.bytes_rcvd);
           info.short_title = it.second.short_title;
         }
         else
@@ -283,32 +253,22 @@ namespace dollar
 
     int width_ms = 12;
     int width_hits = 7;
-    int width_nmsg = 6;
-    int width_nbytes = 17;
 
     std::stringstream ss;
     char buf[1024];
-    sprintf(buf, "%*s, %*s, %*s, %*s, %*s, %*s, %*s,\n",
+    sprintf(buf, "%*s, %*s, %*s, \n",
         max_length, "name",
         width_ms, "ms",
-        width_hits, "hits",
-        width_nmsg, "p2p",
-        width_nmsg, "coll",
-        width_nbytes, "sent(B)",
-        width_nbytes, "rcvd(B)");
+        width_hits, "hits");
     ss << std::string(buf);
 
     for (const auto & it : m_totals)
     {
       const info & info = it.second;
-      sprintf(buf, "%*s, %*.3f, %*.1f, %*.1f, %*.1f, %*.1f, %*.1f,\n",
+      sprintf(buf, "%*s, %*.3f, %*.1f, \n",
           max_length, info.short_title.c_str(),
           width_ms,   info.total * 1000,
-          width_hits, info.hits,
-          width_nmsg, info.n_p2p,
-          width_nmsg, info.n_coll,
-          width_nbytes, info.bytes_sent,
-          width_nbytes, info.bytes_rcvd);
+          width_hits, info.hits);
       ss << std::string(buf);
     }
     out << ss.str();
@@ -432,23 +392,9 @@ namespace dollar
 
       size_t i = 0;
       if( !for_chrome ) {
-          const auto bytes_human = [](double bytes) -> double {
-            if (bytes >= 1024) bytes /= 1024;  // KB
-            if (bytes >= 1024) bytes /= 1024;  // MB
-            if (bytes >= 1024) bytes /= 1024;  // GB
-            return bytes;
-          };
-          const auto bytes_human_unit = [](double bytes) -> const char *  {
-            const char * unit = "B ";
-            if (bytes >= 1024) { bytes /= 1024; unit = "KB"; }
-            if (bytes >= 1024) { bytes /= 1024; unit = "MB"; }
-            if (bytes >= 1024) { bytes /= 1024; unit = "GB"; }
-            return unit;
-          };
-
           std::string format, sep, graph, buffer(1024, '\0');
           // pre-loop
-          for( auto &it : std::vector<std::string>{ "%4d.","%s","[%s]","%5.2f%% CPU","(%9.3fms)","%5.0f hits","%5.0f p2p","%5.0f coll","%5.0f%s sent","%5.0f%s rcvd",feed } ) {
+          for( auto &it : std::vector<std::string>{ "%4d.","%s","[%s]","%5.2f%% CPU","(%9.3fms)","%5.0f hits",feed } ) {
               format += sep + it;
               sep = tab;
           }
@@ -463,11 +409,7 @@ namespace dollar
 #else
               sprintf( &buffer[0],
 #endif
-              format.c_str(), ++i, it.second.short_title.c_str(), graph.c_str(), cpu, (float)(info.total * 1000), info.hits,
-                      info.n_p2p,
-                      info.n_coll,
-                      bytes_human(info.bytes_sent), bytes_human_unit(info.bytes_sent),
-                      bytes_human(info.bytes_rcvd), bytes_human_unit(info.bytes_rcvd) );
+              format.c_str(), ++i, it.second.short_title.c_str(), graph.c_str(), cpu, (float)(info.total * 1000), info.hits );
               out << &buffer[0];
           }
       } else {

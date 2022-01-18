@@ -39,8 +39,6 @@ namespace dollar {
     inline void pause( bool paused ) {}
     inline bool is_paused() {}
     inline void clear() {}
-    inline void msg_p2p(long unsigned bytes_sent, long unsigned bytes_rcvd) {}
-    inline void msg_coll(long unsigned bytes_sent, long unsigned bytes_rcvd) {}
 
     struct profiler {  struct info {};  };
     inline std::map<std::vector<int>, profiler::info> self_totals() {}
@@ -186,29 +184,10 @@ namespace dollar
 
         public:
 
-        struct messages {
-          unsigned n_p2p = 0;
-          unsigned n_coll = 0;
-          long unsigned bytes_sent = 0;
-          long unsigned bytes_rcvd = 0;
-
-          void p2p(long unsigned bytes_sent, long unsigned bytes_rcvd) {
-            this->n_p2p += 1;
-            this->bytes_sent += bytes_sent;
-            this->bytes_rcvd += bytes_rcvd;
-          }
-          void coll(long unsigned bytes_sent, long unsigned bytes_rcvd) {
-            this->n_coll += 1;
-            this->bytes_sent += bytes_sent;
-            this->bytes_rcvd += bytes_rcvd;
-          }
-        };
-
         struct info {
             bool paused = false;
             unsigned hits = 0;
             double current = 0, total = 0;
-            messages msg = {};
 #ifdef _MSC_VER
             int pid = 0;
 #else
@@ -286,10 +265,6 @@ namespace dollar
             sample.current += dollar::now();
             sample.total += ( sample.paused ? 0.f : sample.current );
             stack.pop_back();
-        }
-
-        messages & msg() {
-          return counters[top_uri()].msg;
         }
 
         template<bool for_chrome>
@@ -570,14 +545,6 @@ namespace dollar
 
     inline void clear() {
         singleton<profiler>()->clear();
-    }
-
-    inline void msg_p2p(long unsigned bytes_sent, long unsigned bytes_rcvd) {
-        singleton<profiler>()->msg().p2p(bytes_sent, bytes_rcvd);
-    }
-
-    inline void msg_coll(long unsigned bytes_sent, long unsigned bytes_rcvd) {
-        singleton<profiler>()->msg().coll(bytes_sent, bytes_rcvd);
     }
 
     inline std::map<std::vector<int>, profiler::info> self_totals() {
