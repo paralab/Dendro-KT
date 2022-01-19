@@ -1106,7 +1106,8 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
   std::stringstream filename;
   filename << fileprefix << "_" << rProc << ".txt";
 
-  const char * const palette[8] = {"#E41A1C",
+  const int NCOLORS = 8;
+  const char * const palette[NCOLORS] = {"#E41A1C",
                                    "#377EB8",
                                    "#4DAF4A",
                                    "#984EA3",
@@ -1131,7 +1132,7 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
                  << minX << "," << minY << " to "
                  << maxX << "," << maxY
                  << " back"
-                 << " fillcolor rgb \"" << palette[rProc] << "\""
+                 << " fillcolor rgb \"" << palette[rProc % NCOLORS] << "\""
                  << " linewidth 1"
                  << "\n";
 
