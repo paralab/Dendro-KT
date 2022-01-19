@@ -355,7 +355,8 @@ int main(int argc, char * argv[])
 
   // Assemble for aMat.
   fem::getAssembledAMat(e_mats, amatFree[0]);
-  amatFree[0]->finalize();
+  if (amatFree[0])
+    amatFree[0]->finalize();
 
 
 
@@ -375,7 +376,8 @@ int main(int argc, char * argv[])
     std::vector<double> u_sub = ot::gather_ndofs(const_ptr(u_gh), subset, singleDof);
     std::vector<double> v_sub(u_sub.size(), 0);
         // matvec(): ghosted=true if created(DA), ghosted=false if created(subset)
-    amatFree[0]->matvec(ptr(v_sub), const_ptr(u_sub), false);
+    if (amatFree[0])
+      amatFree[0]->matvec(ptr(v_sub), const_ptr(u_sub), false);
     ot::scatter_ndofs_accumulate(const_ptr(v_sub), ptr(v_gh), subset, singleDof);
     // -- If there was a second subset, do the same with it
     //
@@ -546,14 +548,16 @@ void allocAMatMaps(const GridWrapper &grid, aMatMaps* &maps, const double *ghost
 void createAMatFree(const GridWrapper &grid, aMatFree* &amatFree, aMatMaps* &maps)
 {
   grid.da()->createAMat(amatFree, maps);
-  amatFree->set_matfree_type((par::MATFREE_TYPE)1);
+  if (amatFree)
+    amatFree->set_matfree_type((par::MATFREE_TYPE)1);
 }
 
 // createAMatFree()
 void createAMatFree(const ot::LocalSubset<DIM> &subset, aMatFree* &amatFree, aMatMaps* &maps)
 {
   ot::createAMat(subset, amatFree, maps);
-  amatFree->set_matfree_type((par::MATFREE_TYPE)1);
+  if (amatFree)
+    amatFree->set_matfree_type((par::MATFREE_TYPE)1);
 }
 
 
