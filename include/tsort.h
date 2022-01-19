@@ -520,9 +520,22 @@ struct SFC_Tree
                                   RotI pRot,
                                   TreeNode<T,D> pNode);
 
+  static void locTreeCompletion(TreeNode<T,D> *points,
+                                  std::vector<TreeNode<T,D>> &tree,
+                                  RankI begin, RankI end,
+                                  LevI sLev,
+                                  LevI eLev,
+                                  RotI pRot,
+                                  TreeNode<T,D> pNode);
+
   static void distTreeConstruction(std::vector<TreeNode<T,D>> &points,
                                    std::vector<TreeNode<T,D>> &tree,
                                    RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm);
+
+  static void distTreeCompletion(std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
@@ -635,6 +648,12 @@ struct SFC_Tree
   static void distTreeBalancing(std::vector<TreeNode<T,D>> &points,
                                    std::vector<TreeNode<T,D>> &tree,
                                    RankI maxPtsPerRegion,
+                                   double loadFlexibility,
+                                   MPI_Comm comm);
+
+  static void distTreeBalancing(std::vector<TreeNode<T,D>> &points,
+                                   std::vector<TreeNode<T,D>> &tree,
+                                   // no maxPtsPerRegion
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
