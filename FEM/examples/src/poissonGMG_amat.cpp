@@ -17,6 +17,7 @@
 #include "subset_amat.h"
 #include "gridWrapper.h"
 #include "vector.h"
+#include "petscVector.h"
 /// #include "poissonGMG.h"
 // bug: if petsc is included (with logging)
 //  before dendro parUtils then it triggers
@@ -52,6 +53,7 @@ using idx::LocalIdx;
 using idx::GhostedIdx;
 using ot::LocalVector;
 using ot::GhostedVector;
+using ot::LocalPetscVector;
 using GridWrapper = ot::GridWrapper<DIM>;
 
 template <typename NodeT> NodeT * ptr(std::vector<NodeT> &vec);
@@ -84,6 +86,8 @@ std::vector<bool> boundaryFlags(
 ot::LocalSubset<DIM> subsetAll(const GridWrapper &grid);
 ot::LocalSubset<DIM> subsetBoundary(const GridWrapper &grid);
 
+template <int dim>
+ibm::DomainDecider domainChannel(int widthLevel);
 
 
 void allocAMatMaps(const GridWrapper &grid, aMatMaps* &maps, const double *ghosted_bdry, int ndofs);
@@ -99,9 +103,33 @@ createPoissonVec(
 
 
 template <typename NodeT>
-std::ostream & printLocal(const ot::DA<DIM> *da, const NodeT *vec, std::ostream & out = std::cout); 
+std::ostream & printLocal(const ot::DA<DIM> *da, const NodeT *vec, std::ostream & out = std::cout);
 template <typename NodeT>
 std::ostream & printGhosted(const ot::DA<DIM> *da, const NodeT *vec, std::ostream & out = std::cout);
+
+
+class CoarseSolver
+{
+  protected:
+    CoarseSolver() = default;
+
+    aMatFree *m_amat;
+    KSP m_ksp;
+    LocalPetscVector<double> m_Mfrhs, m_ux;
+    int m_ndofs;
+    double m_tol;
+    int m_max_iter;
+
+    bool nonnull() const { return m_amat != nullptr; }
+
+  public:
+    // Expects aMatFree is parallel, and has been assembled and finalized.
+    CoarseSolver(const GridWrapper &grid, aMatFree *aMatFree, int ndofs, double tol, int max_iter);
+
+    int solve(const LocalVector<double> &rhs, LocalVector<double> &sol);
+
+    ~CoarseSolver();
+};
 
 
 
@@ -136,77 +164,130 @@ class HybridGridChain
   protected:
 };
 
-template <int dim>
-HybridGridChain<dim>::HybridGridChain(
-        const ot::DistTree<unsigned int, dim> *dtree,
-        const ot::DistTree<unsigned int, dim> *surrDtree,
-        const ot::MultiDA<dim> *multiDA,
-        const ot::MultiDA<dim> *surrMultiDA,
-        size_t numGrids)
-{
-  for (int s = 0; s < numGrids; ++s)
-  {
-    m_grid.emplace_back(dtree, multiDA, s);
-    m_surrGrid.emplace_back(surrDtree, surrMultiDA, s);
 
-    m_subsets.emplace_back(ot::LocalSubset<dim>::makeNone(grid(s).da()));
-    m_surrSubsets.emplace_back(ot::LocalSubset<dim>::makeNone(surrGrid(s).da()));
-  }
+template <unsigned int dim>
+class Restriction
+{
+  protected:
+    Restriction() = default;
+    const HybridGridChain<dim> *m_chain;
+    int m_fine_stratum;
+
+  public:
+    Restriction(const HybridGridChain<dim> *chain, int fine_stratum)
+      : m_chain(chain), m_fine_stratum(fine_stratum) { }
+    //TODO create amat fineGrid->fineGrid
+
+    template <typename DofT>
+    ot::LocalVector<DofT> operator()(const ot::LocalVector<DofT> &fineVec);
+
+    template <typename DofT>
+    void operator()(ot::LocalVector<DofT> &coarseVec, const ot::LocalVector<DofT> &fineVec);
+
+  protected:
+};
+
+
+template <unsigned int dim>
+class Prolongation
+{
+  protected:
+    Prolongation() = default;
+    const HybridGridChain<dim> *m_chain;
+    int m_fine_stratum;
+
+  public:
+    Prolongation(const HybridGridChain<dim> *chain, int fine_stratum)
+      : m_chain(chain), m_fine_stratum(fine_stratum) { }
+    //TODO create amat fineGrid->fineGrid
+
+    template <typename DofT>
+    ot::LocalVector<DofT> operator()(const ot::LocalVector<DofT> &coarseVec);
+
+    template <typename DofT>
+    void operator()(ot::LocalVector<DofT> &fineVec, const ot::LocalVector<DofT> &coarseVec);
+
+  protected:
+};
+
+
+template <unsigned int dim>
+template <typename DofT>
+ot::LocalVector<DofT> Restriction<dim>::operator()(
+    const ot::LocalVector<DofT> &fineVec)
+{
+  const GridWrapper &coarseGrid = m_chain->grid(m_fine_stratum + 1);
+  ot::LocalVector<DofT> coarseVec(coarseGrid, fineVec.ndofs());
+  this->operator()(coarseVec, fineVec);
+  return coarseVec;
 }
 
-template <int dim>
-void HybridGridChain<dim>::fineNonGeom(ot::LocalSubset<dim> &&subset)
+
+template <unsigned int dim>
+template <typename DofT>
+void Restriction<dim>::operator()(
+    ot::LocalVector<DofT> &coarseVec, const ot::LocalVector<DofT> &fineVec)
 {
-  m_subsets[0] = subset;
+  // Duplicate inputs, write to owned node outputs.
 
-  ot::quadTreeToGnuplot(m_subsets[0].relevantOctList(), 3, "subset_" + std::to_string(0), MPI_COMM_WORLD);
+  assert(coarseVec.ndofs() == fineVec.ndofs());
+  const GridWrapper &surrGrid = m_chain->surrGrid(m_fine_stratum + 1);
+  ot::LocalVector<DofT> surrVec(surrGrid, fineVec.ndofs());
 
-  for (int s = 1; s < m_grid.size(); ++s)
-  {
-    const ot::LocalSubset<dim> &fineSubset = m_subsets[s-1];
-    const ot::LocalSubset<dim> &surrSubset = m_surrSubsets[s];
-    const ot::LocalSubset<dim> &coarseSubset = m_subsets[s];
-    const GridWrapper &surrGrid = m_surrGrid[s];
-    const GridWrapper &coarseGrid = m_grid[s];
+  //TODO
 
-    const auto overlaps = [&](size_t s, size_t f) {
-      return surrGrid.octList()[s].isAncestorInclusive(
-          fineSubset.relevantOctList()[f]);
-    };
+  // Geom
 
-    std::vector<char> surrIncluded(surrGrid.numElements(), false);
-    std::vector<char> coarseIncluded(coarseGrid.numElements(), false);
 
-    for (size_t fine_i = 0,  surr_i = 0;
-             fine_i < fineSubset.getLocalElementSz()
-         and surr_i < surrIncluded.size(); )
-    {
-      if (overlaps(surr_i, fine_i))
-        surrIncluded[surr_i] = true;
-      while (overlaps(surr_i, fine_i))
-        ++fine_i;
-      ++surr_i;
-    }
+  // NonGeom
 
-    par::shift(
-        coarseGrid.da()->getGlobalComm(),
-        surrIncluded.data(),
-        surrIncluded.size(),
-        surrGrid.da()->getGlobalElementBegin(),
-        coarseIncluded.data(),
-        coarseIncluded.size(),
-        coarseGrid.da()->getGlobalElementBegin(),
-        1);
-
-    m_subsets[s] = ot::LocalSubset<dim>(
-        coarseGrid.da(), &coarseGrid.octList(), coarseIncluded, char(true));
-    m_surrSubsets[s] = ot::LocalSubset<dim>(
-        surrGrid.da(), &surrGrid.octList(), surrIncluded, char(true));
-
-    ot::quadTreeToGnuplot(m_subsets[s].relevantOctList(), 3, "subset_" + std::to_string(s), MPI_COMM_WORLD);
-  }
 }
 
+
+template <unsigned int dim>
+template <typename DofT>
+ot::LocalVector<DofT> Prolongation<dim>::operator()(
+    const ot::LocalVector<DofT> &coarseVec)
+{
+  const GridWrapper &fineGrid = m_chain->grid(m_fine_stratum);
+  ot::LocalVector<DofT> fineVec(fineGrid, coarseVec.ndofs());
+  this->operator()(fineVec, coarseVec);
+  return fineVec;
+}
+
+
+template <unsigned int dim>
+template <typename DofT>
+void Prolongation<dim>::operator()(
+    ot::LocalVector<DofT> &fineVec, const ot::LocalVector<DofT> &coarseVec)
+{
+  // Duplicate inputs, write to owned node outputs.
+
+  assert(coarseVec.ndofs() == fineVec.ndofs());
+  const GridWrapper &surrGrid = m_chain->surrGrid(m_fine_stratum + 1);
+  ot::LocalVector<DofT> surrVec(surrGrid, fineVec.ndofs());
+
+  // Geom
+
+
+  // NonGeom
+
+}
+
+
+template <typename DofT>
+DofT coordinateProduct(const GridWrapper &mesh,
+                       const LocalVector<DofT> &vecA,
+                       const LocalVector<DofT> &vecB);
+
+template <typename DofT>
+LocalVector<DofT> pointwiseProduct(
+    const GridWrapper &mesh,
+    const LocalVector<DofT> &vecA,
+    const LocalVector<DofT> &vecB);
+
+template <typename DofT>
+DofT mpi_sum(const LocalVector<DofT> &vec, MPI_Comm comm);
 
 
 //
@@ -219,7 +300,7 @@ int main(int argc, char * argv[])
   _InitializeHcurve(DIM);
 
   MPI_Comm comm = PETSC_COMM_WORLD;
-  const int eleOrder = 1;
+  const int eleOrder = 2;
   const double sfc_tol = 0.1;
   using uint = unsigned int;
   using DTree_t = ot::DistTree<uint, DIM>;
@@ -230,6 +311,10 @@ int main(int argc, char * argv[])
   const size_t singleDof = 1;
 
   const int numGrids = 2;
+
+  int commSize, commRank;
+  MPI_Comm_size(comm, &commSize);
+  MPI_Comm_rank(comm, &commRank);
 
   // Domain scaling.  (compatible with nodeCoord())
   /// AABB<DIM> bounds(Point<DIM>(-1.0), Point<DIM>(1.0));
@@ -257,7 +342,8 @@ int main(int argc, char * argv[])
 
 
   // Fine grid (uniform).
-  DTree_t dtree = DTree_t::constructSubdomainDistTree(fineLevel, comm, sfc_tol);
+  /// DTree_t dtree = DTree_t::constructSubdomainDistTree(fineLevel, comm, sfc_tol);
+  DTree_t dtree = DTree_t::constructSubdomainDistTree(fineLevel, domainChannel<DIM>(3), comm, sfc_tol);
 
   // Define coarse grids based on the fine grid.
   // Also need surrogate grids.
@@ -321,6 +407,10 @@ int main(int argc, char * argv[])
     ghosted_bdry[bii] = u_bdry(
         fineGrid.nodeCoord(GhostedIdx(ghostedBdryIdx[bii]), bounds).data());
 
+
+  const double tol=1e-12;
+  const unsigned int max_iter=50;
+
   // Discretized operators for fine grid.
   PoissonEq::PoissonMat<DIM> poissonMat =
       createPoissonMat(fineGrid, bounds, const_ptr(ghosted_bdry), singleDof);
@@ -341,6 +431,7 @@ int main(int argc, char * argv[])
 
           // Happens to be all for this test. Future: boundary elems.
   chain.fineNonGeom(subsetAll(fineGrid));
+
   /// chain.fineNonGeom(subsetBoundary(fineGrid));
   const ot::LocalSubset<DIM> & subset = chain.subset(0);  // nongeom
 
@@ -358,14 +449,18 @@ int main(int argc, char * argv[])
   if (amatFree[0])
     amatFree[0]->finalize();
 
+  /// CoarseSolver coarse_solver(fineGrid, amatFree[0], singleDof, tol, max_iter);  // TODO coarse amat, not fine
+  /// int iteration = coarse_solver.solve(rhs_vec, u_vec);
+  /// printf("[iteration=%2d]  |error|=%.2e\n",
+  ///     iteration, sol_err_linf(u_vec));
 
 
   // 2-grid method
-  const int nvcycle = 30;
+  const int nvcycle = 1;
   for (int cycle = 0; cycle < nvcycle; ++cycle)
   {
-    printf("[cycle=%2d]  |error|=%.2e\n",
-        cycle, sol_err_linf(u_vec));
+    /// printf("[cycle=%2d]  |error|=%.2e\n",
+    ///     cycle, sol_err_linf(u_vec));
 
     // (prototype for vcycle)
     //
@@ -388,19 +483,42 @@ int main(int argc, char * argv[])
 
     using Poisson = PoissonEq::PoissonMat<DIM>;
 
-    /// Restriction restriction(fineGrid, surrGrid[1], grid[1]);  // Fine(0)
-    /// Prolongation prolongation(grid[1], surrGrid[1], fineGrid);
+    Restriction<DIM> restriction(&chain, 0);
+    Prolongation<DIM> prolongation(&chain, 0);
     /// Operator<Poisson> coarse_op = galerkinCoarseOp(fine_op, restriction, prolongation);
 
 
-    /// LocalVector<double> rhs_2h = restriction(residual, fineGrid, surrGrid[1], grid[1]);
-
+    // test: [P(err_2h), res_h] == [err_2h, R(res_h)]
+    LocalVector<double> rhs_2h = restriction(residual);
     /// LocalVector<double> err_2h = solve_2h(grid[1], rhs_2h); //TODO need operators..
+    LocalVector<double> err_2h_dummy(chain.grid(1), singleDof);
+    std::fill(err_2h_dummy.data().begin(), err_2h_dummy.data().end(), 1);
+    LocalVector<double> err_h = prolongation(err_2h_dummy);
 
-    /// LocalVector<double> err_h = prolongation(err_2h, grid[1], surrGrid[1], fineGrid);
+    /// const double product_p = coordinateProduct(fineGrid, err_h, residual);
+    /// const double product_r = coordinateProduct(chain.grid(1), err_2h_dummy, rhs_2h);
+
+    const LocalVector<double> v_product_p = pointwiseProduct(fineGrid, err_h, residual);
+    const LocalVector<double> v_product_r = pointwiseProduct(chain.grid(1), err_2h_dummy, rhs_2h);
+    const double product_p = mpi_sum(v_product_p, fineGrid.da()->getGlobalComm());
+    const double product_r = mpi_sum(v_product_r, chain.grid(1).da()->getGlobalComm());
+
+    if (product_p == product_r)
+      printf("product_p " GRN "[%.3f] == [%.3f]" NRM " product_r\n", product_p, product_r);
+    else
+    {
+      printf("product_p " RED "[%.3f] != [%.3f]" NRM " product_r\n", product_p, product_r);
+
+      printf("\nproduct_p:\n");
+      printLocal(fineGrid.da(), const_ptr(v_product_p));
+      printf("\nproduct_r:\n");
+      printLocal(chain.grid(1).da(), const_ptr(v_product_r));
+    }
 
     /// u_vec = u_vec - err_h;
   }
+
+
 
   printf("[cycle=%2d]  |error|=%.2e\n",
       nvcycle, sol_err_linf(u_vec));
@@ -534,6 +652,19 @@ ot::LocalSubset<DIM> subsetAll(const GridWrapper &grid)
 }
 
 
+// domainChannel()
+template <int dim>
+ibm::DomainDecider domainChannel(int widthLevel)
+{
+  const double width = 1.0 / (1u << widthLevel);
+  std::array<double, dim> sizes;
+  sizes.fill(width);
+  sizes[0] = 1.0;
+  return typename ot::DistTree<uint, dim>::BoxDecider(sizes);
+}
+
+
+
 // allocAMatMaps()
 void allocAMatMaps(const GridWrapper &grid, aMatMaps* &maps, const double *ghosted_bdry, int ndofs)
 {
@@ -620,6 +751,211 @@ std::ostream & printGhosted(const ot::DA<DIM> *da,
       da->getElementOrder(),
       out);
 }
+
+
+
+template <typename DofT>
+DofT coordinateProduct(const GridWrapper &mesh,
+                       const LocalVector<DofT> &vecA,
+                       const LocalVector<DofT> &vecB)
+{
+  DofT localProduct = 0.0f;
+  const size_t localSize = vecA.size();
+  for (size_t i = 0; i < localSize; ++i)
+    localProduct += vecA[LocalIdx(i)] * vecB[LocalIdx(i)];
+
+  DofT globalProduct = 0.0f;
+  MPI_Comm comm = mesh.da()->getGlobalComm();
+  par::Mpi_Allreduce(&localProduct, &globalProduct, 1, MPI_SUM, comm);
+
+  return globalProduct;
+}
+
+template <typename DofT>
+LocalVector<DofT> pointwiseProduct(
+    const GridWrapper &mesh,
+    const LocalVector<DofT> &vecA,
+    const LocalVector<DofT> &vecB)
+{
+  LocalVector<DofT> product(mesh, vecA.ndofs());
+  const size_t localSize = vecA.size();
+  for (size_t i = 0; i < localSize; ++i)
+    product[LocalIdx(i)] = vecA[LocalIdx(i)] * vecB[LocalIdx(i)];
+  return product;
+}
+
+
+template <typename DofT>
+DofT mpi_sum(const LocalVector<DofT> &vec, MPI_Comm comm)
+{
+  DofT localSum = 0.0f;
+  const size_t localSize = vec.size();
+  for (size_t i = 0; i < localSize; ++i)
+    localSum += vec[LocalIdx(i)];
+
+  DofT globalSum = 0.0f;
+  par::Mpi_Allreduce(&localSum, &globalSum, 1, MPI_SUM, comm);
+  return globalSum;
+}
+
+
+
+
+
+
+// CoarseSolver::CoarseSolver()
+CoarseSolver::CoarseSolver(const GridWrapper &grid, aMatFree *amat, int ndofs, double tol, int max_iter)
+  :
+    m_amat(amat), m_tol(tol), m_max_iter(max_iter),
+    m_ndofs(ndofs),
+    m_Mfrhs(grid, ndofs), m_ux(grid, ndofs)
+{
+  if (this->nonnull())
+  {
+    // PETSc solver context: Create and set KSP
+    KSPCreate(m_amat->get_comm(), &m_ksp);
+    KSPSetType(m_ksp, KSPCG);
+    KSPSetFromOptions(m_ksp);
+
+    // Set tolerances.
+    KSPSetTolerances(m_ksp, m_tol, PETSC_DEFAULT, PETSC_DEFAULT, m_max_iter);
+
+    // Set operators.
+    Mat petscMat = m_amat->get_matrix();
+    KSPSetOperators(m_ksp, petscMat, petscMat);
+
+    // Set preconditioner.
+    PC pc;
+    KSPGetPC(m_ksp, &pc);
+    PCSetType(pc, PCJACOBI);
+    PCSetFromOptions(pc);
+  }
+}
+
+
+// CoarseSolver::solve()
+int CoarseSolver::solve(const LocalVector<double> &rhs, LocalVector<double> &sol)
+{
+  PetscInt numIterations = -1;
+
+  if (this->nonnull())
+  {
+    assert(rhs.ndofs() == m_ndofs);
+    assert(sol.ndofs() == m_ndofs);
+
+    // Compensate r.h.s. of weak formulation. Amat subtracts boundary from rhs.
+    copyToPetscVector(m_Mfrhs, rhs);
+    m_amat->apply_bc(m_Mfrhs.vec());
+
+    VecAssemblyBegin(m_Mfrhs.vec());
+    VecAssemblyEnd(m_Mfrhs.vec());
+
+    // Copy vectors to Petsc vectors.
+    copyToPetscVector(m_ux, sol);
+
+    // Solve the system.
+    KSPSolve(m_ksp, m_Mfrhs.vec(), m_ux.vec());
+    VecAssemblyBegin(m_ux.vec());
+    VecAssemblyEnd(m_ux.vec());
+
+    KSPGetIterationNumber(m_ksp, &numIterations);
+
+    // Copy back from Petsc vector.
+    copyFromPetscVector(sol, m_ux);
+  }
+
+  return numIterations;
+}
+
+
+// CoarseSolver::~CoarseSolver()
+CoarseSolver::~CoarseSolver()
+{
+  KSPDestroy(&m_ksp);
+}
+
+
+
+// HybridGridChain::HybridGridChain()
+template <int dim>
+HybridGridChain<dim>::HybridGridChain(
+        const ot::DistTree<unsigned int, dim> *dtree,
+        const ot::DistTree<unsigned int, dim> *surrDtree,
+        const ot::MultiDA<dim> *multiDA,
+        const ot::MultiDA<dim> *surrMultiDA,
+        size_t numGrids)
+{
+  for (int s = 0; s < numGrids; ++s)
+  {
+    m_grid.emplace_back(dtree, multiDA, s);
+    m_surrGrid.emplace_back(surrDtree, surrMultiDA, s);
+
+    m_subsets.emplace_back(ot::LocalSubset<dim>::makeNone(grid(s).da()));
+    m_surrSubsets.emplace_back(ot::LocalSubset<dim>::makeNone(surrGrid(s).da()));
+  }
+}
+
+
+// HybridGridChain::fineNonGeom()
+template <int dim>
+void HybridGridChain<dim>::fineNonGeom(ot::LocalSubset<dim> &&subset)
+{
+  m_subsets[0] = subset;
+
+  int commSize, commRank;
+  MPI_Comm_size(MPI_COMM_WORLD, &commSize);
+  MPI_Comm_rank(MPI_COMM_WORLD, &commRank);
+
+  for (int s = 1; s < m_grid.size(); ++s)
+  {
+    const ot::LocalSubset<dim> &fineSubset = m_subsets[s-1];
+    const ot::LocalSubset<dim> &surrSubset = m_surrSubsets[s];
+    const ot::LocalSubset<dim> &coarseSubset = m_subsets[s];
+    const GridWrapper &surrGrid = m_surrGrid[s];
+    const GridWrapper &coarseGrid = m_grid[s];
+
+    const auto overlaps = [&](size_t s, size_t f) {
+      return surrGrid.octList()[s].isAncestorInclusive(
+          fineSubset.relevantOctList()[f]);
+    };
+
+    std::vector<char> surrIncluded(surrGrid.numElements(), false);
+    std::vector<char> coarseIncluded(coarseGrid.numElements(), false);
+
+    const size_t fineSize = fineSubset.getLocalElementSz();
+    for (size_t fine_i = 0,  surr_i = 0;
+             fine_i < fineSize
+         and surr_i < surrIncluded.size(); )
+    {
+      if (overlaps(surr_i, fine_i))
+        surrIncluded[surr_i] = true;
+      while (fine_i < fineSize and overlaps(surr_i, fine_i))
+        ++fine_i;
+      ++surr_i;
+    }
+
+    par::shift(
+        coarseGrid.da()->getGlobalComm(),
+        surrIncluded.data(),
+        surrIncluded.size(),
+        surrGrid.da()->getGlobalElementBegin(),
+        coarseIncluded.data(),
+        coarseIncluded.size(),
+        coarseGrid.da()->getGlobalElementBegin(),
+        1);
+
+    m_subsets[s] = ot::LocalSubset<dim>(
+        coarseGrid.da(), &coarseGrid.octList(), coarseIncluded, char(true));
+    m_surrSubsets[s] = ot::LocalSubset<dim>(
+        surrGrid.da(), &surrGrid.octList(), surrIncluded, char(true));
+  }
+}
+
+
+
+
+
+
 
 
 
