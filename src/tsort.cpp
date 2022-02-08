@@ -667,6 +667,337 @@ SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,
   /// }
 }
 
+template <int nbuckets>
+using Buckets = std::array<size_t, nbuckets + 1>;
+
+
+/// // imported from restart:test/restart/restart.cpp
+/// // future: move implementation to where it belongs.
+/// inline Buckets<nchild(dim)+1> bucket_sfc(
+///     Octant<dim> *xs, size_t begin, size_t end, int child_level, const SFC_State<dim> sfc)
+/// {
+///   using X = Octant<dim>;
+///   using ot::nchild;
+///   constexpr int nbuckets = nchild(dim) + 1;
+///   Buckets<nbuckets> sfc_buckets = {};            // Zeros
+///   {
+///     Buckets<nbuckets> buckets = {};
+///     const auto pre_bucket = [=](const Octant<dim> &oct) -> int {
+///         return (oct.level() >= child_level) + oct.child_num(child_level);
+///     };  // Easy to compute bucket, will permute counts later.
+/// 
+///     for (size_t i = begin; i < end; ++i)         // Count.
+///       ++buckets[pre_bucket(xs[i])];
+/// 
+///     // Permuted prefix sum.
+///     buckets[1 + sfc.child_num(sfc::SubIndex(0))] += buckets[0];
+///     for (sfc::SubIndex s(1); s < nchild(dim); ++s)
+///       buckets[1 + sfc.child_num(s)] += buckets[1 + sfc.child_num(s.minus(1))];
+/// 
+///     static std::vector<Octant<dim>> copies;
+///     copies.resize(end - begin);
+/// 
+///     for (size_t i = end; i-- > begin; ) // backward
+///       copies[--buckets[pre_bucket(xs[i])]] = xs[i];
+///     for (size_t i = begin; i < end; ++i)
+///       xs[i] = copies[i - begin];
+/// 
+///     for (sfc::SubIndex s(0); s < nchild(dim); ++s)    // Permute.
+///       sfc_buckets[1 + s] = begin + buckets[1 + sfc.child_num(s)];
+///     sfc_buckets[0] = begin;
+///     sfc_buckets[nbuckets] = end;
+///   }
+///   return sfc_buckets;
+/// }
+
+
+
+
+
+
+template <typename T, unsigned int dim>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,
+    const double sfc_tol = 0.3,
+    const int kway = KWAY,
+    const TreeNode<T, dim> root = TreeNode<T, dim>(),
+    const SFC_State<dim> sfc = SFC_State<dim>::root());
+
+
+template <typename T, unsigned dim>
+struct BucketRef
+{
+  using LLU = long long unsigned;
+  LLU              & local_begin;   
+  size_t           & local_end;
+  LLU              & global_begin;
+  TreeNode<T, dim> & octant;
+  SFC_State<dim>   & sfc;
+  char             & split;
+
+  void mark_split()         { split = true; }
+  bool marked_split() const { return split; }
+};
+
+template <typename T, unsigned dim>
+struct BucketArray
+{
+  using LLU = long long unsigned;
+  std::vector<LLU>              m_local_begin;// Range as size_t but sum into global LLU.
+  std::vector<size_t>           m_local_end;
+  std::vector<LLU>              m_global_begin;
+  std::vector<TreeNode<T, dim>> m_octant;
+  std::vector<SFC_State<dim>>   m_sfc;
+  std::vector<char>             m_split;
+
+  BucketArray() = default;
+
+  BucketRef<T, dim> ref(size_t i)
+  {
+    return BucketRef<T, dim>{ m_local_begin[i],
+                              m_local_end[i],
+                              m_global_begin[i],
+                              m_octant[i],
+                              m_sfc[i],
+                              m_split[i] };
+  }
+
+  void reserve(size_t capacity)
+  {
+    m_local_begin.reserve(capacity);
+    m_local_end.reserve(capacity);
+    m_global_begin.reserve(capacity);
+    m_octant.reserve(capacity);
+    m_sfc.reserve(capacity);
+    m_split.reserve(capacity);
+  }
+
+  void reset()
+  {
+    m_local_begin.clear();
+    m_local_end.clear();
+    m_global_begin.clear();
+    m_octant.clear();
+    m_sfc.clear();
+    m_split.clear();
+  }
+
+  void reset(size_t size, int blocks, TreeNode<T, dim> octant, SFC_State<dim> sfc)
+  {
+    reset();
+    m_local_begin.push_back(0);
+    m_local_end.push_back(size);
+    m_global_begin.push_back(0);
+    m_octant.push_back(octant);
+    m_sfc.push_back(sfc);
+    m_split.push_back(false);
+  }
+
+  void push_children(const BucketRef<T, dim> parent, Buckets<1+nchild(dim)> &children)
+  {
+    const TreeNode<T, dim> oct = parent.octant;
+    const SFC_State<dim> sfc = parent.sfc;
+    for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+    {
+      m_local_begin.push_back(children[1+s]);  // assume ancestors front
+      m_local_end.push_back(children[1+s+1]);
+      m_global_begin.push_back(0);
+      m_octant.push_back(oct.getChildMorton(sfc.child_num(s)));
+      m_sfc.push_back(sfc.subcurve(s));
+      m_split.push_back(false);
+    }
+  }
+
+  void all_reduce(MPI_Comm comm)
+  {
+    par::Mpi_Allreduce(&(*m_local_begin.begin()), &(*m_global_begin.begin()), size(), MPI_SUM, comm);
+  }
+
+  size_t size() const { return m_local_begin.size(); }
+
+  struct Iterator
+  {
+    BucketArray & m_bucket_array;
+    size_t m_i = 0;
+    Iterator & operator++() { ++m_i; return *this; }
+    BucketRef<T, dim> operator*() { return m_bucket_array.ref(m_i); }
+    bool operator!=(const Iterator &that) const { return m_i != that.m_i; }
+  };
+
+  Iterator begin() { return Iterator{*this, 0}; }
+  Iterator end()   { return Iterator{*this, size()}; }
+};
+
+
+
+template <typename T, unsigned int dim>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,
+    const double sfc_tol,
+    const int kway,
+    const TreeNode<T, dim> root,
+    const SFC_State<dim> sfc)
+{
+  int comm_size, comm_rank;
+  MPI_Comm_size(comm, &comm_size);
+  MPI_Comm_rank(comm, &comm_rank);
+  int nblocks = std::min(comm_size, kway);
+
+  using LLU = long long unsigned;
+  const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(kway);
+  assert(kway_roundup > 0);
+
+  BucketArray<T, dim> parent_buckets,  child_buckets;
+  parent_buckets.reserve(kway_roundup);
+  child_buckets.reserve(kway_roundup);
+
+  std::vector<MPI_Comm> to_be_freed;
+
+  //future: use locate instead of bucketing if it's already sorted.
+  const auto bucket_split = [](std::vector<TreeNode<T, dim>> &v, BucketRef<T, dim> b)
+  {
+    //TODO
+  };
+
+  while (nblocks > 1)
+  {
+    LLU Ng;
+    LLU const Nl = octants.size();
+    par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
+
+    parent_buckets.reset(octants.size(), root, sfc);
+    child_buckets.reset();
+
+    // Initial buckets.
+    int depth = 0;
+    for (; depth + root.getLevel() < m_uiMaxDepth and (1 << (depth*dim)) < nblocks; ++depth)
+    {
+      child_buckets.reset();
+      for (BucketRef<T, dim> b : parent_buckets)
+      {
+        const size_t split_sz = nchild(dim) + 1;
+        Buckets<split_sz> split = bucket_split(octants, b);
+        child_buckets.push_children(b, split);
+      }
+      std::swap(child_buckets, parent_buckets);
+    }
+
+    // Allreduce parents to get global begins of parents.
+    parent_buckets.all_reduce(comm);
+
+    // Splitters
+    std::vector<size_t> local_block_begin(nblocks, -1);
+    const auto commit = [&](int blk, const BucketRef<T, dim> b) {
+        local_block_begin[blk] = b.local_begin;
+    };
+
+    const auto ideal =    [=](int blk) { return blk * Ng / nblocks; };
+    const auto ideal_sz = [=](int blk) { return ideal(blk + 1) - ideal(blk); };
+    const auto next_blk = [=](LLU item) { return int((item * nblocks + Ng - 1) / Ng); };
+    /// const auto abs_tol =  [=](int blk) { return sfc_tol * ideal_sz(blk); };
+    /// const auto near = [=](int blk, LLU item) {
+    ///   return (ideal(blk) - item) <= abs_tol(blk);
+    /// };
+
+    const auto too_wide = [=](LLU begin, LLU end) -> bool {
+      // Furthest ideal splitter from bucket begin is the last block.
+      // Ideal size for all blocks starting in bucket is +/- 1 of last.
+      const int blk_begin = next_blk(begin),  blk_end = next_blk(end);
+      const int blk_back = blk_end - 1;
+      return (blk_begin < blk_end) and
+          (ideal(blk_back) - begin > sfc_tol * (ideal_sz(blk_back) - 1));
+    };
+
+    for (; parent_buckets.size() > 0 and depth + root.getLevel() < m_uiMaxDepth; ++depth)
+    {
+      child_buckets.reset();
+
+      // If all splitters acceptable or there are none, commit. Else, split.
+      for (BucketRef<T, dim> b : parent_buckets)
+      {
+        if (not too_wide(b.global_begin, b.global_end))
+        {
+          const int begin = next_blk(b.global_begin);
+          const int end = next_blk(b.global_end);
+          for (int blk = begin; blk < end; ++blk)
+            commit(blk, b);
+        }
+        else
+        {
+          b.mark_split();
+          const size_t split_sz = nchild(dim) + 1;
+          Buckets<split_sz> split = bucket_split(octants, b);
+          child_buckets.push_children(b, split);
+        }
+      }
+
+      // Allreduce children to get global begins of children.
+      child_buckets.allreduce(comm);
+
+      // Commit any splitters that are not inheritted by children.
+      size_t cb = 0;
+      for (BucketRef<T, dim> b : parent_buckets)
+        if (b.marked_split())
+        {
+          const int parent_begin = next_blk(b.global_begin);
+          const int child_begin = next_blk(child_buckets[cb].global_begin);
+          for (int blk = parent_begin; blk < child_begin; ++blk)
+            commit(blk, b);
+          cb += nchild(dim);
+        }
+
+      std::swap(parent_buckets, child_buckets);
+    }
+
+    // If ran out of levels, commit any remaining splitters.
+    for (const BucketRef<T, dim> b : parent_buckets)
+    {
+      const int begin = next_blk(b.global_begin);
+      const int end = next_blk(b.global_end);
+      for (int blk = begin; blk < end; ++blk)
+        commit(blk, b);
+    }
+
+    // Check all splitters accounted for.
+    assert((std::find(local_block_begin.begin(),
+                      local_block_begin.end(),
+                      size_t(-1))
+        == local_block_begin.end()));
+
+    // Check splitters are in order.
+    assert(std::is_sorted(local_block_begin.begin(),
+                          local_block_begin.end()));
+
+    //
+    // Send blocks to processes in the respective blocks.
+    //
+
+    const auto block_to_rank = [=](int blk) { return blk * comm_size / nblocks; };
+    const auto rank_to_block = [=](int rank) { return (rank * nblocks + comm_size - 1) / comm_size; };
+
+    std::vector<TreeNode<T, dim>> received_octants;
+    // TODO receive
+
+    // TODO update octants, root, sfc
+    std::swap(octants, received_octants);
+
+    MPI_Comm new_comm;
+    MPI_Comm_split(comm, rank_to_block(comm_rank), comm_rank, &new_comm);
+    to_be_freed.push_back(new_comm);
+
+    comm = new_comm;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+    nblocks = std::min(comm_size, kway);
+  }
+
+  for (MPI_Comm new_comm : to_be_freed)
+    MPI_Comm_free(&new_comm);
+}
+
+
 
 template<typename T, unsigned int dim>
 void
