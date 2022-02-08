@@ -14,6 +14,7 @@
   @namespace binOp
   @brief A set of functions for fast binary operations.
   @author Hari Sundar
+  @author Masado Ishii
   */
 namespace binOp{
 
@@ -57,6 +58,48 @@ namespace binOp{
     @return  compute the prev highest power of 2 of 32-bit v
     */
   int getPrevHighestPowerOfTwo(unsigned int n);
+
+  /**
+   * next_power_of_2()
+   * @author Masado Ishii
+   */
+  template <typename T>
+  inline T next_power_of_2(T i)
+  {
+    constexpr size_t width = 8 * sizeof(T);
+    i -= (i > 0);
+    i |= i >> 1;
+    i |= i >> 2;
+    i |= i >> 4;
+    i |= i >> 8;
+    i |= i >> (16 * (16 < width));
+    i |= i >> (32 * (32 < width));
+    ++i;
+    return i;
+  }
+
+  /**
+   * next_power_of_pow_2_dim()
+   * @author Masado Ishii
+   */
+  template <int dim, typename T>
+  inline T next_power_of_pow_2_dim(T i)
+  {
+    constexpr T base = 1u << dim;
+
+    constexpr size_t width = 8 * sizeof(T);
+
+    constexpr T powers01 = 1u;
+    constexpr T powers02 = powers01 | (powers01 << (1*dim * (1*dim < width)));
+    constexpr T powers04 = powers02 | (powers02 << (2*dim * (2*dim < width)));
+    constexpr T powers08 = powers04 | (powers04 << (4*dim * (4*dim < width)));
+    constexpr T powers16 = powers08 | (powers08 << (8*dim * (8*dim < width)));
+    constexpr T powers32 = powers16 | (powers16 << (16*dim * (16*dim < width)));
+    constexpr T powers64 = powers32 | (powers32 << (32*dim * (32*dim < width)));
+
+    return ((next_power_of_2(i) - 1) & powers32) * (base - 1) + 1;
+  }
+
 
   /**
     @brief Finds the 0-based index of the least-significant 1, starting from least significant bits.
