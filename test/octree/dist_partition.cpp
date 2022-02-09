@@ -50,7 +50,8 @@ int main(int argc, char * argv[])
   MPI_Comm_size(comm, &comm_size);
   MPI_Comm_rank(comm, &comm_rank);
 
-  m_uiMaxDepth = 9;
+  m_uiMaxDepth = 15;
+  /// m_uiMaxDepth = 9;
 
   const auto new_oct = [=](std::array<uint, DIM> coords, int lev)
   {
@@ -61,7 +62,8 @@ int main(int argc, char * argv[])
     return Oct(coords, lev);
   };
 
-  const LLU Ng = 10e4;
+  const LLU Ng = 10e6;
+  /// const LLU Ng = 10e4;
   const auto N_begin = [=](int rank) { return Ng * rank / comm_size; };
   const LLU Nl = N_begin(comm_rank + 1) - N_begin(comm_rank);
 
