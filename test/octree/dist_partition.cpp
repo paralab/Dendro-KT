@@ -54,23 +54,24 @@ int main(int argc, char * argv[])
 
   const auto new_oct = [=](std::array<uint, DIM> coords, int lev)
   {
-    /// lev = m_uiMaxDepth;  // override
+    lev = m_uiMaxDepth;  // override
     const uint mask = (1u << m_uiMaxDepth) - (1u << m_uiMaxDepth - lev);
     for (int d = 0; d < DIM; ++d)
       coords[d] &= mask;
     return Oct(coords, lev);
   };
 
-  const LLU Ng = 10000;
+  const LLU Ng = 10e4;
   const auto N_begin = [=](int rank) { return Ng * rank / comm_size; };
   const LLU Nl = N_begin(comm_rank + 1) - N_begin(comm_rank);
 
   OctList octants = test::gaussian<uint, DIM>(N_begin(comm_rank), Nl, new_oct);
 
-  ot::distTreePartition_kway(comm, octants);
-
   const int max_level = mpi_max(maxLevel(octants), comm);
   ot::quadTreeToGnuplot(octants, max_level, "points", comm);
+
+  const double sfc_tol = 0.1;
+  ot::distTreePartition_kway(comm, octants, sfc_tol);
 
   _DestroyHcurve();
   DendroScopeEnd();

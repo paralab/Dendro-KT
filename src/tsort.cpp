@@ -711,19 +711,154 @@ inline Buckets<nchild(dim)+1> bucket_sfc(
 }
 
 
+class DistPartPlot
+{
+  private:
+    MPI_Comm m_comm;
+    int m_comm_size;
+    int m_comm_rank;
 
+    long long unsigned m_Ng;
+    int m_fine_level;
+    int m_row = 0;
+    int m_obj = 0;
+    int m_prolog_objects;
+
+    std::ofstream m_file;
+    std::string m_root_name;
+
+    static const char * color(int r) {
+        const int NCOLORS = 8;
+        const char * const palette[NCOLORS] =
+            {"E41A1C",
+             "377EB8",
+             "4DAF4A",
+             "984EA3",
+             "FF7F00",
+             "FFFF33",
+             "A65628",
+             "F781BF"};
+        return palette[r % NCOLORS];
+    }
+
+    static const char * white() { return "FFFFFF"; }
+    static const char * black() { return "000000"; }
+    static const char * dark_grey() { return "333333"; }
+    static const char * light_grey() { return "AAAAAA"; }
+
+    struct X { double min; double max;  explicit X(double m, double M) : min(m), max(M) {} };
+    struct Y { double min; double max;  explicit Y(double m, double M) : min(m), max(M) {} };
+
+    void rectangle(X x, Y y, const char *color, int object)
+    {
+      const double pad = 0;
+      m_file << "set object " << 1 + object << " rect from "
+             << x.min + pad << "," << y.min + pad << " to "
+             << x.max - pad << "," << y.max - pad
+             << " back"
+             << " fillcolor rgb \"#" << color << "\""
+             << " linewidth 1"
+             << "\n";
+    }
+
+    void rectangle(X x, Y y, const char *color)
+    {
+      rectangle(x, y, color, m_prolog_objects + (m_obj++) * m_comm_size + m_comm_rank);
+    }
+
+  public:
+    // DistPartPlot()
+    DistPartPlot(long long unsigned Ng, int nblocks, int fine_level, const std::string &fileprefix, MPI_Comm comm)
+      : m_comm(comm),
+        m_Ng(Ng),
+        m_fine_level(fine_level),
+        m_root_name(fileprefix + "_root.txt")
+    {
+      MPI_Comm_size(comm, &m_comm_size);
+      MPI_Comm_rank(comm, &m_comm_rank);
+
+      if (m_comm_rank == 0)
+      {
+        std::ofstream rootFile(m_root_name);
+        rootFile << "set title \"" << fileprefix << "\"\n";
+        for (int r = 0; r < m_comm_size; ++r)
+          rootFile << "load \"" << fileprefix << "_" << r << ".txt\"\n";
+        /// rootFile << "set size square\n";
+        rootFile << "set key off\n";
+        rootFile << "set xrange [0:" << m_Ng << "]\n";
+        rootFile << "set yrange [" << -1 - fine_level << ":" << 1 + fine_level << "]\n";
+        rootFile << "plot 0\n";
+        rootFile << "pause mouse keypress\n";
+        rootFile.close();
+      }
+
+      m_file.open(fileprefix + "_" + std::to_string(m_comm_rank) + ".txt");
+
+      // Splitters.
+      if (m_comm_rank == 0)
+      {
+        const auto ideal = [=](int blk) { return blk * Ng / nblocks; };
+        for (int blk = 0; blk < nblocks; ++blk)
+        {
+          rectangle(X(ideal(blk), ideal(blk+1)), Y(0,1), white(), 2 * blk + 0);
+          rectangle(X(ideal(blk), ideal(blk+1)), Y(-1,0), white(), 2 * blk + 1);
+        }
+      }
+      m_prolog_objects = 2 * nblocks;
+    }
+
+    // close()
+    void close()
+    {
+      m_file.close();
+
+      if (m_comm_rank == 0)
+        fprintf(stderr, "Run `gnuplot %s`\n", m_root_name.c_str());
+    }
+
+    // ~DistPartPlot()
+    ~DistPartPlot()  { close(); }
+
+    using LLU = long long unsigned;
+
+    void row(const std::vector<LLU> &global_begin,
+             const std::vector<LLU> &global_end,
+             const std::vector<LLU> &local_size,
+             const std::vector<LLU> &process_offset_end)
+    {
+      const size_t size = global_begin.size();
+      for (size_t i = 0; i < size; ++i)
+      {
+        rectangle(X(global_begin[i], global_end[i]), Y(1+m_row, 1+m_row+1), light_grey());
+        rectangle(X(global_begin[i] + process_offset_end[i] - local_size[i],
+                    global_begin[i] + process_offset_end[i]),
+                  Y(-1-m_row-1, -1-m_row),
+                  color(m_comm_rank));
+      }
+      ++m_row;
+    }
+};
+
+
+
+
+#define DEBUG_BUCKET_ARRAY 1
 
 template <typename T, int dim>
 struct BucketRef
 {
   using LLU = long long unsigned;
-  LLU              & local_begin;   
+  LLU              & local_begin;
   LLU              & local_end;
   LLU              & global_begin;
   LLU              & global_end;
   TreeNode<T, unsigned(dim)> & octant;
   SFC_State<dim>   & sfc;
   char             & split;
+#if DEBUG_BUCKET_ARRAY
+  LLU & local_size;
+  LLU & process_offset_end;  // MPI_Scan over local_size
+#endif
 
   void mark_split()         { split = true; }
   bool marked_split() const { return split; }
@@ -740,6 +875,10 @@ struct BucketArray
   std::vector<TreeNode<T, unsigned(dim)>> m_octant;
   std::vector<SFC_State<dim>>   m_sfc;
   std::vector<char>             m_split;
+#if DEBUG_BUCKET_ARRAY
+  std::vector<LLU>              m_local_size;
+  std::vector<LLU>              m_process_offset_end;
+#endif
 
   BucketArray() = default;
 
@@ -751,7 +890,12 @@ struct BucketArray
                               m_global_end[i],
                               m_octant[i],
                               m_sfc[i],
-                              m_split[i] };
+                              m_split[i],
+#if DEBUG_BUCKET_ARRAY
+                              m_local_size[i],
+                              m_process_offset_end[i],
+#endif
+    };
   }
 
   void reserve(size_t capacity)
@@ -763,6 +907,10 @@ struct BucketArray
     m_octant.reserve(capacity);
     m_sfc.reserve(capacity);
     m_split.reserve(capacity);
+#if DEBUG_BUCKET_ARRAY
+    m_local_size.reserve(capacity);
+    m_process_offset_end.reserve(capacity);
+#endif
   }
 
   void reset()
@@ -774,6 +922,10 @@ struct BucketArray
     m_octant.clear();
     m_sfc.clear();
     m_split.clear();
+#if DEBUG_BUCKET_ARRAY
+    m_local_size.clear();
+    m_process_offset_end.clear();
+#endif
   }
 
   void reset(size_t size, TreeNode<T, unsigned(dim)> octant, SFC_State<dim> sfc)
@@ -786,6 +938,10 @@ struct BucketArray
     m_octant.push_back(octant);
     m_sfc.push_back(sfc);
     m_split.push_back(false);
+#if DEBUG_BUCKET_ARRAY
+    m_local_size.push_back(size);
+    m_process_offset_end.push_back(0);
+#endif
   }
 
   void push_children(const BucketRef<T, dim> parent, Buckets<1+nchild(dim)> &children)
@@ -801,6 +957,10 @@ struct BucketArray
       m_octant.push_back(oct.getChildMorton(sfc.child_num(s)));
       m_sfc.push_back(sfc.subcurve(s));
       m_split.push_back(false);
+#if DEBUG_BUCKET_ARRAY
+      m_local_size.push_back(children[1+s+1] - children[1+s]);
+      m_process_offset_end.push_back(0);
+#endif
     }
   }
 
@@ -808,6 +968,16 @@ struct BucketArray
   {
     par::Mpi_Allreduce(&(*m_local_begin.begin()), &(*m_global_begin.begin()), size(), MPI_SUM, comm);
     par::Mpi_Allreduce(&(*m_local_end.begin()), &(*m_global_end.begin()), size(), MPI_SUM, comm);
+#if DEBUG_BUCKET_ARRAY
+    par::Mpi_Scan(&(*m_local_size.begin()), &(*m_process_offset_end.begin()), size(), MPI_SUM, comm);
+#endif
+  }
+
+  void plot(DistPartPlot &plot)
+  {
+#if DEBUG_BUCKET_ARRAY
+    plot.row(m_global_begin, m_global_end, m_local_size, m_process_offset_end);
+#endif
   }
 
   size_t size() const { return m_local_begin.size(); }
@@ -825,6 +995,8 @@ struct BucketArray
   Iterator begin() { return Iterator{*this, 0u}; }
   Iterator end()   { return Iterator{*this, size()}; }
 };
+
+#undef DEBUG_BUCKET_ARRAY
 
 
 template void distTreePartition_kway<unsigned, 2u>( MPI_Comm comm,
@@ -878,6 +1050,8 @@ void distTreePartition_kway(
         b.sfc);
   };
 
+  std::string plot_prefix = "partition";
+
   /// while (nblocks > 1)  //TODO
   {
     LLU Ng;
@@ -900,19 +1074,24 @@ void distTreePartition_kway(
       }
       std::swap(child_buckets, parent_buckets);
     }
+    const int initial_depth = depth;
+
+    DistPartPlot plot(Ng, nblocks, 8 - initial_depth, plot_prefix, comm);
 
     // Allreduce parents to get global begins of parents.
     parent_buckets.all_reduce(comm);
+    parent_buckets.plot(plot);
 
     // Splitters
     std::vector<size_t> local_block_begin(nblocks, -1);
     const auto commit = [&](int blk, const BucketRef<T, int(dim)> b) {
+        assert(blk < nblocks);
         local_block_begin[blk] = b.local_begin;
     };
 
-    const auto ideal =    [=](int blk) { return blk * Ng / nblocks; };
-    const auto ideal_sz = [=](int blk) { return ideal(blk + 1) - ideal(blk); };
-    const auto next_blk = [=](LLU item) { return int((item * nblocks + Ng - 1) / Ng); };
+    const auto ideal =    [=](int blk) { assert(blk <= nblocks); return blk * Ng / nblocks; };
+    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
+    const auto next_blk = [=](LLU item) { assert(item <= Ng);    return int((item * nblocks + Ng - 1) / Ng); };
 
     const auto too_wide = [=](LLU begin, LLU end) -> bool {
       // Furthest ideal splitter from bucket begin is the last block.
@@ -948,6 +1127,7 @@ void distTreePartition_kway(
 
       // Allreduce children to get global begins of children.
       child_buckets.all_reduce(comm);
+      child_buckets.plot(plot);
 
       // Commit any splitters that are not inheritted by children.
       size_t cb = 0;
@@ -989,6 +1169,8 @@ void distTreePartition_kway(
 
     const auto block_to_rank = [=](int blk) { return blk * comm_size / nblocks; };
     const auto rank_to_block = [=](int rank) { return (rank * nblocks + comm_size - 1) / comm_size; };
+
+    plot_prefix += "_" + std::to_string(rank_to_block(comm_rank));
 
     std::vector<TreeNode<T, dim>> received_octants;
     // TODO receive
