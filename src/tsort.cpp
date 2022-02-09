@@ -845,7 +845,7 @@ class DistPartPlot
 
 
 
-#define DEBUG_BUCKET_ARRAY 1
+#define DEBUG_BUCKET_ARRAY 0
 
 template <typename T, int dim>
 struct BucketRef
@@ -882,8 +882,14 @@ struct BucketArray
   std::vector<LLU>              m_local_size;
   std::vector<LLU>              m_process_offset_end;
 #endif
+  static LLU s_allreduce_sz;
+  static LLU s_allreduce_ct;
 
   BucketArray() = default;
+
+  static void reset_log() { s_allreduce_sz = 0;  s_allreduce_ct = 0; }
+  static LLU allreduce_sz() { return s_allreduce_sz; }
+  static LLU allreduce_ct() { return s_allreduce_ct; }
 
   BucketRef<T, dim> ref(size_t i)
   {
@@ -974,6 +980,8 @@ struct BucketArray
 #if DEBUG_BUCKET_ARRAY
     par::Mpi_Scan(&(*m_local_size.begin()), &(*m_process_offset_end.begin()), size(), MPI_SUM, comm);
 #endif
+    s_allreduce_sz += size();
+    s_allreduce_ct += 2;
   }
 
   void plot(DistPartPlot &plot)
@@ -998,6 +1006,8 @@ struct BucketArray
   Iterator begin() { return Iterator{*this, 0u}; }
   Iterator end()   { return Iterator{*this, size()}; }
 };
+template <typename T, int dim>  long long unsigned BucketArray<T, dim>::s_allreduce_sz = 0;
+template <typename T, int dim>  long long unsigned BucketArray<T, dim>::s_allreduce_ct = 0;
 
 #undef DEBUG_BUCKET_ARRAY
 
@@ -1079,11 +1089,11 @@ void distTreePartition_kway(
     }
     const int initial_depth = depth;
 
-    DistPartPlot plot(Ng, nblocks, m_uiMaxDepth - initial_depth, plot_prefix, comm);
+    /// DistPartPlot plot(Ng, nblocks, m_uiMaxDepth - initial_depth, plot_prefix, comm);
 
     // Allreduce parents to get global begins of parents.
     parent_buckets.all_reduce(comm);
-    parent_buckets.plot(plot);
+    /// parent_buckets.plot(plot);
 
     const auto ideal =    [=](int blk) { assert(blk <= nblocks); return blk * Ng / nblocks; };
     const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
@@ -1135,7 +1145,7 @@ void distTreePartition_kway(
 
       // Allreduce children to get global begins of children.
       child_buckets.all_reduce(comm);
-      child_buckets.plot(plot);
+      /// child_buckets.plot(plot);
 
       // Commit any splitters that are not inheritted by children.
       size_t cb = 0;
@@ -1170,6 +1180,12 @@ void distTreePartition_kway(
     // Check splitters are in order.
     assert(std::is_sorted(local_block_begin.begin(),
                           local_block_begin.end()));
+
+    if (comm_rank == 0)
+      printf("NP=%d\tct=%d\tsz=%d\n",
+          comm_size,
+          int(BucketArray<T, dim>::allreduce_ct()),
+          int(BucketArray<T, dim>::allreduce_sz()));
 
     //
     // Send blocks to processes in the respective blocks.

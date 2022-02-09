@@ -69,8 +69,8 @@ int main(int argc, char * argv[])
 
   OctList octants = test::gaussian<uint, DIM>(N_begin(comm_rank), Nl, new_oct);
 
-  const int max_level = mpi_max(maxLevel(octants), comm);
-  ot::quadTreeToGnuplot(octants, max_level, "points", comm);
+  /// const int max_level = mpi_max(maxLevel(octants), comm);
+  /// ot::quadTreeToGnuplot(octants, max_level, "points", comm);
 
   const double sfc_tol = 0.1;
   ot::distTreePartition_kway(comm, octants, sfc_tol);
