@@ -1042,6 +1042,10 @@ void distTreePartition_kway(
   MPI_Comm_rank(comm, &comm_rank);
   int nblocks = std::min(comm_size, kway);
 
+  const MPI_Comm comm_in = comm;
+  const int comm_size_in = comm_size;
+  const int comm_rank_in = comm_rank;
+
   using LLU = long long unsigned;
   const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(kway);
   assert(kway_roundup > 0);
@@ -1181,12 +1185,6 @@ void distTreePartition_kway(
     assert(std::is_sorted(local_block_begin.begin(),
                           local_block_begin.end()));
 
-    if (comm_rank == 0)
-      printf("NP=%d\tct=%d\tsz=%d\n",
-          comm_size,
-          int(BucketArray<T, dim>::allreduce_ct()),
-          int(BucketArray<T, dim>::allreduce_sz()));
-
     //
     // Send blocks to processes in the respective blocks.
     //
@@ -1211,6 +1209,16 @@ void distTreePartition_kway(
     MPI_Comm_rank(comm, &comm_rank);
     nblocks = std::min(comm_size, kway);
   }
+
+  // For per-call stats, use BucketArray<T, dim>::reset_log() before bucketing.
+  par::MinMeanMax<LLU>
+      allreduce_ct = par::Mpi_ReduceMinMeanMax(BucketArray<T, dim>::allreduce_ct(), comm_in),
+      allreduce_sz = par::Mpi_ReduceMinMeanMax(BucketArray<T, dim>::allreduce_sz(), comm_in);
+  if (comm_rank_in == 0)
+    printf("NP=%-5d \t ct=%llu/%llu/%llu \t sz=%llu/%llu/%llu\n",
+        comm_size_in,
+        allreduce_ct.m_glob_min, LLU(allreduce_ct.m_glob_mean), allreduce_ct.m_glob_max,
+        allreduce_sz.m_glob_min, LLU(allreduce_sz.m_glob_mean), allreduce_sz.m_glob_max);
 
   for (MPI_Comm new_comm : to_be_freed)
     MPI_Comm_free(&new_comm);
