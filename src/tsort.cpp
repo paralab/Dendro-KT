@@ -722,7 +722,6 @@ class DistPartPlot
     int m_fine_level;
     int m_row = 0;
     int m_obj = 0;
-    int m_prolog_objects;
 
     std::ofstream m_file;
     std::string m_root_name;
@@ -749,7 +748,7 @@ class DistPartPlot
     struct X { double min; double max;  explicit X(double m, double M) : min(m), max(M) {} };
     struct Y { double min; double max;  explicit Y(double m, double M) : min(m), max(M) {} };
 
-    void rectangle(X x, Y y, const char *color, int object)
+    void rectangle_obj(X x, Y y, const char *color, int object)
     {
       const double pad = 0;
       m_file << "set object " << 1 + object << " rect from "
@@ -761,9 +760,17 @@ class DistPartPlot
              << "\n";
     }
 
-    void rectangle(X x, Y y, const char *color)
+    void rectangle_all(X x, Y y, const char *color)
     {
-      rectangle(x, y, color, m_prolog_objects + (m_obj++) * m_comm_size + m_comm_rank);
+      rectangle_obj(x, y, color, m_obj + m_comm_rank);
+      m_obj += m_comm_size;
+    }
+
+    void rectangle_root(X x, Y y, const char *color)
+    {
+      if (m_comm_rank == 0)
+        rectangle_obj(x, y, color, m_obj);
+      m_obj++;
     }
 
   public:
@@ -795,16 +802,12 @@ class DistPartPlot
       m_file.open(fileprefix + "_" + std::to_string(m_comm_rank) + ".txt");
 
       // Splitters.
-      if (m_comm_rank == 0)
+      const auto ideal = [=](int blk) { return blk * Ng / nblocks; };
+      for (int blk = 0; blk < nblocks; ++blk)
       {
-        const auto ideal = [=](int blk) { return blk * Ng / nblocks; };
-        for (int blk = 0; blk < nblocks; ++blk)
-        {
-          rectangle(X(ideal(blk), ideal(blk+1)), Y(0,1), white(), 2 * blk + 0);
-          rectangle(X(ideal(blk), ideal(blk+1)), Y(-1,0), white(), 2 * blk + 1);
-        }
+        rectangle_root(X(ideal(blk), ideal(blk+1)), Y(0,1), white());
+        rectangle_root(X(ideal(blk), ideal(blk+1)), Y(-1,0), white());
       }
-      m_prolog_objects = 2 * nblocks;
     }
 
     // close()
@@ -829,11 +832,11 @@ class DistPartPlot
       const size_t size = global_begin.size();
       for (size_t i = 0; i < size; ++i)
       {
-        rectangle(X(global_begin[i], global_end[i]), Y(1+m_row, 1+m_row+1), light_grey());
-        rectangle(X(global_begin[i] + process_offset_end[i] - local_size[i],
-                    global_begin[i] + process_offset_end[i]),
-                  Y(-1-m_row-1, -1-m_row),
-                  color(m_comm_rank));
+        rectangle_root(X(global_begin[i], global_end[i]), Y(1+m_row, 1+m_row+1), light_grey());
+        rectangle_all(X(global_begin[i] + process_offset_end[i] - local_size[i],
+                        global_begin[i] + process_offset_end[i]),
+                      Y(-1-m_row-1, -1-m_row),
+                      color(m_comm_rank));
       }
       ++m_row;
     }
@@ -1076,7 +1079,7 @@ void distTreePartition_kway(
     }
     const int initial_depth = depth;
 
-    DistPartPlot plot(Ng, nblocks, 8 - initial_depth, plot_prefix, comm);
+    DistPartPlot plot(Ng, nblocks, m_uiMaxDepth - initial_depth, plot_prefix, comm);
 
     // Allreduce parents to get global begins of parents.
     parent_buckets.all_reduce(comm);
