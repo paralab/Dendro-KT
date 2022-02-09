@@ -1085,24 +1085,29 @@ void distTreePartition_kway(
     parent_buckets.all_reduce(comm);
     parent_buckets.plot(plot);
 
+    const auto ideal =    [=](int blk) { assert(blk <= nblocks); return blk * Ng / nblocks; };
+    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
+    const auto next_blk = [=](LLU item) { assert(item <= Ng);    return int((item * nblocks + Ng - 1) / Ng); };
+    const LLU min_tol =  Ng                / nblocks * sfc_tol;
+    const LLU max_tol = (Ng + nblocks - 1) / nblocks * sfc_tol;
+
+    const auto too_wide = [=](LLU begin, LLU end) -> bool {
+      const bool wider_than_margins = end - begin > 2 * min_tol + 1;
+      const LLU margin_left = begin + min_tol + 1;
+      const LLU margin_right = end >= min_tol ? end - min_tol : 0;
+      const int far_blk_begin = next_blk(margin_left);
+      const int far_blk_end = next_blk(margin_right);
+      return wider_than_margins and far_blk_begin < far_blk_end;
+    };
+
     // Splitters
     std::vector<size_t> local_block_begin(nblocks, -1);
     const auto commit = [&](int blk, const BucketRef<T, int(dim)> b) {
         assert(blk < nblocks);
-        local_block_begin[blk] = b.local_begin;
-    };
-
-    const auto ideal =    [=](int blk) { assert(blk <= nblocks); return blk * Ng / nblocks; };
-    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
-    const auto next_blk = [=](LLU item) { assert(item <= Ng);    return int((item * nblocks + Ng - 1) / Ng); };
-
-    const auto too_wide = [=](LLU begin, LLU end) -> bool {
-      // Furthest ideal splitter from bucket begin is the last block.
-      // Ideal size for all blocks starting in bucket is +/- 1 of last.
-      const int blk_begin = next_blk(begin),  blk_end = next_blk(end);
-      const int blk_back = blk_end - 1;
-      return (blk_begin < blk_end) and
-          (ideal(blk_back) - begin > sfc_tol * (ideal_sz(blk_back) - 1));
+        assert(b.global_begin <= ideal(blk) and ideal(blk) <= b.global_end);
+        const LLU dist_begin = ideal(blk) - b.global_begin;
+        const LLU dist_end = b.global_end - ideal(blk);
+        local_block_begin[blk] = (dist_begin <= dist_end ? b.local_begin : b.local_end);
     };
 
     for (; parent_buckets.size() > 0 and depth + root.getLevel() < m_uiMaxDepth; ++depth)
