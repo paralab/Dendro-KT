@@ -42,8 +42,10 @@ namespace type
     // Arithmetic
     StrongIndex & operator++() { ++m_i; return *this; }
     StrongIndex & operator+=(const T d) { m_i += d; return *this; }
-    /// StrongIndex operator+(const T d) const { return StrongIndex(m_i + d); }  // creates ambiguity
-        // others as needed
+
+    // Avoid ambiguity in expressions like  si + 1.
+    StrongIndex plus(const T d)  const { return StrongIndex(m_i + d); }
+    StrongIndex minus(const T d) const { return StrongIndex(m_i - d); }
   };
 };
 
@@ -249,6 +251,21 @@ class Overlaps
 
     void keyOverlapsAncestors(const size_t keyIdx, std::vector<size_t> &overlapIdxs);
 };
+
+
+
+
+template <typename T, unsigned int dim>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,
+    const double sfc_tol = 0.3,
+    const int kway = KWAY,
+    const TreeNode<T, dim> root = TreeNode<T, dim>(),
+    const SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
+
+
+
 
 
 template <typename T, unsigned int dim>
