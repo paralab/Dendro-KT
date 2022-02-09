@@ -261,8 +261,8 @@ void distTreePartition_kway(
     std::vector<TreeNode<T, dim>> &octants,
     const double sfc_tol = 0.3,
     const int kway = KWAY,
-    const TreeNode<T, dim> root = TreeNode<T, dim>(),
-    const SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
+    TreeNode<T, dim> root = TreeNode<T, dim>(),
+    SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
 
 
 
