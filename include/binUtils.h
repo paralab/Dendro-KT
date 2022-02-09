@@ -89,15 +89,15 @@ namespace binOp{
 
     constexpr size_t width = 8 * sizeof(T);
 
-    constexpr T powers01 = 1u;
-    constexpr T powers02 = powers01 | (powers01 << (1*dim * (1*dim < width)));
-    constexpr T powers04 = powers02 | (powers02 << (2*dim * (2*dim < width)));
-    constexpr T powers08 = powers04 | (powers04 << (4*dim * (4*dim < width)));
-    constexpr T powers16 = powers08 | (powers08 << (8*dim * (8*dim < width)));
-    constexpr T powers32 = powers16 | (powers16 << (16*dim * (16*dim < width)));
-    constexpr T powers64 = powers32 | (powers32 << (32*dim * (32*dim < width)));
+    constexpr unsigned powers64 = 1u;
+    constexpr unsigned powers32 = powers64 | (powers64 << 32*dim*(32*dim < width));
+    constexpr unsigned powers16 = powers32 | (powers32 << 16*dim*(16*dim < width));
+    constexpr unsigned powers08 = powers16 | (powers16 <<  8*dim*( 8*dim < width));
+    constexpr unsigned powers04 = powers08 | (powers08 <<  4*dim*( 4*dim < width));
+    constexpr unsigned powers02 = powers04 | (powers04 <<  2*dim*( 2*dim < width));
+    constexpr unsigned powers01 = powers02 | (powers02 <<  1*dim*( 1*dim < width));
 
-    return ((next_power_of_2(i) - 1) & powers32) * (base - 1) + 1;
+    return ((next_power_of_2(i) - 1) & powers01) * (base - 1) + 1;
   }
 
 
