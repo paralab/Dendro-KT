@@ -674,6 +674,8 @@ struct P2PPartners
   std::vector<int> m_dest;
   std::vector<int> m_src;
   MPI_Comm m_comm;
+  int m_comm_size;
+  int m_comm_rank;
 
   void reserve(size_t ndest, size_t nsrc)
   {
@@ -693,9 +695,13 @@ struct P2PPartners
 
   void reset(size_t ndest, size_t nsrc, MPI_Comm comm) {
     nDest(ndest);  nSrc(nsrc);  m_comm = comm;
+    MPI_Comm_size(comm, &m_comm_size);
+    MPI_Comm_rank(comm, &m_comm_rank);
   }
 
   MPI_Comm comm() const { return m_comm; }
+  int comm_size() const { return m_comm_size; }
+  int comm_rank() const { return m_comm_rank; }
 
   size_t nDest() const { return m_dest.size(); }
   size_t nSrc()  const { return m_src.size(); }
@@ -807,6 +813,7 @@ struct P2PMeta
   std::vector<int> m_send_meta;
   std::vector<int> m_recv_meta;
   std::vector<MPI_Request> m_requests;
+  int m_recv_total = 0;
 
   MPI_Comm comm() const    { assert(m_partners != nullptr);  return m_partners->comm(); }
   int dest(size_t i) const { assert(m_partners != nullptr);  return m_partners->dest(i); }
@@ -817,14 +824,12 @@ struct P2PMeta
   int * recv_sizes()   { assert(m_recv_meta.size());  return &m_recv_meta[0]; }
   int * recv_offsets() { assert(m_recv_meta.size());  return &m_recv_meta[m_partners->nSrc()]; }
 
-  // Store p+1 offsets, last is total.
-  const int send_total() const { return m_send_meta[2 * m_partners->nDest()]; }
-  const int recv_total() const { return m_recv_meta[2 * m_partners->nSrc()]; }
+  const int recv_total() const { return m_recv_total; }
 
   void reserve(int ndest, int nsrc)
   {
-    m_send_meta.reserve(2 * ndest + 1);
-    m_recv_meta.reserve(2 * nsrc + 1);
+    m_send_meta.reserve(2 * ndest);
+    m_recv_meta.reserve(2 * nsrc);
     m_requests.reserve(ndest);
   }
 
@@ -838,24 +843,29 @@ struct P2PMeta
     m_requests.clear();
 
     m_partners = partners;
-    m_send_meta.resize(2 * partners->nDest() + 1, 0);
-    m_recv_meta.resize(2 * partners->nSrc() + 1, 0);
+    m_send_meta.resize(2 * partners->nDest(), 0);
+    m_recv_meta.resize(2 * partners->nSrc(), 0);
     m_requests.resize(partners->nDest());
   }
 
-  // Usage: send_size(), recv_size() ... tally(), send(), recv()
+  // Usage: schedule_send(), recv_size() ... tally_recvs(), send(), recv()
 
-  void send_size(int destIdx, int size) { send_sizes()[destIdx] = size; }
-  void recv_size(int srcIdx, int size)  { recv_sizes()[srcIdx] = size; }
+  void schedule_send(int destIdx, int size, int offset) {
+    send_sizes()[destIdx] = size;
+    send_offsets()[destIdx] = offset;
+  }
 
-  void tally() {
-    send_offsets()[0] = 0;
-    for (int i = 0; i < m_partners->nDest(); ++i)
-      send_offsets()[i+1] = send_offsets()[i] + send_sizes()[i];
+  void recv_size(int srcIdx, int size) {
+    recv_sizes()[srcIdx] = size;
+  }
 
-    recv_offsets()[0] = 0;
-    for (int i = 0; i < m_partners->nSrc(); ++i)
-      recv_offsets()[i+1] = recv_offsets()[i] + recv_sizes()[i];
+  void tally_recvs() {
+    int sum = 0;
+    for (int i = 0; i < m_partners->nSrc(); ++i) {
+      recv_offsets()[i] = sum;
+      sum += recv_sizes()[i];
+    }
+    m_recv_total = sum;
   }
 
   template <typename X>
@@ -1454,8 +1464,9 @@ void distTreePartition_kway(
     assert(std::is_sorted(local_block_begin.begin(),
                           local_block_begin.end()));
 
+
     //
-    // Send blocks to processes in the respective blocks.
+    // Send blocks to processes spanning the respective blocks.
     //
 
     int total_srcs = 0;
@@ -1477,7 +1488,7 @@ void distTreePartition_kway(
       {
         p2p_partners.dest(dst_idx, blk_id_to_task(blk, dest_blk_id(blk)));
         p2p_sizes.send(dst_idx, local_block_sz(blk));
-        p2p_meta.send_size(dst_idx, local_block_sz(blk));
+        p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block_begin[blk]);
         dst_idx++;
       }
 
@@ -1490,7 +1501,7 @@ void distTreePartition_kway(
           src_idx++;
         }
 
-    p2p_meta.tally();
+    p2p_meta.tally_recvs();
     p2p_meta.send(octants);
 
     received_octants.clear();
@@ -1500,6 +1511,11 @@ void distTreePartition_kway(
     received_octants.insert(received_octants.end(),
         &octants[local_block_begin[self_blk]],
         &octants[local_block_begin[self_blk+1]]);
+
+    { LLU local_recv_sz = received_octants.size(),  global_recv_sz = 0;
+      assert((par::Mpi_Allreduce(&local_recv_sz, &global_recv_sz, 1, MPI_SUM, comm),
+            global_recv_sz == Ng));
+    }
 
     // Receive remote segements into beginning.
     p2p_meta.recv(&received_octants[0]);
