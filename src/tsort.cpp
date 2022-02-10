@@ -1311,9 +1311,8 @@ void distTreePartition_kway(
   };
 
   // Splitters.
-  std::vector<size_t> local_block_begin;
-  std::vector<size_t> local_block_size;
-  local_block_begin.reserve(kway + 1);
+  std::vector<size_t> local_block;
+  local_block.reserve(kway + 1);
 
   std::vector<TreeNode<T, dim>> received_octants;
 
@@ -1369,7 +1368,7 @@ void distTreePartition_kway(
 
     const auto local_block_sz = [&](int blk) {
       assert(blk < nblocks);
-      return local_block_begin[blk+1] - local_block_begin[blk];
+      return local_block[blk+1] - local_block[blk];
     };
 
     // Mapping of tasks within blocks.
@@ -1389,9 +1388,9 @@ void distTreePartition_kway(
     };
 
     // Splitters
-    local_block_begin.clear();
-    local_block_begin.resize(nblocks + 1, -1);
-    local_block_begin[nblocks] = octants.size();
+    local_block.clear();
+    local_block.resize(nblocks + 1, -1);
+    local_block[nblocks] = octants.size();
 
     // commit()
     const auto commit = [&](int blk, const BucketRef<T, int(dim)> b) {
@@ -1399,7 +1398,7 @@ void distTreePartition_kway(
         assert(b.global_begin <= ideal(blk) and ideal(blk) <= b.global_end);
         const LLU dist_begin = ideal(blk) - b.global_begin;
         const LLU dist_end = b.global_end - ideal(blk);
-        local_block_begin[blk] = (dist_begin <= dist_end ? b.local_begin : b.local_end);
+        local_block[blk] = (dist_begin <= dist_end ? b.local_begin : b.local_end);
     };
 
     // Keep splitting buckets to tolerance or until max depth reached.
@@ -1454,30 +1453,19 @@ void distTreePartition_kway(
         commit(blk, b);
     }
 
-    // Check all splitters accounted for.
-    assert((std::find(local_block_begin.begin(),
-                      local_block_begin.end(),
-                      size_t(-1))
-        == local_block_begin.end()));
-
-    // Check splitters are in order.
-    assert(std::is_sorted(local_block_begin.begin(),
-                          local_block_begin.end()));
+    // Validate splitters.
+    assert((std::find(local_block.begin(), local_block.end(), -1) == local_block.end()));
+    assert(std::is_sorted(local_block.begin(), local_block.end()));
 
 
-    //
-    // Send blocks to processes spanning the respective blocks.
-    //
+    // Exchange data to match block boundaries.
 
     int total_srcs = 0;
     for (int blk = 0; blk < nblocks; ++blk)
       if (blk != self_blk)
         total_srcs += srcs_per_blk(blk);
 
-    { int global_srcs = 0;
-      assert(( par::Mpi_Allreduce(&total_srcs, &global_srcs, 1, MPI_SUM, comm),
-          global_srcs == comm_size * (nblocks - 1)));
-    }
+    assert(par::mpi_sum(total_srcs, comm) == comm_size * (nblocks - 1));
 
     p2p_partners.reset(nblocks - 1, total_srcs, comm);
     p2p_sizes.reset(&p2p_partners);
@@ -1488,7 +1476,7 @@ void distTreePartition_kway(
       {
         p2p_partners.dest(dst_idx, blk_id_to_task(blk, dest_blk_id(blk)));
         p2p_sizes.send(dst_idx, local_block_sz(blk));
-        p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block_begin[blk]);
+        p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block[blk]);
         dst_idx++;
       }
 
@@ -1509,16 +1497,13 @@ void distTreePartition_kway(
 
     // Copy local segment to end.
     received_octants.insert(received_octants.end(),
-        &octants[local_block_begin[self_blk]],
-        &octants[local_block_begin[self_blk+1]]);
+        &octants[local_block[self_blk]],
+        &octants[local_block[self_blk+1]]);
 
-    { LLU local_recv_sz = received_octants.size(),  global_recv_sz = 0;
-      assert((par::Mpi_Allreduce(&local_recv_sz, &global_recv_sz, 1, MPI_SUM, comm),
-            global_recv_sz == Ng));
-    }
+    assert(par::mpi_sum(LLU(received_octants.size()), comm) == Ng);
 
     // Receive remote segements into beginning.
-    p2p_meta.recv(&received_octants[0]);
+    p2p_meta.recv(&received_octants[0]);  // ptr: Don't resize vector
     p2p_sizes.wait_all();
     p2p_meta.wait_all();
 

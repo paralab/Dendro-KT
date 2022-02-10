@@ -333,6 +333,13 @@ namespace par {
   template <typename T> 
     int Mpi_Allreduce( const T* sendbuf, T* recvbuf, int count, MPI_Op op, MPI_Comm comm);
 
+  template <typename T>
+  T mpi_sum(T t, MPI_Comm comm)
+  {
+    Mpi_Allreduce(&t, MPI_IN_PLACE, 1, MPI_SUM, comm);
+    return t;
+  }
+
   /**
    * @author Rahul S. Sampath
    */
