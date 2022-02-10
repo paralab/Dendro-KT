@@ -68,12 +68,48 @@ int main(int argc, char * argv[])
   const LLU Nl = N_begin(comm_rank + 1) - N_begin(comm_rank);
 
   OctList octants = test::gaussian<uint, DIM>(N_begin(comm_rank), Nl, new_oct);
+  const int max_level = mpi_max(maxLevel(octants), comm);
 
-  /// const int max_level = mpi_max(maxLevel(octants), comm);
-  /// ot::quadTreeToGnuplot(octants, max_level, "points", comm);
+  /// ot::quadTreeToGnuplot(octants, max_level, "points.pre", comm);
 
   const double sfc_tol = 0.1;
   ot::distTreePartition_kway(comm, octants, sfc_tol);
+
+  /// ot::quadTreeToGnuplot(octants, max_level, "points.post", comm);
+
+  //
+  // Check the partitioning worked.
+  //
+  ot::SFC_Tree<uint, DIM>::locTreeSort(octants);
+
+  ot::TreeNode<uint, DIM> edges[2] = {{}, {}};
+  if (octants.size() > 0)
+  {
+    edges[0] = octants.front();
+    edges[1] = octants.back();
+  }
+  int local_edges = octants.size() > 0 ? 2 : 0;
+  int global_edges = 0;
+  int scan_edges = 0;
+  par::Mpi_Allreduce(&local_edges, &global_edges, 1, MPI_SUM, comm);
+  par::Mpi_Scan(&local_edges, &scan_edges, 1, MPI_SUM, comm);
+  scan_edges -= local_edges;
+
+  std::vector<int> count_edges(comm_size, 0);
+  std::vector<int> displ_edges(comm_size, 0);
+  std::vector<ot::TreeNode<uint, DIM>> gathered(global_edges);
+
+  par::Mpi_Allgather(&local_edges, &(*count_edges.begin()), 1, comm);
+  par::Mpi_Allgather(&scan_edges, &(*displ_edges.begin()), 1, comm);
+  par::Mpi_Allgatherv(edges, local_edges,
+      &(*gathered.begin()), &(*count_edges.begin()), &(*displ_edges.begin()), comm);
+
+  const bool edges_sorted = ot::isLocallySorted(gathered);
+  if (comm_rank == 0)
+    if (edges_sorted)
+      printf(GRN "Edges sorted\n" NRM);
+    else
+      printf(RED "Edges unsorted\n" NRM);
 
   _DestroyHcurve();
   DendroScopeEnd();
