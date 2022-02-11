@@ -264,6 +264,16 @@ void distTreePartition_kway(
     TreeNode<T, dim> root = TreeNode<T, dim>(),
     SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
 
+template <typename T, unsigned int dim, typename X>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  // keys
+    std::vector<X> &values,
+    const double sfc_tol = 0.3,
+    const int kway = KWAY,
+    TreeNode<T, dim> root = TreeNode<T, dim>(),
+    SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
+
 
 
 

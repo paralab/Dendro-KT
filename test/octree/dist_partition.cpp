@@ -77,7 +77,18 @@ int main(int argc, char * argv[])
 
   const double sfc_tol = 0.1;
   const int kway = 128;
-  ot::distTreePartition_kway(comm, octants, sfc_tol, kway);
+  std::vector<ot::TNPoint<uint, DIM>> xs;
+  for (const Oct &oct : octants)
+    xs.emplace_back(oct.getX(), oct.getLevel());
+
+  ot::distTreePartition_kway(comm, octants, xs, sfc_tol, kway);
+
+  OctList ys;
+  for (const auto &pt : xs)
+    ys.emplace_back(pt);
+
+  if (ys != octants)
+    printf("[%-2d] " RED "values not partitioned with keys!\n" NRM, comm_rank);
 
   /// ot::quadTreeToGnuplot(octants, max_level, "points.post", comm);
 
@@ -85,6 +96,8 @@ int main(int argc, char * argv[])
   if (comm_rank == 0)
     if (not partitioned)
       printf(RED "Edges unsorted\n" NRM);
+
+  ot::distTreePartition_kway(comm, octants, sfc_tol, kway);
 
   _DestroyHcurve();
   DendroScopeEnd();
