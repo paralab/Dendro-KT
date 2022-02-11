@@ -815,6 +815,9 @@ struct P2PMeta
   std::vector<MPI_Request> m_requests;
   int m_recv_total = 0;
 
+  long long unsigned m_bytes_sent = 0;
+  long long unsigned m_bytes_rcvd = 0;
+
   MPI_Comm comm() const    { assert(m_partners != nullptr);  return m_partners->comm(); }
   int dest(size_t i) const { assert(m_partners != nullptr);  return m_partners->dest(i); }
   int src(size_t i)  const { assert(m_partners != nullptr);  return m_partners->src(i); }
@@ -825,6 +828,9 @@ struct P2PMeta
   int * recv_offsets() { assert(m_recv_meta.size());  return &m_recv_meta[m_partners->nSrc()]; }
 
   const int recv_total() const { return m_recv_total; }
+
+  long long unsigned bytes_sent() const { return m_bytes_sent; }
+  long long unsigned bytes_rcvd() const { return m_bytes_rcvd; }
 
   void reserve(int ndest, int nsrc)
   {
@@ -871,18 +877,24 @@ struct P2PMeta
   template <typename X>
   void send(const X *send_buffer) {
     for (int i = 0; i < m_partners->nDest(); ++i)
+    {
       par::Mpi_Isend(&send_buffer[send_offsets()[i]],
                      send_sizes()[i],
                      dest(i), 0, comm(), &m_requests[i]);
+      m_bytes_sent += send_sizes()[i] * sizeof(X);
+    }
   }
 
   template <typename X>
   void recv(X *recv_buffer) {
     MPI_Status status;
     for (int i = 0; i < m_partners->nSrc(); ++i)
+    {
       par::Mpi_Recv(&recv_buffer[recv_offsets()[i]],
                     recv_sizes()[i],
                     src(i), 0, comm(), &status);
+      m_bytes_rcvd += recv_sizes()[i] * sizeof(X);
+    }
   }
 
   template <typename X>
@@ -1267,6 +1279,9 @@ template void distTreePartition_kway<unsigned, 4u>( MPI_Comm comm,
     const TreeNode<unsigned, 4u> root,
     const SFC_State<4> sfc);
 
+template <typename...Args>
+void tfprintf(Args...args) { const bool use = false; if (use) fprintf(args...); }
+
 template <typename T, unsigned int dim>
 void distTreePartition_kway(
     MPI_Comm comm,
@@ -1318,7 +1333,7 @@ void distTreePartition_kway(
 
   std::string plot_prefix = "partition";
 
-  ///while (nblocks > 1)  //TODO
+  while (nblocks > 1)
   {
     LLU Ng;
     LLU const Nl = octants.size();
@@ -1328,6 +1343,7 @@ void distTreePartition_kway(
 
     parent_buckets.reset(octants.size(), root, sfc);
     child_buckets.reset();
+
 
     // Initial buckets.
     int depth = 0;
@@ -1376,7 +1392,12 @@ void distTreePartition_kway(
     const auto block_tasks =    [=](int blk) { return block_to_task(blk+1) - block_to_task(blk); };
     const auto blk_id_to_task = [=](int blk, int blk_id) { return block_to_task(blk) + blk_id; };
 
-    const auto task_to_block =  [=](int task) { return (task * nblocks + comm_size - 1) / comm_size; };
+    const auto task_to_block_ =  [=](int task) { return ((task + 1) * nblocks - 1) / comm_size; };
+    const auto task_to_block = [=](int task) {
+      int blk = task_to_block_(task);
+      assert(block_to_task(blk) <= task and task < block_to_task(blk+1));
+      return blk;
+    };
 
     const int self_blk = task_to_block(comm_rank);
     const int self_blk_id = comm_rank - block_to_task(self_blk);
@@ -1384,7 +1405,9 @@ void distTreePartition_kway(
     const auto dest_blk_id =  [=](int blk) { return self_blk_id % block_tasks(blk); };//future: more balanced
     const auto src_blk_id =   [=](int blk, int src) { return src == 0 ? self_blk_id : block_tasks(self_blk); };
     const auto srcs_per_blk = [=](int blk) {
-      return 1 + (self_blk_id > 0 and block_tasks(blk) > block_tasks(self_blk));
+      if (self_blk_id == block_tasks(blk)) return 0;
+      if (self_blk_id == 0 and block_tasks(blk) > block_tasks(self_blk)) return 2;
+      else return 1;
     };
 
     // Splitters
@@ -1490,6 +1513,7 @@ void distTreePartition_kway(
         }
 
     p2p_meta.tally_recvs();
+
     p2p_meta.send(octants);
 
     received_octants.clear();
@@ -1522,19 +1546,24 @@ void distTreePartition_kway(
       MPI_Comm_rank(comm, &comm_rank);
       nblocks = std::min(comm_size, kway);
     }
-    /// else
-    ///   break;  //TODO
+    else
+      break;  // Avoid splitting comm at the very end.
   }
 
-  // For per-call stats, use BucketArray<T, dim>::reset_log() before bucketing.
-  par::MinMeanMax<LLU>
-      allreduce_ct = par::Mpi_ReduceMinMeanMax(BucketArray<T, dim>::allreduce_ct(), comm_in),
-      allreduce_sz = par::Mpi_ReduceMinMeanMax(BucketArray<T, dim>::allreduce_sz(), comm_in);
-  if (comm_rank_in == 0)
-    printf("NP=%-5d \t ct=%llu/%llu/%llu \t sz=%llu/%llu/%llu\n",
-        comm_size_in,
-        allreduce_ct.m_glob_min, LLU(allreduce_ct.m_glob_mean), allreduce_ct.m_glob_max,
-        allreduce_sz.m_glob_min, LLU(allreduce_sz.m_glob_mean), allreduce_sz.m_glob_max);
+  /// // For per-call stats, use BucketArray<T, dim>::reset_log() before bucketing.
+  /// par::MinMeanMax<LLU>
+  ///     allreduce_ct = par::Mpi_ReduceMinMeanMax(BucketArray<T, dim>::allreduce_ct(), comm_in),
+  ///     allreduce_sz = par::Mpi_ReduceMinMeanMax(BucketArray<T, dim>::allreduce_sz(), comm_in);
+  /// if (comm_rank_in == 0)
+  ///   printf("NP=%-5d \t ct=%llu/%llu/%llu \t sz=%llu/%llu/%llu\n",
+  ///       comm_size_in,
+  ///       allreduce_ct.m_glob_min, LLU(allreduce_ct.m_glob_mean), allreduce_ct.m_glob_max,
+  ///       allreduce_sz.m_glob_min, LLU(allreduce_sz.m_glob_mean), allreduce_sz.m_glob_max);
+
+  /// par::MinMeanMax<LLU> exchange_sz = par::Mpi_ReduceMinMeanMax(p2p_meta.bytes_rcvd(), comm_in);
+  /// if (comm_rank_in == 0)
+  ///   printf("kway=%-3d \t NP=%-5d \t sz=%llu/%llu/%llu\n",
+  ///       kway, comm_size_in, exchange_sz.m_glob_min, LLU(exchange_sz.m_glob_mean), exchange_sz.m_glob_max);
 
   for (MPI_Comm new_comm : to_be_freed)
     MPI_Comm_free(&new_comm);

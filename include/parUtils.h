@@ -336,8 +336,9 @@ namespace par {
   template <typename T>
   T mpi_sum(T t, MPI_Comm comm)
   {
-    Mpi_Allreduce(&t, MPI_IN_PLACE, 1, MPI_SUM, comm);
-    return t;
+    T sum;
+    Mpi_Allreduce(&t, &sum, 1, MPI_SUM, comm);
+    return sum;
   }
 
   /**

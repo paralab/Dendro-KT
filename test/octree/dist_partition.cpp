@@ -65,8 +65,8 @@ int main(int argc, char * argv[])
     return Oct(coords, lev);
   };
 
-  const LLU Ng = 10e6;
-  /// const LLU Ng = 10e4;
+  /// const LLU Ng = 10e6;  // oops 10e6 == 1e7
+  const LLU Ng = 10e4;   // 10e4 == 1e5
   const auto N_begin = [=](int rank) { return Ng * rank / comm_size; };
   const LLU Nl = N_begin(comm_rank + 1) - N_begin(comm_rank);
 
@@ -76,7 +76,8 @@ int main(int argc, char * argv[])
   /// ot::quadTreeToGnuplot(octants, max_level, "points.pre", comm);
 
   const double sfc_tol = 0.1;
-  ot::distTreePartition_kway(comm, octants, sfc_tol);
+  const int kway = 128;
+  ot::distTreePartition_kway(comm, octants, sfc_tol, kway);
 
   /// ot::quadTreeToGnuplot(octants, max_level, "points.post", comm);
 
