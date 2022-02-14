@@ -33,10 +33,8 @@ namespace par {
   inline int Mpi_Isend(const T *buf, int count, int dest, int tag,
                        MPI_Comm comm, MPI_Request *request) {
 
-    MPI_Isend(buf, count, par::Mpi_datatype<T>::value(),
+    return MPI_Isend(buf, count, par::Mpi_datatype<T>::value(),
               dest, tag, comm, request);
-
-    return 1;
 
   }
 
@@ -44,10 +42,8 @@ namespace par {
   inline int Mpi_Issend(const T *buf, int count, int dest, int tag,
                         MPI_Comm comm, MPI_Request *request) {
 
-    MPI_Issend(buf, count, par::Mpi_datatype<T>::value(),
+    return MPI_Issend(buf, count, par::Mpi_datatype<T>::value(),
                dest, tag, comm, request);
-
-    return 1;
 
   }
 
@@ -55,10 +51,8 @@ namespace par {
   inline int Mpi_Recv(T *buf, int count, int source, int tag,
                       MPI_Comm comm, MPI_Status *status) {
 
-    MPI_Recv(buf, count, par::Mpi_datatype<T>::value(),
+    return MPI_Recv(buf, count, par::Mpi_datatype<T>::value(),
              source, tag, comm, status);
-
-    return 1;
 
   }
 
@@ -66,10 +60,8 @@ namespace par {
   inline int Mpi_Irecv(T *buf, int count, int source, int tag,
                        MPI_Comm comm, MPI_Request *request) {
 
-    MPI_Irecv(buf, count, par::Mpi_datatype<T>::value(),
+    return MPI_Irecv(buf, count, par::Mpi_datatype<T>::value(),
               source, tag, comm, request);
-
-    return 1;
 
   }
 

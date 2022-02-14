@@ -158,36 +158,8 @@ namespace ot
         keys.push_back(key);
       }
 
-      // To use the schedule the TNPoints have to be locally sorted
-      // in the order of the keys.
+      distTreePartition_kway(comm, keys, nodesInOut, sfc_tol);
       SFC_Tree<C, dim>::locTreeSort(keys, nodesInOut);
-
-      const std::vector<TNPoint<C, dim>> nodesIn = nodesInOut;
-      std::vector<TNPoint<C, dim>> &nodesOut = nodesInOut;
-
-      // To sort the TNPoints, get a schedule based on the TreeNodes.
-      par::SendRecvSchedule sched = SFC_Tree<C, dim>::distTreePartitionSchedule(
-          keys, 0, sfc_tol, comm);
-
-      if (sched.scounts.size() > 0)
-      {
-        nodesOut.clear();
-        nodesOut.resize(sched.rdispls.back() + sched.rcounts.back());
-
-        par::Mpi_Alltoallv_sparse<TNPoint<C, dim>>(
-            &nodesIn[0],  &sched.scounts[0], &sched.sdispls[0],
-            &nodesOut[0], &sched.rcounts[0], &sched.rdispls[0],
-            comm);
-
-        // Locally sort the TNPoints again by keys.
-        keys.clear();
-        for (const auto &pt : nodesOut)
-        {
-          const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
-          keys.push_back(key);
-        }
-        SFC_Tree<C, dim>::locTreeSort(keys, nodesOut);
-      }
     }
 
 
@@ -806,33 +778,7 @@ namespace ot
         keys.push_back(key);
       }
 
-      // To use the schedule the TNPoints have to be locally sorted
-      // in the order of the keys.
-      SFC_Tree<C, dim>::locTreeSort(keys, nodesInOut, elemsInOut);
-
-      const std::vector<TNPoint<C, dim>> nodesIn = nodesInOut;
-      const std::vector<TreeNode<C, dim>> elemsIn = elemsInOut;
-
-      std::vector<TNPoint<C, dim>> &nodesOut = nodesInOut;
-      std::vector<TreeNode<C, dim>> &elemsOut = elemsInOut;
-      nodesOut.clear();
-      elemsOut.clear();
-
-      // To sort the TNPoints, get a schedule based on the TreeNodes.
-      par::SendRecvSchedule sched = SFC_Tree<C, dim>::distTreePartitionSchedule(
-          keys, 0, sfc_tol, comm);
-
-      nodesOut.resize(sched.rdispls.back() + sched.rcounts.back());
-      elemsOut.resize(sched.rdispls.back() + sched.rcounts.back());
-
-      par::Mpi_Alltoallv_sparse<TNPoint<C, dim>>(
-          &nodesIn[0],  &sched.scounts[0], &sched.sdispls[0],
-          &nodesOut[0], &sched.rcounts[0], &sched.rdispls[0],
-          comm);
-      par::Mpi_Alltoallv_sparse<TreeNode<C, dim>>(
-          &elemsIn[0],  &sched.scounts[0], &sched.sdispls[0],
-          &elemsOut[0], &sched.rcounts[0], &sched.rdispls[0],
-          comm);
+      distTreePartition_kway(comm, keys, nodesInOut, elemsInOut, sfc_tol);
     }
 
 

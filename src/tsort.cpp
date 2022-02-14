@@ -669,6 +669,88 @@ SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,
 
 
 
+template <typename T, unsigned int dim, typename...X>
+void distTreePartition_kway_impl(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> & ...xs, //values
+    const double sfc_tol = 0.3,
+    const int kway = KWAY,
+    TreeNode<T, dim> root = TreeNode<T, dim>(),
+    SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
+
+template <typename T, unsigned int dim>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    const double sfc_tol)
+{
+  distTreePartition_kway_impl<T, dim>(comm, octants, sfc_tol);
+}
+
+template <typename T, unsigned int dim, typename X>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    const double sfc_tol)
+{
+  distTreePartition_kway_impl<T, dim, X>(comm, octants, xs, sfc_tol);
+}
+
+template <typename T, unsigned int dim, typename X, typename Y>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    std::vector<Y> &ys,                      //values
+    const double sfc_tol)
+{
+  distTreePartition_kway_impl<T, dim, X, Y>(comm, octants, xs, ys, sfc_tol);
+}
+
+
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 2u>> &,  //keys
+    const double);
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 3u>> &,  //keys
+    const double);
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 4u>> &,  //keys
+    const double);
+
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 2u>> &,  //keys
+    std::vector<TNPoint<unsigned, 2u>> &,   //values
+    const double);
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 3u>> &,  //keys
+    std::vector<TNPoint<unsigned, 3u>> &,   //values
+    const double);
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 4u>> &,  //keys
+    std::vector<TNPoint<unsigned, 4u>> &,   //values
+    const double);
+
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 2u>> &,  //keys
+    std::vector<TNPoint<unsigned, 2u>> &,   //values
+    std::vector<TreeNode<unsigned, 2u>> &,  //values
+    const double);
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 3u>> &,  //keys
+    std::vector<TNPoint<unsigned, 3u>> &,   //values
+    std::vector<TreeNode<unsigned, 3u>> &,  //values
+    const double);
+template void distTreePartition_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 4u>> &,  //keys
+    std::vector<TNPoint<unsigned, 4u>> &,   //values
+    std::vector<TreeNode<unsigned, 4u>> &,  //values
+    const double);
+
+
+
 struct P2PPartners
 {
   std::vector<int> m_dest;
@@ -716,10 +798,22 @@ struct P2PPartners
   void src(size_t i, int s)  { assert(i < m_src.size());   m_src[i] = s; }
 };
 
+template <typename Tag>
+struct P2PRequest
+{
+  MPI_Request m_request;
+  MPI_Request & operator*() { return m_request; }
+  P2PRequest() = default;
+  P2PRequest(const P2PRequest&) { assert(!"Tried to copy MPI_Request. Try reserve()."); }
+  P2PRequest(P2PRequest&&) { assert(!"Tried to move MPI_Request. Try reserve()."); }
+  //future: Prevent active MPI_Request's from being copied. Smart pointers?
+};
 
 template <typename ScalarT = int>
 struct P2PScalar
 {
+  using Request = P2PRequest<P2PScalar>;
+
   const P2PPartners *m_partners = nullptr;
   MPI_Comm comm() const    { assert(m_partners != nullptr);  return m_partners->comm(); }
   int dest(size_t i) const { assert(m_partners != nullptr);  return m_partners->dest(i); }
@@ -728,7 +822,7 @@ struct P2PScalar
   static constexpr int LEN = 1;
   std::vector<ScalarT> m_sendScalar;
   std::vector<ScalarT> m_recvScalar;
-  std::vector<MPI_Request> m_requests;
+  std::vector<Request> m_requests;
 
   void reserve(int ndest, int nsrc)
   {
@@ -754,7 +848,7 @@ struct P2PScalar
   void send(int destIdx, ScalarT scalar) {
     assert(destIdx < m_partners->nDest());
     m_sendScalar[destIdx] = scalar;  // future: LEN > 1
-    par::Mpi_Isend(&(m_sendScalar[destIdx]), LEN, dest(destIdx), 0, comm(), &m_requests[destIdx]);
+    par::Mpi_Isend(&(m_sendScalar[destIdx]), LEN, dest(destIdx), 0, comm(), &(*m_requests[destIdx]));
   }
 
   ScalarT recv(int srcIdx) {
@@ -769,8 +863,12 @@ struct P2PScalar
   }
 
   void wait_all() {
-    for (MPI_Request &request : m_requests)
+    for (Request &request_wrapper : m_requests)
+    {
+      MPI_Request &request = *request_wrapper;
       MPI_Wait(&request, MPI_STATUS_IGNORE);
+    }
+    m_requests.clear();
   }
 };
 
@@ -810,10 +908,15 @@ struct P2PMeta
 {
   const P2PPartners *m_partners = nullptr;
 
+  using Request = P2PRequest<P2PMeta>;
+
   std::vector<int> m_send_meta;
   std::vector<int> m_recv_meta;
-  std::vector<MPI_Request> m_requests;
+  std::vector<Request> m_requests;  // size == # of sends since wait_all()
   int m_recv_total = 0;
+
+  int m_send_tag = 0;
+  int m_recv_tag = 0;
 
   long long unsigned m_bytes_sent = 0;
   long long unsigned m_bytes_rcvd = 0;
@@ -832,11 +935,11 @@ struct P2PMeta
   long long unsigned bytes_sent() const { return m_bytes_sent; }
   long long unsigned bytes_rcvd() const { return m_bytes_rcvd; }
 
-  void reserve(int ndest, int nsrc)
+  void reserve(int ndest, int nsrc, int layers = 1)
   {
     m_send_meta.reserve(2 * ndest);
     m_recv_meta.reserve(2 * nsrc);
-    m_requests.reserve(ndest);
+    m_requests.reserve(ndest * layers);
   }
 
   P2PMeta() = default;
@@ -846,12 +949,11 @@ struct P2PMeta
   {
     m_send_meta.clear();
     m_recv_meta.clear();
-    m_requests.clear();
+    wait_all();
 
     m_partners = partners;
     m_send_meta.resize(2 * partners->nDest(), 0);
     m_recv_meta.resize(2 * partners->nSrc(), 0);
-    m_requests.resize(partners->nDest());
   }
 
   // Usage: schedule_send(), recv_size() ... tally_recvs(), send(), recv()
@@ -878,49 +980,42 @@ struct P2PMeta
   void send(const X *send_buffer) {
     for (int i = 0; i < m_partners->nDest(); ++i)
     {
-      par::Mpi_Isend(&send_buffer[send_offsets()[i]],
-                     send_sizes()[i],
-                     dest(i), 0, comm(), &m_requests[i]);
+      m_requests.emplace_back();
+      const auto code = par::Mpi_Isend(
+          &send_buffer[send_offsets()[i]], send_sizes()[i],
+          dest(i), m_send_tag, comm(), &(*m_requests.back()));
       m_bytes_sent += send_sizes()[i] * sizeof(X);
     }
+    ++m_send_tag;
   }
 
   template <typename X>
   void recv(X *recv_buffer) {
-    MPI_Status status;
     for (int i = 0; i < m_partners->nSrc(); ++i)
     {
-      par::Mpi_Recv(&recv_buffer[recv_offsets()[i]],
-                    recv_sizes()[i],
-                    src(i), 0, comm(), &status);
+      assert(recv_offsets()[i] < m_recv_total or recv_sizes()[i] == 0);
+
+      const int code = par::Mpi_Recv(
+          &recv_buffer[recv_offsets()[i]], recv_sizes()[i],
+          src(i), m_recv_tag, comm(), MPI_STATUS_IGNORE);
       m_bytes_rcvd += recv_sizes()[i] * sizeof(X);
     }
-  }
-
-  template <typename X>
-  void send(const std::vector<X> &send_buffer) { send(&(*send_buffer.begin())); }
-
-  template <typename X>
-  void recv(const std::vector<X> &recv_buffer) {
-    recv_buffer.resize(recv_total());
-    recv(&(*recv_buffer.begin()));
+    ++m_recv_tag;
   }
 
   void wait_all() {
-    for (MPI_Request &request : m_requests)
+    for (Request &request_wrapper : m_requests)
+    {
+      MPI_Request &request = *request_wrapper;
       MPI_Wait(&request, MPI_STATUS_IGNORE);
+    }
+    m_requests.clear();
   }
 };
 
 
-
-
-
-
-
 template <int nbuckets>
 using Buckets = std::array<size_t, nbuckets + 1>;
-
 
 // imported from restart:test/restart/restart.cpp
 // future: move implementation to where it belongs.
@@ -961,11 +1056,10 @@ inline Buckets<nchild(dim)+1> bucket_sfc(
   return sfc_buckets;
 }
 
-// imported from restart:test/restart/restart.cpp
-// future: move implementation to where it belongs.
-template <typename T, unsigned int dim, typename Y>
+// adapted for companions
+template <typename T, unsigned int dim, typename...Y>
 inline Buckets<nchild(dim)+1> bucket_sfc(
-    TreeNode<T, dim> *xs, Y* ys, size_t begin, size_t end, int child_level, const SFC_State<int(dim)> sfc)
+    TreeNode<T, dim> *xs, Y* ...ys, size_t begin, size_t end, int child_level, const SFC_State<int(dim)> sfc)
 {
   using X = TreeNode<T, dim>;
   constexpr int nbuckets = nchild(dim) + 1;
@@ -985,15 +1079,18 @@ inline Buckets<nchild(dim)+1> bucket_sfc(
       buckets[1 + sfc.child_num(s)] += buckets[1 + sfc.child_num(s.minus(1))];
 
     static std::vector<char> copies;
-    copies.resize((end - begin) * std::max(sizeof(X), sizeof(Y)));
+    copies.resize((end - begin) * std::max({sizeof(X), sizeof(Y)...}));
     X* copy_x = (X*) &(*copies.begin());
-    Y* copy_y = (Y*) &(*copies.begin());
 
-    Buckets<nbuckets> ybuckets = buckets;
-    for (size_t i = end; i-- > begin; ) // backward
-      copy_y[--ybuckets[pre_bucket(xs[i])]] = ys[i];
-    for (size_t i = begin; i < end; ++i)
-      ys[i] = copy_y[i - begin];
+    const auto copy_payload = [&](auto *values) {   // need c++14
+      Buckets<nbuckets> ybuckets = buckets;
+      decltype(values) copy_y = decltype(values)(&(*copies.begin()));
+      for (size_t i = end; i-- > begin; ) // backward
+        copy_y[--ybuckets[pre_bucket(xs[i])]] = values[i];
+      for (size_t i = begin; i < end; ++i)
+        values[i] = copy_y[i - begin];
+    };
+    { int expand_cpp14[] = {(copy_payload(ys), 0)...}; }
 
     for (size_t i = end; i-- > begin; ) // backward
       copy_x[--buckets[pre_bucket(xs[i])]] = xs[i];
@@ -1310,56 +1407,11 @@ template <typename T, int dim>  long long unsigned BucketArray<T, dim>::s_allred
 #undef DEBUG_BUCKET_ARRAY
 
 
-template void distTreePartition_kway<unsigned, 2u>( MPI_Comm comm,
-    std::vector<TreeNode<unsigned, 2u>> &octants,
-    const double sfc_tol, const int kway,
-    const TreeNode<unsigned, 2u> root,
-    const SFC_State<2> sfc);
-template void distTreePartition_kway<unsigned, 3u>( MPI_Comm comm,
-    std::vector<TreeNode<unsigned, 3u>> &octants,
-    const double sfc_tol, const int kway,
-    const TreeNode<unsigned, 3u> root,
-    const SFC_State<3> sfc);
-template void distTreePartition_kway<unsigned, 4u>( MPI_Comm comm,
-    std::vector<TreeNode<unsigned, 4u>> &octants,
-    const double sfc_tol, const int kway,
-    const TreeNode<unsigned, 4u> root,
-    const SFC_State<4> sfc);
-
-
-template void distTreePartition_kway<unsigned, 2u, TNPoint<unsigned, 2u>>(
-    MPI_Comm comm,
-    std::vector<TreeNode<unsigned, 2u>> &octants,
-    std::vector<TNPoint<unsigned, 2u>> &values,
-    const double sfc_tol,
-    const int kway,
-    TreeNode<unsigned, 2u> root,
-    SFC_State<int(2u)> sfc);
-template void distTreePartition_kway<unsigned, 3u, TNPoint<unsigned, 3u>>(
-    MPI_Comm comm,
-    std::vector<TreeNode<unsigned, 3u>> &octants,
-    std::vector<TNPoint<unsigned, 3u>> &values,
-    const double sfc_tol,
-    const int kway,
-    TreeNode<unsigned, 3u> root,
-    SFC_State<int(3u)> sfc);
-template void distTreePartition_kway<unsigned, 4u, TNPoint<unsigned, 4u>>(
-    MPI_Comm comm,
-    std::vector<TreeNode<unsigned, 4u>> &octants,
-    std::vector<TNPoint<unsigned, 4u>> &values,
-    const double sfc_tol,
-    const int kway,
-    TreeNode<unsigned, 4u> root,
-    SFC_State<int(4u)> sfc);
-
-
-template <typename...Args>
-void tfprintf(Args...args) { const bool use = false; if (use) fprintf(args...); }
-
-template <typename T, unsigned int dim>
-void distTreePartition_kway(
+template <typename T, unsigned int dim, typename...X>
+void distTreePartition_kway_impl(
     MPI_Comm comm,
     std::vector<TreeNode<T, dim>> &octants,
+    std::vector<X> & ...xs,
     const double sfc_tol,
     const int kway,
     TreeNode<T, dim> root,
@@ -1384,306 +1436,18 @@ void distTreePartition_kway(
 
   P2PPartners p2p_partners;  p2p_partners.reserve(kway, 2 * kway);
   P2PScalar<> p2p_sizes;     p2p_sizes.reserve(kway, 2 * kway);
-  P2PMeta p2p_meta;          p2p_meta.reserve(kway, 2 * kway);
-
-  std::vector<MPI_Comm> to_be_freed;
-
-  const auto bucket_split = [](std::vector<TreeNode<T, dim>> &v, BucketRef<T, int(dim)> b)
-  {
-    return bucket_sfc(
-        &(*v.begin()),
-        b.local_begin,
-        b.local_end,
-        b.octant.getLevel() + 1,
-        b.sfc);
-    //future: use locate instead of bucketing if octants is already sorted.
-  };
-
-  // Splitters.
-  std::vector<size_t> local_block;
-  local_block.reserve(kway + 1);
-
-  std::vector<TreeNode<T, dim>> received_octants;
-
-  std::string plot_prefix = "partition";
-
-  while (nblocks > 1)
-  {
-    LLU Ng;
-    LLU const Nl = octants.size();
-    par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
-
-    received_octants.reserve((Ng + comm_size_in - 1) / comm_size_in * (1 + sfc_tol * 2));
-
-    parent_buckets.reset(octants.size(), root, sfc);
-    child_buckets.reset();
-
-
-    // Initial buckets.
-    int depth = 0;
-    for (; depth + root.getLevel() < m_uiMaxDepth and (1 << (depth*dim)) < nblocks; ++depth)
-    {
-      child_buckets.reset();
-      for (BucketRef<T, int(dim)> b : parent_buckets)
-      {
-        const size_t split_sz = nchild(dim) + 1;
-        Buckets<split_sz> split = bucket_split(octants, b);
-        child_buckets.push_children(b, split);
-      }
-      std::swap(child_buckets, parent_buckets);
-    }
-    const int initial_depth = depth;
-
-    /// DistPartPlot plot(Ng, nblocks, m_uiMaxDepth - initial_depth, plot_prefix, comm);
-
-    // Allreduce parents to get global begins of parents.
-    parent_buckets.all_reduce(comm);
-    /// parent_buckets.plot(plot);
-
-    // Mapping of splitters within array, induces mapping within buckets.
-    const auto ideal =    [=](int blk) { assert(blk <= nblocks); return blk * Ng / nblocks; };
-    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
-    const auto next_blk = [=](LLU item) { assert(item <= Ng);    return int((item * nblocks + Ng - 1) / Ng); };
-    const LLU min_tol =  Ng                / nblocks * sfc_tol;
-    const LLU max_tol = (Ng + nblocks - 1) / nblocks * sfc_tol;
-
-    const auto too_wide = [=](LLU begin, LLU end) -> bool {
-      const bool wider_than_margins = end - begin > 2 * min_tol + 1;
-      const LLU margin_left = begin + min_tol < end ? begin + min_tol + 1 : end;
-      const LLU margin_right = end >= min_tol ? end - min_tol : 0;
-      const int far_blk_begin = next_blk(margin_left);
-      const int far_blk_end = next_blk(margin_right);
-      return wider_than_margins and far_blk_begin < far_blk_end;
-    };
-
-    const auto local_block_sz = [&](int blk) {
-      assert(blk < nblocks);
-      return local_block[blk+1] - local_block[blk];
-    };
-
-    // Mapping of tasks within blocks.
-    const auto block_to_task =  [=](int blk) { return blk * comm_size / nblocks; };
-    const auto block_tasks =    [=](int blk) { return block_to_task(blk+1) - block_to_task(blk); };
-    const auto blk_id_to_task = [=](int blk, int blk_id) { return block_to_task(blk) + blk_id; };
-
-    const auto task_to_block_ =  [=](int task) { return ((task + 1) * nblocks - 1) / comm_size; };
-    const auto task_to_block = [=](int task) {
-      int blk = task_to_block_(task);
-      assert(block_to_task(blk) <= task and task < block_to_task(blk+1));
-      return blk;
-    };
-
-    const int self_blk = task_to_block(comm_rank);
-    const int self_blk_id = comm_rank - block_to_task(self_blk);
-
-    const auto dest_blk_id =  [=](int blk) { return self_blk_id % block_tasks(blk); };//future: more balanced
-    const auto src_blk_id =   [=](int blk, int src) { return src == 0 ? self_blk_id : block_tasks(self_blk); };
-    const auto srcs_per_blk = [=](int blk) {
-      if (self_blk_id == block_tasks(blk)) return 0;
-      if (self_blk_id == 0 and block_tasks(blk) > block_tasks(self_blk)) return 2;
-      else return 1;
-    };
-
-    // Splitters
-    local_block.clear();
-    local_block.resize(nblocks + 1, -1);
-    local_block[nblocks] = octants.size();
-
-    // commit()
-    const auto commit = [&](int blk, const BucketRef<T, int(dim)> b) {
-        assert(blk < nblocks);
-        assert(b.global_begin <= ideal(blk) and ideal(blk) <= b.global_end);
-        const LLU dist_begin = ideal(blk) - b.global_begin;
-        const LLU dist_end = b.global_end - ideal(blk);
-        local_block[blk] = (dist_begin <= dist_end ? b.local_begin : b.local_end);
-    };
-
-    // Keep splitting buckets to tolerance or until max depth reached.
-    for (; parent_buckets.size() > 0 and depth + root.getLevel() < m_uiMaxDepth; ++depth)
-    {
-      child_buckets.reset();
-
-      // If all splitters acceptable or there are none, commit. Else, split.
-      for (BucketRef<T, int(dim)> b : parent_buckets)
-      {
-        if (not too_wide(b.global_begin, b.global_end))
-        {
-          const int begin = next_blk(b.global_begin);
-          const int end = next_blk(b.global_end);
-          for (int blk = begin; blk < end; ++blk)
-            commit(blk, b);
-        }
-        else
-        {
-          b.mark_split();
-          const size_t split_sz = nchild(dim) + 1;
-          Buckets<split_sz> split = bucket_split(octants, b);
-          child_buckets.push_children(b, split);
-        }
-      }
-
-      // Allreduce children to get global begins of children.
-      child_buckets.all_reduce(comm);
-      /// child_buckets.plot(plot);
-
-      // Commit any splitters that are not inheritted by children.
-      size_t cb = 0;
-      for (BucketRef<T, int(dim)> b : parent_buckets)
-        if (b.marked_split())
-        {
-          const int parent_begin = next_blk(b.global_begin);
-          const int child_begin = next_blk(child_buckets.ref(cb).global_begin);
-          for (int blk = parent_begin; blk < child_begin; ++blk)
-            commit(blk, b);
-          cb += nchild(dim);
-        }
-
-      std::swap(parent_buckets, child_buckets);
-    }
-
-    // If ran out of levels, commit any remaining splitters.
-    for (const BucketRef<T, int(dim)> b : parent_buckets)
-    {
-      const int begin = next_blk(b.global_begin);
-      const int end = next_blk(b.global_end);
-      for (int blk = begin; blk < end; ++blk)
-        commit(blk, b);
-    }
-
-    // Validate splitters.
-    assert((std::find(local_block.begin(), local_block.end(), -1) == local_block.end()));
-    assert(std::is_sorted(local_block.begin(), local_block.end()));
-
-
-    // Exchange data to match block boundaries.
-
-    int total_srcs = 0;
-    for (int blk = 0; blk < nblocks; ++blk)
-      if (blk != self_blk)
-        total_srcs += srcs_per_blk(blk);
-
-    assert(par::mpi_sum(total_srcs, comm) == comm_size * (nblocks - 1));
-
-    p2p_partners.reset(nblocks - 1, total_srcs, comm);
-    p2p_sizes.reset(&p2p_partners);
-    p2p_meta.reset(&p2p_partners);
-
-    for (int blk = 0, dst_idx = 0; blk < nblocks; ++blk)
-      if (blk != self_blk)
-      {
-        p2p_partners.dest(dst_idx, blk_id_to_task(blk, dest_blk_id(blk)));
-        p2p_sizes.send(dst_idx, local_block_sz(blk));
-        p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block[blk]);
-        dst_idx++;
-      }
-
-    for (int blk = 0, src_idx = 0; blk < nblocks; ++blk)
-      if (blk != self_blk)
-        for (int s = 0; s < srcs_per_blk(blk); ++s)
-        {
-          p2p_partners.src(src_idx, blk_id_to_task(blk, src_blk_id(blk, s)));
-          p2p_meta.recv_size(src_idx,  p2p_sizes.recv(src_idx));
-          src_idx++;
-        }
-
-    p2p_meta.tally_recvs();
-
-    p2p_meta.send(octants);
-
-    received_octants.clear();
-    received_octants.resize(p2p_meta.recv_total());
-
-    // Copy local segment to end.
-    received_octants.insert(received_octants.end(),
-        &octants[local_block[self_blk]],
-        &octants[local_block[self_blk+1]]);
-
-    assert(par::mpi_sum(LLU(received_octants.size()), comm) == Ng);
-
-    // Receive remote segements into beginning.
-    p2p_meta.recv(&received_octants[0]);  // ptr: Don't resize vector
-    p2p_sizes.wait_all();
-    p2p_meta.wait_all();
-
-    plot_prefix += "_" + std::to_string(self_blk);
-
-    std::swap(octants, received_octants);
-
-    if (comm_size > kway)
-    {
-      MPI_Comm new_comm;
-      MPI_Comm_split(comm, self_blk, self_blk_id, &new_comm);
-      to_be_freed.push_back(new_comm);
-
-      comm = new_comm;
-      MPI_Comm_size(comm, &comm_size);
-      MPI_Comm_rank(comm, &comm_rank);
-      nblocks = std::min(comm_size, kway);
-    }
-    else
-      break;  // Avoid splitting comm at the very end.
-  }
-
-  /// // For per-call stats, use BucketArray<T, dim>::reset_log() before bucketing.
-  /// par::MinMeanMax<LLU>
-  ///     allreduce_ct = par::Mpi_ReduceMinMeanMax(BucketArray<T, dim>::allreduce_ct(), comm_in),
-  ///     allreduce_sz = par::Mpi_ReduceMinMeanMax(BucketArray<T, dim>::allreduce_sz(), comm_in);
-  /// if (comm_rank_in == 0)
-  ///   printf("NP=%-5d \t ct=%llu/%llu/%llu \t sz=%llu/%llu/%llu\n",
-  ///       comm_size_in,
-  ///       allreduce_ct.m_glob_min, LLU(allreduce_ct.m_glob_mean), allreduce_ct.m_glob_max,
-  ///       allreduce_sz.m_glob_min, LLU(allreduce_sz.m_glob_mean), allreduce_sz.m_glob_max);
-
-  /// par::MinMeanMax<LLU> exchange_sz = par::Mpi_ReduceMinMeanMax(p2p_meta.bytes_rcvd(), comm_in);
-  /// if (comm_rank_in == 0)
-  ///   printf("kway=%-3d \t NP=%-5d \t sz=%llu/%llu/%llu\n",
-  ///       kway, comm_size_in, exchange_sz.m_glob_min, LLU(exchange_sz.m_glob_mean), exchange_sz.m_glob_max);
-
-  for (MPI_Comm new_comm : to_be_freed)
-    MPI_Comm_free(&new_comm);
-}
-
-template <typename T, unsigned int dim, typename X>
-void distTreePartition_kway(
-    MPI_Comm comm,
-    std::vector<TreeNode<T, dim>> &octants,
-    std::vector<X> &xs,
-    const double sfc_tol,
-    const int kway,
-    TreeNode<T, dim> root,
-    SFC_State<int(dim)> sfc)
-{
-  int comm_size, comm_rank;
-  MPI_Comm_size(comm, &comm_size);
-  MPI_Comm_rank(comm, &comm_rank);
-  int nblocks = std::min(comm_size, kway);
-
-  const MPI_Comm comm_in = comm;
-  const int comm_size_in = comm_size;
-  const int comm_rank_in = comm_rank;
-
-  using LLU = long long unsigned;
-  const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(kway);
-  assert(kway_roundup > 0);
-
-  BucketArray<T, int(dim)> parent_buckets,  child_buckets;
-  parent_buckets.reserve(kway_roundup * nchild(dim));
-  child_buckets.reserve(kway_roundup * nchild(dim));
-
-  P2PPartners p2p_partners;  p2p_partners.reserve(kway, 2 * kway);
-  P2PScalar<> p2p_sizes;     p2p_sizes.reserve(kway, 2 * kway);
-  P2PMeta p2p_meta;          p2p_meta.reserve(kway, 2 * kway);
+  P2PMeta p2p_meta;          p2p_meta.reserve(kway, 2 * kway, 1 + sizeof...(xs));
 
   std::vector<MPI_Comm> to_be_freed;
 
   const auto bucket_split = [](
       std::vector<TreeNode<T, dim>> &v,
-      std::vector<X> &w,
+      std::vector<X> &...w,
       BucketRef<T, int(dim)> b)
   {
-    return bucket_sfc(
+    return bucket_sfc<T, dim, X...>(
         &(*v.begin()),
-        &(*w.begin()),
+        (&(*w.begin()))...,
         b.local_begin,
         b.local_end,
         b.octant.getLevel() + 1,
@@ -1695,9 +1459,6 @@ void distTreePartition_kway(
   std::vector<size_t> local_block;
   local_block.reserve(kway + 1);
 
-  std::vector<TreeNode<T, dim>> received_octants;
-  std::vector<X> received_xs;
-
   std::string plot_prefix = "partition";
 
   while (nblocks > 1)
@@ -1706,13 +1467,8 @@ void distTreePartition_kway(
     LLU const Nl = octants.size();
     par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
 
-    size_t recv_reserve = (Ng + comm_size_in - 1) / comm_size_in * (1 + sfc_tol * 2);//future study block limits
-    received_octants.reserve(recv_reserve);
-    received_xs.reserve(recv_reserve);
-
     parent_buckets.reset(octants.size(), root, sfc);
     child_buckets.reset();
-
 
     // Initial buckets.
     int depth = 0;
@@ -1722,7 +1478,7 @@ void distTreePartition_kway(
       for (BucketRef<T, int(dim)> b : parent_buckets)
       {
         const size_t split_sz = nchild(dim) + 1;
-        Buckets<split_sz> split = bucket_split(octants, xs, b);
+        Buckets<split_sz> split = bucket_split(octants, xs..., b);
         child_buckets.push_children(b, split);
       }
       std::swap(child_buckets, parent_buckets);
@@ -1812,7 +1568,7 @@ void distTreePartition_kway(
         {
           b.mark_split();
           const size_t split_sz = nchild(dim) + 1;
-          Buckets<split_sz> split = bucket_split(octants, xs, b);
+          Buckets<split_sz> split = bucket_split(octants, xs..., b);
           child_buckets.push_children(b, split);
         }
       }
@@ -1883,34 +1639,39 @@ void distTreePartition_kway(
 
     p2p_meta.tally_recvs();
 
-    p2p_meta.send(octants);
-    p2p_meta.send(xs);
 
-    received_octants.clear();
-    received_octants.resize(p2p_meta.recv_total());
-    received_xs.clear();
-    received_xs.resize(p2p_meta.recv_total());
+    // For variadic templates, reuse pack argument vector.
+    // Make more space at the end, send from beginning, receive to end.
+
+#define FOR_PACK(expr) { std::initializer_list<int> _{((expr),0)...}; }
+
+    const size_t old_sz = Nl;
+    const size_t receiving = p2p_meta.recv_total();
+    const size_t copying = local_block[self_blk+1] - local_block[self_blk];
+    assert(par::mpi_sum(LLU(receiving + copying), comm) == Ng);
+
+    octants.resize(old_sz + receiving + copying);
+    p2p_meta.send(&octants[0]);
+    FOR_PACK(xs.resize(old_sz + receiving + copying));
+    FOR_PACK(p2p_meta.send(&xs[0]));
 
     // Copy local segment to end.
-    received_octants.insert(received_octants.end(),
-        &octants[local_block[self_blk]],
-        &octants[local_block[self_blk+1]]);
-    received_xs.insert(received_xs.end(),
-        &xs[local_block[self_blk]],
-        &xs[local_block[self_blk+1]]);
-
-    assert(par::mpi_sum(LLU(received_octants.size()), comm) == Ng);
+    std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + receiving]);
+    FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + receiving]));
 
     // Receive remote segements into beginning.
-    p2p_meta.recv(&received_octants[0]);  // ptr: Don't resize vector
-    p2p_meta.recv(&received_xs[0]);  // ptr: Don't resize vector
+    p2p_meta.recv(&octants[old_sz]);
+    FOR_PACK(p2p_meta.recv(&xs[old_sz]));
+
     p2p_sizes.wait_all();
     p2p_meta.wait_all();
+    // Do not move the send buffer until finished sending!
+    octants.erase(octants.begin(), octants.begin() + old_sz);
+    FOR_PACK(xs.erase(xs.begin(), xs.begin() + old_sz));
 
     plot_prefix += "_" + std::to_string(self_blk);
 
-    std::swap(octants, received_octants);
-    std::swap(xs, received_xs);
+#undef FOR_PACK
 
     if (comm_size > kway)
     {
@@ -1945,7 +1706,6 @@ void distTreePartition_kway(
   for (MPI_Comm new_comm : to_be_freed)
     MPI_Comm_free(&new_comm);
 }
-
 
 
 template<typename T, unsigned int dim>
@@ -1962,23 +1722,7 @@ SFC_Tree<T,dim>:: distTreePartition(std::vector<TreeNode<T,dim>> &points,
   if (nProc == 1)
     return;
 
-  par::SendRecvSchedule sched = distTreePartitionSchedule(points, noSplitThresh, loadFlexibility, comm);
-
-  std::vector<TreeNode<T,dim>> origPoints = points;   // Sendbuffer is a copy.
-
-  size_t sizeNew = sched.rdispls.back() + sched.rcounts.back();
-  points.resize(sizeNew);
-
-  par::Mpi_Alltoallv<TreeNode<T,dim>>(
-      &origPoints[0], &sched.scounts[0], &sched.sdispls[0],
-      &points[0],     &sched.rcounts[0], &sched.rdispls[0],
-      comm);
-
-  //Future: Use Mpi_Alltoallv_Kway()
-
-  // After this process, distTreeSort or distTreeConstruction
-  // picks up with a local sorting or construction operation.
-  // TODO Need to have the global buckets for that to work.
+  distTreePartition_kway(comm, points, loadFlexibility);
 }
 
 template<typename T, unsigned int dim>
