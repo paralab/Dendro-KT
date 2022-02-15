@@ -1447,6 +1447,13 @@ void distTreePartition_kway_impl(
   const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(kway);
   assert(kway_roundup > 0);
 
+  const int local_coarsest_level = (octants.size() == 0 ? m_uiMaxDepth :
+      std::min_element(octants.begin(), octants.end(),
+        [](const TreeNode<T, dim> &a, const TreeNode<T, dim> &b) {
+          return a.getLevel() < b.getLevel();
+        })->getLevel());
+  const int global_coarsest_level = par::mpi_min(local_coarsest_level, comm_in);
+
   BucketArray<T, int(dim)> parent_buckets,  child_buckets;
   parent_buckets.reserve(kway_roundup * nchild(dim));
   child_buckets.reserve(kway_roundup * nchild(dim));
@@ -1489,7 +1496,7 @@ void distTreePartition_kway_impl(
 
     // Initial buckets.
     int depth = 0;
-    for (; depth + root.getLevel() < m_uiMaxDepth and (1 << (depth*dim)) < nblocks; ++depth)
+    for (; depth + root.getLevel() < global_coarsest_level and (1 << (depth*dim)) < nblocks; ++depth)
     {
       child_buckets.reset();
       for (BucketRef<T, int(dim)> b : parent_buckets)

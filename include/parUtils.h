@@ -341,6 +341,14 @@ namespace par {
     return sum;
   }
 
+  template <typename T>
+  T mpi_min(T t, MPI_Comm comm)
+  {
+    T all;
+    Mpi_Allreduce(&t, &all, 1, MPI_MIN, comm);
+    return all;
+  }
+
   /**
    * @author Rahul S. Sampath
    */
