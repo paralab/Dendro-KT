@@ -913,7 +913,11 @@ struct P2PMeta
   std::vector<int> m_send_meta;
   std::vector<int> m_recv_meta;
   std::vector<Request> m_requests;  // size == # of sends since wait_all()
-  int m_recv_total = 0;
+  int m_recv_total = 0;  // Does not include self segment count.
+
+  int m_self_size = 0;
+  int m_self_offset = 0;
+  int m_self_pos = 0;  // Self is between (m_self_pos-1) and (m_self_pos).
 
   int m_send_tag = 0;
   int m_recv_tag = 0;
@@ -931,6 +935,8 @@ struct P2PMeta
   int * recv_offsets() { assert(m_recv_meta.size());  return &m_recv_meta[m_partners->nSrc()]; }
 
   const int recv_total() const { return m_recv_total; }
+  const int self_size() const { return m_self_size; }
+  const int self_offset() const { return m_self_offset; }
 
   long long unsigned bytes_sent() const { return m_bytes_sent; }
   long long unsigned bytes_rcvd() const { return m_bytes_rcvd; }
@@ -967,13 +973,24 @@ struct P2PMeta
     recv_sizes()[srcIdx] = size;
   }
 
+  void self_size(int srcIdx, int size) {
+    m_self_pos = srcIdx;
+    m_self_size = size;
+  }
+
   void tally_recvs() {
     int sum = 0;
-    for (int i = 0; i < m_partners->nSrc(); ++i) {
+    for (int i = 0; i < m_self_pos; ++i) {
       recv_offsets()[i] = sum;
       sum += recv_sizes()[i];
     }
-    m_recv_total = sum;
+    m_self_offset = sum;
+    sum += m_self_size;
+    for (int i = m_self_pos; i < m_partners->nSrc(); ++i) {
+      recv_offsets()[i] = sum;
+      sum += recv_sizes()[i];
+    }
+    m_recv_total = sum - m_self_size;
   }
 
   template <typename X>
@@ -993,7 +1010,7 @@ struct P2PMeta
   void recv(X *recv_buffer) {
     for (int i = 0; i < m_partners->nSrc(); ++i)
     {
-      assert(recv_offsets()[i] < m_recv_total or recv_sizes()[i] == 0);
+      assert(recv_offsets()[i] < m_recv_total + m_self_size or recv_sizes()[i] == 0);
 
       const int code = par::Mpi_Recv(
           &recv_buffer[recv_offsets()[i]], recv_sizes()[i],
@@ -1629,7 +1646,9 @@ void distTreePartition_kway_impl(
       }
 
     for (int blk = 0, src_idx = 0; blk < nblocks; ++blk)
-      if (blk != self_blk)
+      if (blk == self_blk)
+        p2p_meta.self_size(src_idx, local_block[self_blk+1] - local_block[self_blk]);
+      else
         for (int s = 0; s < srcs_per_blk(blk); ++s)
         {
           p2p_partners.src(src_idx, blk_id_to_task(blk, src_blk_id(blk, s)));
@@ -1642,24 +1661,27 @@ void distTreePartition_kway_impl(
 
     // For variadic templates, reuse pack argument vector.
     // Make more space at the end, send from beginning, receive to end.
+    // Copy to self block place in receiving segment.
 
 #define FOR_PACK(expr) { std::initializer_list<int> _{((expr),0)...}; }
 
     const size_t old_sz = Nl;
     const size_t receiving = p2p_meta.recv_total();
+    const size_t copy_to = p2p_meta.self_offset();
     const size_t copying = local_block[self_blk+1] - local_block[self_blk];
-    assert(par::mpi_sum(LLU(receiving + copying), comm) == Ng);
+    const size_t new_sz = receiving + copying;
+    assert(par::mpi_sum(LLU(new_sz), comm) == Ng);
 
-    octants.resize(old_sz + receiving + copying);
+    octants.resize(old_sz + new_sz);
     p2p_meta.send(&octants[0]);
-    FOR_PACK(xs.resize(old_sz + receiving + copying));
+    FOR_PACK(xs.resize(old_sz + new_sz));
     FOR_PACK(p2p_meta.send(&xs[0]));
 
-    // Copy local segment to end.
-    std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + receiving]);
-    FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + receiving]));
+    // Copy local segment to self block position.
+    std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + copy_to]);
+    FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + copy_to]));
 
-    // Receive remote segements into beginning.
+    // Receive remote segments into end segment.
     p2p_meta.recv(&octants[old_sz]);
     FOR_PACK(p2p_meta.recv(&xs[old_sz]));
 
@@ -4783,6 +4805,44 @@ template size_t lenContainedSorted<unsigned, 3u>(
 template size_t lenContainedSorted<unsigned, 4u>(
     const TreeNode<unsigned, 4u> *, size_t, size_t, TreeNode<unsigned, 4u>, SFC_State<4u>);
 
+
+
+template <typename T, unsigned dim>
+bool isPartitioned(std::vector<TreeNode<T, dim>> octants, MPI_Comm comm)
+{
+  int comm_size;
+  MPI_Comm_size(comm, &comm_size);
+
+  SFC_Tree<T, dim>::locTreeSort(octants);
+
+  TreeNode<T, dim> edges[2] = {{}, {}};
+  if (octants.size() > 0)
+  {
+    edges[0] = octants.front();
+    edges[1] = octants.back();
+  }
+  int local_edges = octants.size() > 0 ? 2 : 0;
+  int global_edges = 0;
+  int scan_edges = 0;
+  par::Mpi_Allreduce(&local_edges, &global_edges, 1, MPI_SUM, comm);
+  par::Mpi_Scan(&local_edges, &scan_edges, 1, MPI_SUM, comm);
+  scan_edges -= local_edges;
+
+  std::vector<int> count_edges(comm_size, 0);
+  std::vector<int> displ_edges(comm_size, 0);
+  std::vector<TreeNode<T, dim>> gathered(global_edges);
+
+  par::Mpi_Allgather(&local_edges, &(*count_edges.begin()), 1, comm);
+  par::Mpi_Allgather(&scan_edges, &(*displ_edges.begin()), 1, comm);
+  par::Mpi_Allgatherv(edges, local_edges,
+      &(*gathered.begin()), &(*count_edges.begin()), &(*displ_edges.begin()), comm);
+
+  return isLocallySorted(gathered);
+}
+
+template bool isPartitioned(std::vector<TreeNode<unsigned, 2u>> octants, MPI_Comm comm);
+template bool isPartitioned(std::vector<TreeNode<unsigned, 3u>> octants, MPI_Comm comm);
+template bool isPartitioned(std::vector<TreeNode<unsigned, 4u>> octants, MPI_Comm comm);
 
 
 

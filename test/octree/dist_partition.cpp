@@ -25,9 +25,6 @@ using DistTree = ot::DistTree<uint, DIM>;
 size_t size(const OctList &octList);
 const OctList & octList(const DistTree &dtree);
 
-template <typename T, unsigned dim>
-bool isPartitioned(std::vector<ot::TreeNode<T, dim>> octants, MPI_Comm comm);
-
 int maxLevel(const OctList &octList);
 int maxLevel(const DistTree &dtree);
 
@@ -44,7 +41,7 @@ bool mpi_and(bool x, MPI_Comm comm);
 //
 int main(int argc, char * argv[])
 {
-  MPI_Init(&argc, &argv);
+  PetscInitialize(&argc, &argv, NULL, NULL);
   DendroScopeBegin();
   _InitializeHcurve(DIM);
 
@@ -91,7 +88,7 @@ int main(int argc, char * argv[])
 
   /// ot::quadTreeToGnuplot(octants, max_level, "points.post", comm);
 
-  const bool partitioned = isPartitioned(octants, comm);
+  const bool partitioned = ot::isPartitioned(octants, comm);
   if (comm_rank == 0)
     if (not partitioned)
       printf(RED "Edges unsorted\n" NRM);
@@ -100,7 +97,7 @@ int main(int argc, char * argv[])
 
   _DestroyHcurve();
   DendroScopeEnd();
-  MPI_Finalize();
+  PetscFinalize();
   return 0;
 }
 
@@ -158,40 +155,5 @@ T mpi_max(T x, MPI_Comm comm)
   T global;
   par::Mpi_Allreduce(&x, &global, 1, MPI_MAX, comm);
   return global;
-}
-
-
-
-template <typename T, unsigned dim>
-bool isPartitioned(std::vector<ot::TreeNode<T, dim>> octants, MPI_Comm comm)
-{
-  int comm_size;
-  MPI_Comm_size(comm, &comm_size);
-
-  ot::SFC_Tree<T, dim>::locTreeSort(octants);
-
-  ot::TreeNode<T, dim> edges[2] = {{}, {}};
-  if (octants.size() > 0)
-  {
-    edges[0] = octants.front();
-    edges[1] = octants.back();
-  }
-  int local_edges = octants.size() > 0 ? 2 : 0;
-  int global_edges = 0;
-  int scan_edges = 0;
-  par::Mpi_Allreduce(&local_edges, &global_edges, 1, MPI_SUM, comm);
-  par::Mpi_Scan(&local_edges, &scan_edges, 1, MPI_SUM, comm);
-  scan_edges -= local_edges;
-
-  std::vector<int> count_edges(comm_size, 0);
-  std::vector<int> displ_edges(comm_size, 0);
-  std::vector<ot::TreeNode<T, dim>> gathered(global_edges);
-
-  par::Mpi_Allgather(&local_edges, &(*count_edges.begin()), 1, comm);
-  par::Mpi_Allgather(&scan_edges, &(*displ_edges.begin()), 1, comm);
-  par::Mpi_Allgatherv(edges, local_edges,
-      &(*gathered.begin()), &(*count_edges.begin()), &(*displ_edges.begin()), comm);
-
-  return ot::isLocallySorted(gathered);
 }
 

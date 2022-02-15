@@ -883,6 +883,9 @@ struct SFC_Tree
 template <typename T, unsigned int dim>
 bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm);
 
+template <typename T, unsigned dim>
+bool isPartitioned(std::vector<TreeNode<T, dim>> octants, MPI_Comm comm);
+
 template <typename T, unsigned int dim>
 bool isLocallySorted(const std::vector<TreeNode<T, dim>> &octList);
 
