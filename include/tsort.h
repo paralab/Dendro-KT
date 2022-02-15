@@ -42,8 +42,10 @@ namespace type
     // Arithmetic
     StrongIndex & operator++() { ++m_i; return *this; }
     StrongIndex & operator+=(const T d) { m_i += d; return *this; }
-    /// StrongIndex operator+(const T d) const { return StrongIndex(m_i + d); }  // creates ambiguity
-        // others as needed
+
+    // Avoid ambiguity in expressions like  si + 1.
+    StrongIndex plus(const T d)  const { return StrongIndex(m_i + d); }
+    StrongIndex minus(const T d) const { return StrongIndex(m_i - d); }
   };
 };
 
@@ -249,6 +251,28 @@ class Overlaps
 
     void keyOverlapsAncestors(const size_t keyIdx, std::vector<size_t> &overlapIdxs);
 };
+
+
+template <typename T, unsigned int dim>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    const double sfc_tol = 0.3);
+
+template <typename T, unsigned int dim, typename X>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    const double sfc_tol = 0.3);
+
+template <typename T, unsigned int dim, typename X, typename Y>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    std::vector<Y> &ys,                      //values
+    const double sfc_tol = 0.3);
 
 
 template <typename T, unsigned int dim>
@@ -858,6 +882,9 @@ struct SFC_Tree
 /** Assumes tree is a distributed tree with no overlaps. */
 template <typename T, unsigned int dim>
 bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm);
+
+template <typename T, unsigned dim>
+bool isPartitioned(std::vector<TreeNode<T, dim>> octants, MPI_Comm comm);
 
 template <typename T, unsigned int dim>
 bool isLocallySorted(const std::vector<TreeNode<T, dim>> &octList);
