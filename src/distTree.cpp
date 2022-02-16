@@ -90,7 +90,7 @@ namespace ot
                                               DistTree &_surrogateTree,
                                               RemeshPartition remeshPartition,
                                               double loadFlexibility)
-  {DOLLAR("distRemeshSubdomainViaWhole()")
+  {
     MPI_Comm comm = inTree.m_comm;
 
     const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();
@@ -130,7 +130,7 @@ namespace ot
                                               DistTree &_surrogateTree,
                                               RemeshPartition remeshPartition,
                                               double loadFlexibility)
-  {DOLLAR("distRemeshSubdomain()")
+  {
     MPI_Comm comm = inTree.m_comm;
 
     const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();

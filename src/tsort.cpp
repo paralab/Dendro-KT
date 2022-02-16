@@ -3589,7 +3589,8 @@ void appendNeighboursOfParents(
     TreeNode<T, dim> nextParent = (*parentStore).getParent();
     if (not keptAParent or nextParent != lastKeptParent)
     {
-      assert(parentStore.adv_store(nextParent));
+      const bool stored = parentStore.adv_store(nextParent);
+      assert(stored);
       keptAParent = true;
       lastKeptParent = nextParent;
     }
@@ -3706,7 +3707,7 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
       const OctList &childList = octLevels[level];
       OctList &parentList = octLevels[level-1];
 
-      {DOLLAR("recursive_add_neighbors")
+      {
         const size_t prefix = parentList.size();
         appendNeighboursOfParents<T, dim>(level, childList, parentList);
         mergeSorted(parentList, prefix);
