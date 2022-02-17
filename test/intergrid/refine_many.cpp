@@ -64,13 +64,15 @@ int main(int argc, char * argv[])
   std::vector<int> delta;
   delta.reserve(dtree.getTreePartFiltered().size());
   for (const Oct &oct : dtree.getTreePartFiltered())
-    delta.push_back(oct.getIsOnTreeBdry() ? 3 : 0);
-  OctList new_tree = ot::SFC_Tree<uint, DIM>::locRefine(
+    delta.push_back(oct.getIsOnTreeBdry() ? 3 : -2);
+  OctList new_tree = ot::SFC_Tree<uint, DIM>::locRefineOrCoarsen(
       dtree.getTreePartFiltered(), std::move(delta));
 
+  assert(ot::isLocallySorted(new_tree));
+
   /// std::vector<int> increase(dtree.getTreePartFiltered().size(), 2);
-  /// OctList new_tree = ot::SFC_Tree<uint, DIM>::locRefine(
-  ///     dtree.getTreePartFiltered(), std::move(increase));
+  /// /// OctList new_tree = ot::SFC_Tree<uint, DIM>::locRefine(
+  /// ///     dtree.getTreePartFiltered(), std::move(increase));
   /// OctList new_tree = ot::SFC_Tree<uint, DIM>::locCoarsen(
   ///     dtree.getTreePartFiltered(), std::move(increase));
 

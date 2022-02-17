@@ -770,6 +770,10 @@ struct SFC_Tree
       const std::vector<TreeNode<T, dim>> &tree,
       std::vector<int> &&delta_level);
 
+  /* Assumes tree is sorted. */
+  static std::vector<TreeNode<T, dim>> locRefineOrCoarsen(
+      const std::vector<TreeNode<T, dim>> &tree,
+      std::vector<int> &&delta_level);  // positive:refine negative:coarsen
 
   // -------------------------------------------------------------
 
