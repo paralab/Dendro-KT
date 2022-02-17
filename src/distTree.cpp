@@ -160,6 +160,32 @@ namespace ot
   }
 
 
+  // distRefine
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::distRefine(
+      const DistTree &inTree,
+      std::vector<int> &&delta_level,  // Consumed. To reuse, clear() and resize().
+      DistTree &outTree,
+      double sfc_tol)
+  {
+    MPI_Comm comm = inTree.getComm();
+
+    // future: Repartition using weights based on delta_level.
+
+    std::vector<TreeNode<T, dim>> newOctList =
+        SFC_Tree<T, dim>::locRefine(inTree.getTreePartFiltered(), std::move(delta_level));
+
+    DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
+    // If refining only, then already sorted. Don't need to re-sort and rm dups.
+    SFC_Tree<T, dim>::distTreePartition(newOctList, sfc_tol, comm);
+    SFC_Tree<T, dim>::distMinimalBalanced(newOctList, sfc_tol, comm);
+    SFC_Tree<T, dim>::distCoalesceSiblings(newOctList, comm);
+
+    outTree = DistTree<T, dim>(newOctList, comm);
+    outTree.filterTree(inTree.getDomainDecider());
+  }
+
+
   //
   // insertRefinedGrid()
   //   - refnFlags must be same length as treePart in finest grid of distTree.

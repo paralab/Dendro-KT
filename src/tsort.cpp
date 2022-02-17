@@ -1618,7 +1618,16 @@ void distTreePartition_kway_impl(
 template<typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: distTreePartition(std::vector<TreeNode<T,dim>> &points,
-                          unsigned int noSplitThresh,
+                          unsigned int,
+                          double loadFlexibility,
+                          MPI_Comm comm)
+{
+  distTreePartition(points, loadFlexibility, comm);
+}
+
+template<typename T, unsigned int dim>
+void
+SFC_Tree<T,dim>:: distTreePartition(std::vector<TreeNode<T,dim>> &points,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
@@ -2398,8 +2407,8 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locCoarsen(
   const size_t old_sz = tree.size();
   for (size_t i = 0; i < old_sz; ++i)
   {
-    assert(delta_level[i] >= 0);
-    delta_level[i] = tree[i].getLevel() - delta_level[i];
+    assert(delta_level[i] <= 0);
+    delta_level[i] += tree[i].getLevel();
     if (delta_level[i] < 0)
       delta_level[i] = 0;
   }

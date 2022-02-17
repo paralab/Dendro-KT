@@ -469,25 +469,12 @@ struct SFC_Tree
                            double loadFlexibility,
                            MPI_Comm comm);
 
-  // This method does most of the work for distTreeSort and distTreeConstruction.
-  // It includes the breadth-first global sorting phase and Alltoallv()
-  // but does not sort locally.
-  //
-  // pFinalOctants is an output parameter of the global refinement structure.
-  // If it is NULL then it is unused.
-  // If it is not NULL then it is cleared and filled with the output data.
-  //
-  // @param noSplitThresh takes precedence over loadFlexibility,
-  //        such that, for any non-empty bucket of global contents <= noSplitThresh
-  //        whose parent has global contents > noSplitThresh,
-  //        the parent will not be split across processors, but will
-  //        land completely onto a single processor.
-  //        To ignore this parameter, set noSplitThresh=0.
-  //
-  // Notes:
-  //   - points will be replaced/resized with globally sorted data.
   static void distTreePartition(std::vector<TreeNode<T,dim>> &points,
-                           unsigned int noSplitThresh,
+                           unsigned int,  // backwards compatibility
+                           double loadFlexibility,
+                           MPI_Comm comm);
+
+  static void distTreePartition(std::vector<TreeNode<T,dim>> &points,
                            double loadFlexibility,
                            MPI_Comm comm);
 
@@ -763,12 +750,12 @@ struct SFC_Tree
   /* Assumes tree is sorted. */
   static std::vector<TreeNode<T, dim>> locRefine(
       const std::vector<TreeNode<T, dim>> &tree,
-      std::vector<int> &&delta_level);
+      std::vector<int> &&delta_level);  // positive:refine  (negative:error)
 
   /* Assumes tree is sorted. */
   static std::vector<TreeNode<T, dim>> locCoarsen(
       const std::vector<TreeNode<T, dim>> &tree,
-      std::vector<int> &&delta_level);
+      std::vector<int> &&delta_level);  // negative:coarsen  (positive::error)
 
   /* Assumes tree is sorted. */
   static std::vector<TreeNode<T, dim>> locRefineOrCoarsen(

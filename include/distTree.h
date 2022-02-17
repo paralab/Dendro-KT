@@ -103,6 +103,13 @@ namespace ot
                                        RemeshPartition remeshPartition,
                                        double loadFlexibility );
 
+      static void distRefine(
+          const DistTree &inTree,
+          std::vector<int> &&delta_level,  // Need std::move() if not a temporary. To reuse a move()'d container, clear() and resize().
+          DistTree &outTree,
+          double sfc_tol);
+
+
       // insertRefinedGrid()
       //
       static void insertRefinedGrid(DistTree &distTree,

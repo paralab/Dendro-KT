@@ -61,22 +61,14 @@ int main(int argc, char * argv[])
 
   ot::quadTreeToGnuplot(dtree.getTreePartFiltered(), 8, "octree", comm);
 
-  std::vector<int> delta;
-  delta.reserve(dtree.getTreePartFiltered().size());
+  std::vector<int> increase;
+  increase.reserve(dtree.getTreePartFiltered().size());
   for (const Oct &oct : dtree.getTreePartFiltered())
-    delta.push_back(oct.getIsOnTreeBdry() ? 3 : -2);
-  OctList new_tree = ot::SFC_Tree<uint, DIM>::locRefineOrCoarsen(
-      dtree.getTreePartFiltered(), std::move(delta));
+    increase.push_back(oct.getIsOnTreeBdry() ? 3 : 0);
+  ot::DistTree<uint, DIM> dtree2;
+  dtree.distRefine(dtree, std::move(increase), dtree2, sfc_tol);
 
-  assert(ot::isLocallySorted(new_tree));
-
-  /// std::vector<int> increase(dtree.getTreePartFiltered().size(), 2);
-  /// /// OctList new_tree = ot::SFC_Tree<uint, DIM>::locRefine(
-  /// ///     dtree.getTreePartFiltered(), std::move(increase));
-  /// OctList new_tree = ot::SFC_Tree<uint, DIM>::locCoarsen(
-  ///     dtree.getTreePartFiltered(), std::move(increase));
-
-  ot::quadTreeToGnuplot(new_tree, 15, "newTree", comm);
+  ot::quadTreeToGnuplot(dtree2.getTreePartFiltered(), 10, "newTree", comm);
 
   /// ot::quadTreeToGnuplot(da.getTNVec(), 8, "da", comm);
 
