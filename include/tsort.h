@@ -760,6 +760,17 @@ struct SFC_Tree
   static void distMinimalBalanced(
       std::vector<TreeNode<T, dim>> &tree, double sfc_tol, MPI_Comm comm);
 
+  /* Assumes tree is sorted. */
+  static std::vector<TreeNode<T, dim>> locRefine(
+      const std::vector<TreeNode<T, dim>> &tree,
+      std::vector<int> &&delta_level);
+
+  /* Assumes tree is sorted. */
+  static std::vector<TreeNode<T, dim>> locCoarsen(
+      const std::vector<TreeNode<T, dim>> &tree,
+      std::vector<int> &&delta_level);
+
+
   // -------------------------------------------------------------
 
   /**

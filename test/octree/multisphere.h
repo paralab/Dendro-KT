@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <array>
+#include <algorithm>
 #include <math.h>
 
 #include "filterFunction.h"
@@ -15,6 +16,7 @@ namespace test
     inline ibm::Partition operator()(const double *elemPhysCoords, double elemPhysSize) const;
     // ------------------------------------------------------------
     inline void carveSphere(double radius, const std::array<double, dim> &center);
+    inline void carveSphere(double radius, std::initializer_list<double> center);
     inline const std::array<double, dim> &center(int i) const;
     inline double radius(int i) const;
     inline int numSpheres() const;
@@ -32,6 +34,14 @@ namespace test
   {
     m_radii.push_back(radius);
     m_centers.push_back(center);
+  }
+
+  template <int dim>
+  inline void SphereSet<dim>::carveSphere(double radius, std::initializer_list<double> center)
+  {
+    std::array<double, dim> c;
+    std::copy_n(center.begin(), dim, c.begin());
+    this->carveSphere(radius, c);
   }
 
   // center()

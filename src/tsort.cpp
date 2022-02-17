@@ -216,6 +216,8 @@ struct Segment
   bool empty() const          { return !nonempty(); }
   const X & operator*() const { return ptr[begin]; }
   X & operator*()             { return ptr[begin]; }
+  const X * operator->() const { return &ptr[begin]; }
+  X * operator->()             { return &ptr[begin]; }
   Segment & operator++()      { ++begin; return *this; }
 };
 
@@ -2320,6 +2322,147 @@ void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree
   if (comm != comm_ && comm != MPI_COMM_NULL)
     MPI_Comm_free(&comm);
 
+}
+
+// locMatchResolution_rec()
+template <typename T, unsigned dim>
+int locMatchResolution_rec(
+    Segment<const TreeNode<T, dim>> &domain,
+    Segment<const int> &new_level,
+    TreeNode<T, dim> subtree,
+    SFC_State<int(dim)> sfc,
+    std::vector<TreeNode<T, dim>> &outTree);
+
+// locRefine()
+//
+// Assumes tree is sorted.
+template <typename T, unsigned int dim>
+std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefine(
+    const std::vector<TreeNode<T, dim>> &tree,
+    std::vector<int> &&delta_level)
+{
+  const size_t old_sz = tree.size();
+  size_t new_sz = 0;
+  for (size_t i = 0; i < old_sz; ++i)
+  {
+    assert(delta_level[i] >= 0);
+    new_sz += (1u << (dim * delta_level[i]));
+    delta_level[i] += tree[i].getLevel();
+    assert(delta_level[i] <= m_uiMaxDepth);
+  }
+  const std::vector<int> &new_level = delta_level;
+  std::vector<TreeNode<T, dim>> new_tree;
+  new_tree.reserve(new_sz);
+
+  Segment<const TreeNode<T, dim>> segDomain(tree.data(), 0, old_sz);
+  Segment<const int> segLevels(new_level.data(), 0, old_sz);
+
+  locMatchResolution_rec<T, dim>(
+      segDomain,
+      segLevels,
+      TreeNode<T, dim>(),
+      SFC_State<dim>::root(),
+      new_tree);
+
+  return new_tree;
+}
+
+
+// locCoarsen()
+//
+// Assumes tree is sorted.
+template <typename T, unsigned int dim>
+std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locCoarsen(
+    const std::vector<TreeNode<T, dim>> &tree,
+    std::vector<int> &&delta_level)
+{
+  const size_t old_sz = tree.size();
+  size_t new_sz = 0;
+  for (size_t i = 0; i < old_sz; ++i)
+  {
+    assert(delta_level[i] >= 0);
+    new_sz += (1u << (dim * delta_level[i]));
+    delta_level[i] = tree[i].getLevel() - delta_level[i];
+    if (delta_level[i] <= 0)
+      return {TreeNode<T, dim>()};
+  }
+  const std::vector<int> &new_level = delta_level;
+  std::vector<TreeNode<T, dim>> new_tree;
+  new_tree.reserve(new_sz);
+
+  Segment<const TreeNode<T, dim>> segDomain(tree.data(), 0, old_sz);
+  Segment<const int> segLevels(new_level.data(), 0, old_sz);
+
+  locMatchResolution_rec<T, dim>(
+      segDomain,
+      segLevels,
+      TreeNode<T, dim>(),
+      SFC_State<dim>::root(),
+      new_tree);
+
+  return new_tree;
+}
+
+
+// locMatchResolution_rec()
+//
+// Assumes domain is sorted. new_level must be parallel with domain.
+template <typename T, unsigned dim>
+int locMatchResolution_rec(
+    Segment<const TreeNode<T, dim>> &domain,
+    Segment<const int> &new_level,
+    TreeNode<T, dim> subtree,
+    SFC_State<int(dim)> sfc,
+    std::vector<TreeNode<T, dim>> &outTree)
+{
+  const auto ancestor = [](const TreeNode<T, dim> &a, const TreeNode<T, dim> &b) {
+    return a.isAncestorInclusive(b);
+  };
+  const auto domain_in = [&](const TreeNode<T, dim> &tree) {
+    return domain.nonempty() and ancestor(tree, *domain);
+  };
+  const auto domain_overlaps = [&](const TreeNode<T, dim> &tree) {
+    return domain.nonempty() and (ancestor(tree, *domain) or ancestor(*domain, tree));
+  };
+
+  assert(domain.nonempty() == new_level.nonempty());
+  if (domain_overlaps(subtree))
+  {
+    int finestLevel = 0;
+
+    if (subtree.getLevel() < domain->getLevel() or subtree.getLevel() < *new_level)
+    {
+      const size_t pre_sz = outTree.size();
+      for (sfc::SubIndex c(0); c < nchild(dim); ++c)
+      {
+        const int childFinestLevel = locMatchResolution_rec(
+            domain, new_level, subtree.getChildMorton(sfc.child_num(c)), sfc.subcurve(c), outTree);
+        if (finestLevel < childFinestLevel)
+          finestLevel = childFinestLevel;
+      }
+      if (finestLevel <= subtree.getLevel())
+      {
+        outTree.resize(pre_sz);
+        outTree.push_back(subtree);
+      }
+    }
+    else
+    {
+      outTree.push_back(subtree);
+      finestLevel = *new_level;
+    }
+
+    while (domain_in(subtree))
+    {
+      ++domain;
+      ++new_level;
+    }
+
+    return finestLevel;
+  }
+  else
+    return 0;
+  /// assert(not domain_in(subtree));
 }
 
 

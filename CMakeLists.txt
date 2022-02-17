@@ -432,6 +432,12 @@ add_executable(tstOctreeRemesh ${SRC_FILES})
 target_include_directories(tstOctreeRemesh PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/octree)
 target_link_libraries(tstOctreeRemesh dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/intergrid/refine_many.cpp
+              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/multisphere.h)
+add_executable(tstIntergridRefineMany ${SRC_FILES})
+target_include_directories(tstIntergridRefineMany PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(tstIntergridRefineMany dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/dist_partition.cpp
               ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/gaussian.hpp)
 add_executable(tstOctreeDistPartition ${SRC_FILES})
