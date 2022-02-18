@@ -169,6 +169,8 @@ set(DENDRO_KT_INC include/dendro.h
                   include/meshLoop.h
                   include/dollar_stat.h
                   include/serialize.hpp
+                  include/p2p.h
+                  include/p2p.tcc
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
                   array/include/arraySlice.h
@@ -205,6 +207,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   IO/vtk/src/oct2vtk.cpp
                   IO/vtk/src/checkPoint.cpp
                   src/oda.cpp
+                  src/p2p.cpp
                   FEM/src/tensor.cpp
                   FEM/src/tensor_special_float.cpp
                   FEM/src/tensor_special_double.cpp

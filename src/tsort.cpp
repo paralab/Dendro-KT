@@ -12,6 +12,7 @@
 #include "tsort.h"
 #include "octUtils.h"
 #include "tnUtils.h"
+#include "p2p.h"
 
 #include "filterFunction.h"
 
@@ -644,286 +645,6 @@ template void distTreePartition_kway( MPI_Comm,
 
 
 
-struct P2PPartners
-{
-  std::vector<int> m_dest;
-  std::vector<int> m_src;
-  MPI_Comm m_comm;
-  int m_comm_size;
-  int m_comm_rank;
-
-  void reserve(size_t ndest, size_t nsrc)
-  {
-    assert(ndest >= 0);
-    assert(nsrc >= 0);
-    m_dest.reserve(ndest);
-    m_src.reserve(nsrc);
-  }
-
-  P2PPartners() = default;
-
-  P2PPartners(const std::vector<int> &dest,
-              const std::vector<int> &src,
-              MPI_Comm comm)
-    : m_dest(dest), m_src(src), m_comm(comm)
-  {}
-
-  void reset(size_t ndest, size_t nsrc, MPI_Comm comm) {
-    nDest(ndest);  nSrc(nsrc);  m_comm = comm;
-    MPI_Comm_size(comm, &m_comm_size);
-    MPI_Comm_rank(comm, &m_comm_rank);
-  }
-
-  MPI_Comm comm() const { return m_comm; }
-  int comm_size() const { return m_comm_size; }
-  int comm_rank() const { return m_comm_rank; }
-
-  size_t nDest() const { return m_dest.size(); }
-  size_t nSrc()  const { return m_src.size(); }
-
-  void nDest(size_t size) { m_dest.resize(size); }
-  void nSrc(size_t size)  { m_src.resize(size); }
-
-  int dest(size_t i) const { assert(i < m_dest.size());  return m_dest[i]; }
-  int src(size_t i)  const { assert(i < m_src.size());   return m_src[i]; }
-
-  void dest(size_t i, int d) { assert(i < m_dest.size());  m_dest[i] = d; }
-  void src(size_t i, int s)  { assert(i < m_src.size());   m_src[i] = s; }
-};
-
-template <typename Tag>
-struct P2PRequest
-{
-  MPI_Request m_request;
-  MPI_Request & operator*() { return m_request; }
-  P2PRequest() = default;
-  P2PRequest(const P2PRequest&) { assert(!"Tried to copy MPI_Request. Try reserve()."); }
-  P2PRequest(P2PRequest&&) { assert(!"Tried to move MPI_Request. Try reserve()."); }
-  //future: Prevent active MPI_Request's from being copied. Smart pointers?
-};
-
-template <typename ScalarT = int>
-struct P2PScalar
-{
-  using Request = P2PRequest<P2PScalar>;
-
-  const P2PPartners *m_partners = nullptr;
-  MPI_Comm comm() const    { assert(m_partners != nullptr);  return m_partners->comm(); }
-  int dest(size_t i) const { assert(m_partners != nullptr);  return m_partners->dest(i); }
-  int src(size_t i)  const { assert(m_partners != nullptr);  return m_partners->src(i); }
-
-  static constexpr int LEN = 1;
-  std::vector<ScalarT> m_sendScalar;
-  std::vector<ScalarT> m_recvScalar;
-  std::vector<Request> m_requests;
-
-  void reserve(int ndest, int nsrc)
-  {
-    assert(ndest >= 0);
-    assert(nsrc >= 0);
-    m_sendScalar.reserve(LEN * ndest);
-    m_recvScalar.reserve(LEN * nsrc);
-    m_requests.reserve(ndest);
-  }
-
-  P2PScalar() = default;
-  P2PScalar(const P2PPartners *partners) { reset(partners); }
-
-  void reset(const P2PPartners *partners)
-  {
-    assert(partners != nullptr);
-    m_partners = partners;
-    m_sendScalar.resize(LEN * partners->nDest());
-    m_recvScalar.resize(LEN * partners->nSrc());
-    m_requests.resize(partners->nDest());
-  }
-
-  void send(int destIdx, ScalarT scalar) {
-    assert(destIdx < m_partners->nDest());
-    m_sendScalar[destIdx] = scalar;  // future: LEN > 1
-    par::Mpi_Isend(&(m_sendScalar[destIdx]), LEN, dest(destIdx), 0, comm(), &(*m_requests[destIdx]));
-  }
-
-  ScalarT recv(int srcIdx) {
-    assert(srcIdx < m_partners->nSrc());
-    MPI_Status status;
-    par::Mpi_Recv(&(m_recvScalar[srcIdx]), LEN, src(srcIdx), 0, comm(), &status);
-    return m_recvScalar[srcIdx];
-  }
-
-  void recv(int srcIdx, ScalarT &scalar) {
-    scalar = this->recv(srcIdx);
-  }
-
-  void wait_all() {
-    for (Request &request_wrapper : m_requests)
-    {
-      MPI_Request &request = *request_wrapper;
-      MPI_Wait(&request, MPI_STATUS_IGNORE);
-    }
-    m_requests.clear();
-  }
-};
-
-
-template <typename X>
-struct P2PVector
-{
-  const std::vector<int> &m_dest;
-  const std::vector<int> &m_src;
-  MPI_Comm m_comm;
-
-  std::vector<MPI_Request> m_requests;
-
-  P2PVector(const P2PPartners *partners)
-    : m_dest(partners->m_dest), m_src(partners->m_src), m_comm(partners->m_comm),
-      m_requests(partners->nDest())
-  { }
-
-  void send(int destIdx, const std::vector<X> &vector) {
-    par::Mpi_Isend(&(*vector.cbegin()), vector.size(), m_dest[destIdx], 0, m_comm, &m_requests[destIdx]);
-  }
-
-  void recv(int srcIdx, std::vector<X> &vector) {
-    MPI_Status status;
-    par::Mpi_Recv(&(*vector.begin()), vector.size(), m_src[srcIdx], 0, m_comm, &status);
-  }
-
-  void wait_all() {
-    for (MPI_Request &request : m_requests)
-      MPI_Wait(&request, MPI_STATUS_IGNORE);
-  }
-};
-
-
-// P2PMeta
-struct P2PMeta
-{
-  const P2PPartners *m_partners = nullptr;
-
-  using Request = P2PRequest<P2PMeta>;
-
-  std::vector<int> m_send_meta;
-  std::vector<int> m_recv_meta;
-  std::vector<Request> m_requests;  // size == # of sends since wait_all()
-  int m_recv_total = 0;  // Does not include self segment count.
-
-  int m_self_size = 0;
-  int m_self_offset = 0;
-  int m_self_pos = 0;  // Self is between (m_self_pos-1) and (m_self_pos).
-
-  int m_send_tag = 0;
-  int m_recv_tag = 0;
-
-  long long unsigned m_bytes_sent = 0;
-  long long unsigned m_bytes_rcvd = 0;
-
-  MPI_Comm comm() const    { assert(m_partners != nullptr);  return m_partners->comm(); }
-  int dest(size_t i) const { assert(m_partners != nullptr);  return m_partners->dest(i); }
-  int src(size_t i)  const { assert(m_partners != nullptr);  return m_partners->src(i); }
-
-  int * send_sizes()   { assert(m_send_meta.size());  return &m_send_meta[0]; }
-  int * send_offsets() { assert(m_send_meta.size());  return &m_send_meta[m_partners->nDest()]; }
-  int * recv_sizes()   { assert(m_recv_meta.size());  return &m_recv_meta[0]; }
-  int * recv_offsets() { assert(m_recv_meta.size());  return &m_recv_meta[m_partners->nSrc()]; }
-
-  const int recv_total() const { return m_recv_total; }
-  const int self_size() const { return m_self_size; }
-  const int self_offset() const { return m_self_offset; }
-
-  long long unsigned bytes_sent() const { return m_bytes_sent; }
-  long long unsigned bytes_rcvd() const { return m_bytes_rcvd; }
-
-  void reserve(int ndest, int nsrc, int layers = 1)
-  {
-    m_send_meta.reserve(2 * ndest);
-    m_recv_meta.reserve(2 * nsrc);
-    m_requests.reserve(ndest * layers);
-  }
-
-  P2PMeta() = default;
-  P2PMeta(const P2PPartners *partners) { reset(partners); }
-
-  void reset(const P2PPartners *partners)
-  {
-    m_send_meta.clear();
-    m_recv_meta.clear();
-    wait_all();
-
-    m_partners = partners;
-    m_send_meta.resize(2 * partners->nDest(), 0);
-    m_recv_meta.resize(2 * partners->nSrc(), 0);
-  }
-
-  // Usage: schedule_send(), recv_size() ... tally_recvs(), send(), recv()
-
-  void schedule_send(int destIdx, int size, int offset) {
-    send_sizes()[destIdx] = size;
-    send_offsets()[destIdx] = offset;
-  }
-
-  void recv_size(int srcIdx, int size) {
-    recv_sizes()[srcIdx] = size;
-  }
-
-  void self_size(int srcIdx, int size) {
-    m_self_pos = srcIdx;
-    m_self_size = size;
-  }
-
-  void tally_recvs() {
-    int sum = 0;
-    for (int i = 0; i < m_self_pos; ++i) {
-      recv_offsets()[i] = sum;
-      sum += recv_sizes()[i];
-    }
-    m_self_offset = sum;
-    sum += m_self_size;
-    for (int i = m_self_pos; i < m_partners->nSrc(); ++i) {
-      recv_offsets()[i] = sum;
-      sum += recv_sizes()[i];
-    }
-    m_recv_total = sum - m_self_size;
-  }
-
-  template <typename X>
-  void send(const X *send_buffer) {
-    for (int i = 0; i < m_partners->nDest(); ++i)
-    {
-      m_requests.emplace_back();
-      const auto code = par::Mpi_Isend(
-          &send_buffer[send_offsets()[i]], send_sizes()[i],
-          dest(i), m_send_tag, comm(), &(*m_requests.back()));
-      m_bytes_sent += send_sizes()[i] * sizeof(X);
-    }
-    ++m_send_tag;
-  }
-
-  template <typename X>
-  void recv(X *recv_buffer) {
-    for (int i = 0; i < m_partners->nSrc(); ++i)
-    {
-      assert(recv_offsets()[i] < m_recv_total + m_self_size or recv_sizes()[i] == 0);
-
-      const int code = par::Mpi_Recv(
-          &recv_buffer[recv_offsets()[i]], recv_sizes()[i],
-          src(i), m_recv_tag, comm(), MPI_STATUS_IGNORE);
-      m_bytes_rcvd += recv_sizes()[i] * sizeof(X);
-    }
-    ++m_recv_tag;
-  }
-
-  void wait_all() {
-    for (Request &request_wrapper : m_requests)
-    {
-      MPI_Request &request = *request_wrapper;
-      MPI_Wait(&request, MPI_STATUS_IGNORE);
-    }
-    m_requests.clear();
-  }
-};
-
-
 template <int nbuckets>
 using Buckets = std::array<size_t, nbuckets + 1>;
 
@@ -1351,6 +1072,9 @@ void distTreePartition_kway_impl(
   parent_buckets.reserve(kway_roundup * nchild(dim));
   child_buckets.reserve(kway_roundup * nchild(dim));
 
+  using par::P2PPartners;
+  using par::P2PScalar;
+  using par::P2PMeta;
   P2PPartners p2p_partners;  p2p_partners.reserve(kway, 2 * kway);
   P2PScalar<> p2p_sizes;     p2p_sizes.reserve(kway, 2 * kway);
   P2PMeta p2p_meta;          p2p_meta.reserve(kway, 2 * kway, 1 + sizeof...(xs));
@@ -4068,6 +3792,10 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   std::map<int, std::vector<Oct>> recvQueryInform;
   std::map<int, std::vector<Oct>> recvInformOnly;
+
+  using par::P2PPartners;
+  using par::P2PScalar;
+  using par::P2PVector;
 
   // (Round 1)  Send/recv
   std::vector<int> queryDestGlobal, querySrcGlobal;
