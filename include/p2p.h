@@ -60,20 +60,22 @@ namespace par
   };
 
   // future: refactor into p2p.tcc and p2p.cpp
-  template <typename ScalarT = int>
+  template <typename ScalarT = int, int LEN = 1>
   struct P2PScalar
   {
     using Request = P2PRequest<P2PScalar>;
+    static_assert(LEN >= 0);
 
     const P2PPartners *m_partners = nullptr;
     MPI_Comm comm() const    { assert(m_partners != nullptr);  return m_partners->comm(); }
     int dest(size_t i) const { assert(m_partners != nullptr);  return m_partners->dest(i); }
     int src(size_t i)  const { assert(m_partners != nullptr);  return m_partners->src(i); }
 
-    static constexpr int LEN = 1;
     std::vector<ScalarT> m_sendScalar;
     std::vector<ScalarT> m_recvScalar;
     std::vector<Request> m_requests;
+    std::vector<char> m_sent;
+    std::vector<char> m_rcvd;
 
     void reserve(int ndest, int nsrc)
     {
@@ -82,6 +84,8 @@ namespace par
       m_sendScalar.reserve(LEN * ndest);
       m_recvScalar.reserve(LEN * nsrc);
       m_requests.reserve(ndest);
+      m_sent.reserve(ndest);
+      m_rcvd.reserve(nsrc);
     }
 
     P2PScalar() = default;
@@ -94,23 +98,40 @@ namespace par
       m_sendScalar.resize(LEN * partners->nDest());
       m_recvScalar.resize(LEN * partners->nSrc());
       m_requests.resize(partners->nDest());
+      assert(std::find(m_sent.begin(), m_sent.end(), false) == m_sent.end());
+      assert(std::find(m_rcvd.begin(), m_rcvd.end(), false) == m_rcvd.end());
+      m_sent.clear();  m_sent.resize(partners->nDest(), false);
+      m_rcvd.clear();  m_rcvd.resize(partners->nSrc(), false);
     }
 
-    void send(int destIdx, ScalarT scalar) {
+    template <typename...X>
+    void send(int destIdx, const X&...scalars) {
+      static_assert(sizeof...(X) == LEN);
       assert(destIdx < m_partners->nDest());
-      m_sendScalar[destIdx] = scalar;  // future: LEN > 1
-      par::Mpi_Isend(&(m_sendScalar[destIdx]), LEN, dest(destIdx), 0, comm(), &(*m_requests[destIdx]));
+      assert(not m_sent[destIdx]);
+
+      ScalarT *stage = &m_sendScalar[destIdx * LEN];
+      DENDRO_FOR_PACK( *(stage++) = scalars );
+      par::Mpi_Isend(&(m_sendScalar[destIdx * LEN]), LEN, dest(destIdx), 0, comm(), &(*m_requests[destIdx]));
+      m_sent[destIdx] = true;
     }
 
-    ScalarT recv(int srcIdx) {
+    template <typename...X>
+    void recv_all(int srcIdx, X&...scalars) {
       assert(srcIdx < m_partners->nSrc());
+
       MPI_Status status;
-      par::Mpi_Recv(&(m_recvScalar[srcIdx]), LEN, src(srcIdx), 0, comm(), &status);
-      return m_recvScalar[srcIdx];
+      if (not m_rcvd[srcIdx])
+        par::Mpi_Recv(&(m_recvScalar[srcIdx * LEN]), LEN, src(srcIdx), 0, comm(), &status);
+      m_rcvd[srcIdx] = true;
+      ScalarT *stage = &(m_recvScalar[srcIdx * LEN]);
+      DENDRO_FOR_PACK( scalars = *(stage++) );
     }
 
-    void recv(int srcIdx, ScalarT &scalar) {
-      scalar = this->recv(srcIdx);
+    template <int IDX = 0>
+    ScalarT recv(int srcIdx) {
+      recv_all(srcIdx);
+      return m_recvScalar[srcIdx * LEN + IDX];
     }
 
     void wait_all() {
@@ -222,7 +243,13 @@ namespace par
     void send(const X *send_buffer);
 
     template <typename X>
+    void send_dofs(const X *send_buffer, const int ndofs);
+
+    template <typename X>
     void recv(X *recv_buffer);
+
+    template <typename X>
+    void recv_dofs(X *recv_buffer, const int ndofs);
 
     void wait_all();
   };

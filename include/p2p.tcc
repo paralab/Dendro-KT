@@ -106,6 +106,21 @@ namespace par
     ++m_send_tag;
   }
 
+  // P2PMeta::send_dofs()
+  template <typename X>
+  void P2PMeta::send_dofs(const X *send_buffer, const int ndofs)
+  {
+    for (int i = 0; i < m_partners->nDest(); ++i)
+    {
+      m_requests.emplace_back();
+      const auto code = par::Mpi_Isend(
+          &send_buffer[ndofs * send_offsets()[i]], ndofs * send_sizes()[i],
+          dest(i), m_send_tag, comm(), &(*m_requests.back()));
+      m_bytes_sent += ndofs * send_sizes()[i] * sizeof(X);
+    }
+    ++m_send_tag;
+  }
+
   // P2PMeta::recv()
   template <typename X>
   void P2PMeta::recv(X *recv_buffer)
@@ -118,6 +133,22 @@ namespace par
           &recv_buffer[recv_offsets()[i]], recv_sizes()[i],
           src(i), m_recv_tag, comm(), MPI_STATUS_IGNORE);
       m_bytes_rcvd += recv_sizes()[i] * sizeof(X);
+    }
+    ++m_recv_tag;
+  }
+
+  // P2PMeta::recv_dofs()
+  template <typename X>
+  void P2PMeta::recv_dofs(X *recv_buffer, const int ndofs)
+  {
+    for (int i = 0; i < m_partners->nSrc(); ++i)
+    {
+      assert(recv_offsets()[i] < m_recv_total + m_self_size or recv_sizes()[i] == 0);
+
+      const int code = par::Mpi_Recv(
+          &recv_buffer[ndofs * recv_offsets()[i]], ndofs * recv_sizes()[i],
+          src(i), m_recv_tag, comm(), MPI_STATUS_IGNORE);
+      m_bytes_rcvd += ndofs * recv_sizes()[i] * sizeof(X);
     }
     ++m_recv_tag;
   }

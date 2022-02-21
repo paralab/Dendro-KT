@@ -1287,8 +1287,6 @@ void distTreePartition_kway_impl(
     // Make more space at the end, send from beginning, receive to end.
     // Copy to self block place in receiving segment.
 
-#define FOR_PACK(expr) { std::initializer_list<int> _{((expr),0)...}; }
-
     const size_t old_sz = Nl;
     const size_t receiving = p2p_meta.recv_total();
     const size_t copy_to = p2p_meta.self_offset();
@@ -1298,26 +1296,24 @@ void distTreePartition_kway_impl(
 
     octants.resize(old_sz + new_sz);
     p2p_meta.send(&octants[0]);
-    FOR_PACK(xs.resize(old_sz + new_sz));
-    FOR_PACK(p2p_meta.send(&xs[0]));
+    DENDRO_FOR_PACK(xs.resize(old_sz + new_sz));
+    DENDRO_FOR_PACK(p2p_meta.send(&xs[0]));
 
     // Copy local segment to self block position.
     std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + copy_to]);
-    FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + copy_to]));
+    DENDRO_FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + copy_to]));
 
     // Receive remote segments into end segment.
     p2p_meta.recv(&octants[old_sz]);
-    FOR_PACK(p2p_meta.recv(&xs[old_sz]));
+    DENDRO_FOR_PACK(p2p_meta.recv(&xs[old_sz]));
 
     p2p_sizes.wait_all();
     p2p_meta.wait_all();
     // Do not move the send buffer until finished sending!
     octants.erase(octants.begin(), octants.begin() + old_sz);
-    FOR_PACK(xs.erase(xs.begin(), xs.begin() + old_sz));
+    DENDRO_FOR_PACK(xs.erase(xs.begin(), xs.begin() + old_sz));
 
     plot_prefix += "_" + std::to_string(self_blk);
-
-#undef FOR_PACK
 
     if (comm_size > kway)
     {
