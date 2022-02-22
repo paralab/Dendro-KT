@@ -56,7 +56,7 @@ void test_locTreeSort()
     botOctCount_start[tn.getMortonIndex(eLev)]++;
   }
 
-  for (int ii = 0; ii < TreeNode::numChildren; ii++)
+  for (int ii = 0; ii < ot::nchild(dim); ii++)
   {
     printf("Top: s(%d)  \t    Bot: s(%d)\n",
         topOctCount_start[ii], botOctCount_start[ii]);
@@ -89,7 +89,7 @@ void test_locTreeSort()
   std::cout << "=============================\n";
 
   bool success = true;
-  for (int ii = 0; ii < TreeNode::numChildren; ii++)
+  for (int ii = 0; ii < ot::nchild(dim); ii++)
   {
     bool locSuccess = (topOctCount_start[ii] == topOctCount_end[ii])
         && (botOctCount_start[ii] == botOctCount_end[ii]);

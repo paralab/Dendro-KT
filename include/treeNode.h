@@ -37,6 +37,9 @@ namespace ot {
     /// template <int dim>  constexpr int nchild() { return 1 << dim; }
     constexpr int nchild(int dim) { return 1 << dim; }
 
+    template <template <typename TNT, unsigned TND> typename TN, typename T, unsigned dim>
+    constexpr unsigned coordDim(const TN<T, dim> *) { return dim; }
+
     /**
       @brief A class to manage octants.
       @tparam dim the dimension of the tree
@@ -62,10 +65,6 @@ namespace ot {
     public:
 
         using coordType = T;
-        static constexpr unsigned int coordDim = dim;
-
-        /// static constexpr char numChildren = nchild<dim>();
-        static constexpr char numChildren = nchild(dim);
 
         //@masado, can you please fix this to work with any dim. (@masado: Looks like it's not being used.)
         ///using Flag2K = unsigned char;  // Has 8 bits, will work for (dim <= 4).

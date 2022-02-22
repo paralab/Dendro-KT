@@ -177,13 +177,12 @@ namespace ot {
       bool m_isCancellation = false;
   };
 
-
   // The convention to nudge points, including boundary points, into containers.
   template <typename SrcType, typename RsltType>
   inline RsltType KeyFunInboundsContainer(const SrcType &pt)
   {
     using T = typename SrcType::coordType;
-    constexpr unsigned int dim = SrcType::coordDim;
+    constexpr unsigned int dim = ot::coordDim(&pt);
     std::array<T,dim> coords;
     pt.getAnchor(coords);
     /// const unsigned int lev = pt.getLevel();            // Container.
