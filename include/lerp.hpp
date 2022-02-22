@@ -179,7 +179,9 @@ namespace ot
   }
 
 
+  //
   // locLerp()
+  //
   template <unsigned dim>
   void locLerp(
       const std::vector<TreeNode<unsigned, dim>> &from_octlist,
@@ -192,6 +194,9 @@ namespace ot
       const size_t to_nodes_sz,
       double * to_dofs)
   {
+    using Oct = TreeNode<unsigned, dim>;
+    using OctList = std::vector<Oct>;
+
     assert(from_octlist.size() > 0 or to_octlist.size() == 0);
     assert(to_octlist.size() > 0 or to_nodes_sz == 0);
     if (to_octlist.size() == 0)
@@ -214,19 +219,63 @@ namespace ot
         dummyOctant<dim>(),
         dummyOctant<dim>());
 
-    size_t from_counter = 0,  to_counter = 0;
+    assert(degree == 1);
+    const int npe = 1u << dim;
+    std::vector<double> leaf_nodes(npe * ndofs, 0.0f);
+
+    const auto subtree =[](const auto &loop) { return loop.getCurrentSubtree(); };
+    const auto in = [](const Oct &a, const Oct &b) { return b.isAncestorInclusive(a); };
+
+    size_t to_counter = 0;
     while (not from_loop.isFinished() and not to_loop.isFinished())
     {
-      if (not from_loop.getCurrentSubtree().isAncestorInclusive(to_loop.getCurrentSubtree()))
+      if (not in(subtree(to_loop), subtree(from_loop)))
       {
         from_loop.next();
       }
-      else if (from_loop.isPre() and from_loop.isLeaf())
+      else if (from_loop.isPre() and from_loop.isLeaf())  // Coarse leaf
       {
-        while (not to_loop.isFinished() and from_loop.getCurrentSubtree().isAncestorInclusive(to_loop.getCurrentSubtree()))
+        const double * coarse_nodes = from_loop.subtreeInfo().readNodeValsIn();
+        const std::array<unsigned, dim> coarse_origin = subtree(from_loop).getX();
+
+        while (not to_loop.isFinished() and in(subtree(to_loop), subtree(from_loop)))
         {
-          if (to_loop.isPre() and to_loop.isLeaf())
+          if (to_loop.isPre() and to_loop.isLeaf())  // Fine leaf
           {
+            assert(degree == 1);  // Octant-based formula only valid for linear.
+
+            const TreeNode<unsigned int, dim> * fine_nodes = to_loop.subtreeInfo().readNodeCoordsIn();
+            const double ratio = 1.0 / (1u << (subtree(to_loop).getLevel() - subtree(from_loop).getLevel()));
+            const int fine_height = m_uiMaxDepth - subtree(to_loop).getLevel();
+
+            // Interpolate each fine node.
+            for (unsigned to_vertex = 0; to_vertex < npe; ++to_vertex)
+            {
+              std::array<double, dim> t[2];  // t[0] = 1 - t[1]
+              for (int d = 0; d < dim; ++d)
+              {
+                t[1][d] = ((fine_nodes[to_vertex].getX(d) - coarse_origin[d]) >> fine_height) * ratio;
+                t[0][d] = 1.0 - t[1][d];
+              }
+
+              for (int dof = 0; dof < ndofs; ++dof)
+                leaf_nodes[to_vertex * ndofs + dof] = 0;
+              for (unsigned from_vertex = 0; from_vertex < npe; ++from_vertex)
+              {
+                double shape = 1.0;
+                for (int d = 0; d < dim; ++d)
+                  shape *= t[(from_vertex >> d) & 1u][d];
+                for (int dof = 0; dof < ndofs; ++dof)
+                {
+                  leaf_nodes[to_vertex * ndofs + dof] +=
+                      shape * coarse_nodes[from_vertex * ndofs + dof];
+                }
+              }
+            }
+            to_loop.subtreeInfo().overwriteNodeValsOut(leaf_nodes.data());
+
+            //future: for cell data, consider overwriteNodeValsOutScalar() [if sfcTreeLoop]
+
             ++to_counter;
             to_loop.next();
           }
@@ -235,7 +284,6 @@ namespace ot
             to_loop.step();
           }
         }
-        ++from_counter;
         from_loop.next();
       }
       else
@@ -244,10 +292,11 @@ namespace ot
         from_loop.step();
       }
     }
-
     assert(to_loop.isFinished() and to_counter == to_octlist.size());
     // All fine cells must be accounted for.
     // Note that there may be unused coarse cells that get skipped.
+
+    to_loop.finalize(to_dofs);
   }
 
 
