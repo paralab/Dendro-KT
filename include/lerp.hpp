@@ -35,6 +35,7 @@ namespace ot
       const double * from_dofs,
       const int ndofs,
       const std::vector<TreeNode<unsigned, dim>> &to_octlist,
+      const DA<dim> *to_da,  //quick fix
       const TreeNode<unsigned, dim> *to_nodes,
       const size_t to_nodes_sz,
       double * to_dofs);
@@ -172,6 +173,7 @@ namespace ot
         from_total_dofs.data(),
         ndofs,
         to_dtree.getTreePartFiltered(),
+        to_da,
         to_nodes, to_node_sz,
         to_local.data());
 
@@ -190,6 +192,7 @@ namespace ot
       const double * from_dofs,
       const int ndofs,
       const std::vector<TreeNode<unsigned, dim>> &to_octlist,
+      const DA<dim> *to_da,  //quick fix
       const TreeNode<unsigned, dim> *to_nodes,
       const size_t to_nodes_sz,
       double * to_dofs)
@@ -202,6 +205,11 @@ namespace ot
     if (to_octlist.size() == 0)
       return;
 
+    // future: Fix sfcTreeLoop_* to define leafs based on octlist, not nodes.
+    // For now, leafs are only identified correctly if pass DA _total_ nodes.
+    // To write to local nodes, have to create ghosted vector then extract.
+    std::vector<double> ghosted_to_dofs(to_da->getTotalNodalSz() * ndofs, 0);
+
     const int degree = 1;
     MatvecBaseIn<dim, double> from_loop(
         from_nodes_sz, ndofs, degree,
@@ -212,12 +220,21 @@ namespace ot
         dummyOctant<dim>());
 
     MatvecBaseOut<dim, double, false> to_loop(
-        to_nodes_sz, ndofs, degree,
+        to_da->getTotalNodalSz(), ndofs, degree,
         false, 0,
-        to_nodes,
+        to_da->getTNCoords(),
         to_octlist.data(), to_octlist.size(),
         dummyOctant<dim>(),
         dummyOctant<dim>());
+
+    // local only, not ghosted (won't work until sfcTreeLoop_* fixed)
+    /// MatvecBaseOut<dim, double, false> to_loop(
+    ///     to_nodes_sz, ndofs, degree,
+    ///     false, 0,
+    ///     to_nodes,
+    ///     to_octlist.data(), to_octlist.size(),
+    ///     dummyOctant<dim>(),
+    ///     dummyOctant<dim>());
 
     assert(degree == 1);
     const int npe = 1u << dim;
@@ -296,7 +313,9 @@ namespace ot
     // All fine cells must be accounted for.
     // Note that there may be unused coarse cells that get skipped.
 
-    to_loop.finalize(to_dofs);
+    /// to_loop.finalize(to_dofs);
+    to_loop.finalize(ghosted_to_dofs.data());
+    std::copy_n(&ghosted_to_dofs[to_da->getLocalNodeBegin() * ndofs], to_nodes_sz * ndofs, to_dofs);
   }
 
 

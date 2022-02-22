@@ -13,7 +13,7 @@
 
 #include "test/octree/multisphere.h"
 
-constexpr int DIM = 2;
+constexpr int DIM = 3;
 using uint = unsigned int;
 using DofT = double;
 
@@ -24,7 +24,6 @@ ot::DistTree<uint, DIM> make_dist_tree(size_t grain, double sfc_tol, MPI_Comm co
 void print_dollars(MPI_Comm comm);
 
 std::vector<DofT> local_vector(const ot::DA<DIM> *da, int dofs);
-/// std::vector<DofT> ghosted_vector(const ot::DA<DIM> *da, int dofs);
 
 void fill_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                  const ot::DA<DIM> *da,
@@ -33,10 +32,6 @@ void fill_xpyp1( const ot::DistTree<uint, DIM> &dtree,
 size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                     const ot::DA<DIM> *da,
                     const std::vector<DofT> &local);
-
-/// template <typename X>  X*       ptr(std::vector<X> &v)             { return v.data(); }
-/// template <typename X>  const X* const_ptr(const std::vector<X> &v) { return v.data(); }
-/// template <typename X>  size_t   size(const std::vector<X> &v)      { return v.size(); }
 
 //
 // main()
@@ -58,7 +53,7 @@ int main(int argc, char * argv[])
   DA *coarse_da, *fine_da;
 
   const double sfc_tol = 0.1;
-  const size_t grain = 5e1;
+  const size_t grain = 1e3;
   const int degree = 1;
   {DOLLAR("coarse_dtree")
     coarse_dtree = make_dist_tree(grain, sfc_tol, comm);
@@ -68,13 +63,13 @@ int main(int argc, char * argv[])
     coarse_da = new DA(coarse_dtree, comm, degree, int{}, sfc_tol);
   }
     printf("[%d] da size (e:%lu n:%lu)\n", comm_rank, coarse_da->getLocalElementSz(), coarse_da->getLocalNodalSz());
-  ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
+  /// ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
   /// ot::quadTreeToGnuplot(coarse_da->getTNVec(), 8, "coarse.da", comm);
 
   std::vector<int> increase;
   increase.reserve(coarse_dtree.getTreePartFiltered().size());
   for (const Oct &oct : coarse_dtree.getTreePartFiltered())
-    increase.push_back(oct.getIsOnTreeBdry() ? 1 : 0);
+    increase.push_back(oct.getIsOnTreeBdry() ? 3 : 0);
   {DOLLAR("Refine")
     coarse_dtree.distRefine(coarse_dtree, std::move(increase), fine_dtree, sfc_tol);
   }
@@ -82,7 +77,7 @@ int main(int argc, char * argv[])
     fine_da = new DA(fine_dtree, comm, degree, int{}, sfc_tol);
   }
   printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
-  ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
+  /// ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
 
     const int singleDof = 1;
   std::vector<DofT> coarse_local = local_vector(coarse_da, singleDof);
@@ -167,11 +162,6 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
       colors[i] = RED;
     }
   }
-  ot::printNodes(da->getTNCoords() + da->getLocalNodeBegin(),
-                 da->getTNCoords() + da->getLocalNodeBegin() + da->getLocalNodalSz(),
-                 local.data(),
-                 colors.data(),
-                 degree);
   // Note: The p2c interpolation matrices can introduce tiny errors, O(1e-16),
   //       even for the case degree=1. The matrices are formed in refel.cpp
   //       using a linear solve (lapack_DGESV() -> ip_1D_0 and ip_1D_1).
