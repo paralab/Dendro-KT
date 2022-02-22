@@ -58,7 +58,7 @@ int main(int argc, char * argv[])
   DA *coarse_da, *fine_da;
 
   const double sfc_tol = 0.1;
-  const size_t grain = 1e3;
+  const size_t grain = 5e1;
   const int degree = 1;
   {DOLLAR("coarse_dtree")
     coarse_dtree = make_dist_tree(grain, sfc_tol, comm);
@@ -68,21 +68,21 @@ int main(int argc, char * argv[])
     coarse_da = new DA(coarse_dtree, comm, degree, int{}, sfc_tol);
   }
     printf("[%d] da size (e:%lu n:%lu)\n", comm_rank, coarse_da->getLocalElementSz(), coarse_da->getLocalNodalSz());
-  /// ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
+  ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
   /// ot::quadTreeToGnuplot(coarse_da->getTNVec(), 8, "coarse.da", comm);
 
   std::vector<int> increase;
   increase.reserve(coarse_dtree.getTreePartFiltered().size());
   for (const Oct &oct : coarse_dtree.getTreePartFiltered())
-    increase.push_back(oct.getIsOnTreeBdry() ? 3 : 0);
+    increase.push_back(oct.getIsOnTreeBdry() ? 1 : 0);
   {DOLLAR("Refine")
     coarse_dtree.distRefine(coarse_dtree, std::move(increase), fine_dtree, sfc_tol);
   }
   {DOLLAR("fine_da")
     fine_da = new DA(fine_dtree, comm, degree, int{}, sfc_tol);
   }
-    printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
-    /// ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
+  printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
+  ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
 
     const int singleDof = 1;
   std::vector<DofT> coarse_local = local_vector(coarse_da, singleDof);
@@ -154,14 +154,24 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
   const size_t local_sz = da->getLocalNodalSz();
   const size_t local_begin = da->getLocalNodeBegin();
   const ot::TreeNode<uint, DIM> *tn_coords = da->getTNCoords();
+  std::vector<const char*> colors(local.size(), NRM);
   size_t misses = 0;
   for (size_t i = 0; i < local_sz; ++i)
   {
     std::array<double, DIM> coords;
     ot::treeNode2Physical(tn_coords[local_begin + i], degree, coords.data());
     const DofT sum = 1 + accumulate_sum(coords.begin(), coords.end());
-    misses += (local[i] != sum);
+    if (local[i] != sum)
+    {
+      ++misses;
+      colors[i] = RED;
+    }
   }
+  ot::printNodes(da->getTNCoords() + da->getLocalNodeBegin(),
+                 da->getTNCoords() + da->getLocalNodeBegin() + da->getLocalNodalSz(),
+                 local.data(),
+                 colors.data(),
+                 degree);
   return misses;
 }
 
