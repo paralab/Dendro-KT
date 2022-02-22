@@ -27,10 +27,12 @@ std::vector<DofT> local_vector(const ot::DA<DIM> *da, int dofs);
 
 void fill_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                  const ot::DA<DIM> *da,
+                 const int ndofs,
                  std::vector<DofT> &local);
 
 size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                     const ot::DA<DIM> *da,
+                    const int ndofs,
                     const std::vector<DofT> &local);
 
 //
@@ -67,9 +69,10 @@ int main(int argc, char * argv[])
   /// ot::quadTreeToGnuplot(coarse_da->getTNVec(), 8, "coarse.da", comm);
 
   std::vector<int> increase;
+  const int amount = 3;
   increase.reserve(coarse_dtree.getTreePartFiltered().size());
   for (const Oct &oct : coarse_dtree.getTreePartFiltered())
-    increase.push_back(oct.getIsOnTreeBdry() ? 3 : 0);
+    increase.push_back(oct.getIsOnTreeBdry() ? amount : 0);
   {DOLLAR("Refine")
     coarse_dtree.distRefine(coarse_dtree, std::move(increase), fine_dtree, sfc_tol);
   }
@@ -79,21 +82,21 @@ int main(int argc, char * argv[])
   printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
   /// ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
 
-    const int singleDof = 1;
-  std::vector<DofT> coarse_local = local_vector(coarse_da, singleDof);
-  std::vector<DofT> fine_local = local_vector(fine_da, singleDof);
-  fill_xpyp1(coarse_dtree, coarse_da, coarse_local);
+  const int ndofs = 2;
+  std::vector<DofT> coarse_local = local_vector(coarse_da, ndofs);
+  std::vector<DofT> fine_local = local_vector(fine_da, ndofs);
+  fill_xpyp1(coarse_dtree, coarse_da, ndofs, coarse_local);
 
   {DOLLAR("lerp")
     ot::lerp(
-        coarse_dtree, coarse_da, singleDof, coarse_local,
+        coarse_dtree, coarse_da, ndofs, coarse_local,
         fine_dtree, fine_da, fine_local);
   }
 
-  const size_t misses = check_xpyp1(fine_dtree, fine_da, fine_local);
+  const size_t misses = check_xpyp1(fine_dtree, fine_da, ndofs, fine_local);
   printf("[%d] misses: %s%lu/%lu (%.0f%%)%s\n", comm_rank,
       (misses == 0 ? GRN : RED),
-      misses, fine_da->getLocalNodalSz(), 100.0 * misses / fine_da->getLocalNodalSz(),
+      misses, fine_da->getLocalNodalSz() * ndofs, 100.0 * misses / (fine_da->getLocalNodalSz() * ndofs),
       NRM);
 
   print_dollars(comm);
@@ -126,6 +129,7 @@ std::vector<DofT> local_vector(const ot::DA<DIM> *da, int ndofs)
 // fill_xpyp1()
 void fill_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                  const ot::DA<DIM> *da,
+                 const int ndofs,
                  std::vector<DofT> &local)
 {
   const int degree = da->getElementOrder();
@@ -136,13 +140,16 @@ void fill_xpyp1( const ot::DistTree<uint, DIM> &dtree,
   {
     std::array<double, DIM> coords;
     ot::treeNode2Physical(tn_coords[local_begin + i], degree, coords.data());
-    local[i] = 1 + accumulate_sum(coords.begin(), coords.end());
+    const DofT sum = 1 + accumulate_sum(coords.begin(), coords.end());
+    for (int dof = 0; dof < ndofs; ++dof)
+      local[i * ndofs + dof] = sum + dof;
   }
 }
 
 // check_xpyp1()
 size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                    const ot::DA<DIM> *da,
+                   const int ndofs,
                    const std::vector<DofT> &local)
 {
   const int degree = da->getElementOrder();
@@ -156,11 +163,12 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
     std::array<double, DIM> coords;
     ot::treeNode2Physical(tn_coords[local_begin + i], degree, coords.data());
     const DofT sum = 1 + accumulate_sum(coords.begin(), coords.end());
-    if (fabs(local[i] - sum) > 1e-12)
-    {
-      ++misses;
-      colors[i] = RED;
-    }
+    for (int dof = 0; dof < ndofs; ++dof)
+      if (fabs(local[i * ndofs + dof] - (sum + dof)) > 1e-12)
+      {
+        ++misses;
+        colors[i] = RED;
+      }
   }
   // Note: The p2c interpolation matrices can introduce tiny errors, O(1e-16),
   //       even for the case degree=1. The matrices are formed in refel.cpp
