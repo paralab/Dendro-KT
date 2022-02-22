@@ -161,7 +161,7 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
     std::array<double, DIM> coords;
     ot::treeNode2Physical(tn_coords[local_begin + i], degree, coords.data());
     const DofT sum = 1 + accumulate_sum(coords.begin(), coords.end());
-    if (local[i] != sum)
+    if (fabs(local[i] - sum) > 1e-12)
     {
       ++misses;
       colors[i] = RED;
@@ -172,6 +172,11 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                  local.data(),
                  colors.data(),
                  degree);
+  // Note: The p2c interpolation matrices can introduce tiny errors, O(1e-16),
+  //       even for the case degree=1. The matrices are formed in refel.cpp
+  //       using a linear solve (lapack_DGESV() -> ip_1D_0 and ip_1D_1).
+  //       Tested on degree=1 by rounding the matrix elements to the
+  //       nearest 0.5, and the tiny errors went away.
   return misses;
 }
 
