@@ -83,7 +83,7 @@ namespace ot {
       TreeNode (const std::array<T,dim> coords, unsigned int level);
 
       /**@brief Copy constructor */
-      TreeNode (const TreeNode & other);
+      TreeNode (const TreeNode & other) = default;
 
       /**
         @brief Constructs an octant
@@ -94,7 +94,7 @@ namespace ot {
       TreeNode (const int dummy, const std::array<T,dim> coords, unsigned int level);
 
       /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the current octant using the assignment operator.*/
-      TreeNode & operator = (TreeNode const  & other);
+      TreeNode & operator = (TreeNode const  & other) = default;
 
       /** @brief Two octants are equal if their respective anchors are equal and their levels are equal. */
       bool  operator == ( TreeNode const  &other) const;

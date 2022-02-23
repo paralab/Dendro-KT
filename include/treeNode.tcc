@@ -90,17 +90,6 @@ namespace ot {
     } //end function
 
 
-    //
-    // TreeNode copy constructor.
-    template<typename T, unsigned int dim>
-    TreeNode<T,dim>::TreeNode(const TreeNode & other)
-    {
-      m_uiCoords = other.m_uiCoords;
-      m_uiLevel = other.m_uiLevel;
-
-      m_isOnTreeBdry = other.m_isOnTreeBdry;
-    } //end function
-
 
     //
     // TreeNode trusting constructor.
@@ -112,21 +101,6 @@ namespace ot {
 
       m_isOnTreeBdry = false;
     }
-
-
-    //
-    // TreeNode assignment operator
-    template<typename T, unsigned int dim>
-    TreeNode<T,dim>& TreeNode<T,dim>::operator=(TreeNode<T,dim> const &other)
-    {
-      m_uiCoords = other.m_uiCoords;
-      m_uiLevel = other.m_uiLevel;
-
-      m_isOnTreeBdry = other.m_isOnTreeBdry;
-
-      return *this;
-    }
-
 
 
 
