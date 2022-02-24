@@ -13,7 +13,7 @@
 
 #include "test/octree/multisphere.h"
 
-constexpr int DIM = 3;
+constexpr int DIM = 2;
 using uint = unsigned int;
 using DofT = double;
 
@@ -34,6 +34,15 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                     const ot::DA<DIM> *da,
                     const int ndofs,
                     const std::vector<DofT> &local);
+
+void oldIntergridTransfer(
+    const ot::DistTree<uint, DIM> &from_dtree,
+    const ot::DA<DIM> *from_da,
+    const int ndofs,
+    const std::vector<DofT> &from_local,
+    const ot::DistTree<uint, DIM> &to_dtree,
+    const ot::DA<DIM> *to_da,
+    std::vector<DofT> &to_local);
 
 //
 // main()
@@ -69,10 +78,11 @@ int main(int argc, char * argv[])
   /// ot::quadTreeToGnuplot(coarse_da->getTNVec(), 8, "coarse.da", comm);
 
   std::vector<int> increase;
-  const int amount = 3;
+  const int amount = 1;
+  const bool refine_all = true;
   increase.reserve(coarse_dtree.getTreePartFiltered().size());
   for (const Oct &oct : coarse_dtree.getTreePartFiltered())
-    increase.push_back(oct.getIsOnTreeBdry() ? amount : 0);
+    increase.push_back(oct.getIsOnTreeBdry() or refine_all ? amount : 0);
   {DOLLAR("Refine")
     coarse_dtree.distRefine(coarse_dtree, std::move(increase), fine_dtree, sfc_tol);
   }
@@ -85,6 +95,7 @@ int main(int argc, char * argv[])
   const int ndofs = 2;
   std::vector<DofT> coarse_local = local_vector(coarse_da, ndofs);
   std::vector<DofT> fine_local = local_vector(fine_da, ndofs);
+  std::vector<DofT> fine_local_single = local_vector(fine_da, ndofs);
   fill_xpyp1(coarse_dtree, coarse_da, ndofs, coarse_local);
 
   {DOLLAR("lerp")
@@ -92,11 +103,21 @@ int main(int argc, char * argv[])
         coarse_dtree, coarse_da, ndofs, coarse_local,
         fine_dtree, fine_da, fine_local);
   }
+  {DOLLAR("single.level")
+    oldIntergridTransfer(
+        coarse_dtree, coarse_da, ndofs, coarse_local,
+        fine_dtree, fine_da, fine_local_single);
+  }
 
   const size_t misses = check_xpyp1(fine_dtree, fine_da, ndofs, fine_local);
+  const size_t misses_single = check_xpyp1(fine_dtree, fine_da, ndofs, fine_local_single);
   printf("[%d] misses: %s%lu/%lu (%.0f%%)%s\n", comm_rank,
       (misses == 0 ? GRN : RED),
       misses, fine_da->getLocalNodalSz() * ndofs, 100.0 * misses / (fine_da->getLocalNodalSz() * ndofs),
+      NRM);
+  printf("[%d] misses_single: %s%lu/%lu (%.0f%%)%s\n", comm_rank,
+      (misses_single == 0 ? GRN : RED),
+      misses_single, fine_da->getLocalNodalSz() * ndofs, 100.0 * misses_single / (fine_da->getLocalNodalSz() * ndofs),
       NRM);
 
   print_dollars(comm);
@@ -176,6 +197,88 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
   //       Tested on degree=1 by rounding the matrix elements to the
   //       nearest 0.5, and the tiny errors went away.
   return misses;
+}
+
+// ============================================================
+
+#include "intergridTransfer.h"
+
+void oldIntergridTransfer(
+    const ot::DistTree<uint, DIM> &from_dtree,
+    const ot::DA<DIM> *from_da,
+    const int ndofs,
+    const std::vector<DofT> &from_local,
+    const ot::DistTree<uint, DIM> &to_dtree,
+    const ot::DA<DIM> *to_da,
+    std::vector<DofT> &to_local)
+{
+  // Surrogate octree: Coarse by fine
+  OctList surrogateOctree = ot::SFC_Tree<uint, DIM>::getSurrogateGrid(
+      ot::SurrogateOutByIn,
+      to_dtree.getTreePartFiltered(),    // this partition
+      from_dtree.getTreePartFiltered(),  // this grid
+      from_dtree.getComm());
+  ot::DistTree<uint, DIM> surr_dtree(
+      surrogateOctree, from_dtree.getComm(), ot::DistTree<uint, DIM>::NoCoalesce);
+  surr_dtree.filterTree(from_dtree.getDomainDecider());
+
+  /// ot::quadTreeToGnuplot(surr_dtree.getTreePartFiltered(), 8, "surr", from_dtree.getComm());
+
+  // Surrogate DA
+  ot::DA<DIM> *surr_da = new ot::DA<DIM>(
+      surr_dtree,
+      from_dtree.getComm(),
+      from_da->getElementOrder());
+
+  // DistShiftNodes: Coarse --> Surrogate
+  std::vector<DofT> fine_ghost,  surr_ghost;
+  to_da->createVector(fine_ghost, false, true, ndofs);
+  surr_da->createVector(surr_ghost, false, true, ndofs);
+  std::fill(fine_ghost.begin(), fine_ghost.end(), 0);
+  std::fill(surr_ghost.begin(), surr_ghost.end(), 0);
+  ot::distShiftNodes(
+      *from_da, from_local.data(),
+      *surr_da, surr_ghost.data() + surr_da->getLocalNodeBegin() * ndofs,
+      ndofs);
+
+  // Ghost read in surrogate
+  surr_da->readFromGhostBegin(surr_ghost.data(), ndofs);
+  surr_da->readFromGhostEnd(surr_ghost.data(), ndofs);
+
+  // 2-loop, output to ghost
+  fem::MeshFreeInputContext<DofT, Oct>
+      inctx{ surr_ghost.data(),
+             surr_da->getTNCoords(),
+             surr_da->getTotalNodalSz(),
+             surr_dtree.getTreePartFiltered().data(),
+             surr_dtree.getTreePartFiltered().size(),
+             ot::dummyOctant<DIM>(),
+             ot::dummyOctant<DIM>() };
+  fem::MeshFreeOutputContext<DofT, Oct>
+      outctx{fine_ghost.data(),
+             to_da->getTNCoords(),
+             to_da->getTotalNodalSz(),
+             to_dtree.getTreePartFiltered().data(),
+             to_dtree.getTreePartFiltered().size(),
+             ot::dummyOctant<DIM>(),
+             ot::dummyOctant<DIM>() };
+
+  // Note: Old versions required outDirty and writeToGhosts,
+  // but now not needed because node partition respects element partition.
+
+  /// std::vector<char> dirty;
+  /// to_da->createVector(dirty, false, true, 1);
+  /// std::fill(dirty.begin(), dirty.end(), 0);
+  /// fem::locIntergridTransfer(inctx, outctx, ndofs, to_da->getReferenceElement(), dirty.data());
+  /// to_da->writeToGhostsBegin(fine_ghost.data(), ndofs, dirty.data());
+  /// to_da->writeToGhostsEnd(fine_ghost.data(), ndofs, false, dirty.data());
+
+  fem::locIntergridTransfer(inctx, outctx, ndofs, to_da->getReferenceElement());
+
+  // Extract ghost --> local
+  to_da->ghostedNodalToNodalVec(fine_ghost, to_local, true, ndofs);
+
+  delete surr_da;
 }
 
 
