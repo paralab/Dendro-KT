@@ -151,39 +151,23 @@ namespace ot
     // layers=2 for keys + dofs, prevents copying MPI_Request
 
     // Count cells per destination.
-    size_t cell_send_total = 0;
+    std::vector<SizeRange> send_ranges(partners.nDest());
     {
-      std::vector<size_t> send_counts(partners.nDest(), 0);
-      for (IntRange to_range : to_proc_ranges)
+      for (size_t i = 0; i < from_octlist.size(); ++i)
+      {
+        IntRange to_range = to_proc_ranges[i];
+
         for (int a = to_range.min; a <= to_range.max; ++a)
           if (a != active_rank)
           {
             assert(active_to_dest_idx[a] >= 0);
-            send_counts[active_to_dest_idx[a]]++;
+            send_ranges[active_to_dest_idx[a]].include(i);
           }
       for (int dst = 0; dst < partners.nDest(); ++dst)
-      {
-        p2p_cells.schedule_send(dst, send_counts[dst], cell_send_total);
-        cell_send_total += send_counts[dst];
+        p2p_cells.schedule_send(dst, send_ranges[dst].length(), send_ranges[dst].min);
       }
     }
 
-    // Stage cells for each destination.
-    OctList send_cells(cell_send_total);
-    //future: cell dofs
-    {
-      std::vector<size_t> send_offsets(
-          p2p_cells.send_offsets(),
-          p2p_cells.send_offsets() + partners.nDest());
-      for (size_t i = 0; i < from_octlist.size(); ++i)
-      {
-        IntRange to_range = to_proc_ranges[i];
-        for (int a = to_range.min; a <= to_range.max; ++a)
-          if (a != active_rank)
-            send_cells[send_offsets[active_to_dest_idx[a]]++] = from_octlist[i];
-        //future: cell dofs
-      }
-    }
 
     // Ghost read end.
     from_da->readFromGhostEnd(from_nodes_ghosted.data(), ndofs);
@@ -196,7 +180,7 @@ namespace ot
     {
       node_essential.clear();
       flag_essential_nodes(
-          &send_cells[p2p_cells.send_offsets()[dst]],
+          &from_octlist[p2p_cells.send_offsets()[dst]],
           p2p_cells.send_sizes()[dst],
           from_da,
           node_essential);
@@ -223,9 +207,9 @@ namespace ot
       p2p_scalar.send(dst,
           p2p_cells.send_sizes()[dst],
           p2p_nodes.send_sizes()[dst]);
-    p2p_cells.send(send_cells.data());
+    p2p_cells.send(from_octlist.data());
     p2p_nodes.send(send_nodes.data());
-    //future: send_dofs(send_cell_dofs.data(), ndofs);
+    //future: send_dofs(from_cell_dofs.data(), ndofs);
     p2p_nodes.send_dofs(send_node_dofs.data(), ndofs);
 
     // Self node size and selection.
