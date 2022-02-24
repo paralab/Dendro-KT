@@ -13,7 +13,7 @@
 
 #include "test/octree/multisphere.h"
 
-constexpr int DIM = 2;
+constexpr int DIM = 3;
 using uint = unsigned int;
 using DofT = double;
 
@@ -78,8 +78,8 @@ int main(int argc, char * argv[])
   /// ot::quadTreeToGnuplot(coarse_da->getTNVec(), 8, "coarse.da", comm);
 
   std::vector<int> increase;
-  const int amount = 1;
-  const bool refine_all = true;
+  const int amount = 2;
+  const bool refine_all = false;
   increase.reserve(coarse_dtree.getTreePartFiltered().size());
   for (const Oct &oct : coarse_dtree.getTreePartFiltered())
     increase.push_back(oct.getIsOnTreeBdry() or refine_all ? amount : 0);
@@ -92,10 +92,9 @@ int main(int argc, char * argv[])
   printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
   /// ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
 
-  const int ndofs = 2;
+  const int ndofs = 1;
   std::vector<DofT> coarse_local = local_vector(coarse_da, ndofs);
   std::vector<DofT> fine_local = local_vector(fine_da, ndofs);
-  std::vector<DofT> fine_local_single = local_vector(fine_da, ndofs);
   fill_xpyp1(coarse_dtree, coarse_da, ndofs, coarse_local);
 
   {DOLLAR("lerp")
@@ -103,21 +102,11 @@ int main(int argc, char * argv[])
         coarse_dtree, coarse_da, ndofs, coarse_local,
         fine_dtree, fine_da, fine_local);
   }
-  {DOLLAR("single.level")
-    oldIntergridTransfer(
-        coarse_dtree, coarse_da, ndofs, coarse_local,
-        fine_dtree, fine_da, fine_local_single);
-  }
 
   const size_t misses = check_xpyp1(fine_dtree, fine_da, ndofs, fine_local);
-  const size_t misses_single = check_xpyp1(fine_dtree, fine_da, ndofs, fine_local_single);
   printf("[%d] misses: %s%lu/%lu (%.0f%%)%s\n", comm_rank,
       (misses == 0 ? GRN : RED),
       misses, fine_da->getLocalNodalSz() * ndofs, 100.0 * misses / (fine_da->getLocalNodalSz() * ndofs),
-      NRM);
-  printf("[%d] misses_single: %s%lu/%lu (%.0f%%)%s\n", comm_rank,
-      (misses_single == 0 ? GRN : RED),
-      misses_single, fine_da->getLocalNodalSz() * ndofs, 100.0 * misses_single / (fine_da->getLocalNodalSz() * ndofs),
       NRM);
 
   print_dollars(comm);
