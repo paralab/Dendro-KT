@@ -285,10 +285,7 @@ namespace ot
     p2p_cells.wait_all();
     p2p_nodes.wait_all();
 
-    printf("[%d] cells: .in=%lu  .self_offset=%d  .self_size=%d=%lu\n",
-        comm_rank, from_octlist.size(), p2p_cells.self_offset(), p2p_cells.self_size(), self_cells);
-
-    quadTreeToGnuplot(from_total_cells, 8, "total.cells", comm);
+    /// quadTreeToGnuplot(from_total_cells, 8, "total.cells", comm);
 
     // Fine interpolate from combination of local and remote nodes.
     assert(from_da->getElementOrder() == 1);

@@ -13,7 +13,7 @@
 
 #include "test/octree/multisphere.h"
 
-constexpr int DIM = 2;
+constexpr int DIM = 3;
 using uint = unsigned int;
 using DofT = double;
 
@@ -55,7 +55,7 @@ int main(int argc, char * argv[])
   DA *coarse_da, *fine_da;
 
   const double sfc_tol = 0.05;
-  const size_t grain = 5e1;
+  const size_t grain = 1e2;
   const int degree = 1;
   {DOLLAR("coarse_dtree")
     coarse_dtree = make_dist_tree(grain, sfc_tol, comm);
@@ -65,11 +65,11 @@ int main(int argc, char * argv[])
     coarse_da = new DA(coarse_dtree, comm, degree, int{}, sfc_tol);
   }
     printf("[%d] da size (e:%lu n:%lu)\n", comm_rank, coarse_da->getLocalElementSz(), coarse_da->getLocalNodalSz());
-  ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
+  /// ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
   /// ot::quadTreeToGnuplot(coarse_da->getTNVec(), 8, "coarse.da", comm);
 
   std::vector<int> increase;
-  const int amount = 1;
+  const int amount = 3;
   increase.reserve(coarse_dtree.getTreePartFiltered().size());
   for (const Oct &oct : coarse_dtree.getTreePartFiltered())
     increase.push_back(oct.getIsOnTreeBdry() ? amount : 0);
@@ -80,9 +80,9 @@ int main(int argc, char * argv[])
     fine_da = new DA(fine_dtree, comm, degree, int{}, sfc_tol);
   }
   printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
-  ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
+  /// ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
 
-  const int ndofs = 1;
+  const int ndofs = 2;
   std::vector<DofT> coarse_local = local_vector(coarse_da, ndofs);
   std::vector<DofT> fine_local = local_vector(fine_da, ndofs);
   fill_xpyp1(coarse_dtree, coarse_da, ndofs, coarse_local);
@@ -170,18 +170,6 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
         colors[i] = RED;
       }
   }
-
-  std::stringstream ss;
-  ss << "\n====================================================================\n";
-  ot::printNodes(da->getTNCoords() + da->getLocalNodeBegin(),
-                 da->getTNCoords() + da->getLocalNodeBegin() + da->getLocalNodalSz(),
-                 local.data(),
-                 colors.data(),
-                 degree,
-                 ss);
-  ss << "\n";
-  std::cout << ss.str();
-
   // Note: The p2c interpolation matrices can introduce tiny errors, O(1e-16),
   //       even for the case degree=1. The matrices are formed in refel.cpp
   //       using a linear solve (lapack_DGESV() -> ip_1D_0 and ip_1D_1).
