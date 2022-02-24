@@ -5,7 +5,7 @@
 #include "distTree.h"
 #include "oda.h"
 #include "octUtils.h"
-#include "lerp.hpp"
+#include "coarseToFine.hpp"
 
 #include <vector>
 #include <array>
@@ -98,7 +98,7 @@ int main(int argc, char * argv[])
   fill_xpyp1(coarse_dtree, coarse_da, ndofs, coarse_local);
 
   {DOLLAR("lerp")
-    ot::lerp(
+    fem::lerp(
         coarse_dtree, coarse_da, ndofs, coarse_local,
         fine_dtree, fine_da, fine_local);
   }

@@ -186,7 +186,7 @@ set(DENDRO_KT_INC include/dendro.h
                   FEM/include/feVector.h
                   FEM/include/interpMatrices.h
                   FEM/include/intergridTransfer.h
-                  include/lerp.hpp
+                  FEM/include/coarseToFine.hpp
                   FEM/include/setDiag.h
                   FEM/include/gmgMat.h
                   )

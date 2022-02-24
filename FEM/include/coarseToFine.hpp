@@ -4,8 +4,8 @@
  * @date 2022-02-17
  */
 
-#ifndef DENDRO_KT_LERP_HPP
-#define DENDRO_KT_LERP_HPP
+#ifndef DENDRO_KT_COARSE_TO_FINE_HPP
+#define DENDRO_KT_COARSE_TO_FINE_HPP
 
 #include "treeNode.h"
 #include "distTree.h"
@@ -13,38 +13,38 @@
 #include "p2p.h"
 #include "sfcTreeLoop_matvec_io.h"
 
-namespace ot
+namespace fem
 {
   //future: rename because it's not just lerp if have cell data
 
   template <unsigned dim>
   void lerp(
-      const DistTree<unsigned, dim> &from_dtree,
-      const DA<dim> *from_da,
+      const ot::DistTree<unsigned, dim> &from_dtree,
+      const ot::DA<dim> *from_da,
       const int ndofs,
       const std::vector<double> &from_local,
-      const DistTree<unsigned, dim> &to_dtree,
-      const DA<dim> *to_da,
+      const ot::DistTree<unsigned, dim> &to_dtree,
+      const ot::DA<dim> *to_da,
       std::vector<double> &to_local);
 
   template <unsigned dim>
   void locLerp(
-      const std::vector<TreeNode<unsigned, dim>> &from_octlist,
-      const TreeNode<unsigned, dim> *from_nodes,
+      const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
+      const ot::TreeNode<unsigned, dim> *from_nodes,
       const size_t from_nodes_sz,
       const double * from_dofs,
       const int ndofs,
-      const std::vector<TreeNode<unsigned, dim>> &to_octlist,
-      const DA<dim> *to_da,  //quick fix
-      const TreeNode<unsigned, dim> *to_nodes,
+      const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
+      const ot::DA<dim> *to_da,  //quick fix
+      const ot::TreeNode<unsigned, dim> *to_nodes,
       const size_t to_nodes_sz,
       double * to_dofs);
 
   template <unsigned dim>
   void flag_essential_nodes(
-      const TreeNode<unsigned, dim> *octants,
+      const ot::TreeNode<unsigned, dim> *octants,
       const size_t oct_sz,
-      const DA<dim> *da,
+      const ot::DA<dim> *da,
       std::vector<char> &node_essential);
 
 }
@@ -52,20 +52,20 @@ namespace ot
 
 // =======================================================================
 
-namespace ot
+namespace fem
 {
   // lerp()
   template <unsigned dim>
   void lerp(
-      const DistTree<unsigned, dim> &from_dtree,
-      const DA<dim> *from_da,
+      const ot::DistTree<unsigned, dim> &from_dtree,
+      const ot::DA<dim> *from_da,
       const int ndofs,
       const std::vector<double> &from_local,
-      const DistTree<unsigned, dim> &to_dtree,
-      const DA<dim> *to_da,
+      const ot::DistTree<unsigned, dim> &to_dtree,
+      const ot::DA<dim> *to_da,
       std::vector<double> &to_local)
   {
-    using Oct = TreeNode<unsigned, dim>;
+    using Oct = ot::TreeNode<unsigned, dim>;
     using OctList = std::vector<Oct>;
 
     assert(from_local.size() == ndofs * from_da->getLocalNodalSz());
@@ -79,7 +79,7 @@ namespace ot
 
     const OctList & from_octlist = from_dtree.getTreePartFiltered();
     const OctList & to_octlist = to_dtree.getTreePartFiltered();
-    const auto *to_nodes = to_da->getTNCoords() + to_da->getLocalNodeBegin();
+    const Oct *to_nodes = to_da->getTNCoords() + to_da->getLocalNodeBegin();
     const size_t to_node_sz = to_da->getLocalNodalSz();
 
     // Ghost read begin.
@@ -89,21 +89,21 @@ namespace ot
 
     // Find elements in coarse grid that overlap with fine partitions.
 
-    using SizeRange = IntRange<size_t>;
-    using IntRange = IntRange<>;
+    using SizeRange = ot::IntRange<size_t>;
+    using IntRange = ot::IntRange<>;
 
     // Map coarse cells to fine partitions.
     const bool is_active = (to_octlist.size() > 0);
     std::vector<int> active;
-    const PartitionFrontBack<unsigned, dim> partition =
-        SFC_Tree<unsigned, dim>::allgatherSplitters(
+    const ot::PartitionFrontBack<unsigned, dim> partition =
+        ot::SFC_Tree<unsigned, dim>::allgatherSplitters(
             is_active, to_octlist.front(), to_octlist.back(), comm, &active);
     std::map<int, int> inv_active;
     for (int ar = 0; ar < active.size(); ++ar)
       inv_active[active[ar]] = ar;
     const int active_rank = (is_active ? inv_active[comm_rank] : -1);
     std::vector<IntRange> to_proc_ranges =
-        SFC_Tree<unsigned, dim>::treeNode2PartitionRanks(
+        ot::SFC_Tree<unsigned, dim>::treeNode2PartitionRanks(
             from_octlist, partition, &active);
     // to_proc_ranges may include self
 
@@ -134,7 +134,7 @@ namespace ot
           active_to_dest_idx[a] = send_to_active.size();
           send_to_active.push_back(a);
         }
-      std::vector<int> recv_from_active = recvFromActive(active, send_to_active, comm);
+      std::vector<int> recv_from_active = ot::recvFromActive(active, send_to_active, comm);
 
       // Active index to raw rank.
       partners.reset(send_to_active.size(), recv_from_active.size(), comm);
@@ -308,18 +308,18 @@ namespace ot
   //
   template <unsigned dim>
   void locLerp(
-      const std::vector<TreeNode<unsigned, dim>> &from_octlist,
-      const TreeNode<unsigned, dim> *from_nodes,
+      const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
+      const ot::TreeNode<unsigned, dim> *from_nodes,
       const size_t from_nodes_sz,
       const double * from_dofs,
       const int ndofs,
-      const std::vector<TreeNode<unsigned, dim>> &to_octlist,
-      const DA<dim> *to_da,  //quick fix
-      const TreeNode<unsigned, dim> *to_nodes,
+      const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
+      const ot::DA<dim> *to_da,  //quick fix
+      const ot::TreeNode<unsigned, dim> *to_nodes,
       const size_t to_nodes_sz,
       double * to_dofs)
   {
-    using Oct = TreeNode<unsigned, dim>;
+    using Oct = ot::TreeNode<unsigned, dim>;
     using OctList = std::vector<Oct>;
 
     assert(from_octlist.size() > 0 or to_octlist.size() == 0);
@@ -333,21 +333,21 @@ namespace ot
     std::vector<double> ghosted_to_dofs(to_da->getTotalNodalSz() * ndofs, 0);
 
     const int degree = 1;
-    MatvecBaseIn<dim, double> from_loop(
+    ot::MatvecBaseIn<dim, double> from_loop(
         from_nodes_sz, ndofs, degree,
         false, 0,
         from_nodes, from_dofs,
         from_octlist.data(), from_octlist.size(),
-        dummyOctant<dim>(),
-        dummyOctant<dim>());
+        ot::dummyOctant<dim>(),
+        ot::dummyOctant<dim>());
 
-    MatvecBaseOut<dim, double, false> to_loop(
+    ot::MatvecBaseOut<dim, double, false> to_loop(
         to_da->getTotalNodalSz(), ndofs, degree,
         false, 0,
         to_da->getTNCoords(),
         to_octlist.data(), to_octlist.size(),
-        dummyOctant<dim>(),
-        dummyOctant<dim>());
+        ot::dummyOctant<dim>(),
+        ot::dummyOctant<dim>());
 
     // local only, not ghosted (won't work until sfcTreeLoop_* fixed)
     /// MatvecBaseOut<dim, double, false> to_loop(
@@ -383,7 +383,7 @@ namespace ot
           {
             assert(degree == 1);  // Octant-based formula only valid for linear.
 
-            const TreeNode<unsigned int, dim> * fine_nodes = to_loop.subtreeInfo().readNodeCoordsIn();
+            const ot::TreeNode<unsigned int, dim> * fine_nodes = to_loop.subtreeInfo().readNodeCoordsIn();
             const double ratio = 1.0 / (1u << (subtree(to_loop).getLevel() - subtree(from_loop).getLevel()));
             const int fine_height = m_uiMaxDepth - subtree(to_loop).getLevel();
 
@@ -445,12 +445,12 @@ namespace ot
   // flag_essential_nodes()
   template <unsigned dim>
   void flag_essential_nodes(
-      const TreeNode<unsigned, dim> *octants,
+      const ot::TreeNode<unsigned, dim> *octants,
       const size_t oct_sz,
-      const DA<dim> *da,
+      const ot::DA<dim> *da,
       std::vector<char> &node_essential)
   {
-    MatvecBaseOut<dim, char, true> loop(
+    ot::MatvecBaseOut<dim, char, true> loop(
         da->getTotalNodalSz(),
         1,
         da->getElementOrder(),
@@ -458,8 +458,8 @@ namespace ot
         da->getTNCoords(),
         octants,
         oct_sz,
-        dummyOctant<dim>(),
-        dummyOctant<dim>());
+        ot::dummyOctant<dim>(),
+        ot::dummyOctant<dim>());
 
     const int npe = da->getNumNodesPerElement();
     const std::vector<char> leaf(npe, 1);
@@ -484,6 +484,6 @@ namespace ot
 
 
 
-}//namespace ot
+}//namespace fem
 
-#endif//DENDRO_KT_LERP_HPP
+#endif//DENDRO_KT_COARSE_TO_FINE_HPP
