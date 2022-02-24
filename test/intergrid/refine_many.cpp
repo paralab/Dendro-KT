@@ -23,7 +23,8 @@ using OctList = std::vector<Oct>;
 ot::DistTree<uint, DIM> make_dist_tree(size_t grain, double sfc_tol, MPI_Comm comm);
 void print_dollars(MPI_Comm comm);
 
-std::vector<DofT> local_vector(const ot::DA<DIM> *da, int dofs);
+std::vector<DofT> local_vector(const ot::DA<DIM> *da, int ndofs);
+std::vector<DofT> cell_vector(const ot::DistTree<uint, DIM> &dtree, int ndofs);
 
 void fill_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                  const ot::DA<DIM> *da,
@@ -97,16 +98,34 @@ int main(int argc, char * argv[])
   std::vector<DofT> fine_local = local_vector(fine_da, ndofs);
   fill_xpyp1(coarse_dtree, coarse_da, ndofs, coarse_local);
 
+  const int cell_ndofs = 1;
+  std::vector<DofT> coarse_cell_dofs = cell_vector(coarse_dtree, cell_ndofs);
+  std::vector<DofT> fine_cell_dofs = cell_vector(fine_dtree, cell_ndofs);
+  std::fill(coarse_cell_dofs.begin(), coarse_cell_dofs.end(), 1.0f);
+  std::fill(fine_cell_dofs.begin(), fine_cell_dofs.end(), 0.0f);
+
   {DOLLAR("lerp")
-    fem::lerp(
-        coarse_dtree, coarse_da, ndofs, coarse_local,
-        fine_dtree, fine_da, fine_local);
+    fem::coarse_to_fine(
+        coarse_dtree, coarse_da, ndofs, cell_ndofs, coarse_local, coarse_cell_dofs,
+        fine_dtree, fine_da, fine_local, fine_cell_dofs);
   }
 
-  const size_t misses = check_xpyp1(fine_dtree, fine_da, ndofs, fine_local);
-  printf("[%d] misses: %s%lu/%lu (%.0f%%)%s\n", comm_rank,
-      (misses == 0 ? GRN : RED),
-      misses, fine_da->getLocalNodalSz() * ndofs, 100.0 * misses / (fine_da->getLocalNodalSz() * ndofs),
+  const size_t node_misses = check_xpyp1(fine_dtree, fine_da, ndofs, fine_local);
+  const size_t cell_misses =
+      fine_dtree.getTreePartFiltered().size() * cell_ndofs -
+      std::count(fine_cell_dofs.begin(), fine_cell_dofs.end(), 1.0f);
+  printf("[%d] node_misses: %s%lu/%lu (%.0f%%)%s \t "
+              "cell misses: %s%lu/%lu (%.0f%%)%s\n",
+      comm_rank,
+      (node_misses == 0 ? GRN : RED),
+      node_misses,
+      fine_da->getLocalNodalSz() * ndofs,
+      100.0 * node_misses / (ndofs ? fine_da->getLocalNodalSz() * ndofs : 1),
+      NRM,
+      (cell_misses == 0 ? GRN : RED),
+      cell_misses,
+      fine_dtree.getTreePartFiltered().size() * cell_ndofs,
+      100.0 * cell_misses / (cell_ndofs ? fine_dtree.getTreePartFiltered().size() * cell_ndofs : 1),
       NRM);
 
   print_dollars(comm);
@@ -134,6 +153,12 @@ std::vector<DofT> local_vector(const ot::DA<DIM> *da, int ndofs)
   std::vector<DofT> local;
   da->createVector(local, false, false, ndofs);
   return local;
+}
+
+// cell_vector()
+std::vector<DofT> cell_vector(const ot::DistTree<uint, DIM> &dtree, int ndofs)
+{
+  return std::vector<DofT>(dtree.getTreePartFiltered().size() * ndofs);
 }
 
 // fill_xpyp1()

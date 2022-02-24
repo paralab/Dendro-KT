@@ -15,20 +15,21 @@
 
 namespace fem
 {
-  //future: rename because it's not just lerp if have cell data
-
   template <unsigned dim>
-  void lerp(
+  void coarse_to_fine(
       const ot::DistTree<unsigned, dim> &from_dtree,
       const ot::DA<dim> *from_da,
-      const int ndofs,
-      const std::vector<double> &from_local,
+      const int node_dofs,
+      const int cell_dofs,
+      const std::vector<double> &from_node_dofs,
+      const std::vector<double> &from_cell_dofs,
       const ot::DistTree<unsigned, dim> &to_dtree,
       const ot::DA<dim> *to_da,
-      std::vector<double> &to_local);
+      std::vector<double> &to_node_dofs,
+      std::vector<double> &to_cell_dofs);
 
   template <unsigned dim>
-  void locLerp(
+  void local_lerp(
       const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
       const ot::TreeNode<unsigned, dim> *from_nodes,
       const size_t from_nodes_sz,
@@ -54,23 +55,22 @@ namespace fem
 
 namespace fem
 {
-  // lerp()
+  // coarse_to_fine()
   template <unsigned dim>
-  void lerp(
+  void coarse_to_fine(
       const ot::DistTree<unsigned, dim> &from_dtree,
       const ot::DA<dim> *from_da,
-      const int ndofs,
-      const std::vector<double> &from_local,
+      const int node_dofs,
+      const int cell_dofs,
+      const std::vector<double> &from_node_dofs,
+      const std::vector<double> &from_cell_dofs,
       const ot::DistTree<unsigned, dim> &to_dtree,
       const ot::DA<dim> *to_da,
-      std::vector<double> &to_local)
+      std::vector<double> &to_node_dofs,
+      std::vector<double> &to_cell_dofs)
   {
     using Oct = ot::TreeNode<unsigned, dim>;
     using OctList = std::vector<Oct>;
-
-    assert(from_local.size() == ndofs * from_da->getLocalNodalSz());
-    assert(to_local.size() == ndofs * to_da->getLocalNodalSz());
-    assert(from_da->getGlobalComm() == to_da->getGlobalComm());
 
     int comm_size, comm_rank;
     MPI_Comm comm = from_da->getGlobalComm();
@@ -82,10 +82,16 @@ namespace fem
     const Oct *to_nodes = to_da->getTNCoords() + to_da->getLocalNodeBegin();
     const size_t to_node_sz = to_da->getLocalNodalSz();
 
+    assert(from_node_dofs.size() == node_dofs * from_da->getLocalNodalSz());
+    assert(from_cell_dofs.size() == cell_dofs * from_octlist.size());
+    assert(to_node_dofs.size() == node_dofs * to_da->getLocalNodalSz());
+    assert(to_cell_dofs.size() == cell_dofs * to_octlist.size());
+    assert(from_da->getGlobalComm() == to_da->getGlobalComm());
+
     // Ghost read begin.
     std::vector<double> from_nodes_ghosted;
-    from_da->nodalVecToGhostedNodal(from_local, from_nodes_ghosted, false, ndofs);
-    from_da->readFromGhostBegin(from_nodes_ghosted.data(), ndofs);
+    from_da->nodalVecToGhostedNodal(from_node_dofs, from_nodes_ghosted, false, node_dofs);
+    from_da->readFromGhostBegin(from_nodes_ghosted.data(), node_dofs);
 
     // Find elements in coarse grid that overlap with fine partitions.
 
@@ -170,7 +176,7 @@ namespace fem
 
 
     // Ghost read end.
-    from_da->readFromGhostEnd(from_nodes_ghosted.data(), ndofs);
+    from_da->readFromGhostEnd(from_nodes_ghosted.data(), node_dofs);
 
     // Cell sets to node sets
     OctList send_nodes;
@@ -191,14 +197,14 @@ namespace fem
       p2p_nodes.schedule_send(dst, n_essential, send_nodes.size());
 
       send_nodes.reserve(send_nodes.size() + n_essential);
-      send_node_dofs.reserve(send_node_dofs.size() + n_essential * ndofs);
+      send_node_dofs.reserve(send_node_dofs.size() + n_essential * node_dofs);
 
       for (size_t i = 0; i < from_da->getTotalNodalSz(); ++i)
         if (node_essential[i])
         {
           send_nodes.push_back(from_da->getTNCoords()[i]);
-          for (int dof = 0; dof < ndofs; ++dof)
-            send_node_dofs.push_back(from_nodes_ghosted[i * ndofs + dof]);
+          for (int dof = 0; dof < node_dofs; ++dof)
+            send_node_dofs.push_back(from_nodes_ghosted[i * node_dofs + dof]);
         }
     }
 
@@ -210,7 +216,7 @@ namespace fem
     p2p_cells.send(from_octlist.data());
     p2p_nodes.send(send_nodes.data());
     //future: send_dofs(from_cell_dofs.data(), ndofs);
-    p2p_nodes.send_dofs(send_node_dofs.data(), ndofs);
+    p2p_nodes.send_dofs(send_node_dofs.data(), node_dofs);
 
     // Self node size and selection.
     size_t self_nodes = 0;
@@ -250,7 +256,7 @@ namespace fem
     OctList from_total_cells(p2p_cells.recv_total() + self_cells);
     OctList from_total_nodes(p2p_nodes.recv_total() + self_nodes);
     //future: cells
-    std::vector<double> from_total_node_dofs((p2p_nodes.recv_total() + self_nodes) * ndofs);
+    std::vector<double> from_total_node_dofs((p2p_nodes.recv_total() + self_nodes) * node_dofs);
 
     // Copy self overlap.
     if (is_active and self_range.nonempty())
@@ -268,9 +274,9 @@ namespace fem
         if (node_essential[i])
         {
           from_total_nodes[node_offset + j] = from_da->getTNCoords()[i];
-          for (int dof = 0; dof < ndofs; ++dof)
-            from_total_node_dofs[(node_offset + j) * ndofs + dof] =
-                from_nodes_ghosted[i * ndofs + dof];
+          for (int dof = 0; dof < node_dofs; ++dof)
+            from_total_node_dofs[(node_offset + j) * node_dofs + dof] =
+                from_nodes_ghosted[i * node_dofs + dof];
           ++j;
         }
     }
@@ -279,7 +285,7 @@ namespace fem
     p2p_cells.recv(from_total_cells.data());
     p2p_nodes.recv(from_total_nodes.data());
     //future: recv_dofs(from_total_cell_dofs.data(), ndofs);
-    p2p_nodes.recv_dofs(from_total_node_dofs.data(), ndofs);
+    p2p_nodes.recv_dofs(from_total_node_dofs.data(), node_dofs);
 
     // Wait on sends.
     p2p_cells.wait_all();
@@ -289,25 +295,26 @@ namespace fem
 
     // Fine interpolate from combination of local and remote nodes.
     assert(from_da->getElementOrder() == 1);
-    locLerp(
-        from_total_cells,
-        from_total_nodes.data(), from_total_nodes.size(),
-        from_total_node_dofs.data(),
-        ndofs,
-        to_octlist,
-        to_da,
-        to_nodes, to_node_sz,
-        to_local.data());
+    if (node_dofs > 0)
+      local_lerp(
+          from_total_cells,
+          from_total_nodes.data(), from_total_nodes.size(),
+          from_total_node_dofs.data(),
+          node_dofs,
+          to_octlist,
+          to_da,
+          to_nodes, to_node_sz,
+          to_node_dofs.data());
 
     //future: iterate cell values to fine grid
   }
 
 
   //
-  // locLerp()
+  // local_lerp()
   //
   template <unsigned dim>
-  void locLerp(
+  void local_lerp(
       const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
       const ot::TreeNode<unsigned, dim> *from_nodes,
       const size_t from_nodes_sz,
