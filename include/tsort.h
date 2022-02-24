@@ -155,13 +155,15 @@ struct PartitionFrontBack
   PartitionFront<T, dim> fronts() const { return { m_fronts }; }
 };
 
+template <typename IntT = int>
 struct IntRange
 {
-  int min = std::numeric_limits<int>::max();
-  int max = std::numeric_limits<int>::min();
-  void include(int x) { min = x<min ? x : min;  max = x>max ? x : max; }
+  IntT min = std::numeric_limits<IntT>::max();
+  IntT max = std::numeric_limits<IntT>::min();
+  void include(IntT x) { min = x<min ? x : min;  max = x>max ? x : max; }
   bool nonempty() const { return min <= max; }
   bool empty() const { return !nonempty(); }
+  IntT length() const { return empty() ? 0 : max + 1 - min; }
 };
 
 
@@ -537,7 +539,7 @@ struct SFC_Tree
    *        To avoid sending data to inactive ranks,
    *        the return indices are relative to the active list.
    */
-  static std::vector<IntRange> treeNode2PartitionRanks(
+  static std::vector<IntRange<>> treeNode2PartitionRanks(
       const std::vector<TreeNode<T, dim>> &treeNodes,
       const PartitionFrontBack<T, dim> &partitionSplitters,
       const std::vector<int> *active);
@@ -802,6 +804,11 @@ struct SFC_Tree
 };
 
 
+/** Discover sources from destinations within active list in comm */
+std::vector<int> recvFromActive(
+    const std::vector<int> &activeList,
+    const std::vector<int> &sendToActive,
+    MPI_Comm comm);
 
 /** Assumes tree is a distributed tree with no overlaps. */
 template <typename T, unsigned int dim>

@@ -217,7 +217,10 @@ namespace par
     void reserve(int ndest, int nsrc, int layers = 1);
 
     P2PMeta() = default;
-    P2PMeta(const P2PPartners *partners) { reset(partners); }
+    P2PMeta(const P2PPartners *partners, int layers = 1) {
+      reset(partners);
+      reserve(partners->nDest(), partners->nSrc(), layers);
+    }
 
     void reset(const P2PPartners *partners);
 

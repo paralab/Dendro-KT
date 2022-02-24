@@ -39,6 +39,14 @@ namespace ot
       const TreeNode<unsigned, dim> *to_nodes,
       const size_t to_nodes_sz,
       double * to_dofs);
+
+  template <unsigned dim>
+  void flag_essential_nodes(
+      const TreeNode<unsigned, dim> *octants,
+      const size_t oct_sz,
+      const DA<dim> *da,
+      std::vector<char> &node_essential);
+
 }
 
 
@@ -69,115 +77,248 @@ namespace ot
     MPI_Comm_size(comm, &comm_size);
     MPI_Comm_rank(comm, &comm_rank);
 
-    const auto *from_loc_cells = &(*from_dtree.getTreePartFiltered().begin());
-    const auto *from_loc_nodes = from_da->getTNCoords() + from_da->getLocalNodeBegin();
-    const auto *to_cells = &(*to_dtree.getTreePartFiltered().begin());
+    const OctList & from_octlist = from_dtree.getTreePartFiltered();
+    const OctList & to_octlist = to_dtree.getTreePartFiltered();
     const auto *to_nodes = to_da->getTNCoords() + to_da->getLocalNodeBegin();
-    const size_t from_loc_cell_sz = from_da->getLocalElementSz();
-    const size_t from_loc_node_sz = from_da->getLocalNodalSz();
-    const size_t to_cell_sz = to_da->getLocalElementSz();
     const size_t to_node_sz = to_da->getLocalNodalSz();
+
+    // Ghost read begin.
+    std::vector<double> from_nodes_ghosted;
+    from_da->nodalVecToGhostedNodal(from_local, from_nodes_ghosted, false, ndofs);
+    from_da->readFromGhostBegin(from_nodes_ghosted.data(), ndofs);
 
     // Find elements in coarse grid that overlap with fine partitions.
 
-    /// // Splitters of active ranks.
-    /// std::vector<int> active;
-    /// const PartitionFrontBack<T, dim> partition =
-    ///     allgatherSplitters(tree.size() > 0, tree.front(), tree.back(), comm, &active);
+    using SizeRange = IntRange<size_t>;
+    using IntRange = IntRange<>;
 
-    /// std::map<int, int> invActive;
-    /// for (int ar = 0; ar < active.size(); ++ar)
-    ///   invActive[active[ar]] = ar;
+    // Map coarse cells to fine partitions.
+    const bool is_active = (to_octlist.size() > 0);
+    std::vector<int> active;
+    const PartitionFrontBack<unsigned, dim> partition =
+        SFC_Tree<unsigned, dim>::allgatherSplitters(
+            is_active, to_octlist.front(), to_octlist.back(), comm, &active);
+    std::map<int, int> inv_active;
+    for (int ar = 0; ar < active.size(); ++ar)
+      inv_active[active[ar]] = ar;
+    const int active_rank = (is_active ? inv_active[comm_rank] : -1);
+    std::vector<IntRange> to_proc_ranges =
+        SFC_Tree<unsigned, dim>::treeNode2PartitionRanks(
+            from_octlist, partition, &active);
+    // to_proc_ranges may include self
 
-    /// const int activeRank = (isActive ? invActive[commRank] : -1);
-
-    /// std::vector<IntRange> insulationProcRanges =
-    ///     treeNode2PartitionRanks(insulationOfOwned, partition, &active);
-
-    // Ghost read coarse and send coarse element nodes to overlaps in fine grid.
-    const size_t to_local_nodes = to_da->getLocalNodalSz();
-    //TODO
-      // stub: send all nodes to all ranks
-    std::vector<int> all_but_self;
-    for (int rank = 0; rank < comm_size; ++rank)
-      if (rank != comm_rank)
-        all_but_self.push_back(rank);
-    par::P2PPartners p2p_partners(all_but_self, all_but_self, comm);
-    par::P2PScalar<int, 2> p2p_scalar(&p2p_partners);
-    par::P2PMeta p2p_cells(&p2p_partners);
-    par::P2PMeta p2p_nodes(&p2p_partners);
-    p2p_cells.reserve(comm_size - 1, comm_size - 1, 2);  // cells, cell dofs
-    p2p_nodes.reserve(comm_size - 1, comm_size - 1, 2);  // nodes, node dofs
-    // Communicate meta data.
-    for (int rank = 0, s = 0; rank < comm_size; ++rank)
-      if (rank != comm_rank)
-      {
-        p2p_scalar.send(s, int(from_loc_cell_sz), int(from_loc_node_sz));
-        p2p_cells.schedule_send(s, int(from_loc_cell_sz), 0);
-        p2p_nodes.schedule_send(s, int(from_loc_node_sz), 0);
-        ++s;
-      }
-    for (int rank = 0, r = 0; rank < comm_size; ++rank)
+    par::P2PPartners partners;
+    std::vector<int> active_to_dest_idx(active.size(), -1);
+    SizeRange self_range;
     {
-      if (rank != comm_rank)
+      // Which active ranks are destinations, i.e., have our coarse cells mapped.
+      std::vector<int> send_to_active;
+      std::vector<char> is_dest(active.size(), false);
+      for (size_t i = 0; i < from_octlist.size(); ++i)
       {
-        p2p_cells.recv_size(r, p2p_scalar.recv<0>(r));
-        p2p_nodes.recv_size(r, p2p_scalar.recv<1>(r));
-        ++r;
+        IntRange to_range = to_proc_ranges[i];
+
+        for (int a = to_range.min; a <= to_range.max; ++a)
+          is_dest[a] = true;
+        if (to_range.min <= active_rank and active_rank <= to_range.max)
+          self_range.include(i);
       }
-      else
+      if (is_active)
+        is_dest[active_rank] = false;   // exclude self from destinations
+
+      // Sets of destination and source ranks.
+      send_to_active.reserve(std::count(is_dest.begin(), is_dest.end(), true));
+      for (size_t a = 0; a < is_dest.size(); ++a)
+        if (is_dest[a])
+        {
+          active_to_dest_idx[a] = send_to_active.size();
+          send_to_active.push_back(a);
+        }
+      std::vector<int> recv_from_active = recvFromActive(active, send_to_active, comm);
+
+      // Active index to raw rank.
+      partners.reset(send_to_active.size(), recv_from_active.size(), comm);
+      for (size_t d = 0; d < send_to_active.size(); ++d)
+        partners.dest(d, active[send_to_active[d]]);
+      for (size_t s = 0; s < recv_from_active.size(); ++s)
+        partners.src(s, active[recv_from_active[s]]);
+    }
+    const size_t self_cells = self_range.length();
+
+    par::P2PScalar<int, 2> p2p_scalar(&partners);
+    par::P2PMeta p2p_cells(&partners, 2);
+    par::P2PMeta p2p_nodes(&partners, 2);
+    // layers=2 for keys + dofs, prevents copying MPI_Request
+
+    // Count cells per destination.
+    size_t cell_send_total = 0;
+    {
+      std::vector<size_t> send_counts(partners.nDest(), 0);
+      for (IntRange to_range : to_proc_ranges)
+        for (int a = to_range.min; a <= to_range.max; ++a)
+          if (a != active_rank)
+          {
+            assert(active_to_dest_idx[a] >= 0);
+            send_counts[active_to_dest_idx[a]]++;
+          }
+      for (int dst = 0; dst < partners.nDest(); ++dst)
       {
-        p2p_cells.self_size(r, int(from_loc_cell_sz));
-        p2p_nodes.self_size(r, int(from_loc_node_sz));
+        p2p_cells.schedule_send(dst, send_counts[dst], cell_send_total);
+        cell_send_total += send_counts[dst];
       }
     }
-    p2p_cells.tally_recvs();
-    p2p_nodes.tally_recvs();
 
-    // Send
-    p2p_cells.send(from_loc_cells);
-    p2p_nodes.send(from_loc_nodes);
-    //future: send_dofs(cell data)
-    p2p_nodes.send_dofs(from_local.data(), ndofs);
+    // Stage cells for each destination.
+    OctList send_cells(cell_send_total);
+    //future: cell dofs
+    {
+      std::vector<size_t> send_offsets(
+          p2p_cells.send_offsets(),
+          p2p_cells.send_offsets() + partners.nDest());
+      for (size_t i = 0; i < from_octlist.size(); ++i)
+      {
+        IntRange to_range = to_proc_ranges[i];
+        for (int a = to_range.min; a <= to_range.max; ++a)
+          if (a != active_rank)
+            send_cells[send_offsets[active_to_dest_idx[a]]++] = from_octlist[i];
+        //future: cell dofs
+      }
+    }
 
-    // Allocate
-    OctList from_total_cells(p2p_cells.recv_total() + from_loc_cell_sz);
-    OctList from_total_nodes(p2p_nodes.recv_total() + from_loc_node_sz);
-    //future: allocate to receive cell data
-    std::vector<double> from_total_dofs((p2p_nodes.recv_total() + from_loc_node_sz) * ndofs);
+    // Ghost read end.
+    from_da->readFromGhostEnd(from_nodes_ghosted.data(), ndofs);
 
-    // Copy self overlap
-    const auto copy_self = [](const auto &from, auto &to, const par::P2PMeta &meta, int nd = 1) {
-      std::copy_n(from, meta.self_size() * nd, &to[meta.self_offset() * nd]);
-    };
-    copy_self(from_loc_cells, from_total_cells, p2p_cells);
-    copy_self(from_loc_nodes, from_total_nodes, p2p_nodes);
-    //future: copy cell data
-    copy_self(from_local.data(), from_total_dofs, p2p_nodes, ndofs);
+    // Cell sets to node sets
+    OctList send_nodes;
+    std::vector<double> send_node_dofs;
+    std::vector<char> node_essential;
+    for (int dst = 0; dst < partners.nDest(); ++dst)
+    {
+      node_essential.clear();
+      flag_essential_nodes(
+          &send_cells[p2p_cells.send_offsets()[dst]],
+          p2p_cells.send_sizes()[dst],
+          from_da,
+          node_essential);
 
-    // Receive
+      const size_t n_essential =
+          std::count(node_essential.begin(), node_essential.end(), true);
+
+      p2p_nodes.schedule_send(dst, n_essential, send_nodes.size());
+
+      send_nodes.reserve(send_nodes.size() + n_essential);
+      send_node_dofs.reserve(send_node_dofs.size() + n_essential * ndofs);
+
+      for (size_t i = 0; i < from_da->getTotalNodalSz(); ++i)
+        if (node_essential[i])
+        {
+          send_nodes.push_back(from_da->getTNCoords()[i]);
+          for (int dof = 0; dof < ndofs; ++dof)
+            send_node_dofs.push_back(from_nodes_ghosted[i * ndofs + dof]);
+        }
+    }
+
+    // Send the sizes and payloads.
+    for (int dst = 0; dst < partners.nDest(); ++dst)
+      p2p_scalar.send(dst,
+          p2p_cells.send_sizes()[dst],
+          p2p_nodes.send_sizes()[dst]);
+    p2p_cells.send(send_cells.data());
+    p2p_nodes.send(send_nodes.data());
+    //future: send_dofs(send_cell_dofs.data(), ndofs);
+    p2p_nodes.send_dofs(send_node_dofs.data(), ndofs);
+
+    // Self node size and selection.
+    size_t self_nodes = 0;
+    if (is_active and self_range.nonempty())
+    {
+      node_essential.clear();
+      flag_essential_nodes(
+          &from_octlist[self_range.min],
+          self_cells,
+          from_da,
+          node_essential);
+      // node_essential now contains flags for self nodes.
+
+      self_nodes = std::count(node_essential.begin(), node_essential.end(), true);
+    }
+
+    // Receive sizes.
+    {
+      int src = 0;
+      for (; src < partners.nSrc() and partners.src(src) < comm_rank; ++src)
+      {
+        p2p_cells.recv_size(src, p2p_scalar.recv<0>(src));
+        p2p_nodes.recv_size(src, p2p_scalar.recv<1>(src));
+      }
+      p2p_cells.self_size(src, self_cells);
+      p2p_nodes.self_size(src, self_nodes);
+      for (; src < partners.nSrc(); ++src)
+      {
+        p2p_cells.recv_size(src, p2p_scalar.recv<0>(src));
+        p2p_nodes.recv_size(src, p2p_scalar.recv<1>(src));
+      }
+      p2p_cells.tally_recvs();
+      p2p_nodes.tally_recvs();
+    }
+
+    // Allocate.
+    OctList from_total_cells(p2p_cells.recv_total() + self_cells);
+    OctList from_total_nodes(p2p_nodes.recv_total() + self_nodes);
+    //future: cells
+    std::vector<double> from_total_node_dofs((p2p_nodes.recv_total() + self_nodes) * ndofs);
+
+    // Copy self overlap.
+    if (is_active and self_range.nonempty())
+    {
+      // Cells
+      std::copy_n(
+          &from_octlist[self_range.min],
+          self_cells,
+          &from_total_cells[p2p_cells.self_offset()]);
+      //future: cell dofs
+
+      // Nodes
+      const size_t node_offset = p2p_nodes.self_offset();
+      for (size_t i = 0, j = 0; i < from_da->getTotalNodalSz(); ++i)
+        if (node_essential[i])
+        {
+          from_total_nodes[node_offset + j] = from_da->getTNCoords()[i];
+          for (int dof = 0; dof < ndofs; ++dof)
+            from_total_node_dofs[(node_offset + j) * ndofs + dof] =
+                from_nodes_ghosted[i * ndofs + dof];
+          ++j;
+        }
+    }
+
+    // Receive payloads.
     p2p_cells.recv(from_total_cells.data());
     p2p_nodes.recv(from_total_nodes.data());
-    //future: recv cell data
-    p2p_nodes.recv_dofs(from_total_dofs.data(), ndofs);
+    //future: recv_dofs(from_total_cell_dofs.data(), ndofs);
+    p2p_nodes.recv_dofs(from_total_node_dofs.data(), ndofs);
 
-    // Wait on sends
+    // Wait on sends.
     p2p_cells.wait_all();
     p2p_nodes.wait_all();
+
+    printf("[%d] cells: .in=%lu  .self_offset=%d  .self_size=%d=%lu\n",
+        comm_rank, from_octlist.size(), p2p_cells.self_offset(), p2p_cells.self_size(), self_cells);
+
+    quadTreeToGnuplot(from_total_cells, 8, "total.cells", comm);
 
     // Fine interpolate from combination of local and remote nodes.
     assert(from_da->getElementOrder() == 1);
     locLerp(
         from_total_cells,
         from_total_nodes.data(), from_total_nodes.size(),
-        from_total_dofs.data(),
+        from_total_node_dofs.data(),
         ndofs,
-        to_dtree.getTreePartFiltered(),
+        to_octlist,
         to_da,
         to_nodes, to_node_sz,
         to_local.data());
 
-    //future: iterate _cell_ values to fine grid
+    //future: iterate cell values to fine grid
   }
 
 
@@ -317,6 +458,49 @@ namespace ot
     to_loop.finalize(ghosted_to_dofs.data());
     std::copy_n(&ghosted_to_dofs[to_da->getLocalNodeBegin() * ndofs], to_nodes_sz * ndofs, to_dofs);
   }
+
+  // ------------------
+
+  // flag_essential_nodes()
+  template <unsigned dim>
+  void flag_essential_nodes(
+      const TreeNode<unsigned, dim> *octants,
+      const size_t oct_sz,
+      const DA<dim> *da,
+      std::vector<char> &node_essential)
+  {
+    MatvecBaseOut<dim, char, true> loop(
+        da->getTotalNodalSz(),
+        1,
+        da->getElementOrder(),
+        false, 0,
+        da->getTNCoords(),
+        octants,
+        oct_sz,
+        dummyOctant<dim>(),
+        dummyOctant<dim>());
+
+    const int npe = da->getNumNodesPerElement();
+    const std::vector<char> leaf(npe, 1);
+
+    while (not loop.isFinished())
+    {
+      if (loop.isPre() and loop.isLeaf())
+      {
+        loop.subtreeInfo().overwriteNodeValsOut(leaf.data());
+        loop.next();
+      }
+      else
+        loop.step();
+    }
+
+    node_essential.clear();
+    node_essential.resize(da->getTotalNodalSz(), false);
+    loop.finalize(node_essential.data());
+    for (char &x : node_essential)
+      x = bool(x);
+  }
+
 
 
 }//namespace ot

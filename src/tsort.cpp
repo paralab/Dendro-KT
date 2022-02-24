@@ -3757,7 +3757,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   // Every insulation octant overlaps a range of active ranks.
   // Expect return indices relative to active list.
-  std::vector<IntRange> insulationProcRanges =
+  std::vector<IntRange<>> insulationProcRanges =
       treeNode2PartitionRanks(insulationOfOwned, partition, &active);
 
   // (Round 1)  Stage queries to be sent.
@@ -4176,13 +4176,13 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
 // treeNode2PartitionRanks()  -- relative to active list, empty ranks allowed in partition.
 //
 template <typename T, unsigned int dim>
-std::vector<IntRange> SFC_Tree<T, dim>::treeNode2PartitionRanks(
+std::vector<IntRange<>> SFC_Tree<T, dim>::treeNode2PartitionRanks(
     const std::vector<TreeNode<T, dim>> &treeNodes_,
     const PartitionFrontBack<T, dim> &partition,
     const std::vector<int> *activePtr)
 {
   if (treeNodes_.size() == 0)
-    return std::vector<IntRange>();
+    return std::vector<IntRange<>>();
 
   const std::vector<int> &active = *activePtr;  // future: recover active
 
@@ -4217,7 +4217,7 @@ std::vector<IntRange> SFC_Tree<T, dim>::treeNode2PartitionRanks(
   //   - oct.isAncestorInclusive(fronts[r])  OR
   //   - oct.isAncestorInclusive(backs[r])   OR
   //   - lower_bound(fronts[r]) < oct < lowerBound(backs[r])
-  std::vector<IntRange> ranges(treeNodes.size());
+  std::vector<IntRange<>> ranges(treeNodes.size());
   for (size_t i = 0; i < treeNodes.size(); ++i)
   {
     size_t j = lowerBounds[i];
@@ -4234,7 +4234,7 @@ std::vector<IntRange> SFC_Tree<T, dim>::treeNode2PartitionRanks(
   // Undo sort if not originally sorted.
   if (!sorted)
   {
-    std::vector<IntRange> unsortedRanges(ranges.size());
+    std::vector<IntRange<>> unsortedRanges(ranges.size());
     for (size_t i = 0; i < src.size(); ++i)
       unsortedRanges[src[i]] = ranges[i];
     std::swap(ranges, unsortedRanges);

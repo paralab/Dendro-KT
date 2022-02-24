@@ -81,10 +81,10 @@ namespace par
   MPI_Comm P2PMeta::comm() const    { assert(m_partners != nullptr);  return m_partners->comm(); }
   int P2PMeta::dest(size_t i) const { assert(m_partners != nullptr);  return m_partners->dest(i); }
   int P2PMeta::src(size_t i)  const { assert(m_partners != nullptr);  return m_partners->src(i); }
-  int * P2PMeta::send_sizes()   { assert(m_send_meta.size());  return &m_send_meta[0]; }
-  int * P2PMeta::send_offsets() { assert(m_send_meta.size());  return &m_send_meta[m_partners->nDest()]; }
-  int * P2PMeta::recv_sizes()   { assert(m_recv_meta.size());  return &m_recv_meta[0]; }
-  int * P2PMeta::recv_offsets() { assert(m_recv_meta.size());  return &m_recv_meta[m_partners->nSrc()]; }
+  int * P2PMeta::send_sizes()   { return &m_send_meta[0]; }
+  int * P2PMeta::send_offsets() { return &m_send_meta[m_partners->nDest()]; }
+  int * P2PMeta::recv_sizes()   { return &m_recv_meta[0]; }
+  int * P2PMeta::recv_offsets() { return &m_recv_meta[m_partners->nSrc()]; }
   const int P2PMeta::recv_total() const { return m_recv_total; }
   const int P2PMeta::self_size() const { return m_self_size; }
   const int P2PMeta::self_offset() const { return m_self_offset; }
