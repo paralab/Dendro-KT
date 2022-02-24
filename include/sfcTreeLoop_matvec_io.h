@@ -958,6 +958,19 @@ namespace ot
     childBdryCounts.fill(0);
     *extantChildren = parentFrame.getExtantTreeChildrenMorton();
 
+    static std::vector<char> childLexPresent;
+    childLexPresent.clear();
+    childLexPresent.resize(NumChildren * npe, false);
+    const auto setChildLexPresent = [&](int child, int lex) {
+      childLexPresent[lex * NumChildren + child] += 1; //= true;
+    };
+    const auto allChildLexPresent = [&](int child) {
+      int count = 0;
+      for (int lex = 0; lex < npe; ++lex)
+        count += bool(childLexPresent[lex * NumChildren + child]);
+      return count == npe;
+    };
+
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
 
@@ -988,6 +1001,9 @@ namespace ot
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
 
+      if (nodeLevel <= parSubtree.getLevel() + 1)
+        setChildLexPresent(child_sfc, TNPoint<unsigned, dim>::get_lexNodeRank(
+              childSubtreesSFC[child_sfc], myNodes[nodeInstance.getPNodeIdx()], m_eleOrder));
     }
 
 
@@ -1013,11 +1029,15 @@ namespace ot
       summaries[child_sfc].m_initializedIn = true;
       summaries[child_sfc].m_initializedOut = false;
 
-      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+      if (childNodeCounts[child_sfc] > 0 and
+          childFinestLevel[child_sfc] <= parLev + 1 and
+          not allChildLexPresent(child_sfc))
       {
         hangingInChild[child_sfc] = true;
         thereAreHangingNodes = true;
       }
+
+      summaries[child_sfc].m_haveHanging = hangingInChild[child_sfc];
     }
     //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary (to decide whether to skip subtree)
 
@@ -1175,6 +1195,19 @@ namespace ot
     childBdryCounts.fill(0);
     *extantChildren = parentFrame.getExtantTreeChildrenMorton();
 
+    static std::vector<char> childLexPresent;
+    childLexPresent.clear();
+    childLexPresent.resize(NumChildren * npe, false);
+    const auto setChildLexPresent = [&](int child, int lex) {
+      childLexPresent[lex * NumChildren + child] += 1; //= true;
+    };
+    const auto allChildLexPresent = [&](int child) {
+      int count = 0;
+      for (int lex = 0; lex < npe; ++lex)
+        count += bool(childLexPresent[lex * NumChildren + child]);
+      return count == npe;
+    };
+
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
 
@@ -1204,6 +1237,10 @@ namespace ot
       if (childFinestLevel[child_sfc] < nodeLevel)
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
+
+      if (nodeLevel <= parSubtree.getLevel() + 1)
+        setChildLexPresent(child_sfc, TNPoint<unsigned, dim>::get_lexNodeRank(
+              childSubtreesSFC[child_sfc], myNodes[nodeInstance.getPNodeIdx()], m_eleOrder));
     }
 
     //
@@ -1228,11 +1265,15 @@ namespace ot
       summaries[child_sfc].m_initializedIn = true;
       summaries[child_sfc].m_initializedOut = false;
 
-      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+      if (childNodeCounts[child_sfc] > 0 and
+          childFinestLevel[child_sfc] <= parLev + 1 and
+          not allChildLexPresent(child_sfc))
       {
         hangingInChild[child_sfc] = true;
         thereAreHangingNodes = true;
       }
+
+      summaries[child_sfc].m_haveHanging = hangingInChild[child_sfc];
     }
     //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary
 
@@ -1321,7 +1362,7 @@ namespace ot
         const sfc::ChildNum::Type child_m = this->getCurrentRotation().child_num(child_sfc);
         if (p2c)
         {
-          if (m_visitEmpty || childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+          if (m_visitEmpty || hangingInChild[child_sfc])
           {
             // Has hanging nodes. Interpolate.
             // Nodes not on a hanging face will be overwritten later, not to worry.
@@ -1335,7 +1376,7 @@ namespace ot
         }
         else
         {
-          if (m_visitEmpty || childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+          if (m_visitEmpty || hangingInChild[child_sfc])
           {
             // If not p2c, just copy the parent node values into child.
             // Again, note that nodes not on a hanging face will be overwritten later.
@@ -1463,6 +1504,19 @@ namespace ot
     childBdryCounts.fill(0);
     *extantChildren = parentFrame.getExtantTreeChildrenMorton();
 
+    static std::vector<char> childLexPresent;
+    childLexPresent.clear();
+    childLexPresent.resize(NumChildren * npe, false);
+    const auto setChildLexPresent = [&](int child, int lex) {
+      childLexPresent[lex * NumChildren + child] += 1; //= true;
+    };
+    const auto allChildLexPresent = [&](int child) {
+      int count = 0;
+      for (int lex = 0; lex < npe; ++lex)
+        count += bool(childLexPresent[lex * NumChildren + child]);
+      return count == npe;
+    };
+
     const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
     const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
 
@@ -1493,6 +1547,9 @@ namespace ot
         childFinestLevel[child_sfc] = nodeLevel;
       childNodeCounts[child_sfc]++;
 
+      if (nodeLevel <= parSubtree.getLevel() + 1)
+        setChildLexPresent(child_sfc, TNPoint<unsigned, dim>::get_lexNodeRank(
+              childSubtreesSFC[child_sfc], myNodes[nodeInstance.getPNodeIdx()], m_eleOrder));
     }
 
 
@@ -1518,11 +1575,15 @@ namespace ot
       summaries[child_sfc].m_initializedIn = true;
       summaries[child_sfc].m_initializedOut = false;
 
-      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
+      if (childNodeCounts[child_sfc] > 0 and
+          childFinestLevel[child_sfc] <= parLev + 1 and
+          not allChildLexPresent(child_sfc))
       {
         hangingInChild[child_sfc] = true;
         thereAreHangingNodes = true;
       }
+
+      summaries[child_sfc].m_haveHanging = hangingInChild[child_sfc];
     }
     //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary
 
@@ -1675,12 +1736,10 @@ namespace ot
     {
       childFinestLevel[child_sfc] = summaries[child_sfc].m_subtreeFinestLevel;
       childNodeCounts[child_sfc] = summaries[child_sfc].m_subtreeNodeCount;
+      hangingInChild[child_sfc] = summaries[child_sfc].m_haveHanging;
 
-      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
-      {
+      if (hangingInChild[child_sfc])
         thereAreHangingNodes = true;
-        hangingInChild[child_sfc] = true;
-      }
       if (childNodeCounts[child_sfc] > 0)
         childrenHaveNodes = true;
     }
@@ -1810,7 +1869,7 @@ namespace ot
         {
           auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
           const sfc::ChildNum::Type child_m = this->getCurrentRotation().child_num(child_sfc);
-          if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe
+          if (hangingInChild[child_sfc]
               && childOutput.size() > 0
               || m_visitEmpty)
           {
@@ -1942,6 +2001,7 @@ namespace ot
     summary.m_subtreeFinestLevel = 0;
     summary.m_numBdryNodes = 0;
     summary.m_subtreeNodeCount = (end >= begin ? end - begin : 0);
+    summary.m_haveHanging = false;  // can't have hanging nodes on root
 
     for ( ; begin < end; ++begin)
     {

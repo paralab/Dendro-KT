@@ -51,6 +51,7 @@ namespace ot
       LevI m_subtreeFinestLevel;
       size_t m_subtreeNodeCount;
       size_t m_numBdryNodes;
+      bool m_haveHanging;
 
       bool m_initializedIn;
       bool m_initializedOut;
