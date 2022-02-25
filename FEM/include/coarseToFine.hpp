@@ -525,6 +525,9 @@ namespace fem
 
     local_inherit_rec(
         from_seg, to_seg, ndofs, from_cell_dofs.data(), to_cell_dofs.data());
+
+    assert(from_seg.empty());
+    assert(to_seg.empty());
   }
 
 
