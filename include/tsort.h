@@ -121,6 +121,68 @@ SFC_State<dim> SFC_State<dim>::subcurve(sfc::SubIndex i) const
 
 
 
+template <typename X>
+struct Segment
+{
+  X *ptr = nullptr;
+  size_t begin = 0;
+  size_t end = 0;
+
+  Segment(X *ptr_, size_t begin_, size_t end_)
+    : ptr(ptr_), begin(begin_), end(end_) {}
+
+  bool nonempty() const       { return begin < end; }
+  bool empty() const          { return !nonempty(); }
+  const X & operator*() const { return ptr[begin]; }
+  X & operator*()             { return ptr[begin]; }
+  const X * operator->() const { return &ptr[begin]; }
+  X * operator->()             { return &ptr[begin]; }
+  Segment & operator++()      { ++begin; return *this; }
+};
+
+template <typename X>
+Segment<X> segment_all(std::vector<X> &vec)
+{
+  return Segment<X>{vec.data(), 0, vec.size()};
+}
+
+template <typename X>
+Segment<const X> segment_all(const std::vector<X> &vec)
+{
+  return Segment<const X>{vec.data(), 0, vec.size()};
+}
+
+
+template <typename X>
+struct Keeper
+{
+  X *ptr = nullptr;
+  size_t begin = 0;
+  size_t end = 0;
+  size_t out = 0;
+  bool kept = false;
+
+  Keeper(X *ptr_, size_t begin_, size_t end_)
+    : ptr(ptr_), begin(begin_), end(end_), out(begin_) {}
+
+  bool nonempty() const       { return begin < end; }
+  bool empty() const          { return !nonempty(); }
+  const X & operator*() const { return ptr[begin]; }
+  X & operator*()             { return ptr[begin]; }
+  Keeper & operator++()       { ++begin; kept = false; return *this; }
+  void keep()                 { if (!kept) ptr[out++] = ptr[begin]; kept = true; }
+  void unkeep()               { --out; kept = false; }
+  bool can_store() const      { return out < begin; }
+  bool store(const X &x)      { return can_store() && (ptr[out++] = x, true); }
+  bool adv_store(const X &x)  { operator++();  return store(x); }
+};
+
+
+
+
+
+
+
 template <typename T, unsigned int dim>
 struct KeyFunIdentity_TN
 {

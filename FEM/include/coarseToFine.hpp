@@ -19,8 +19,8 @@ namespace fem
   void coarse_to_fine(
       const ot::DistTree<unsigned, dim> &from_dtree,
       const ot::DA<dim> *from_da,
-      const int node_dofs,
-      const int cell_dofs,
+      const int node_dofs,  // can be positive or 0
+      const int cell_dofs,  // can be positive or 0
       const std::vector<double> &from_node_dofs,
       const std::vector<double> &from_cell_dofs,
       const ot::DistTree<unsigned, dim> &to_dtree,
@@ -40,6 +40,15 @@ namespace fem
       const ot::TreeNode<unsigned, dim> *to_nodes,
       const size_t to_nodes_sz,
       double * to_dofs);
+
+  template <unsigned dim>
+  void local_inherit(
+          const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
+          const std::vector<double> &from_total_cell_dofs,
+          const int ndofs,
+          const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
+          std::vector<double> &to_cell_dofs);
+
 
   template <unsigned dim>
   void flag_essential_nodes(
@@ -215,7 +224,7 @@ namespace fem
           p2p_nodes.send_sizes()[dst]);
     p2p_cells.send(from_octlist.data());
     p2p_nodes.send(send_nodes.data());
-    //future: send_dofs(from_cell_dofs.data(), ndofs);
+    p2p_cells.send_dofs(from_cell_dofs.data(), cell_dofs);
     p2p_nodes.send_dofs(send_node_dofs.data(), node_dofs);
 
     // Self node size and selection.
@@ -255,7 +264,7 @@ namespace fem
     // Allocate.
     OctList from_total_cells(p2p_cells.recv_total() + self_cells);
     OctList from_total_nodes(p2p_nodes.recv_total() + self_nodes);
-    //future: cells
+    std::vector<double> from_total_cell_dofs((p2p_cells.recv_total() + self_cells) * cell_dofs);
     std::vector<double> from_total_node_dofs((p2p_nodes.recv_total() + self_nodes) * node_dofs);
 
     // Copy self overlap.
@@ -266,7 +275,10 @@ namespace fem
           &from_octlist[self_range.min],
           self_cells,
           &from_total_cells[p2p_cells.self_offset()]);
-      //future: cell dofs
+      std::copy_n(
+          &from_cell_dofs[self_range.min * cell_dofs],
+          self_cells * cell_dofs,
+          &from_total_cell_dofs[p2p_cells.self_offset() * cell_dofs]);
 
       // Nodes
       const size_t node_offset = p2p_nodes.self_offset();
@@ -284,7 +296,7 @@ namespace fem
     // Receive payloads.
     p2p_cells.recv(from_total_cells.data());
     p2p_nodes.recv(from_total_nodes.data());
-    //future: recv_dofs(from_total_cell_dofs.data(), ndofs);
+    p2p_cells.recv_dofs(from_total_cell_dofs.data(), cell_dofs);
     p2p_nodes.recv_dofs(from_total_node_dofs.data(), node_dofs);
 
     // Wait on sends.
@@ -292,6 +304,14 @@ namespace fem
     p2p_nodes.wait_all();
 
     /// quadTreeToGnuplot(from_total_cells, 8, "total.cells", comm);
+
+    if (cell_dofs > 0)
+      local_inherit(
+          from_total_cells,
+          from_total_cell_dofs,
+          cell_dofs,
+          to_octlist,
+          to_cell_dofs);
 
     // Fine interpolate from combination of local and remote nodes.
     assert(from_da->getElementOrder() == 1);
@@ -446,6 +466,67 @@ namespace fem
     to_loop.finalize(ghosted_to_dofs.data());
     std::copy_n(&ghosted_to_dofs[to_da->getLocalNodeBegin() * ndofs], to_nodes_sz * ndofs, to_dofs);
   }
+
+  // ------------------
+
+  template <unsigned dim>
+  void local_inherit_rec(
+      ot::Segment<const ot::TreeNode<unsigned, dim>> &from_oct,
+      ot::Segment<const ot::TreeNode<unsigned, dim>> &to_oct,
+      const int ndofs,
+      const double *from_dofs,
+      double *to_dofs,
+      ot::TreeNode<unsigned, dim> subtree = ot::TreeNode<unsigned, dim>(),
+      ot::SFC_State<int(dim)> sfc = ot::SFC_State<int(dim)>::root())
+  {
+    using Oct = ot::TreeNode<unsigned, dim>;
+    const auto overlaps = [](const Oct &a, const Oct &b) {
+      return a.isAncestorInclusive(b) or b.isAncestorInclusive(a);
+    };
+    const auto transfer = [&]() {
+      for (int dof = 0; dof < ndofs; ++dof)
+        to_dofs[to_oct.begin * ndofs + dof] = from_dofs[from_oct.begin * ndofs + dof];
+    };
+
+    // Find intersection{to_oct, subtree} and transfer if possible.
+    if (from_oct.nonempty() and overlaps(subtree, *from_oct))
+    {
+      while (to_oct.nonempty() and subtree == *to_oct)
+      {
+        transfer();
+        ++to_oct;
+      }
+      if (to_oct.nonempty() and subtree.isAncestorInclusive(*to_oct))
+        for (ot::sfc::SubIndex c(0); c < ot::nchild(dim); ++c)
+          local_inherit_rec(
+              from_oct, to_oct, ndofs, from_dofs, to_dofs,
+              subtree.getChildMorton(sfc.child_num(c)),
+              sfc.subcurve(c));
+    }
+    else
+      while (to_oct.nonempty() and subtree.isAncestorInclusive(*to_oct))
+        ++to_oct;
+
+    // Move on
+    while (from_oct.nonempty() and subtree.isAncestorInclusive(*from_oct))
+      ++from_oct;
+  }
+
+  template <unsigned dim>
+  void local_inherit(
+          const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
+          const std::vector<double> &from_cell_dofs,
+          const int ndofs,
+          const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
+          std::vector<double> &to_cell_dofs)
+  {
+    ot::Segment<const ot::TreeNode<unsigned, dim>> from_seg = segment_all(from_octlist);
+    ot::Segment<const ot::TreeNode<unsigned, dim>> to_seg = segment_all(to_octlist);
+
+    local_inherit_rec(
+        from_seg, to_seg, ndofs, from_cell_dofs.data(), to_cell_dofs.data());
+  }
+
 
   // ------------------
 

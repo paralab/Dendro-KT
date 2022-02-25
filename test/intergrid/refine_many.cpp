@@ -26,6 +26,10 @@ void print_dollars(MPI_Comm comm);
 std::vector<DofT> local_vector(const ot::DA<DIM> *da, int ndofs);
 std::vector<DofT> cell_vector(const ot::DistTree<uint, DIM> &dtree, int ndofs);
 
+int coarsest_level(const OctList &octants);
+int coarsest_level(const ot::DistTree<uint, DIM> &dtree)
+    { return coarsest_level(dtree.getTreePartFiltered()); }
+
 void fill_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                  const ot::DA<DIM> *da,
                  const int ndofs,
@@ -35,6 +39,16 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
                     const ot::DA<DIM> *da,
                     const int ndofs,
                     const std::vector<DofT> &local);
+
+void fill_cell_xpypl(
+    const ot::DistTree<uint, DIM> &dtree,
+    const int ndofs,
+    std::vector<DofT> &cell_dofs);
+
+size_t check_cell_xpypl(
+    const ot::DistTree<uint, DIM> &dtree,
+    const int ndofs,
+    const std::vector<DofT> &cell_dofs);
 
 void oldIntergridTransfer(
     const ot::DistTree<uint, DIM> &from_dtree,
@@ -93,6 +107,9 @@ int main(int argc, char * argv[])
   printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
   /// ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
 
+  /// const int local_coarsest = coarsest_level(fine_dtree);
+  /// const int global_coarsest = par::mpi_min(local_coarsest, comm);
+
   const int ndofs = 1;
   std::vector<DofT> coarse_local = local_vector(coarse_da, ndofs);
   std::vector<DofT> fine_local = local_vector(fine_da, ndofs);
@@ -101,8 +118,8 @@ int main(int argc, char * argv[])
   const int cell_ndofs = 1;
   std::vector<DofT> coarse_cell_dofs = cell_vector(coarse_dtree, cell_ndofs);
   std::vector<DofT> fine_cell_dofs = cell_vector(fine_dtree, cell_ndofs);
-  std::fill(coarse_cell_dofs.begin(), coarse_cell_dofs.end(), 1.0f);
   std::fill(fine_cell_dofs.begin(), fine_cell_dofs.end(), 0.0f);
+  fill_cell_xpypl(coarse_dtree, cell_ndofs, coarse_cell_dofs);
 
   {DOLLAR("lerp")
     fem::coarse_to_fine(
@@ -111,9 +128,9 @@ int main(int argc, char * argv[])
   }
 
   const size_t node_misses = check_xpyp1(fine_dtree, fine_da, ndofs, fine_local);
-  const size_t cell_misses =
-      fine_dtree.getTreePartFiltered().size() * cell_ndofs -
-      std::count(fine_cell_dofs.begin(), fine_cell_dofs.end(), 1.0f);
+  const size_t cell_misses = check_cell_xpypl(
+      fine_dtree, cell_ndofs, fine_cell_dofs);
+
   printf("[%d] node_misses: %s%lu/%lu (%.0f%%)%s \t "
               "cell misses: %s%lu/%lu (%.0f%%)%s\n",
       comm_rank,
@@ -159,6 +176,15 @@ std::vector<DofT> local_vector(const ot::DA<DIM> *da, int ndofs)
 std::vector<DofT> cell_vector(const ot::DistTree<uint, DIM> &dtree, int ndofs)
 {
   return std::vector<DofT>(dtree.getTreePartFiltered().size() * ndofs);
+}
+
+// coarsest_level();
+int coarsest_level(const OctList &octants)
+{
+  return (octants.size() == 0 ? m_uiMaxDepth :
+      std::min_element(octants.begin(), octants.end(),
+        [](const Oct &a, const Oct &b) { return a.getLevel() < b.getLevel(); })
+      -> getLevel());
 }
 
 // fill_xpyp1()
@@ -212,6 +238,53 @@ size_t check_xpyp1( const ot::DistTree<uint, DIM> &dtree,
   //       nearest 0.5, and the tiny errors went away.
   return misses;
 }
+
+
+// fill_cell_xpypl()
+void fill_cell_xpypl(
+    const ot::DistTree<uint, DIM> &dtree,
+    const int ndofs,
+    std::vector<DofT> &cell_dofs)
+{
+  const OctList &octants = dtree.getTreePartFiltered();
+  for (size_t i = 0; i < octants.size(); ++i)
+  {
+    const Oct oct = octants[i];
+    const int level = oct.getLevel();
+    std::array<double, DIM> coords;
+    double dummy;
+    ot::treeNode2Physical(oct, coords.data(), dummy);
+    const DofT sum = DIM * level + accumulate_sum(coords.begin(), coords.end());
+    for (int dof = 0; dof < ndofs; ++dof)
+      cell_dofs[i * ndofs + dof] = sum;
+  }
+}
+
+// check_cell_xpypl()
+size_t check_cell_xpypl(
+    const ot::DistTree<uint, DIM> &dtree,
+    const int ndofs,
+    const std::vector<DofT> &cell_dofs)
+{
+  const OctList &octants = dtree.getTreePartFiltered();
+  size_t misses = 0;
+  for (size_t i = 0; i < octants.size(); ++i)
+  {
+    const int level = cell_dofs[i * ndofs + 0] / DIM;
+    assert(level >= 0);
+    const Oct oct = octants[i].getAncestor(level);
+    std::array<double, DIM> coords;
+    double dummy;
+    ot::treeNode2Physical(oct, coords.data(), dummy);
+    const DofT sum = DIM * level + accumulate_sum(coords.begin(), coords.end());
+    for (int dof = 0; dof < ndofs; ++dof)
+      misses += (cell_dofs[i * ndofs + dof] != sum);
+  }
+  return misses;
+}
+
+
+
 
 // ============================================================
 
