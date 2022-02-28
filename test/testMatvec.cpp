@@ -491,7 +491,7 @@ int testEqualSeq(MPI_Comm comm, unsigned int depth, unsigned int order)
       /// fprintf(stderr, "Rank 0 pushed (%u)|%s\n", sources.back().getLevel(), sources.back().getBase32Hex(depth+order-1).data());
     }
 
-    ot::SFC_Tree<TNT, dim>::locTreeSort(sources.data(), 0, sources.size(), 1, m_uiMaxDepth, 0);
+    ot::SFC_Tree<TNT, dim>::locTreeSort(sources);
     ot::SFC_Tree<TNT, dim>::locRemoveDuplicatesStrict(sources);
   }
   else

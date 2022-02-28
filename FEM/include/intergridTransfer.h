@@ -66,7 +66,7 @@ namespace fem
     std::fill(out.vecOut, out.vecOut + ndofs * out.sz, 0);
 
     using C = typename TN::coordType;    // If not unsigned int, error.
-    constexpr unsigned int dim = TN::coordDim;
+    constexpr unsigned int dim = ot::coordDim((TN*){});
     const unsigned int eleOrder = refElement->getOrder();
     const unsigned int npe = intPow(eleOrder+1, dim);
 

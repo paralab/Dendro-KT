@@ -47,15 +47,12 @@ void test_locTreeConstruction(int numPoints)
 
   const T leafLevel = m_uiMaxDepth;
 
-  // TODO The fact that this starts at level 1 and it works,
-  //      might indicate I am confused about what constitutes `root'
-  //      and what is the range of allowable addresses.
   ot::SFC_Tree<T,dim>::locTreeConstruction(
       &(*points.begin()), tree,
       maxPtsPerRegion,
       0, (unsigned int) points.size(),
       1, leafLevel,
-      0,
+      ot::SFC_State<dim>::root(),
       TreeNode());
 
   checkLocalCompletenessMorton<T,dim>(points, tree, true, true);

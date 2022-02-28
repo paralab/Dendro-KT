@@ -333,11 +333,34 @@ namespace par {
   template <typename T> 
     int Mpi_Allreduce( const T* sendbuf, T* recvbuf, int count, MPI_Op op, MPI_Comm comm);
 
+  template <typename T>
+  T mpi_sum(T t, MPI_Comm comm)
+  {
+    T sum;
+    Mpi_Allreduce(&t, &sum, 1, MPI_SUM, comm);
+    return sum;
+  }
+
+  template <typename T>
+  T mpi_min(T t, MPI_Comm comm)
+  {
+    T all;
+    Mpi_Allreduce(&t, &all, 1, MPI_MIN, comm);
+    return all;
+  }
+
   /**
    * @author Rahul S. Sampath
    */
   template <typename T>
     int Mpi_Alltoall(const T* sendbuf, T* recvbuf, int count, MPI_Comm comm); 
+
+
+  // future: Alltoall sparse avoiding any alltoall,
+  //   instead using reduce(p) and scatter(p) to convert #senders to #recvers.
+  //   The throughput should be the same as alltoall, but much reduced latency.
+  //   See ot::recvFromActive() for a prototype.
+
 
   /**
    * @author Rahul S. Sampath

@@ -81,10 +81,10 @@ namespace ot
 
 
   //
-  // distRemeshSubdomain()
+  // distRemeshSubdomainViaWhole()
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::distRemeshSubdomain( const DistTree &inTree,
+  void DistTree<T, dim>::distRemeshSubdomainViaWhole( const DistTree &inTree,
                                               const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                               DistTree &_outTree,
                                               DistTree &_surrogateTree,
@@ -117,6 +117,72 @@ namespace ot
 
     _outTree = outTree;
     _surrogateTree = surrogateTree;
+  }
+
+
+  //
+  // distRemeshSubdomain()
+  //
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::distRemeshSubdomain( const DistTree &inTree,
+                                              const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                              DistTree &_outTree,
+                                              DistTree &_surrogateTree,
+                                              RemeshPartition remeshPartition,
+                                              double loadFlexibility)
+  {
+    MPI_Comm comm = inTree.m_comm;
+
+    const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();
+    std::vector<TreeNode<T, dim>> outTreeVec;
+
+    SFC_Tree<T, dim>::distRemeshSubdomain(
+        inTreeVec, refnFlags, outTreeVec, loadFlexibility, comm);
+
+    // Filter and repartition based on filtered octlist,
+    // before fixing the octlist into a DistTree.
+    DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), outTreeVec);
+    SFC_Tree<T, dim>::distTreeSort(outTreeVec, loadFlexibility, comm);
+    SFC_Tree<T, dim>::distCoalesceSiblings(outTreeVec, comm);
+
+    std::vector<TreeNode<T, dim>> surrogateTreeVec =
+        SFC_Tree<T, dim>::getSurrogateGrid(
+            remeshPartition, inTreeVec, outTreeVec, comm);
+
+    DistTree outTree(outTreeVec, comm);
+    DistTree surrogateTree(surrogateTreeVec, comm, NoCoalesce);
+
+    outTree.filterTree(inTree.getDomainDecider());
+    surrogateTree.filterTree(inTree.getDomainDecider());
+
+    _outTree = outTree;
+    _surrogateTree = surrogateTree;
+  }
+
+
+  // distRefine
+  template <typename T, unsigned int dim>
+  void DistTree<T, dim>::distRefine(
+      const DistTree &inTree,
+      std::vector<int> &&delta_level,  // Consumed. To reuse, clear() and resize().
+      DistTree &outTree,
+      double sfc_tol)
+  {
+    MPI_Comm comm = inTree.getComm();
+
+    // future: Repartition using weights based on delta_level.
+
+    std::vector<TreeNode<T, dim>> newOctList =
+        SFC_Tree<T, dim>::locRefine(inTree.getTreePartFiltered(), std::move(delta_level));
+
+    DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
+    // If refining only, then already sorted. Don't need to re-sort and rm dups.
+    SFC_Tree<T, dim>::distTreePartition(newOctList, sfc_tol, comm);
+    SFC_Tree<T, dim>::distMinimalBalanced(newOctList, sfc_tol, comm);
+    SFC_Tree<T, dim>::distCoalesceSiblings(newOctList, comm);
+
+    outTree = DistTree<T, dim>(newOctList, comm);
+    outTree.filterTree(inTree.getDomainDecider());
   }
 
 
@@ -549,7 +615,7 @@ namespace ot
         for (const TreeNode<T, dim> &nbr : nbrBuffer)
           stratDisq[lp].push_back(nbr.getParent());
 
-        SFC_Tree<T, dim>::locTreeSort(&(*stratDisq[lp].begin()), 0, stratDisq[lp].size(), 1, lp, 0);
+        SFC_Tree<T, dim>::locTreeSort(&(*stratDisq[lp].begin()), 0, stratDisq[lp].size(), 1, lp, SFC_State<dim>::root());
         SFC_Tree<T, dim>::locRemoveDuplicates(stratDisq[lp]);
 
         num_disq += stratDisq[lp].size();
@@ -1007,6 +1073,134 @@ namespace ot
     }
 
     DistTree<T, dim> dtree(treePart, comm);
+    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+
+    return dtree;
+  }
+
+
+
+  template <typename T, unsigned int dim>
+  DistTree<T, dim>  DistTree<T, dim>::minimalSubdomainDistTree(
+          unsigned int finestLevel,
+          const ::ibm::DomainDecider &domainDecider,
+          MPI_Comm comm,
+          double sfc_tol)
+  {
+    int rProc, nProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+    using Oct = TreeNode<T, dim>;
+    using OctList = std::vector<Oct>;
+
+    /// std::vector<TreeNode<T, dim>> treePart;
+    OctList treeFinal, treeIntercepted, finerIntercepted;
+    OctList octDescendants;
+
+    if (rProc == 0)
+      treeIntercepted.emplace_back(); // Root
+
+    unsigned int level = 0;
+    const unsigned int jump = 1;
+
+    while (level < finestLevel)
+    {
+      // Extend deeper.
+      finerIntercepted.clear();
+      unsigned int nextLevel = fmin(finestLevel, level + jump);
+      for (const Oct &tn : treeIntercepted)
+      {
+        octDescendants.clear();
+        addMortonDescendants(nextLevel, tn, octDescendants);
+
+        double phycd[dim];
+        double physz;
+        for (const Oct &descendant : octDescendants)
+        {
+          treeNode2Physical(descendant, phycd, physz);
+          const ibm::Partition partition = domainDecider(phycd, physz);
+
+          if (partition == ibm::OUT)
+            treeFinal.push_back(descendant);
+          else if (partition == ibm::INTERCEPTED)
+            finerIntercepted.push_back(descendant);
+        }
+      }
+
+      // Re-partition.
+      SFC_Tree<T, dim>::distTreeSort(finerIntercepted, sfc_tol, comm);
+
+      std::swap(treeIntercepted, finerIntercepted);
+      level = nextLevel;
+    }
+
+    // Union, re-partition.
+    treeFinal.insert(treeFinal.end(), treeIntercepted.begin(), treeIntercepted.end());
+    treeIntercepted.clear();
+    treeIntercepted.shrink_to_fit();
+    SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
+    SFC_Tree<T, dim>::distMinimalBalanced(treeFinal, sfc_tol, comm);
+    SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
+    SFC_Tree<T, dim>::distCoalesceSiblings(treeFinal, comm);
+
+    DistTree<T, dim> dtree(treeFinal, comm);
+    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+
+    return dtree;
+  }
+
+
+  template <typename T, unsigned int dim>
+  DistTree<T, dim>  DistTree<T, dim>::minimalSubdomainDistTreeGrain(
+          size_t grainMin,
+          const ::ibm::DomainDecider &domainDecider,
+          MPI_Comm comm,
+          double sfc_tol)
+  {
+    int rProc, nProc;
+    MPI_Comm_size(comm, &nProc);
+    MPI_Comm_rank(comm, &rProc);
+
+    using Oct = TreeNode<T, dim>;
+    using OctList = std::vector<Oct>;
+
+    OctList tree;
+    OctList nextLevel;
+
+    if (rProc == 0)
+      tree.emplace_back(); // Root
+    filterOctList(domainDecider, tree);
+
+    int saturated = bool(tree.size() > grainMin);
+    { int saturatedGlobal;
+      par::Mpi_Allreduce(&saturated, &saturatedGlobal, 1, MPI_LAND, comm);
+      saturated = saturatedGlobal;
+    }
+
+    while (!saturated)
+    {
+      nextLevel.clear();
+      for (const Oct &oct : tree)
+        if (oct.getIsOnTreeBdry())
+          addMortonDescendants(oct.getLevel() + 1, oct, nextLevel);
+      tree.insert(tree.end(), nextLevel.begin(), nextLevel.end());
+      SFC_Tree<T, dim>::locTreeSort(tree);
+      SFC_Tree<T, dim>::locRemoveDuplicates(tree);
+      SFC_Tree<T, dim>::distTreePartition(tree, 0, sfc_tol, comm);
+      SFC_Tree<T, dim>::distMinimalBalanced(tree, sfc_tol, comm);
+      SFC_Tree<T, dim>::distTreePartition(tree, 0, sfc_tol, comm);
+      SFC_Tree<T, dim>::distCoalesceSiblings(tree, comm);
+      filterOctList(domainDecider, tree);
+
+      saturated = bool(tree.size() > grainMin);
+      { int saturatedGlobal;
+        par::Mpi_Allreduce(&saturated, &saturatedGlobal, 1, MPI_LAND, comm);
+        saturated = saturatedGlobal;
+      }
+    }
+
+    DistTree<T, dim> dtree(tree, comm);
     dtree.filterTree(domainDecider);  // Associate decider with dtree.
 
     return dtree;

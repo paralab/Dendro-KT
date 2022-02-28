@@ -611,10 +611,7 @@ bool checkBalancingConstraint(const std::vector<ot::TreeNode<T,D>> &tree, bool p
   for (const ot::TreeNode<T,D> &tn : tree)
     tn.appendAllNeighbours(nList);
 
-  ot::SFC_Tree<T,D>::locTreeSort(&(*nList.begin()),
-                                 0, (unsigned int) nList.size(),
-                                 1, m_uiMaxDepth,
-                                 0);
+  ot::SFC_Tree<T,D>::locTreeSort(nList);
   ot::SFC_Tree<T,D>::locRemoveDuplicatesStrict(nList);
 
   if (printData)

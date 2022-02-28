@@ -212,7 +212,7 @@ void MeshLoopImpl<T, dim, TreatSorted>::bucketAndPush(
   std::array<RankI, NumChildren+1> childSplitters;
   RankI ancStart, ancEnd;
 
-  SFC_Tree<T, dim>::SFC_locateBuckets(cptr, begin, end, lev+1, pRot, childSplitters, ancStart, ancEnd); 
+  SFC_Tree<T, dim>::SFC_locateBuckets(cptr, begin, end, lev+1, SFC_State<dim>(sfc::RotIndex(pRot)), childSplitters, ancStart, ancEnd);
 
   m_stack.emplace_back(true, begin, end, lev, pRot, std::move(childSplitters), ancStart, ancEnd);
 
@@ -226,7 +226,7 @@ void MeshLoopImpl<T, dim, TreatSorted>::bucketAndPush(
   std::array<RankI, NumChildren+1> childSplitters;
   RankI ancStart, ancEnd;
 
-  SFC_Tree<T, dim>::SFC_bucketing(ptr, begin, end, lev+1, pRot, childSplitters, ancStart, ancEnd); 
+  SFC_Tree<T, dim>::SFC_bucketing(ptr, begin, end, lev+1, SFC_State<dim>(sfc::RotIndex(pRot)), childSplitters, ancStart, ancEnd);
 
   m_stack.emplace_back(true, begin, end, lev, pRot, std::move(childSplitters), ancStart, ancEnd);
 }

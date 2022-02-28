@@ -19,6 +19,7 @@
 #include "parUtils.h"
 #include "filterFunction.h"
 #include <stdio.h>
+#include <dollar.hpp>
 
 namespace type
 {
@@ -41,11 +42,12 @@ namespace type
     // Arithmetic
     StrongIndex & operator++() { ++m_i; return *this; }
     StrongIndex & operator+=(const T d) { m_i += d; return *this; }
-    /// StrongIndex operator+(const T d) const { return StrongIndex(m_i + d); }  // creates ambiguity
-        // others as needed
+
+    // Avoid ambiguity in expressions like  si + 1.
+    StrongIndex plus(const T d)  const { return StrongIndex(m_i + d); }
+    StrongIndex minus(const T d) const { return StrongIndex(m_i - d); }
   };
 };
-
 
 
 namespace ot
@@ -63,6 +65,7 @@ namespace OCT_FLAGS
 
 enum GridAlignment { CoarseByFine, FineByCoarse };
 enum RemeshPartition { SurrogateOutByIn, SurrogateInByOut };
+
 
 namespace sfc
 {
@@ -118,6 +121,7 @@ SFC_State<dim> SFC_State<dim>::subcurve(sfc::SubIndex i) const
 }
 
 
+
 template <typename X>
 struct Segment
 {
@@ -132,6 +136,8 @@ struct Segment
   bool empty() const          { return !nonempty(); }
   const X & operator*() const { return ptr[begin]; }
   X & operator*()             { return ptr[begin]; }
+  const X * operator->() const { return &ptr[begin]; }
+  X * operator->()             { return &ptr[begin]; }
   Segment & operator++()      { ++begin; return *this; }
 };
 
@@ -148,73 +154,40 @@ Segment<const X> segment_all(const std::vector<X> &vec)
 }
 
 
-
-//
-// BucketInfo{}
-//
-// Buckets to temporarily represent (interior) nodes in the hyperoctree
-// while we carry out breadth-first traversal. See distTreeSort().
-template <typename T>
-struct BucketInfo          // Adapted from Dendro4 sfcSort.h:132.
+template <typename X>
+struct Keeper
 {
-  RotI rot_id;
-  LevI lev;
-  T begin;
-  T end;
+  X *ptr = nullptr;
+  size_t begin = 0;
+  size_t end = 0;
+  size_t out = 0;
+  bool kept = false;
+
+  Keeper(X *ptr_, size_t begin_, size_t end_)
+    : ptr(ptr_), begin(begin_), end(end_), out(begin_) {}
+
+  bool nonempty() const       { return begin < end; }
+  bool empty() const          { return !nonempty(); }
+  const X & operator*() const { return ptr[begin]; }
+  X & operator*()             { return ptr[begin]; }
+  Keeper & operator++()       { ++begin; kept = false; return *this; }
+  void keep()                 { if (!kept) ptr[out++] = ptr[begin]; kept = true; }
+  void unkeep()               { --out; kept = false; }
+  bool can_store() const      { return out < begin; }
+  bool store(const X &x)      { return can_store() && (ptr[out++] = x, true); }
+  bool adv_store(const X &x)  { operator++();  return store(x); }
 };
 
-template struct BucketInfo<RankI>;
 
 
-// Wrapper around std::vector to act like a queue, plus it has a
-// single barrier, which can be moved to the end of the queue at any time.
-// TODO This should go in some other utilities header file.
-template <typename T>
-struct BarrierQueue
-{
-  // Usage:
-  //
-  // BarrierQueue q;
-  // for (int i = 0; i < 5; i++) { q.enqueue(i); }
-  // q.reset_barrier();
-  // for (int i = 5; i < 10; i++) { q.enqueue(i); }
-  //
-  // int x;
-  // while (q.dequeue(x)) { std::cout << x << ' '; }  // 0 1 2 3 4
-  // q.reset_barrier();
-  // while (q.dequeue(x)) { std::cout << x << ' '; }  // 5 6 7 8 9
 
-  struct Range
-  {
-    typename std::vector<T>::iterator m_begin, m_end;
-    typename std::vector<T>::iterator begin() { return m_begin; }
-    typename std::vector<T>::iterator end() { return m_end; }
-  };
 
-  typename std::vector<T>::size_type b;  // An out-of-band barrier.
-  std::vector<T> q;             // If you modify this, call reset_barrier() afterward.
 
-  BarrierQueue() : q(), b(0) {};
-  BarrierQueue(typename std::vector<T>::size_type s) : q(s), b(0) {};
-  BarrierQueue(typename std::vector<T>::size_type s, T val) : q(s, val), b(0) {};
-  void clear() { q.clear(); b = 0; }
-  void reset_barrier() { b = q.size(); }
-  void resize_back(typename std::vector<T>::size_type count) { q.resize(count + b); }
-  typename std::vector<T>::size_type get_barrier() { return b; }
-  typename std::vector<T>::size_type size() { return q.size(); }
-  T front() { return *q.begin(); }
-  T back() { return *q.end(); }
-  Range leading() { return {q.begin(), q.begin() + b}; }
-  Range trailing() { return {q.begin() + b, q.end()}; }
-  void enqueue(T val) { q.push_back(val); }
-  typename std::vector<T>::size_type dequeue(T &val)
-  { if (b > 0) { val = q[0]; q.erase(q.begin()); } return (b > 0 ? b-- : 0); }
-};
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 struct KeyFunIdentity_TN
 {
-  const TreeNode<T,D> &operator()(const TreeNode<T,D> &tn) { return tn; }
+  const TreeNode<T,dim> &operator()(const TreeNode<T,dim> &tn) { return tn; }
 };
 
 template <typename PointType>
@@ -223,29 +196,103 @@ struct KeyFunIdentity_Pt
   const PointType &operator()(const PointType &pt) { return pt; }
 };
 
-template <typename T, unsigned int D>
+template <typename T, unsigned int dim>
 struct KeyFunIdentity_maxDepth
 {
-  const TreeNode<T,D> operator()(TreeNode<T,D> tn) { tn.setLevel(m_uiMaxDepth); return tn; }
+  const TreeNode<T,dim> operator()(TreeNode<T,dim> tn) { tn.setLevel(m_uiMaxDepth); return tn; }
 };
 
 
+template <typename T, int dim>
+struct PartitionFront
+{
+  std::vector<TreeNode<T, dim>> m_fronts;
+};
 
-template <typename T, unsigned int D>
+template <typename T, int dim>
+struct PartitionFrontBack
+{
+  std::vector<TreeNode<T, dim>> m_fronts;
+  std::vector<TreeNode<T, dim>> m_backs;
+
+  PartitionFront<T, dim> fronts() const { return { m_fronts }; }
+};
+
+template <typename IntT = int>
+struct IntRange
+{
+  IntT min = std::numeric_limits<IntT>::max();
+  IntT max = std::numeric_limits<IntT>::min();
+  void include(IntT x) { min = x<min ? x : min;  max = x>max ? x : max; }
+  bool nonempty() const { return min <= max; }
+  bool empty() const { return !nonempty(); }
+  IntT length() const { return empty() ? 0 : max + 1 - min; }
+};
+
+
+template <typename T, int dim>
+class Overlaps
+{
+  protected:
+    const std::vector<TreeNode<T, dim>> &m_sortedOcts;
+    const std::vector<TreeNode<T, dim>> &m_sortedKeys;
+    std::vector<size_t> m_beginOverlaps;
+    std::vector<size_t> m_overlaps;
+
+  public:
+    // Requires lifetime of sortedOcts and sortedKeys to persist
+    // at least until final call to keyOverlaps().
+    Overlaps( const std::vector<TreeNode<T, dim>> &sortedOcts,
+              const std::vector<TreeNode<T, dim>> &sortedKeys );
+
+    void keyOverlaps(const size_t keyIdx, std::vector<size_t> &overlapIdxs);
+
+    void keyOverlapsAncestors(const size_t keyIdx, std::vector<size_t> &overlapIdxs);
+};
+
+
+template <typename T, unsigned int dim>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    const double sfc_tol = 0.3);
+
+template <typename T, unsigned int dim, typename X>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    const double sfc_tol = 0.3);
+
+template <typename T, unsigned int dim, typename X, typename Y>
+void distTreePartition_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    std::vector<Y> &ys,                      //values
+    const double sfc_tol = 0.3);
+
+
+template <typename T, unsigned int dim>
 struct SFC_Tree
 {
+  template <class PointType>
+  static void locTreeSortInUnitCube(std::vector<PointType> &points)
+  {
+    SFC_Tree<T, dim>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 1, m_uiMaxDepth, SFC_State<dim>::root());
+  }
 
   template <class PointType>
   static void locTreeSort(std::vector<PointType> &points)
   {
-    SFC_Tree<T, D>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0);
+    SFC_Tree<T, dim>::locTreeSort(&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
   }
 
 
   template <class PointType, typename... CompanionT>
   static void locTreeSort(std::vector<PointType> &points, std::vector<CompanionT>& ... companions)
   {
-    SFC_Tree<T, D>::locTreeSort<KeyFunIdentity_Pt<PointType>,
+    SFC_Tree<T, dim>::locTreeSort<KeyFunIdentity_Pt<PointType>,
                                 PointType,
                                 PointType,
                                 true,
@@ -253,7 +300,7 @@ struct SFC_Tree
                                 >
          (points.data(),
           0, (RankI) points.size(),
-          1, m_uiMaxDepth, 0,
+          1, m_uiMaxDepth, SFC_State<dim>::root(),
           KeyFunIdentity_Pt<PointType>(),
           (companions.data())...
           );
@@ -264,19 +311,19 @@ struct SFC_Tree
   template <class PointType>
   static void locTreeSortMaxDepth(std::vector<PointType> &points)
   {
-    SFC_Tree<T, D>::locTreeSort< KeyFunIdentity_maxDepth<T, D>,
-                                 PointType, TreeNode<T, D>, false, int>
-      (&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
-       KeyFunIdentity_maxDepth<T, D>(), (int*) nullptr);
+    SFC_Tree<T, dim>::locTreeSort< KeyFunIdentity_maxDepth<T, dim>,
+                                 PointType, TreeNode<T, dim>, false, int>
+      (&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root(),
+       KeyFunIdentity_maxDepth<T, dim>(), (int*) nullptr);
   }
 
   template <class PointType, typename... CompanionT>
   static void locTreeSortMaxDepth(std::vector<PointType> &points, std::vector<CompanionT>& ... companions)
   {
-    SFC_Tree<T, D>::locTreeSort< KeyFunIdentity_maxDepth<T, D>,
-                                 PointType, TreeNode<T, D>, true, CompanionT...>
-      (&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, 0,
-       KeyFunIdentity_maxDepth<T, D>(), (companions.data())...);
+    SFC_Tree<T, dim>::locTreeSort< KeyFunIdentity_maxDepth<T, dim>,
+                                 PointType, TreeNode<T, dim>, true, CompanionT...>
+      (&(*points.begin()), 0, (RankI) points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root(),
+       KeyFunIdentity_maxDepth<T, dim>(), (companions.data())...);
   }
 
 
@@ -284,12 +331,12 @@ struct SFC_Tree
   // Notes:
   //   - This method operates in-place.
   //   - From sLev to eLev INCLUSIVE
-  template <class PointType>   // = TreeNode<T,D>
+  template <class PointType>   // = TreeNode<T,dim>
   static void locTreeSort(PointType *points,
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
-                          RotI pRot);            // Initial rotation, use 0 if sLev is 1.
+                          SFC_State<dim> sfc);            // Initial rotation, use 0 if sLev is 1.
 
   // Notes:
   //   - Allows the generality of a ``key function,''
@@ -300,7 +347,7 @@ struct SFC_Tree
                           RankI begin, RankI end,
                           LevI sLev,
                           LevI eLev,
-                          RotI pRot,            // Initial rotation, use 0 if sLev is 1.
+                          SFC_State<dim> sfc,            // Initial rotation, use 0 if sLev is 1.
                           KeyFun keyfun,
                           Companion * ... companions
                           );
@@ -317,17 +364,17 @@ struct SFC_Tree
   //   - The size of outSplitters is 2+numChildren, which are splitters for
   //     1+numChildren buckets. The leading bucket holds ancestors and the
   //     remaining buckets are for children.
-  static void SFC_bucketing(TreeNode<T,D> *points,
+  static void SFC_bucketing(TreeNode<T,dim> *points,
                           RankI begin, RankI end,
                           LevI lev,
-                          RotI pRot,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          SFC_State<dim> sfc,
+                          std::array<RankI, 1+nchild(dim)> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd);
 
   /**
    * @tparam KeyFun KeyType KeyFun::operator()(PointType);
-   * @tparam KeyType must support the public interface of TreeNode<T,D>.
+   * @tparam KeyType must support the public interface of TreeNode<T,dim>.
    * @tparam PointType passive data type.
    * @param ancestorsFirst If true, ancestor bucket precedes all siblings, else follows all siblings.
    */
@@ -337,11 +384,11 @@ struct SFC_Tree
   static void SFC_bucketing_impl(PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
-                          RotI pRot,
+                          SFC_State<dim> sfc,
                           KeyFun keyfun,
                           bool separateAncestors,
                           bool ancestorsFirst,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          std::array<RankI, 1+nchild(dim)> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd);
 
@@ -353,11 +400,11 @@ struct SFC_Tree
   static void SFC_bucketing_general(PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
-                          RotI pRot,
+                          SFC_State<dim> sfc,
                           KeyFun keyfun,
                           bool separateAncestors,
                           bool ancestorsFirst,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          std::array<RankI, 1+nchild(dim)> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd,
                           Companion * ... companions
@@ -374,8 +421,8 @@ struct SFC_Tree
       LevI lev,
       KeyFun keyfun,
       bool separateAncestors,
-      std::array<RankI, TreeNode<T,D>::numChildren+1> offsets,            // last idx represents ancestors.
-      const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+      std::array<RankI, nchild(dim)+1> offsets,            // last idx represents ancestors.
+      const std::array<RankI, nchild(dim)+1> &bucketEnds,  // last idx represents ancestors.
       ValueType *values);
   template <class KeyFun, typename PointType, typename KeyType, typename CompanionHead, typename... CompanionTail>
   static void SFC_bucketStable(
@@ -385,8 +432,8 @@ struct SFC_Tree
       LevI lev,
       KeyFun keyfun,
       bool separateAncestors,
-      const std::array<RankI, TreeNode<T,D>::numChildren+1> &offsets,     // last idx represents ancestors.
-      const std::array<RankI, TreeNode<T,D>::numChildren+1> &bucketEnds,  // last idx represents ancestors.
+      const std::array<RankI, nchild(dim)+1> &offsets,     // last idx represents ancestors.
+      const std::array<RankI, nchild(dim)+1> &bucketEnds,  // last idx represents ancestors.
       CompanionHead * companionHead,
       CompanionTail* ... companionTail);
 
@@ -394,7 +441,7 @@ struct SFC_Tree
 
   /**
    * @tparam KeyFun KeyType KeyFun::operator()(PointType);
-   * @tparam KeyType must support the public interface of TreeNode<T,D>.
+   * @tparam KeyType must support the public interface of TreeNode<T,dim>.
    * @tparam PointType passive data type.
    * @param ancestorsFirst If true, ancestor bucket precedes all siblings, else follows all siblings.
    */
@@ -405,11 +452,11 @@ struct SFC_Tree
   static void SFC_locateBuckets_impl(const PointType *points,
                           RankI begin, RankI end,
                           LevI lev,
-                          RotI pRot,
+                          SFC_State<dim> sfc,
                           KeyFun keyfun,
                           bool separateAncestors,
                           bool ancestorsFirst,
-                          std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                          std::array<RankI, 1+nchild(dim)> &outSplitters,
                           RankI &outAncStart,
                           RankI &outAncEnd);
 
@@ -418,71 +465,147 @@ struct SFC_Tree
   // Notes:
   //   - Same parameters as SFC_bucketing, except does not move points.
   //   - This method is read only.
-  static void SFC_locateBuckets(const TreeNode<T,D> *points,
+  static void SFC_locateBuckets(const TreeNode<T,dim> *points,
                                 RankI begin, RankI end,
                                 LevI lev,
-                                RotI pRot,
-                                std::array<RankI, 1+TreeNode<T,D>::numChildren> &outSplitters,
+                                SFC_State<dim> sfc,
+                                std::array<RankI, 1+nchild(dim)> &outSplitters,
                                 RankI &outAncStart,
                                 RankI &outAncEnd);
 
 
+  // -----
+
+  /** Return index to first element _not less than_ key. */
+  static size_t tsearch_lower_bound(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const TreeNode<T, dim> &key);
+
+  /** Return index to first element _greater than_ key. */
+  static size_t tsearch_upper_bound(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const TreeNode<T, dim> &key);
+
+  /** Find first geq and first greater. */
+  static std::pair<size_t, size_t> tsearch_equal_range(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const TreeNode<T, dim> &key);
+
+  /** Find first geq and first greater. */
+  // Only handles octants, not boundary points.
+  static std::pair<size_t, size_t> tsearch_equal_range(
+      const TreeNode<T, dim> *sortedOcts,
+      const TreeNode<T, dim> &key,
+      size_t begin, size_t end,
+      LevI sLev,
+      SFC_State<dim> sfc);
+
+
+
+  /** Returns lower bound (rank) of each key relative to sortedOcts,
+   *  performing all searches simultaneously in a single pass. */
+  static std::vector<size_t> lower_bound(
+      const std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &sortedKeys);
+
+  /** Removes octs in sortedOcts that descend from any key in sortedKeys. */
+  static void removeDescendants(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &sortedKeys);
+
+  /** Removes octs in sortedOcts that do not descend from any key in sortedKeys. */
+  static void retainDescendants(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &sortedKeys);
+
+  /** Removes octs in sortedOcts that equal any key in sortedKeys. */
+  static void removeEqual(
+      std::vector<TreeNode<T, dim>> &sortedOcts,
+      const std::vector<TreeNode<T, dim>> &sortedKeys);
+
+  // -----
+
+
+
+
   // Notes:
   //   - points will be replaced/resized with globally sorted data.
-  static void distTreeSort(std::vector<TreeNode<T,D>> &points,
+  static void distTreeSort(std::vector<TreeNode<T,dim>> &points,
                            double loadFlexibility,
                            MPI_Comm comm);
 
-  // This method does most of the work for distTreeSort and distTreeConstruction.
-  // It includes the breadth-first global sorting phase and Alltoallv()
-  // but does not sort locally.
-  //
-  // pFinalOctants is an output parameter of the global refinement structure.
-  // If it is NULL then it is unused.
-  // If it is not NULL then it is cleared and filled with the output data.
-  //
-  // @param noSplitThresh takes precedence over loadFlexibility,
-  //        such that, for any non-empty bucket of global contents <= noSplitThresh
-  //        whose parent has global contents > noSplitThresh,
-  //        the parent will not be split across processors, but will
-  //        land completely onto a single processor.
-  //        To ignore this parameter, set noSplitThresh=0.
-  //
-  // Notes:
-  //   - points will be replaced/resized with globally sorted data.
-  static void distTreePartition(std::vector<TreeNode<T,D>> &points,
-                           unsigned int noSplitThresh,
+  static void distTreePartition(std::vector<TreeNode<T,dim>> &points,
+                           unsigned int,  // backwards compatibility
+                           double loadFlexibility,
+                           MPI_Comm comm);
+
+  static void distTreePartition(std::vector<TreeNode<T,dim>> &points,
                            double loadFlexibility,
                            MPI_Comm comm);
 
   static par::SendRecvSchedule
-    distTreePartitionSchedule(std::vector<TreeNode<T,D>> &points,
+    distTreePartitionSchedule(std::vector<TreeNode<T,dim>> &points,
                            unsigned int noSplitThresh,
                            double loadFlexibility,
                            MPI_Comm comm);
 
-  //
-  // treeBFTNextLevel()
-  //   Takes the queue of BucketInfo in a breadth-first traversal, and finishes
-  //   processing the current level. Each dequeued bucket is subdivided,
-  //   and the sub-buckets in the corresponding range of `points` are sorted.
-  //   Then the sub-buckets are initialized and enqueued to the back.
-  //
-  static void treeBFTNextLevel(TreeNode<T,D> *points,
-      std::vector<BucketInfo<RankI>> &bftQueue);
-
-
   /**
    * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.
    */
-  static std::vector<TreeNode<T,D>> dist_bcastSplitters(const TreeNode<T,D> *start, MPI_Comm comm);
+  static std::vector<TreeNode<T,dim>> dist_bcastSplitters(const TreeNode<T,dim> *start, MPI_Comm comm);
 
-  static std::vector<TreeNode<T, D>> dist_bcastSplitters(
-      const TreeNode<T, D> *start,
+  static std::vector<TreeNode<T, dim>> dist_bcastSplitters(
+      const TreeNode<T, dim> *start,
       MPI_Comm globalComm,
       MPI_Comm activeComm,
       bool isActive,
       std::vector<int> &activeList);
+
+  /**
+   * @brief Allgather the first TreeNode from every processor.
+   * @description
+   *        An empty rank is represented by getting its successor's splitter,
+   *        or the root TreeNode if it has no successor.
+   *        This method does not call MPI_Comm_split().
+   */
+
+  static PartitionFront<T, dim> allgatherSplitters(
+      bool nonempty,
+      const TreeNode<T, dim> &front,
+      MPI_Comm comm,
+      std::vector<int> *activeList = nullptr);
+
+  /**
+   * @brief Allgather first and last TreeNode.
+   *        An empty rank's front and back are both set to successor's front.
+   */
+  static PartitionFrontBack<T, dim> allgatherSplitters(
+      bool nonempty,
+      const TreeNode<T, dim> &front,
+      const TreeNode<T, dim> &back,
+      MPI_Comm comm,
+      std::vector<int> *activeList = nullptr);
+
+  /**
+   * @brief Map a set of treeNodes in the domain to the partition ranks
+   *        that own them. Repeat splitters are allowed.
+   *        Empty ranks in the partition are allowed.
+   */
+  static std::vector<int> treeNode2PartitionRank(
+      const std::vector<TreeNode<T, dim>> &treeNodes,
+      const PartitionFront<T, dim> &partitionSplitters);
+
+  /**
+   * @brief Map a set of treeNodes in the domain to ranges of the
+   *        partition ranks that they overlap. Repeat splitters
+   *        are allowed. Empty ranks in the partition are allowed.
+   *        To avoid sending data to inactive ranks,
+   *        the return indices are relative to the active list.
+   */
+  static std::vector<IntRange<>> treeNode2PartitionRanks(
+      const std::vector<TreeNode<T, dim>> &treeNodes,
+      const PartitionFrontBack<T, dim> &partitionSplitters,
+      const std::vector<int> *active);
 
 
   /** @brief Map any collection of treeNodes in the domain
@@ -491,8 +614,8 @@ struct SFC_Tree
    *         in the range [0 .. partitionFrontSplitters.size()-1].
    */
   static std::vector<int> treeNode2PartitionRank(
-      const std::vector<TreeNode<T,D>> &treeNodes,
-      const std::vector<TreeNode<T,D>> &partitionFrontSplitters);
+      const std::vector<TreeNode<T,dim>> &treeNodes,
+      const std::vector<TreeNode<T,dim>> &partitionFrontSplitters);
 
   /** @brief Map any collection of treeNodes in the domain
    *         to the partition ranks that own them.
@@ -502,8 +625,8 @@ struct SFC_Tree
    *         in the range [0 .. max{partitionActiveList}].
    */
   static std::vector<int> treeNode2PartitionRank(
-      const std::vector<TreeNode<T,D>> &treeNodes,
-      const std::vector<TreeNode<T,D>> &partitionFrontSplitters,
+      const std::vector<TreeNode<T,dim>> &treeNodes,
+      const std::vector<TreeNode<T,dim>> &partitionFrontSplitters,
       const std::vector<int> &partitionActiveList);
 
 
@@ -511,63 +634,70 @@ struct SFC_Tree
 
   // Notes:
   //   - (Sub)tree will be built by appending to `tree'.
-  static void locTreeConstruction(TreeNode<T,D> *points,
-                                  std::vector<TreeNode<T,D>> &tree,
+  static void locTreeConstruction(TreeNode<T,dim> *points,
+                                  std::vector<TreeNode<T,dim>> &tree,
                                   RankI maxPtsPerRegion,
                                   RankI begin, RankI end,
                                   LevI sLev,
                                   LevI eLev,
-                                  RotI pRot,
-                                  TreeNode<T,D> pNode);
+                                  SFC_State<dim> sfc,
+                                  TreeNode<T,dim> pNode);
 
-  static void locTreeCompletion(TreeNode<T,D> *points,
-                                  std::vector<TreeNode<T,D>> &tree,
+  static void locTreeCompletion(TreeNode<T,dim> *points,
+                                  std::vector<TreeNode<T,dim>> &tree,
                                   RankI begin, RankI end,
                                   LevI sLev,
                                   LevI eLev,
-                                  RotI pRot,
-                                  TreeNode<T,D> pNode);
+                                  SFC_State<dim> sfc,
+                                  TreeNode<T,dim> pNode);
 
-  static void distTreeConstruction(std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+  static void distTreeConstruction(std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
-  static void distTreeCompletion(std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+  static void distTreeCompletion(std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
+  static void locCompleteResolved(
+      const TreeNode<T, dim> *octants,
+      std::vector<TreeNode<T, dim>> &tree,  // expects empty
+      RankI begin, RankI end,
+      SFC_State<dim> sfc,
+      TreeNode<T,dim> pNode);
+
   static void locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
-                                             TreeNode<T,D> *points,
-                                             std::vector<TreeNode<T,D>> &tree,
+                                             TreeNode<T,dim> *points,
+                                             std::vector<TreeNode<T,dim>> &tree,
                                              RankI maxPtsPerRegion,
                                              RankI begin, RankI end,
                                              LevI sLev,
                                              LevI eLev,
-                                             RotI pRot,
-                                             TreeNode<T,D> pNode);
+                                             SFC_State<dim> sfc,
+                                             TreeNode<T,dim> pNode);
 
   static void locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
                                              bool refineAll,
-                                             std::vector<TreeNode<T,D>> &tree,
+                                             std::vector<TreeNode<T,dim>> &tree,
                                              LevI sLev,
                                              LevI eLev,
-                                             RotI pRot,
-                                             TreeNode<T,D> pNode);
+                                             SFC_State<dim> sfc,
+                                             TreeNode<T,dim> pNode);
 
   static void distTreeConstructionWithFilter(
                                    const ibm::DomainDecider &decider,
-                                   std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+                                   std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
   static void distTreeConstructionWithFilter( const ibm::DomainDecider &decider,
                                               bool refineAll,
-                                              std::vector<TreeNode<T,D>> &tree,
+                                              std::vector<TreeNode<T,dim>> &tree,
                                               LevI eLev,
                                               double loadFlexibility,
                                               MPI_Comm comm);
@@ -575,7 +705,7 @@ struct SFC_Tree
   static constexpr bool RM_DUPS_AND_ANC = false;
   static constexpr bool RM_DUPS_ONLY = true;
 
-  static void distRemoveDuplicates(std::vector<TreeNode<T,D>> &tree,
+  static void distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree,
                                    double loadFlexibility,
                                    bool strict,
                                    MPI_Comm comm);
@@ -583,11 +713,11 @@ struct SFC_Tree
   // Removes duplicate/ancestor TreeNodes from a sorted list of TreeNodes.
   // Notes:
   //   - Removal is done in a single pass in-place. The vector may be shrunk.
-  static void locRemoveDuplicates(std::vector<TreeNode<T,D>> &tnodes);
+  static void locRemoveDuplicates(std::vector<TreeNode<T,dim>> &tnodes);
 
   // Notes:
   //   - Nodes only removed if strictly equal to other nodes. Ancestors retained.
-  static void locRemoveDuplicatesStrict(std::vector<TreeNode<T,D>> &tnodes);
+  static void locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes);
 
   /**
    * distCoalesceSiblings()
@@ -598,13 +728,13 @@ struct SFC_Tree
    *
    * Simpler than keepSiblingLeafsTogether.
    */
-  static void distCoalesceSiblings( std::vector<TreeNode<T, D>> &tree,
+  static void distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
                                     MPI_Comm comm );
 
 
   // -------------------------------------------------------------
 
-  static std::vector<TreeNode<T, D>> locRemesh( const std::vector<TreeNode<T, D>> &inTree,
+  static std::vector<TreeNode<T, dim>> locRemesh( const std::vector<TreeNode<T, dim>> &inTree,
                                                 const std::vector<OCT_FLAGS::Refine> &refnFlags );
 
   /**
@@ -613,22 +743,28 @@ struct SFC_Tree
    *       be coarser or have coalesced siblings.
    *       Old default was SurrogateInByOut .
    */
-  static void distRemeshWholeDomain( const std::vector<TreeNode<T, D>> &inTree,
+  static void distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &inTree,
                                      const std::vector<OCT_FLAGS::Refine> &refnFlags,
-                                     std::vector<TreeNode<T, D>> &outTree,
+                                     std::vector<TreeNode<T, dim>> &outTree,
+                                     double loadFlexibility,
+                                     MPI_Comm comm );
+
+  static void distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTree,
+                                     const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                     std::vector<TreeNode<T, dim>> &outTree,
                                      double loadFlexibility,
                                      MPI_Comm comm );
 
   // When remeshing with the SFC_Tree interface, surrogate grid is optional.
   // Use getSurrogateGrid method after distRemeshWholeDomain() to recover the surrogate.
-  static std::vector<TreeNode<T, D>> getSurrogateGrid(
+  static std::vector<TreeNode<T, dim>> getSurrogateGrid(
       RemeshPartition remeshPartition,
-      const std::vector<TreeNode<T, D>> &oldTree,
-      const std::vector<TreeNode<T, D>> &newTree,
+      const std::vector<TreeNode<T, dim>> &oldTree,
+      const std::vector<TreeNode<T, dim>> &newTree,
       MPI_Comm comm);
 
-  static std::vector<TreeNode<T, D>> getSurrogateGrid( const std::vector<TreeNode<T, D>> &replicateGrid,
-                                                       const std::vector<TreeNode<T, D>> &splittersFromGrid,
+  static std::vector<TreeNode<T, dim>> getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replicateGrid,
+                                                       const std::vector<TreeNode<T, dim>> &splittersFromGrid,
                                                        MPI_Comm comm );
 
   // -------------------------------------------------------------
@@ -636,40 +772,78 @@ struct SFC_Tree
   /**
    * @brief Create auxiliary octants in bottom-up order to close the 2:1-balancing constraint.
    */
-  static void propagateNeighbours(std::vector<TreeNode<T,D>> &tree);
+  static void propagateNeighbours(std::vector<TreeNode<T,dim>> &tree);
 
   // Notes:
   //   - Constructs a tree based on distribution of points, then balances and completes.
   //   - Initializes tree with balanced complete tree.
-  static void locTreeBalancing(std::vector<TreeNode<T,D>> &points,
-                               std::vector<TreeNode<T,D>> &tree,
+  static void locTreeBalancing(std::vector<TreeNode<T,dim>> &points,
+                               std::vector<TreeNode<T,dim>> &tree,
                                RankI maxPtsPerRegion);
 
-  static void distTreeBalancing(std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+  static void distTreeBalancing(std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
-  static void distTreeBalancing(std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+  static void distTreeBalancing(std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    // no maxPtsPerRegion
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
   static void locTreeBalancingWithFilter(
                                const ibm::DomainDecider &decider,
-                               std::vector<TreeNode<T,D>> &points,
-                               std::vector<TreeNode<T,D>> &tree,
+                               std::vector<TreeNode<T,dim>> &points,
+                               std::vector<TreeNode<T,dim>> &tree,
                                RankI maxPtsPerRegion);
 
   static void distTreeBalancingWithFilter(
                                    const ibm::DomainDecider &decider,
-                                   std::vector<TreeNode<T,D>> &points,
-                                   std::vector<TreeNode<T,D>> &tree,
+                                   std::vector<TreeNode<T,dim>> &points,
+                                   std::vector<TreeNode<T,dim>> &tree,
                                    RankI maxPtsPerRegion,
                                    double loadFlexibility,
                                    MPI_Comm comm);
+
+  /** Maintains effective domain, splitting octants that violate 2:1-balance. */
+  static void locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree);
+
+  /** Maintains effective domain, splitting octants larger than res octants. */
+  static void locResolveTree(std::vector<TreeNode<T, dim>> &tree,
+                             std::vector<TreeNode<T, dim>> &&res);
+
+  /** Maintains or expands domain, splitting or coarsening the tree
+   *  to match the finest level in each leaf subtree of res. */
+  static void locMatchResolution( std::vector<TreeNode<T, dim>> &tree,
+                                   const std::vector<TreeNode<T, dim>> &res);
+
+  /** Assumes sorted balanced tree.
+   * Returns octants whose potential neighbors are not strictly contained
+   * in the SFC domain spanned by {first..last}. */
+  static std::vector<TreeNode<T, dim>> unstableOctants(
+      const std::vector<TreeNode<T, dim>> &tree,
+      const bool dangerLeft = true,     // mark unstable if go outside first
+      const bool dangerRight = true);   // mark unstable if go outside last
+
+  static void distMinimalBalanced(
+      std::vector<TreeNode<T, dim>> &tree, double sfc_tol, MPI_Comm comm);
+
+  /* Assumes tree is sorted. */
+  static std::vector<TreeNode<T, dim>> locRefine(
+      const std::vector<TreeNode<T, dim>> &tree,
+      std::vector<int> &&delta_level);  // positive:refine  (negative:error)
+
+  /* Assumes tree is sorted. */
+  static std::vector<TreeNode<T, dim>> locCoarsen(
+      const std::vector<TreeNode<T, dim>> &tree,
+      std::vector<int> &&delta_level);  // negative:coarsen  (positive::error)
+
+  /* Assumes tree is sorted. */
+  static std::vector<TreeNode<T, dim>> locRefineOrCoarsen(
+      const std::vector<TreeNode<T, dim>> &tree,
+      std::vector<int> &&delta_level);  // positive:refine negative:coarsen
 
   // -------------------------------------------------------------
 
@@ -680,18 +854,18 @@ struct SFC_Tree
    * @note Assumes that the partition splitters are already SFC-sorted.
    */
   // Use this one.
-  static void getContainingBlocks(TreeNode<T,D> *points,
+  static void getContainingBlocks(TreeNode<T,dim> *points,
                                   RankI begin, RankI end,
-                                  const TreeNode<T,D> *splitters,
+                                  const TreeNode<T,dim> *splitters,
                                   int numSplitters,
                                   std::vector<int> &outBlocks);
 
   // Recursive implementation.
-  static void getContainingBlocks(TreeNode<T,D> *points,
+  static void getContainingBlocks(TreeNode<T,dim> *points,
                                   RankI begin, RankI end,
-                                  const TreeNode<T,D> *splitters,
+                                  const TreeNode<T,dim> *splitters,
                                   RankI sBegin, RankI sEnd,
-                                  LevI lev, RotI pRot,
+                                  LevI lev, SFC_State<dim> sfc,
                                   int &numPrevBlocks,
                                   const int startSize,
                                   std::vector<int> &outBlocks);
@@ -699,17 +873,40 @@ struct SFC_Tree
   // -------------------------------------------------------------
 
   /** @brief Successively computes 0th child in SFC order to given level. */
-  static void firstDescendant(TreeNode<T,D> &parent,
+  static void firstDescendant(TreeNode<T,dim> &parent,
                               RotI &pRot,
                               LevI descendantLev);
 
   /** @brief Successively computes (n-1)th child in SFC order to given level. */
-  static void lastDescendant(TreeNode<T,D> &parent,
+  static void lastDescendant(TreeNode<T,dim> &parent,
                              RotI &pRot,
                              LevI descendantLev);
 
 };
 
+
+/** Discover sources from destinations within active list in comm */
+std::vector<int> recvFromActive(
+    const std::vector<int> &activeList,
+    const std::vector<int> &sendToActive,
+    MPI_Comm comm);
+
+/** Assumes tree is a distributed tree with no overlaps. */
+template <typename T, unsigned int dim>
+bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm);
+
+template <typename T, unsigned dim>
+bool isPartitioned(std::vector<TreeNode<T, dim>> octants, MPI_Comm comm);
+
+template <typename T, unsigned int dim>
+bool isLocallySorted(const std::vector<TreeNode<T, dim>> &octList);
+
+template <typename T, unsigned int dim>
+size_t lenContainedSorted(
+    const TreeNode<T, dim> *octList,
+    size_t begin, size_t end,
+    TreeNode<T, dim> subtree,
+    SFC_State<dim> sfc);
 
 } // namespace ot
 

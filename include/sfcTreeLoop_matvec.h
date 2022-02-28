@@ -51,6 +51,7 @@ namespace ot
       LevI m_subtreeFinestLevel;
       size_t m_subtreeNodeCount;
       size_t m_numBdryNodes;
+      bool m_haveHanging;
 
       bool m_initializedIn;
       bool m_initializedOut;
@@ -490,10 +491,10 @@ namespace ot
 
     // Compute child subtree TreeNodes for temporary use.
     std::array<TreeNode<unsigned int, dim>, NumChildren> childSubtreesSFC;
-    for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < nchild(dim); ++child_sfc)
     {
-      const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-      childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
+      const SFC_State<dim> sfc = this->getCurrentRotation();
+      childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(sfc.child_num(child_sfc));
     }
 
     //
@@ -530,7 +531,6 @@ namespace ot
       const LevI parLev = parSubtree.getLevel();
       if (childFinestLevel[child_sfc] <= parLev)
       {
-        const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
         childNodeCounts[child_sfc] = 0;
       }
 
@@ -604,9 +604,9 @@ namespace ot
         }
       }
 
-      for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+      for (sfc::SubIndex child_sfc(0); child_sfc < nchild(dim); ++child_sfc)
       {
-        const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
+        const sfc::ChildNum::Type child_m = this->getCurrentRotation().child_num(child_sfc);
         if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe)
         {
           // Has hanging nodes. Interpolate.
@@ -748,10 +748,10 @@ namespace ot
     myOutNodeValues.resize(m_ndofs * numParentNodes, zero);
 
     std::array<TreeNode<unsigned int, dim>, NumChildren> childSubtreesSFC;
-    for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+    for (sfc::SubIndex child_sfc(0); child_sfc < nchild(dim); ++child_sfc)
     {
-      const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
-      childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(child_m);
+      const SFC_State<dim> sfc = this->getCurrentRotation();
+      childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(sfc.child_num(child_sfc));
     }
 
     //
@@ -813,10 +813,10 @@ namespace ot
       std::fill(m_parentNodeVals.begin(), m_parentNodeVals.end(), zero);
 
       // Use transpose of interpolation operator on each hanging child.
-      for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+      for (sfc::SubIndex child_sfc(0); child_sfc < nchild(dim); ++child_sfc)
       {
         auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
-        const ChildI child_m = rotations[this->getCurrentRotation() * 2*NumChildren + child_sfc];
+        const sfc::ChildNum::Type child_m = this->getCurrentRotation().child_num(child_sfc);
         if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < npe
             && childOutput.size() > 0)
         {

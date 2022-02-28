@@ -159,13 +159,7 @@ bool testRandTree(MPI_Comm comm)
     }
 
     // Make points at least locally unique.
-    ot::SFC_Tree<C,dim>::locTreeSort(
-        &(*pointCoords.begin()),
-        0,
-        (ot::RankI) pointCoords.size(),
-        1,
-        m_uiMaxDepth,
-        0);
+    ot::SFC_Tree<C,dim>::locTreeSort(pointCoords);
     ot::SFC_Tree<C,dim>::locRemoveDuplicates(pointCoords);
 
     // Distributed tree construction.

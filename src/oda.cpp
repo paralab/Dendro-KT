@@ -158,36 +158,8 @@ namespace ot
         keys.push_back(key);
       }
 
-      // To use the schedule the TNPoints have to be locally sorted
-      // in the order of the keys.
+      distTreePartition_kway(comm, keys, nodesInOut, sfc_tol);
       SFC_Tree<C, dim>::locTreeSort(keys, nodesInOut);
-
-      const std::vector<TNPoint<C, dim>> nodesIn = nodesInOut;
-      std::vector<TNPoint<C, dim>> &nodesOut = nodesInOut;
-
-      // To sort the TNPoints, get a schedule based on the TreeNodes.
-      par::SendRecvSchedule sched = SFC_Tree<C, dim>::distTreePartitionSchedule(
-          keys, 0, sfc_tol, comm);
-
-      if (sched.scounts.size() > 0)
-      {
-        nodesOut.clear();
-        nodesOut.resize(sched.rdispls.back() + sched.rcounts.back());
-
-        par::Mpi_Alltoallv_sparse<TNPoint<C, dim>>(
-            &nodesIn[0],  &sched.scounts[0], &sched.sdispls[0],
-            &nodesOut[0], &sched.rcounts[0], &sched.rdispls[0],
-            comm);
-
-        // Locally sort the TNPoints again by keys.
-        keys.clear();
-        for (const auto &pt : nodesOut)
-        {
-          const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
-          keys.push_back(key);
-        }
-        SFC_Tree<C, dim>::locTreeSort(keys, nodesOut);
-      }
     }
 
 
@@ -393,53 +365,63 @@ namespace ot
         const std::vector<TreeNode<C, dim>> &inTreeFiltered = distTree.getTreePartFiltered(stratum);
         // ^ includes marked boundary elements from distTree.filterTree().
 
-        // Generate nodes from the tree. First, element-exterior nodes.
-        std::vector<TNPoint<C,dim>> exteriorNodeList;
-        std::vector<TNPoint<C,dim>> cancelNodeList;
-        std::vector<TreeNode<C,dim>> exteriorNodeElements;
-        std::vector<TreeNode<C,dim>> cancelNodeElements;
-        for (const TreeNode<C, dim> &elem : inTreeFiltered)
-        {
-            size_t countNewNodes1 = exteriorNodeList.size();
-            size_t countNewNodes2 = cancelNodeList.size();
-
-            Element<C,dim>(elem).appendExteriorNodes(order, exteriorNodeList, distTree.getDomainDecider());
-            Element<C,dim>(elem).appendCancellationNodes(order, cancelNodeList);
-
-            countNewNodes1 = exteriorNodeList.size() - countNewNodes1;
-            countNewNodes2 = cancelNodeList.size() - countNewNodes2;
-
-            std::fill_n(std::back_inserter(exteriorNodeElements), countNewNodes1, elem);
-            std::fill_n(std::back_inserter(cancelNodeElements), countNewNodes2, elem);
-        }
-        // Also appends cancellation nodes where potential hanging nodes could be.
-        // Only tests domainDecider if the element has been flagged as a boundary element.
-
-        std::vector<TNPoint<C,dim>> tmpList;
-        std::vector<TreeNode<C,dim>> tmpElemList;
-
-        /// // Compact local exterior node list.
-        /// sortUniqXPreferCoarser(exteriorNodeList, exteriorNodeElements, tmpList, tmpElemList);
-
-        /// // Compact local cancellation node list.
-        /// sortUniqXPreferCoarser(cancelNodeList, cancelNodeElements, tmpList, tmpElemList);
-
-        // Create a combined list of edges to be sorted.
         std::vector<TNPoint<C, dim>> combinedNodes;
         std::vector<TreeNode<C, dim>> combinedElems;
-        for (size_t ii = 0; ii < exteriorNodeList.size(); ++ii)
         {
-          const TNPoint<C, dim> pt = exteriorNodeList[ii];
-          const TreeNode<C, dim> elem = exteriorNodeElements[ii];
-          combinedNodes.push_back(pt);
-          combinedElems.push_back(elem);
-        }
-        for (size_t ii = 0; ii < cancelNodeList.size(); ++ii)
-        {
-          const TNPoint<C, dim> pt = cancelNodeList[ii];
-          const TreeNode<C, dim> elem = cancelNodeElements[ii];
-          combinedNodes.push_back(pt);
-          combinedElems.push_back(elem);
+          // Generate nodes from the tree. First, element-exterior nodes.
+          std::vector<TNPoint<C,dim>> exteriorNodeList;
+          std::vector<TNPoint<C,dim>> cancelNodeList;
+          std::vector<TreeNode<C,dim>> exteriorNodeElements;
+          std::vector<TreeNode<C,dim>> cancelNodeElements;
+          const size_t exteriorNpe = intPow(order+1, dim) - intPow(order-1, dim);
+          const size_t cancelNpe = intPow(2*order+1, dim) - intPow(2*order-1, dim) - exteriorNpe;
+          const size_t inElements = inTreeFiltered.size();
+          exteriorNodeList.reserve(inElements * exteriorNpe);
+          cancelNodeList.reserve(inElements * cancelNpe);
+          exteriorNodeElements.reserve(inElements * exteriorNpe);
+          cancelNodeElements.reserve(inElements * cancelNpe);
+          for (const TreeNode<C, dim> &elem : inTreeFiltered)
+          {
+              size_t countNewNodes1 = exteriorNodeList.size();
+              size_t countNewNodes2 = cancelNodeList.size();
+
+              Element<C,dim>(elem).appendExteriorNodes(order, exteriorNodeList, distTree.getDomainDecider());
+              Element<C,dim>(elem).appendCancellationNodes(order, cancelNodeList);
+
+              countNewNodes1 = exteriorNodeList.size() - countNewNodes1;
+              countNewNodes2 = cancelNodeList.size() - countNewNodes2;
+
+              exteriorNodeElements.insert(exteriorNodeElements.end(), countNewNodes1, elem);
+              cancelNodeElements.insert(cancelNodeElements.end(), countNewNodes2, elem);
+          }
+          // Also appends cancellation nodes where potential hanging nodes could be.
+          // Only tests domainDecider if the element has been flagged as a boundary element.
+
+          // Compact local exterior node list and local cancellation node list.
+          {
+            std::vector<TNPoint<C,dim>> tmpList;
+            std::vector<TreeNode<C,dim>> tmpElemList;
+            sortUniqXPreferCoarser(exteriorNodeList, exteriorNodeElements, tmpList, tmpElemList);
+            sortUniqXPreferCoarser(cancelNodeList, cancelNodeElements, tmpList, tmpElemList);
+          }
+
+          // Create a combined list of edges to be sorted.
+          combinedNodes.reserve(exteriorNodeList.size() + cancelNodeList.size());
+          combinedElems.reserve(exteriorNodeElements.size() + cancelNodeElements.size());
+          for (size_t ii = 0; ii < exteriorNodeList.size(); ++ii)
+          {
+            const TNPoint<C, dim> pt = exteriorNodeList[ii];
+            const TreeNode<C, dim> elem = exteriorNodeElements[ii];
+            combinedNodes.push_back(pt);
+            combinedElems.push_back(elem);
+          }
+          for (size_t ii = 0; ii < cancelNodeList.size(); ++ii)
+          {
+            const TNPoint<C, dim> pt = cancelNodeList[ii];
+            const TreeNode<C, dim> elem = cancelNodeElements[ii];
+            combinedNodes.push_back(pt);
+            combinedElems.push_back(elem);
+          }
         }
 
         if (nProcActive > 1)
@@ -453,6 +435,12 @@ namespace ot
         std::vector<TNPoint<C, dim>> convertedNodes;
         std::vector<TreeNode<C, dim>> convertedElems;
         {
+          size_t nNonCancellation = 0;
+          for (const TNPoint<C, dim> &tnp : combinedNodes)
+            nNonCancellation += !tnp.getIsCancellation();
+          convertedNodes.reserve(nNonCancellation);
+          convertedElems.reserve(nNonCancellation);
+
           const std::vector<TNPoint<C, dim>> &nodes = combinedNodes;
           const std::vector<TreeNode<C, dim>> &elems = combinedElems;
           const size_t numEdges = nodes.size();
@@ -522,7 +510,10 @@ namespace ot
         std::vector<TreeNode<C, dim>> ownShareElems;
         std::vector<int> ownShareDestRank;
         combinedNodes.clear();
+        combinedElems.clear();
         std::swap(ownShareNodes, combinedNodes);
+        std::swap(ownShareElems, combinedElems);
+        ownShareDestRank.reserve(2 * convertedNodes.size());
 
         {
           std::set<int> ranksOfNode;
@@ -741,6 +732,9 @@ namespace ot
       tmp_e.clear();
       if (points.size() > 0)
       {
+        tmp_p.reserve(points.size());
+        tmp_e.reserve(elems.size());
+
         tmp_p.push_back(points[0]);
         tmp_e.push_back(elems[0]);
         for (size_t ii = 1; ii < points.size(); ++ii)
@@ -806,33 +800,7 @@ namespace ot
         keys.push_back(key);
       }
 
-      // To use the schedule the TNPoints have to be locally sorted
-      // in the order of the keys.
-      SFC_Tree<C, dim>::locTreeSort(keys, nodesInOut, elemsInOut);
-
-      const std::vector<TNPoint<C, dim>> nodesIn = nodesInOut;
-      const std::vector<TreeNode<C, dim>> elemsIn = elemsInOut;
-
-      std::vector<TNPoint<C, dim>> &nodesOut = nodesInOut;
-      std::vector<TreeNode<C, dim>> &elemsOut = elemsInOut;
-      nodesOut.clear();
-      elemsOut.clear();
-
-      // To sort the TNPoints, get a schedule based on the TreeNodes.
-      par::SendRecvSchedule sched = SFC_Tree<C, dim>::distTreePartitionSchedule(
-          keys, 0, sfc_tol, comm);
-
-      nodesOut.resize(sched.rdispls.back() + sched.rcounts.back());
-      elemsOut.resize(sched.rdispls.back() + sched.rcounts.back());
-
-      par::Mpi_Alltoallv_sparse<TNPoint<C, dim>>(
-          &nodesIn[0],  &sched.scounts[0], &sched.sdispls[0],
-          &nodesOut[0], &sched.rcounts[0], &sched.rdispls[0],
-          comm);
-      par::Mpi_Alltoallv_sparse<TreeNode<C, dim>>(
-          &elemsIn[0],  &sched.scounts[0], &sched.sdispls[0],
-          &elemsOut[0], &sched.rcounts[0], &sched.rdispls[0],
-          comm);
+      distTreePartition_kway(comm, keys, nodesInOut, elemsInOut, sfc_tol);
     }
 
 
@@ -995,8 +963,10 @@ namespace ot
     DA<dim>::~DA()
     {
       m_uiMPIContexts.clear();
-      MPI_Comm_free(&m_uiActiveComm);
-      MPI_Comm_free(&m_uiGlobalComm);
+      if (m_uiActiveComm != MPI_COMM_NULL and m_uiActiveComm != MPI_COMM_WORLD)
+        MPI_Comm_free(&m_uiActiveComm);
+      if (m_uiGlobalComm != MPI_COMM_NULL and m_uiGlobalComm != MPI_COMM_WORLD)
+        MPI_Comm_free(&m_uiGlobalComm);
     }
 
 

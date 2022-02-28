@@ -46,4 +46,6 @@
 //#define DendroIntL unsigned int
 typedef unsigned __int128 DendroUInt_128;
 
+#define DENDRO_FOR_PACK(expr) { std::initializer_list<int> _{((expr),0)...}; }
+
 #endif //DENDRO_KT_DENDRO_H

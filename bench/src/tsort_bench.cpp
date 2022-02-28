@@ -9,14 +9,15 @@
 
 #include "tsort_bench.h"
 #include "distTree.h"
+#include "oda.h"
 
 namespace bench
 {
     profiler_t t_sort;
     profiler_t t_con;
     profiler_t t_bal;
-    profiler_t t_cg;
-    profiler_t t_sm;
+    profiler_t t_dtree;
+    profiler_t t_da;
 
 
     void resetAllTimers()
@@ -24,8 +25,8 @@ namespace bench
         t_sort.clear();
         t_con.clear();
         t_bal.clear();
-        t_cg.clear();
-        t_sm.clear();
+        t_dtree.clear();
+        t_da.clear();
     }
 
     void bench_kernel(unsigned int numPts, unsigned int numIter,unsigned int pOrder, MPI_Comm comm)
@@ -75,27 +76,15 @@ namespace bench
             ot::SFC_Tree<T,dim>::distTreeBalancing(points, tree, maxPtsPerRegion, loadFlexibility, comm);
             t_bal.stop();
 
-            // Before clearing the tree, generate the nodes, and save first element of the tree for splitters.
-            for (auto &&tn : tree)
-            {
-                ot::Element<T,dim>(tn).appendExteriorNodes(polyOrder, nodeListExterior, ot::DistTree<T, dim>::defaultDomainDecider);
-                /// ot::Element<T,dim>(tn).appendInteriorNodes(polyOrder, nodeListInterior);
-            }
-            treeSplitterF = tree.front();
-            treeSplitterB = tree.back();
-            tree.clear();
+            // Time DistTree construction from already balanced tree.
+            t_dtree.start();
+            ot::DistTree<T,dim> dtree(tree, comm);
+            t_dtree.stop();
 
-            // Time counting/resolving CG nodes.
-            t_cg.start();
-            numCGNodes = ot::SFC_NodeSort<T,dim>::dist_countCGNodes(nodeListExterior, polyOrder, (const TreeNode *) &treeSplitterF, (const TreeNode *) &treeSplitterB, comm);
-            t_cg.stop();
-
-            // Time computing the scatter map.
-            t_sm.start();
-            sm = ot::SFC_NodeSort<T,dim>::computeScattermap(nodeListExterior, (const TreeNode *) &treeSplitterF, comm);
-            rm = ot::SFC_NodeSort<T,dim>::scatter2gather(sm, (ot::RankI) nodeListExterior.size(), comm);
-            t_sm.stop();
-            nodeListExterior.clear();
+            // Time DA construction
+            t_da.start();
+            ot::DA<dim> da(dtree, comm, polyOrder, 100, loadFlexibility);
+            t_da.stop();
         }
 
 
@@ -184,8 +173,8 @@ int main(int argc, char** argv)
     _InitializeHcurve(dim);
 
     bench::bench_kernel(pts_per_core,mIter,pOrder,comm);
-    profiler_t counters []={bench::t_sort, bench::t_con, bench::t_bal, bench::t_cg, bench::t_sm};
-    const char * counter_names[] ={"sort","cons","bal","cg","sm"};
+    profiler_t counters []={bench::t_sort, bench::t_con, bench::t_bal, bench::t_dtree, bench::t_da};
+    const char * counter_names[] ={"sort","cons","bal","dtree","da"};
     bench::dump_profile_info(std::cout,counters,counter_names,5,comm);
 
     _DestroyHcurve();

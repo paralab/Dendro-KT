@@ -72,7 +72,7 @@ bool depthFirstTraversal(unsigned int eLev,
                          ot::TreeNode<T,K> &prevLeaf,
                          bool &isInitialized)
 {
-  const int numChildren = ot::TreeNode<T,K>::numChildren;
+  const int numChildren = ot::nchild(K);
 
   if (parent.getLevel() > eLev)
     return true;

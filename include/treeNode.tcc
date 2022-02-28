@@ -90,17 +90,6 @@ namespace ot {
     } //end function
 
 
-    //
-    // TreeNode copy constructor.
-    template<typename T, unsigned int dim>
-    TreeNode<T,dim>::TreeNode(const TreeNode & other)
-    {
-      m_uiCoords = other.m_uiCoords;
-      m_uiLevel = other.m_uiLevel;
-
-      m_isOnTreeBdry = other.m_isOnTreeBdry;
-    } //end function
-
 
     //
     // TreeNode trusting constructor.
@@ -112,21 +101,6 @@ namespace ot {
 
       m_isOnTreeBdry = false;
     }
-
-
-    //
-    // TreeNode assignment operator
-    template<typename T, unsigned int dim>
-    TreeNode<T,dim>& TreeNode<T,dim>::operator=(TreeNode<T,dim> const &other)
-    {
-      m_uiCoords = other.m_uiCoords;
-      m_uiLevel = other.m_uiLevel;
-
-      m_isOnTreeBdry = other.m_isOnTreeBdry;
-
-      return *this;
-    }
-
 
 
 
@@ -321,7 +295,7 @@ inline void TreeNode<T,dim>::setMortonIndex(unsigned char child)
 }
 
 template <typename T, unsigned int dim>
-inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &other)
+inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &other) const
 {
   unsigned int depth_rt = m_uiMaxDepth;
   #pragma unroll(dim)
@@ -329,7 +303,7 @@ inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &othe
   {
     unsigned int diff = other.m_uiCoords[d] ^ m_uiCoords[d];
     // Using log2 gives the index of the highest '1'. We want one above that.
-    unsigned int depth = m_uiMaxDepth - log2((diff << 1) | 1u);
+    unsigned int depth = m_uiMaxDepth - int(log2((diff << 1) | 1u));
     depth_rt = (depth < depth_rt ? depth : depth_rt);  // Minimum of depths.
   }
   return depth_rt;
@@ -472,6 +446,12 @@ inline std::array<T,dim> TreeNode<T,dim>::maxX() const {
   return maxes;
 } //end function
 
+
+template <typename T, unsigned int dim>
+T TreeNode<T, dim>::length() const
+{
+  return 1u << (m_uiMaxDepth - this->getLevel());
+}
 
 
 template <typename T, unsigned int dim>
@@ -626,6 +606,61 @@ inline void TreeNode<T,dim>::appendAllNeighbours(std::vector<TreeNode<T,dim>> &n
       nodeList.push_back(TreeNode<T,dim>(1, n_coords, level));
   }
 }  // end function()
+
+
+
+
+template <typename T, unsigned int dim>
+template <bool includeCubeBdry>
+void TreeNode<T, dim>::appendCoarseNeighbours(std::vector<TreeNode> &nodeList) const
+{
+  // `morton' determines which sides are shared with the parent.
+  // If child shares side 0 with parent, axis offsets are {0, -1}.
+  // If child shares side 1 with parent, axis offsets are {0, 1}.
+  std::array<T, dim> shift;
+  const TreeNode<T, dim> parent = this->getParent();
+  const int morton = this->getMortonIndex();
+  const T len = parent.length();
+  for (int d = 0; d < dim; ++d)
+    shift[d] = bool(morton & (1u << d)) ? len : -len;
+
+  if (includeCubeBdry)  // Can add all 2^dim - 1 neighbors.
+  {
+    // Skip n=0 which represents the parent of current octant.
+    for (int n = 1; n < (1 << dim); ++n)
+    {
+      TreeNode<T, dim> neighbour = parent;
+      for (int d = 0; d < dim; ++d)
+        if (bool(n & (1u << d)))
+          neighbour.setX(d, neighbour.getX(d) + shift[d]);
+      nodeList.push_back(neighbour);
+    }
+  }
+  else  // Have to cut dimensions where border the unit cube.
+  {
+    int badMask = 0;
+    for (int d = 0; d < dim; ++d)
+      if (parent.getX(d) == 0 || parent.getX(d) + shift[d] == (1 << m_uiMaxDepth))
+        badMask |= (1u << d);
+
+    // Skip n=0 which represents the parent of current octant.
+    for (int n = 1; n < (1 << dim); ++n)
+    {
+      if (bool(n & badMask))   // Neighbor would cross border. Skip.
+        continue;
+
+      TreeNode<T, dim> neighbour = parent;
+      for (int d = 0; d < dim; ++d)
+        if (bool(n & (1u << d)))
+          neighbour.setX(d, neighbour.getX(d) + shift[d]);
+      nodeList.push_back(neighbour);
+    }
+  }
+}
+
+
+
+
 
 
 template <typename T, unsigned int dim>

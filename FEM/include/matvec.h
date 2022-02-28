@@ -26,8 +26,6 @@ namespace fem
   using LevI = ot::LevI;
   using RotI = ot::RotI;
 
-  // TODO support moving/accumulating tuples with dof>1
-
   /**
    * @tparam da: Type of scalar components of data.
    * @param coords: Flattened array of coordinate tuples, [xyz][xyz][...]
@@ -35,10 +33,6 @@ namespace fem
   template <typename da>
   /// using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, double *coords, double scale)>;
   using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, const double *coords, double scale, bool isElementBoundary)>;
-
-    // Declaring the matvec at the top.
-    template<typename T,typename TN, typename RE>
-    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN* coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, EleOpT<T> eleOp, double scale, const RE* refElement);
 
     /**
      * @brief : mesh-free matvec
@@ -50,7 +44,6 @@ namespace fem
      * @param [in] eleOp: Elemental operator (i.e. elemental matvec)
      * @param [in] refElement: reference element.
      */
-
     template <typename T, typename TN, typename RE>
     void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
@@ -58,7 +51,7 @@ namespace fem
       std::fill(vecOut, vecOut + ndofs*sz, 0);
 
       using C = typename TN::coordType;  // If not unsigned int, error.
-      constexpr unsigned int dim = TN::coordDim;
+      constexpr unsigned int dim = ot::coordDim((TN*){});
       const unsigned int eleOrder = refElement->getOrder();
       const unsigned int npe = intPow(eleOrder+1, dim);
 
@@ -96,7 +89,6 @@ namespace fem
       if (sz > 0 && writtenSz == 0)
         std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
     }
-
 
 } // end of namespace fem
 

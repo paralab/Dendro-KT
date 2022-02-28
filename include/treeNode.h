@@ -34,6 +34,12 @@ namespace ot {
     //     6D: unsigned long long.
     using ExtantCellFlagT = unsigned short;
 
+    /// template <int dim>  constexpr int nchild() { return 1 << dim; }
+    constexpr int nchild(int dim) { return 1 << dim; }
+
+    template <template <typename TNT, unsigned TND> typename TN, typename T, unsigned dim>
+    constexpr unsigned coordDim(const TN<T, dim> *) { return dim; }
+
     /**
       @brief A class to manage octants.
       @tparam dim the dimension of the tree
@@ -59,9 +65,6 @@ namespace ot {
     public:
 
         using coordType = T;
-        static constexpr unsigned int coordDim = dim;
-
-        static constexpr char numChildren = (1u << dim);
 
         //@masado, can you please fix this to work with any dim. (@masado: Looks like it's not being used.)
         ///using Flag2K = unsigned char;  // Has 8 bits, will work for (dim <= 4).
@@ -80,7 +83,7 @@ namespace ot {
       TreeNode (const std::array<T,dim> coords, unsigned int level);
 
       /**@brief Copy constructor */
-      TreeNode (const TreeNode & other);
+      TreeNode (const TreeNode & other) = default;
 
       /**
         @brief Constructs an octant
@@ -91,7 +94,7 @@ namespace ot {
       TreeNode (const int dummy, const std::array<T,dim> coords, unsigned int level);
 
       /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the current octant using the assignment operator.*/
-      TreeNode & operator = (TreeNode const  & other);
+      TreeNode & operator = (TreeNode const  & other) = default;
 
       /** @brief Two octants are equal if their respective anchors are equal and their levels are equal. */
       bool  operator == ( TreeNode const  &other) const;
@@ -159,7 +162,7 @@ namespace ot {
       void setMortonIndex(unsigned char child);
 
       /**@brief Returns the greatest depth at which the other node shares an ancestor.*/
-      unsigned int getCommonAncestorDepth(const TreeNode &other);
+      unsigned int getCommonAncestorDepth(const TreeNode &other) const;
 
       /**@brief set the octant flag*/
       int setFlag(unsigned int w);
@@ -249,12 +252,14 @@ namespace ot {
       /**@brief max coord of the octant (rightmost corner)*/
       std::array<T,dim> maxX() const;
 
+      inline T length() const;
+
      /**
        @brief Return neighbor at the same level.
        @author Masado Ishii
        @tparam offsets Specify relative position as (-1,0,+1) for each dimension.
       */
-      template <bool includeDomBdry = false>
+      template <bool includeCubeBdry = false>
       TreeNode getNeighbour(std::array<signed char,dim> offsets) const;
 
       /**
@@ -262,15 +267,18 @@ namespace ot {
         @author Masado Ishii
         @tparam offsets Specify dimension of adjacency and relative position \ as (-1,0,+1) for that dimension.
         */
-      template <bool includeDomBdry = false>
+      template <bool includeCubeBdry = false>
       TreeNode getNeighbour(unsigned int d, signed char offset) const;
 
       /**
         @brief Append in-bounds neighbors of node to node list.
         @author Masado Ishii
        */
-      template <bool includeDomBdry = false>
+      template <bool includeCubeBdry = false>
       void appendAllNeighbours(std::vector<TreeNode> &nodeList) const;
+
+      template <bool includeCubeBdry = false>
+      void appendCoarseNeighbours(std::vector<TreeNode> &nodeList) const;
 
       /**
        @brief Append in-bounds neighbours of node to node list. Considered as points, so points on the domain boundary are included.

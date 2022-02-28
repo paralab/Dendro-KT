@@ -48,7 +48,7 @@ struct Example1
     // fill_tree()
     static void fill_tree(unsigned int endL, Tree<dim> &outTree)
     {
-      constexpr unsigned char numCh = ot::TreeNode<T,dim>::numChildren;
+      constexpr unsigned char numCh = ot::nchild(dim);
       const ot::TreeNode<T,dim> root;
       for (unsigned char ch = 0; ch < numCh; ch++)
       {
@@ -60,7 +60,7 @@ struct Example1
     /**@note Recursive method to generate a corner of the domain. */
     static void generate_corner(ot::TreeNode<T,dim> e, unsigned char ch, unsigned int endL, Tree<dim> &outTree)
     {
-      constexpr unsigned char numCh = ot::TreeNode<T,dim>::numChildren;
+      constexpr unsigned char numCh = ot::nchild(dim);
       if (e.getLevel() >= endL)
         outTree.push_back(e);
       else
@@ -101,7 +101,7 @@ struct Example2
   private:
     static void fill_tree(ot::TreeNode<T,dim> parent, unsigned int endL, Tree<dim> &outTree)
     {
-      constexpr unsigned char numCh = ot::TreeNode<T,dim>::numChildren;
+      constexpr unsigned char numCh = ot::nchild(dim);
       if (parent.getLevel() >= endL)
         outTree.push_back(parent);
       else
@@ -144,7 +144,7 @@ struct Example3
     // fill_tree()
     static void fill_tree(unsigned int endL, Tree<dim> &outTree)
     {
-      constexpr unsigned char numCh = ot::TreeNode<T,dim>::numChildren;
+      constexpr unsigned char numCh = ot::nchild(dim);
       ot::TreeNode<T,dim> root;
       for (unsigned char ch = 0; ch < numCh; ch++)
         subdivide_element(root.getChildMorton(ch), endL, outTree);
@@ -153,7 +153,7 @@ struct Example3
   private:
     static void subdivide_element(ot::TreeNode<T,dim> parent, unsigned int endL, Tree<dim> &outTree)
     {
-      constexpr unsigned char numCh = ot::TreeNode<T,dim>::numChildren;
+      constexpr unsigned char numCh = ot::nchild(dim);
       if (parent.getLevel() >= endL)
         outTree.push_back(parent);
       else

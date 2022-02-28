@@ -61,6 +61,19 @@ namespace ot
           MPI_Comm comm,
           double sfc_tol = 0.3);
 
+      // Non-uniform, coarse where 2:1-balancing permits.
+      static DistTree minimalSubdomainDistTree(
+          unsigned int finestLevel,
+          const ::ibm::DomainDecider &domainDecider_phys,
+          MPI_Comm comm,
+          double sfc_tol = 0.3);
+
+      static DistTree minimalSubdomainDistTreeGrain(
+          size_t grainMin,
+          const ::ibm::DomainDecider &domainDecider_phys,
+          MPI_Comm comm,
+          double sfc_tol = 0.3);
+
       template <typename D>
       static DistTree constructDistTreeByFunc(
           std::function<void(const D *, D *)> func,
@@ -76,12 +89,26 @@ namespace ot
       /** distRemeshSubdomain
        *  @brief: Uses DistTree filter function to carve out subdomain from remeshed tree.
        */
+      static void distRemeshSubdomainViaWhole( const DistTree &inTree,
+                                       const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                       DistTree &outTree,
+                                       DistTree &surrogateTree,
+                                       RemeshPartition remeshPartition,
+                                       double loadFlexibility );
+
       static void distRemeshSubdomain( const DistTree &inTree,
                                        const std::vector<OCT_FLAGS::Refine> &refnFlags,
                                        DistTree &outTree,
                                        DistTree &surrogateTree,
                                        RemeshPartition remeshPartition,
                                        double loadFlexibility );
+
+      static void distRefine(
+          const DistTree &inTree,
+          std::vector<int> &&delta_level,  // Need std::move() if not a temporary. To reuse a move()'d container, clear() and resize().
+          DistTree &outTree,
+          double sfc_tol);
+
 
       // insertRefinedGrid()
       //
@@ -144,6 +171,7 @@ namespace ot
 
       int getNumStrata() const { return m_numStrata; }
 
+      MPI_Comm getComm() const { return m_comm; }
 
       // These deciders can be called directly.
 
