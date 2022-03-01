@@ -1052,6 +1052,8 @@ void distTreePartition_kway_impl(
     LLU Ng;
     LLU const Nl = octants.size();
     par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
+    if (Ng == 0)
+      break;
 
     parent_buckets.reset(octants.size(), root, sfc);
     child_buckets.reset();
