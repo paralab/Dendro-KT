@@ -90,30 +90,33 @@ namespace periodic
       T m_side;
 
     public:
-      PRange();
-      PRange(const PCoord<T, dim> &min, T side);
+      inline PRange();
+      inline PRange(const PCoord<T, dim> &min, T side);
 
       PRange(const PRange &) = default;
       PRange(PRange &&) = default;
       PRange & operator=(const PRange &) = default;
       PRange & operator=(PRange &&) = default;
 
-      const PCoord<T, dim> & min() const;
-      const PCoord<T, dim> & max() const;
-      T side() const;
-
       using CoordTransfer = typename PCoord<T, dim>::CoordTransfer;
-      bool openContains(int axis, const CoordTransfer &coord) const;
-      bool halfClosedContains(int axis, const CoordTransfer &coord) const;
-      bool upperEquals(int axis, const CoordTransfer &coord) const;
-      bool closedContains(int axis, const CoordTransfer &coord) const;
 
-      bool openContains(int axis, T coord) const;
-      bool halfClosedContains(int axis, T coord) const;
-      bool upperEquals(int axis, T coord) const;
-      bool closedContains(int axis, T coord) const;
+      inline const PCoord<T, dim> & min() const;
+      inline const PCoord<T, dim> & max() const;
+      inline const CoordTransfer min(int d) const;
+      inline const CoordTransfer max(int d) const;
+      inline T side() const;
 
-      bool closedContains(const PCoord<T, dim> &pcoord) const;
+      inline bool openContains(int axis, const CoordTransfer &coord) const;
+      inline bool halfClosedContains(int axis, const CoordTransfer &coord) const;
+      inline bool upperEquals(int axis, const CoordTransfer &coord) const;
+      inline bool closedContains(int axis, const CoordTransfer &coord) const;
+
+      inline bool openContains(int axis, T coord) const;
+      inline bool halfClosedContains(int axis, T coord) const;
+      inline bool upperEquals(int axis, T coord) const;
+      inline bool closedContains(int axis, T coord) const;
+
+      inline bool closedContains(const PCoord<T, dim> &pcoord) const;
   };
 
 }
@@ -300,6 +303,18 @@ namespace periodic
   const PCoord<T, dim> & PRange<T, dim>::max() const
   {
     return m_max;
+  }
+
+  template <typename T, int dim>
+  const typename PCoord<T, dim>::CoordTransfer PRange<T, dim>::min(int d) const
+  {
+    return min().coord(d);
+  }
+
+  template <typename T, int dim>
+  const typename PCoord<T, dim>::CoordTransfer PRange<T, dim>::max(int d) const
+  {
+    return max().coord(d);
   }
 
   // PRange::side()
