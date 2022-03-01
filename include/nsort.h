@@ -98,13 +98,6 @@ namespace ot {
       /**@brief Copy constructor */
       TNPoint (const TNPoint & other);
 
-      /**
-        @brief Constructs an octant (without checks).
-        @param dummy : not used yet.
-        @param coords The coordinates of the point.
-        @param level The level of the point (i.e. level of the element that spawned it).
-      */
-      TNPoint (const int dummy, const std::array<T,dim> coords, unsigned int level);
 
       /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the object using the assignment operator.*/
       TNPoint & operator = (TNPoint const  & other);
@@ -137,19 +130,9 @@ namespace ot {
       /**@brief Return whether own cell type differs from cell type on parent. */
       bool isCrossing() const;
 
-      /** @brief Get the cell that generated this point, based on coordinates and level. */
-      TreeNode<T,dim> getCell() const;
-
       bool getIsCancellation() const;
 
       void setIsCancellation(bool isCancellation);
-
-      /**
-       * @brief Append all "base nodes," i.e. if this node were hanging, the nodes in the parent that it could point to.
-       * @note The appended base nodes may not be exact. The least significant bit will have a rounding artifact. To
-       *       compare with exact nodes that should be equal, compare plus/minus the least significant bit.
-       */
-      void appendAllBaseNodes(std::vector<TNPoint> &nodeList);
 
       /** @brief Assuming nodes on a cell are ordered lexicographically, get the rank of this node on the given cell. */
       unsigned int get_lexNodeRank(const TreeNode<T,dim> &hostCell, unsigned int polyOrder) const;

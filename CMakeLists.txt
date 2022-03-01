@@ -160,6 +160,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/nsort.h
                   include/nsort.tcc
                   include/tsearchCmpx.h
+                  include/pcoord.h
                   include/treeNode.h
                   include/treeNode.tcc
                   include/asyncExchangeContex.h
@@ -202,6 +203,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/nsort.cpp
                   src/distTree.cpp
                   src/tsearchCmpx.cpp
+                  src/pcoord.cpp
                   src/treeNode.cpp
                   src/dollar_stat.cpp
                   IO/vtk/src/oct2vtk.cpp
@@ -417,6 +419,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testPeriodicSphereStatic.cpp)
 add_executable(tstPeriodicSphereStatic ${SRC_FILES})
 target_include_directories(tstPeriodicSphereStatic PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstPeriodicSphereStatic dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testPeriodicUniformNodes.cpp)
+add_executable(tstPeriodicUniformNodes ${SRC_FILES})
+target_include_directories(tstPeriodicUniformNodes PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstPeriodicUniformNodes dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIncidentGhostPoints.cpp
               ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/genChannelPoints.cpp)

@@ -90,7 +90,7 @@ namespace ot {
     */
   template <typename T, unsigned int dim>
   TNPoint<T,dim>::TNPoint (const std::array<T,dim> coords, unsigned int level) :
-      TreeNode<T,dim>(0, coords, level)
+      TreeNode<T,dim>(coords, level)
   { }
 
   /**@brief Copy constructor */
@@ -98,17 +98,6 @@ namespace ot {
   TNPoint<T,dim>::TNPoint (const TNPoint<T,dim> & other) :
       TreeNode<T,dim>(other),
       m_owner(other.m_owner), m_isCancellation(other.m_isCancellation)
-  { }
-
-  /**
-    @brief Constructs an octant (without checks).
-    @param dummy : not used yet.
-    @param coords The coordinates of the point.
-    @param level The level of the point (i.e. level of the element that spawned it).
-  */
-  template <typename T, unsigned int dim>
-  TNPoint<T,dim>::TNPoint (const int dummy, const std::array<T,dim> coords, unsigned int level) :
-      TreeNode<T,dim>(dummy, coords, level)
   { }
 
   /** @brief Assignment operator. No checks for dim or maxD are performed. It's ok to change dim and maxD of the object using the assignment operator.*/
@@ -201,84 +190,15 @@ namespace ot {
     const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
     const unsigned int mask = (len << 1u) - 1u;
     for (int d = 0; d < dim; d++)
-      if ((TreeNode::m_uiCoords[d] & mask) == len)
+      if ((this->getX(d) & mask) == len)
         return true;
     return false;
   }
 
   template <typename T, unsigned int dim>
-  TreeNode<T,dim> TNPoint<T,dim>::getCell() const
-  {
-    using TreeNode = TreeNode<T,dim>;
-    return TreeNode(TreeNode::m_uiCoords, TreeNode::m_uiLevel);  // Truncates coordinates to cell anchor.
-  }
-
-  template <typename T, unsigned int dim>
-  void TNPoint<T,dim>::appendAllBaseNodes(std::vector<TNPoint> &nodeList)
-  {
-    // The base nodes are obtained by adding or subtracting `len' in every
-    // normal axis (self-boundary axis) and scaling x2 the off-anchor offset in every
-    // tangent axis (self-interior axis). Changes are only made for the
-    // parent-interior axes.
-    // In other words, scaling x2 the offset from every vertex of the cellTypeOnParent.
-    // Note: After scaling, may have rounding artifacts!
-    // Must compare within a +/- distance of the least significant bit.
-    // Will at least end up on the same interface/hyperplane, and should
-    // be very close by in SFC order.
-
-    using TreeNode = TreeNode<T,dim>;
-    const unsigned int parentLen = 1u << (m_uiMaxDepth - (TreeNode::m_uiLevel - 1));
-    const unsigned int interiorMask = parentLen - 1;
-
-    std::array<T,dim> anchor;
-    getCell().getParent().getAnchor(anchor);
-
-    std::array<unsigned char, dim> interiorAxes;
-    unsigned char celldim = 0;
-    for (int d = 0; d < dim; d++)
-    {
-      if (TreeNode::m_uiCoords[d] & interiorMask)
-        interiorAxes[celldim++] = d;
-    }
-
-    for (unsigned char vId = 0; vId < (1u << celldim); vId++)
-    {
-      TNPoint<T,dim> base(*this);
-      base.setLevel(TreeNode::m_uiLevel - 1);
-      for (int dIdx = 0; dIdx < celldim; dIdx++)
-      {
-        int d = interiorAxes[dIdx];
-        T vtxCoord = anchor[d] + (vId & (1u << dIdx) ? parentLen : 0);
-        base.setX(d, ((base.getX(d) - vtxCoord) << 1) + vtxCoord);
-      }
-
-      nodeList.push_back(base);
-    }
-  }
-
-
-  template <typename T, unsigned int dim>
   unsigned int TNPoint<T,dim>::get_lexNodeRank(const TreeNode<T,dim> &hostCell, unsigned int polyOrder) const
   {
-    using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - hostCell.getLevel());
-
-    unsigned int rank = 0;
-    unsigned int stride = 1;
-    #pragma unroll(dim)
-    for (int d = 0; d < dim; d++)
-    {
-      // Round up here, since we round down when we generate the nodes.
-      // The inequalities of integer division work out, as long as polyOrder < len.
-      //TODO is there a noticeable performance cost for preserving precision?
-      unsigned int index1D = polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - TreeNode::m_uiCoords[d]) / len;
-      rank += index1D * stride;
-      stride *= (polyOrder + 1);
-    }
-
-    return rank;
-
-    //TODO just call the static version on self. That was copied from here.
+    return TNPoint<T, dim>::get_lexNodeRank(hostCell, *this, polyOrder);
   }
 
 
@@ -296,10 +216,7 @@ namespace ot {
     #pragma unroll(dim)
     for (int d = 0; d < dim; d++)
     {
-      // Round up here, since we round down when we generate the nodes.
-      // The inequalities of integer division work out, as long as polyOrder < len.
-      //TODO is there a noticeable performance cost for preserving precision?
-      unsigned int index1D = polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - tnPoint.getX(d)) / len;
+      unsigned int index1D = TNPoint<T, dim>::get_nodeRank1D(hostCell, tnPoint, d, polyOrder);
       rank += index1D * stride;
       stride *= (polyOrder + 1);
     }
@@ -314,7 +231,13 @@ namespace ot {
                                               unsigned int polyOrder)
   {
     const unsigned int len = 1u << (m_uiMaxDepth - hostCell.getLevel());
-    return polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - tnPoint.getX(d)) / len;
+
+    // Round up here, since we round down when we generate the nodes.
+    // The inequalities of integer division work out, as long as polyOrder < len.
+    if (hostCell.range().upperEquals(d, tnPoint.coords().coord(d)))
+      return polyOrder;
+    else
+      return polyOrder - (unsigned long) polyOrder * (hostCell.getX(d) + len - tnPoint.getX(d)) / len;
   }
 
 
@@ -374,7 +297,7 @@ namespace ot {
   TNPoint<T, dim>    Element<T, dim>::getNode(
       const std::array<unsigned, dim> &numerators, unsigned polyOrder) const
   {
-    return TNPoint<T, dim>(1, this->getNodeX(numerators, polyOrder), this->getLevel());
+    return TNPoint<T, dim>(this->getNodeX(numerators, polyOrder), this->getLevel());
   }
 
 
@@ -400,7 +323,7 @@ namespace ot {
     // Basically the same thing as appendNodes (same dimension of volume, if nonempty),
     // just use (order-1) instead of (order+1), and shift indices by 1.
     using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+    const unsigned int len = 1u << (m_uiMaxDepth - this->getLevel());
 
     const unsigned int numNodes = intPow(order-1, dim);
 
@@ -411,8 +334,8 @@ namespace ot {
       std::array<T,dim> nodeCoords;
       #pragma unroll(dim)
       for (int d = 0; d < dim; d++)
-        nodeCoords[d] = len * (nodeIndices[d]+1) / order  +  TreeNode::m_uiCoords[d];
-      nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel));
+        nodeCoords[d] = len * (nodeIndices[d]+1) / order  +  this->getX(d);
+      nodeList.push_back(TNPoint<T,dim>(nodeCoords, this->getLevel()));
 
       incrementBaseB<unsigned int, dim>(nodeIndices, order-1);
     }
@@ -523,7 +446,7 @@ namespace ot {
   void Element<T,dim>::appendCancellationNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const
   {
     using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
+    const unsigned int len = 1u << (m_uiMaxDepth - this->getLevel());
 
     const unsigned int numNodes = intPow(order+1, dim);
 
@@ -561,10 +484,10 @@ namespace ot {
           for (int d = 0; d < dim; ++d)
           {
             // Should be the same as if had children append.
-            nodeCoords[d] = len / 2 * nodeIndices[d] / order + TreeNode::m_uiCoords[d];
+            nodeCoords[d] = len / 2 * nodeIndices[d] / order + this->getX(d);
           }
 
-          nodeList.push_back(TNPoint<T,dim>(nodeCoords, TreeNode::m_uiLevel+1));
+          nodeList.push_back(TNPoint<T,dim>(nodeCoords, this->getLevel()+1));
           nodeList.back().setIsCancellation(true);
 
           numOdd++;
@@ -646,7 +569,7 @@ namespace ot {
 
 
   /**
-   * @brief Using bit-wise ops, identifies which virtual children are touching a point.
+   * @brief Identifies which virtual children are touching a point.
    * @param [in] pointCoords Coordinates of the point incident on 0 or more children.
    * @param [out] incidenceOffset The Morton child # of the first incident child.
    * @param [out] incidenceSubspace A bit string of axes, with a '1'
@@ -662,17 +585,28 @@ namespace ot {
       typename ot::CellType<dim>::FlagType &incidenceSubspace,
       typename ot::CellType<dim>::FlagType &incidenceSubspaceDim) const
   {
-    const LevI pLev = this->getLevel();
+    periodic::PRange<T, dim> lowerRange = this->getChildMorton(0).range();
+    periodic::PRange<T, dim> upperRange = this->getChildMorton((1u << dim) - 1).range();
 
-    incidenceOffset = (pt.getMortonIndex(pLev) ^ this->getMortonIndex(pLev))  | pt.getMortonIndex(pLev + 1);  // One of the duplicates.
-    ot::CellType<dim> paCellt = TNPoint<T,dim>::get_cellType(pt, pLev);
-    ot::CellType<dim> chCellt = TNPoint<T,dim>::get_cellType(pt, pLev+1);
+    incidenceOffset = 0;
+    incidenceSubspace = 0;
+    incidenceSubspaceDim = 0;
+    for (int d = 0; d < dim; ++d)
+    {
+      const bool child0 = lowerRange.closedContains(d, pt.coords().coord(d));
+      const bool child1 = upperRange.closedContains(d, pt.coords().coord(d));
 
-    // Note that dupDim is the number of set bits in dupOrient.
-    incidenceSubspace =    paCellt.get_orient_flag() & ~chCellt.get_orient_flag();
-    incidenceSubspaceDim = paCellt.get_dim_flag()    -  chCellt.get_dim_flag();
-
-    incidenceOffset = ~incidenceSubspace & incidenceOffset;  // The least Morton-child among all duplicates.
+      if (child0 && child1)
+      {
+        incidenceSubspace |= (1u << d);
+        incidenceSubspaceDim++;
+      }
+      else if (child1)
+      {
+        incidenceOffset |= (1u << d);
+      }
+      // if just child0, then no offset needed.
+    }
   }
 
 

@@ -3003,14 +3003,13 @@ void appendNeighbours_rec(
     if ((c & periodic_axes) == 0)
       uniq_children[c] = true;
 
-  assert(uniq_children.all());  // Note: If periodic, remove assertion.
-
   const auto incident = [&](const Oct &oct0, const Oct &oct1) -> bool {
+    const auto range0 = oct0.range(),  range1 = oct1.range();
     int count_edge = 0,  count_overlaps = 0;
     for (int d = 0; d < dim; ++d)
-      if (oct0.minX(d) == oct1.maxX(d) or oct1.minX(d) == oct0.maxX(d))
+      if (range0.min(d) == range1.max(d) or range1.min(d) == range0.max(d))
         ++count_edge;
-      else if (oct0.minX(d) < oct1.maxX(d) and oct1.minX(d) < oct0.maxX(d))
+      else if (range0.min(d) < range1.max(d) and range1.min(d) < range0.max(d))
         ++count_overlaps;
     return count_edge + count_overlaps == dim and count_edge >= 1;
   };

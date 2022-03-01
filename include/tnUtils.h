@@ -31,12 +31,7 @@ void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOr
                         / double(1u << m_uiMaxDepth);
 
   // Get coordinates of a host element (lower left).
-  const T mask = -(1u << m_uiMaxDepth - octCoords.getLevel());
-  std::array<T, dim> octXYZ;
-  #pragma unroll(dim)
-  for (int d = 0; d < dim; d++)
-    octXYZ[d] = octCoords.getX(d) & mask;
-  ot::TreeNode<T, dim> element(1, octXYZ, octCoords.getLevel());
+  ot::TreeNode<T, dim> element = octCoords.getAncestor(octCoords.getLevel());
 
   // Compute physical coords.
   for (int d = 0; d < dim; d++)
@@ -81,6 +76,50 @@ TreeNode<T, dim> physical2TreeNode(const double * physCoords, double physSize)
 
   return TreeNode<T, dim>(tnCoords, elemLev);
 }
+
+
+template <typename T, unsigned int dim>
+int compareMorton(const TreeNode<T, dim> &a, const TreeNode<T, dim> &b)
+{
+  // Use the coordinate with the highest level difference (closest to root).
+  T maxDiffCoord = 0;
+  for (int d = 0; d < dim; d++)
+  {
+    T diffCoord = a.getX(d) ^ b.getX(d);  // Will have 0's where equal.
+    maxDiffCoord = (diffCoord > maxDiffCoord ? diffCoord : maxDiffCoord);
+  }
+
+  // Find the index of the highest level of difference.
+  T levelDiff = 0;
+  while (levelDiff < a.getLevel() && levelDiff < b.getLevel()
+      && !(maxDiffCoord & (1u << (m_uiMaxDepth - levelDiff))))
+  {
+    levelDiff++;
+  }
+
+  // Use that level to compare child numbers.
+  // In case of descendantship, ancestor is strictly less than descendant.
+  unsigned int indexA = a.getMortonIndex(levelDiff);
+  unsigned int indexB = b.getMortonIndex(levelDiff);
+
+  if (indexA == indexB)
+  {
+    if (a.getLevel() < b.getLevel())
+      return -1;
+    else if (a.getLevel() == b.getLevel())
+      return 0;
+    else
+      return 1;
+  }
+  else
+  {
+    if (indexA < indexB)
+      return -1;
+    else
+      return 1;
+  }
+}
+
 
 
 template <typename T, unsigned int dim>

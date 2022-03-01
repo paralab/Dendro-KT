@@ -67,8 +67,6 @@ void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsign
     for (unsigned int d = 0; d < dim; d++)
       J_product *= J.x(d);
 
-    //std::cout<<"Mass:  elem: "<<elem<<" ele Sz: "<<(elem.maxX()-elem.minX())<<" szX: "<<szX<<" Jx: "<<Jx<<" J: "<<(Jx*Jy*Jz)<<std::endl;
-
     SymmetricOuterProduct<double, dim>::applyHadamardProduct(eleOrder+1, out, W1d, J_product);
 
     // apply transpose operator
