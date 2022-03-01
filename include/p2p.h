@@ -64,7 +64,7 @@ namespace par
   struct P2PScalar
   {
     using Request = P2PRequest<P2PScalar>;
-    static_assert(LEN >= 0);
+    static_assert(LEN >= 0, "Number of scalars cannot be negative.");
 
     const P2PPartners *m_partners = nullptr;
     MPI_Comm comm() const    { assert(m_partners != nullptr);  return m_partners->comm(); }
@@ -106,7 +106,7 @@ namespace par
 
     template <typename...X>
     void send(int destIdx, const X&...scalars) {
-      static_assert(sizeof...(X) == LEN);
+      static_assert(sizeof...(X) == LEN, "Must send all LEN scalars in a single call to send().");
       assert(destIdx < m_partners->nDest());
       assert(not m_sent[destIdx]);
 
@@ -207,9 +207,9 @@ namespace par
     inline int * recv_sizes();
     inline int * recv_offsets();
 
-    inline const int recv_total() const;
-    inline const int self_size() const;
-    inline const int self_offset() const;
+    inline int recv_total() const;
+    inline int self_size() const;
+    inline int self_offset() const;
 
     inline long long unsigned bytes_sent() const;
     inline long long unsigned bytes_rcvd() const;

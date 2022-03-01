@@ -593,7 +593,7 @@ using Buckets = std::array<size_t, nbuckets + 1>;
 // imported from restart:test/restart/restart.cpp
 // future: move implementation to where it belongs.
 template <typename T, unsigned int dim>
-inline Buckets<nchild(dim)+1> bucket_sfc(
+inline Buckets<nchild(dim)+1> bucket_sfc_keys(
     TreeNode<T, dim> *xs, size_t begin, size_t end, int child_level, const SFC_State<int(dim)> sfc)
 {
   using X = TreeNode<T, dim>;
@@ -634,6 +634,9 @@ template <typename T, unsigned int dim, typename...Y>
 inline Buckets<nchild(dim)+1> bucket_sfc(
     TreeNode<T, dim> *xs, Y* ...ys, size_t begin, size_t end, int child_level, const SFC_State<int(dim)> sfc)
 {
+  if (sizeof...(Y) == 0)
+    return bucket_sfc_keys(xs, begin, end, child_level, sfc);
+
   using X = TreeNode<T, dim>;
   constexpr int nbuckets = nchild(dim) + 1;
   Buckets<nbuckets> sfc_buckets = {};            // Zeros
