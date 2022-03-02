@@ -3013,11 +3013,10 @@ void appendNeighbours_rec(
   const auto incident = [&](const Oct &oct0, const Oct &oct1) -> bool {
     int count_edge = 0,  count_overlaps = 0;
     for (int d = 0; d < dim; ++d)
-      if (oct0.minX(d) == oct1.maxX(d) or oct1.minX(d) == oct0.maxX(d))
-        ++count_edge;
-      else if (oct0.minX(d) < oct1.maxX(d) and oct1.minX(d) < oct0.maxX(d))
-        ++count_overlaps;
-    return count_edge + count_overlaps == dim and count_edge >= 1;
+      count_edge += (oct0.minX(d) == oct1.maxX(d) or oct1.minX(d) == oct0.maxX(d));
+    for (int d = 0; d < dim; ++d)
+      count_overlaps += (oct0.minX(d) <= oct1.maxX(d) and oct1.minX(d) <= oct0.maxX(d));
+    return count_overlaps == dim and count_edge >= 1;
   };
 
   // key: exclusively incident child number, or nchild(dim)
