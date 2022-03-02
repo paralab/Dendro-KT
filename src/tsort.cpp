@@ -4106,15 +4106,22 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
   std::vector<size_t> indices(keys.size());
   std::fill(indices.begin(), indices.begin() + numSplitters, -1);
   std::iota(indices.begin() + numSplitters, indices.end(), 0);
+  assert(numSplitters > 0);
+  assert(indices.size() > 0);
+  assert(indices[0] == -1);
 
   SFC_Tree<T, dim>::locTreeSort(keys, indices);  // Assumed to be stable.
+
+  // If the leading treeNode is coarser than the leading splitter,
+  // the first key will not be a splitter but a treeNode.
+  // Cannot send to a rank before 0; instead, clamp destination to 0.
 
   int rank = -1;
   for (size_t ii = 0; ii < keys.size(); ++ii)
     if (indices[ii] == -1)
       ++rank;
     else
-      rankIds[indices[ii]] = rank;
+      rankIds[indices[ii]] = std::max(0, rank);
 
   return rankIds;
 }
