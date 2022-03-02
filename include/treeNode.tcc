@@ -410,9 +410,18 @@ void TreeNode<T, dim>::appendCoarseNeighbours(std::vector<TreeNode> &nodeList) c
   for (int d = 0; d < dim; ++d)
     shift[d] = bool(morton & (1u << d)) ? len : -len;
 
+  // Have to cut dimensions where border the unit cube.
+  int badMask = 0;
+  for (int d = 0; d < dim; ++d)
+    if (this->lowerBound(d) == 0 || this->upperBound(d) == (1 << m_uiMaxDepth))
+      badMask |= (1u << d);
+
   // Skip n=0 which represents the parent of current octant.
   for (int n = 1; n < (1 << dim); ++n)
   {
+    if (bool(n & badMask))   // Neighbor would cross border. Skip.
+      continue;
+
     TreeNode<T, dim> neighbour = parent;
     for (int d = 0; d < dim; ++d)
       if (bool(n & (1u << d)))

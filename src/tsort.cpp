@@ -2763,7 +2763,7 @@ struct RangeUnion
 
       void begin_valid() {
         while (outer < ru->m_ranges.size() and inner == ru->end(outer))
-          begin_range(++outer);
+          begin_range(outer + 1);
       }
 
     public:
@@ -3207,6 +3207,10 @@ void mergeSorted(std::vector<TreeNode<T, dim>> &octList, size_t prefix)
 
   Segment<const Oct> first(octList.data(), 0, prefix);
   Segment<const Oct> second(octList.data(), prefix, octList.size());
+
+  assert(isLocallySorted(first.ptr, first.begin, first.end));
+  assert(isLocallySorted(second.ptr, second.begin, second.end));
+
   mergeSorted_rec<T, dim>(first, second, Oct(), SFC_State<dim>::root(), output);
 
   std::swap(octList, output);
@@ -3261,6 +3265,7 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
   }
   locTreeSort(resolution);
   locRemoveDuplicates(resolution);
+
   locResolveTree(tree, std::move(resolution));
 }
 
@@ -4314,6 +4319,20 @@ template bool is2to1Balanced<unsigned, 2u>(const std::vector<TreeNode<unsigned, 
 template bool is2to1Balanced<unsigned, 3u>(const std::vector<TreeNode<unsigned, 3u>> &, MPI_Comm);
 template bool is2to1Balanced<unsigned, 4u>(const std::vector<TreeNode<unsigned, 4u>> &, MPI_Comm);
 
+
+
+template <typename T, unsigned int dim>
+bool isLocallySorted(const TreeNode<T, dim> *octList, size_t begin, size_t end)
+{
+  return (end - begin) == lenContainedSorted<T, dim>(
+      octList,
+      begin, end,
+      TreeNode<T, dim>(),
+      SFC_State<dim>::root());
+}
+template bool isLocallySorted<unsigned, 2u>(const TreeNode<unsigned, 2u> *, size_t, size_t);
+template bool isLocallySorted<unsigned, 3u>(const TreeNode<unsigned, 3u> *, size_t, size_t);
+template bool isLocallySorted<unsigned, 4u>(const TreeNode<unsigned, 4u> *, size_t, size_t);
 
 
 template <typename T, unsigned int dim>

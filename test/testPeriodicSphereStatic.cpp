@@ -65,11 +65,16 @@ int main(int argc, char * argv[])
   for (int level = 0; level <= fineLevel; ++level)
     distTree = refineOnBoundary(distTree);
 
-  ot::quadTreeToGnuplot(distTree.getTreePartFiltered(), fineLevel, "sphereMesh", comm);
+  const bool balanced = ot::is2to1Balanced(distTree.getTreePartFiltered(), comm);
+
+  ot::quadTreeToGnuplot(distTree.getTreePartFiltered(), fineLevel+1, "sphereMesh", comm);
 
   const double measureVolume = distMeasureVolume(distTree, comm);
   if (comm_rank == 0)
   {
+    if (not balanced)
+      printf(RED "Not balanced\n" NRM);
+
     const double expectedMissing = M_PI * (radii(0) * radii(0));
     const double measureMissing = 0.5 - measureVolume;
     const bool isExpected = abs(measureMissing - expectedMissing) / expectedMissing < 0.05;
