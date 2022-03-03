@@ -67,7 +67,7 @@ int main(int argc, char * argv[])
 
   const bool balanced = ot::is2to1Balanced(distTree.getTreePartFiltered(), comm);
 
-  ot::quadTreeToGnuplot(distTree.getTreePartFiltered(), fineLevel+1, "sphereMesh", comm);
+  /// ot::quadTreeToGnuplot(distTree.getTreePartFiltered(), fineLevel+1, "sphereMesh", comm);
 
   const double measureVolume = distMeasureVolume(distTree, comm);
   if (comm_rank == 0)
@@ -77,7 +77,7 @@ int main(int argc, char * argv[])
 
     const double expectedMissing = M_PI * (radii(0) * radii(0));
     const double measureMissing = 0.5 - measureVolume;
-    const bool isExpected = abs(measureMissing - expectedMissing) / expectedMissing < 0.05;
+    const bool isExpected = fabs(measureMissing - expectedMissing) / expectedMissing < 0.05;
     printf("Expected=%f  %sMeasure=%f%s\n",
         expectedMissing, (isExpected ? GRN : RED), measureMissing, NRM);
   }
