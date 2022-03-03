@@ -4163,25 +4163,41 @@ std::vector<IntRange<>> SFC_Tree<T, dim>::treeNode2PartitionRanks(
       (sorted ? treeNodes_ : sortedTreeNodes);
   assert(treeNodes.size() == treeNodes_.size());
 
-  // Lower bound: For each octant in treeNodes, first splitter equal or greater.
-  std::vector<size_t> lowerBounds = lower_bound(splitters, treeNodes);
 
-  // Overlapped processes for each octant:
-  //   - oct.isAncestorInclusive(fronts[r])  OR
-  //   - oct.isAncestorInclusive(backs[r])   OR
-  //   - lower_bound(fronts[r]) < oct < lowerBound(backs[r])
+  // lower_bound(list, {k}) -> {i} : least such that k <= list[i].
+
+  // Overlap between octant x and partition [F..B]
+  //   Case 1:  F < x <= B                      -->  lb(S, x) = B
+  //   Case 2:  x <= F  and  x ancestor of F    -->  lb(S, x) <= F
+  //   Case 3:  B <= x  and  B ancestor of x    -->  lb(X, B) <= x
+
   std::vector<IntRange<>> ranges(treeNodes.size());
+
+  const std::vector<size_t> lb_S_of_tn = lower_bound(splitters, treeNodes);
   for (size_t i = 0; i < treeNodes.size(); ++i)
   {
-    size_t j = lowerBounds[i];
-    if (j < splitters.size() && j % 2 == 1)  // back splitter
+    const TreeNode<T, dim> tn = treeNodes[i];
+    const size_t lb = lb_S_of_tn[i];
+
+    if (lb < splitters.size() && (lb % 2 == 1))  //1
+      ranges[i].include(lb/2);
+
+    for (size_t j = lb;
+         j < splitters.size() and tn.isAncestorInclusive(splitters[j]);  //2
+         ++j)
       ranges[i].include(j/2);
-    while (j < splitters.size()
-        && treeNodes[i].isAncestorInclusive(splitters[j]))
-    {
+  }
+
+  const std::vector<size_t> lb_tn_of_S = lower_bound(treeNodes, splitters);
+  for (size_t j = 1; j < splitters.size(); j += 2)
+  {
+    const size_t lb = lb_tn_of_S[j];
+    const TreeNode<T, dim> s = splitters[j];
+
+    for (size_t i = lb;
+        i < treeNodes.size() and s.isAncestorInclusive(treeNodes[i]);  //3
+        ++i)
       ranges[i].include(j/2);
-      ++j;
-    }
   }
 
   // Undo sort if not originally sorted.
