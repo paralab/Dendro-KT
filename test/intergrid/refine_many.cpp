@@ -6,6 +6,7 @@
 #include "oda.h"
 #include "octUtils.h"
 #include "coarseToFine.hpp"
+#include "surrogate_cell_transfer.hpp"
 
 #include <vector>
 #include <array>
@@ -58,6 +59,14 @@ void oldIntergridTransfer(
     const ot::DistTree<uint, DIM> &to_dtree,
     const ot::DA<DIM> *to_da,
     std::vector<DofT> &to_local);
+
+void testOldIntergridCells(
+    const ot::DistTree<uint, DIM> &coarse_dtree,
+    const ot::DA<DIM> *coarse_da,
+    const int ndofs,
+    const ot::DistTree<uint, DIM> &fine_dtree,
+    const ot::DA<DIM> *fine_da);
+
 
 //
 // main()
@@ -370,6 +379,68 @@ void oldIntergridTransfer(
 
 
 // ============================================================
+
+void testOldIntergridCells(
+    const ot::DistTree<uint, DIM> &coarse_dtree,
+    const ot::DA<DIM> *coarse_da,
+    const int ndofs,
+    const ot::DistTree<uint, DIM> &fine_dtree,
+    const ot::DA<DIM> *fine_da)
+{
+  // Surrogate octree: Coarse by fine
+  OctList surrogateOctree = ot::SFC_Tree<uint, DIM>::getSurrogateGrid(
+      ot::SurrogateOutByIn,
+      fine_dtree.getTreePartFiltered(),    // this partition
+      coarse_dtree.getTreePartFiltered(),  // this grid
+      coarse_dtree.getComm());
+  ot::DistTree<uint, DIM> surr_dtree(
+      surrogateOctree, coarse_dtree.getComm(), ot::DistTree<uint, DIM>::NoCoalesce);
+  surr_dtree.filterTree(coarse_dtree.getDomainDecider());
+
+  // Surrogate DA
+  ot::DA<DIM> *surr_da = new ot::DA<DIM>(
+      surr_dtree,
+      coarse_dtree.getComm(),
+      coarse_da->getElementOrder());
+
+  // Coarse and fine vectors
+  std::vector<DofT> coarse_dofs(coarse_da->getLocalElementSz() * ndofs, 0.0f);
+  std::vector<DofT> fine_dofs(fine_da->getLocalElementSz() * ndofs, 0.0f);
+
+  // Coarse to fine
+  fill_cell_xpypl(coarse_dtree, ndofs, coarse_dofs);
+  fem::cell_transfer_refine(
+      coarse_da, ndofs, coarse_dofs.data(),
+      surr_dtree, surr_da,
+      fine_dtree, fine_da, fine_dofs.data());
+  const size_t c2f_misses = check_cell_xpypl(fine_dtree, ndofs, fine_dofs);
+
+  // Fine to coarse
+  std::fill(coarse_dofs.begin(), coarse_dofs.end(), 0.0f);
+  fem::cell_transfer_coarsen(
+      fine_dtree, fine_da, ndofs, fine_dofs.data(),
+      surr_dtree, surr_da,
+      coarse_da, coarse_dofs.data());
+  const size_t f2c_misses = check_cell_xpypl(coarse_dtree, ndofs, coarse_dofs);
+
+
+  MPI_Comm comm = MPI_COMM_WORLD;
+  int comm_rank, comm_size;
+  MPI_Comm_size(comm, &comm_size);
+  MPI_Comm_rank(comm, &comm_rank);
+
+  printf("[%d] c2f cell misses: %s%lu/%lu%s \t"
+              "f2c cell misses: %s%lu/%lu%s\n",
+      comm_rank,
+      (c2f_misses == 0 ? GRN : RED), c2f_misses, fine_da->getLocalElementSz() * ndofs, NRM,
+      (f2c_misses == 0 ? GRN : RED), f2c_misses, fine_da->getLocalElementSz() * ndofs, NRM);
+
+  delete surr_da;
+}
+
+
+// ============================================================
+
 
 // make_dist_tree()
 ot::DistTree<uint, DIM> make_dist_tree(size_t grain, double sfc_tol, MPI_Comm comm)
