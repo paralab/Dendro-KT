@@ -113,19 +113,25 @@ int _main(int argc, char * argv[])
   // Initialize vector.
   std::iota(storeVec.begin(), storeVec.end(), 0);
 
+  int err = 0;
+
   // Store octree and vector.
-  io::checkpoint::writeOctToFile((filePrefix + "_tree.dkto").c_str(),
+  err = io::checkpoint::writeOctToFile((filePrefix + "_tree.dkto").c_str(),
                  &(*genDTree.getTreePartFiltered().begin()),
                  genDTree.getTreePartFiltered().size());
-  io::checkpoint::writeVecToFile((filePrefix + "_vec.dktv").c_str(), &genDA, &(*storeVec.begin()), ndofs, isGhosted);
+  if (err) fprintf(stderr, "[%d] err at %s:%d\n", rProc, __FILE__, __LINE__);
+  err = io::checkpoint::writeVecToFile((filePrefix + "_vec.dktv").c_str(), &genDA, &(*storeVec.begin()), ndofs, isGhosted);
+  if (err) fprintf(stderr, "[%d] err at %s:%d\n", rProc, __FILE__, __LINE__);
 
   // Store nodal coordinates for verification.
-  io::checkpoint::writeDACoordsToFile((filePrefix + "_da.dkto").c_str(), &genDA);
+  err = io::checkpoint::writeDACoordsToFile((filePrefix + "_da.dkto").c_str(), &genDA);
+  if (err) fprintf(stderr, "[%d] err at %s:%d\n", rProc, __FILE__, __LINE__);
 
 
 
   // Read octree.
-  io::checkpoint::readOctFromFile((filePrefix + "_tree.dkto").c_str(), loadTree);
+  err = io::checkpoint::readOctFromFile((filePrefix + "_tree.dkto").c_str(), loadTree);
+  if (err) fprintf(stderr, "[%d] err at %s:%d\n", rProc, __FILE__, __LINE__);
 
   // Create DTree and DA before reading vec.
   ot::DistTree<unsigned int, dim> loadDTree(loadTree, comm);
@@ -133,7 +139,8 @@ int _main(int argc, char * argv[])
 
   // Verify DA against file.
   bool da_coords_match = false;
-  io::checkpoint::verifyDACoordsVsFile((filePrefix + "_da.dkto").c_str(), &loadDA, da_coords_match);
+  err = io::checkpoint::verifyDACoordsVsFile((filePrefix + "_da.dkto").c_str(), &loadDA, da_coords_match);
+  if (err) fprintf(stderr, "[%d] err at %s:%d\n", rProc, __FILE__, __LINE__);
   if (not da_coords_match)
     std::cout << "rank [" + std::to_string(rProc) + "]: DA coordinates mismatch.\n";
 
@@ -141,7 +148,8 @@ int _main(int argc, char * argv[])
   // Must allocate loadVec before reading.
   std::vector<DofT> loadVec;
   loadDA.createVector(loadVec, false, isGhosted, ndofs);
-  io::checkpoint::readVecFromFile((filePrefix + "_vec.dktv").c_str(), &loadDA, &(*loadVec.begin()), ndofs, isGhosted);
+  err = io::checkpoint::readVecFromFile((filePrefix + "_vec.dktv").c_str(), &loadDA, &(*loadVec.begin()), ndofs, isGhosted);
+  if (err) fprintf(stderr, "[%d] err at %s:%d\n", rProc, __FILE__, __LINE__);
 
   // Compare stored and loaded data.
   const size_t sz = genDA.getLocalNodalSz();

@@ -96,12 +96,15 @@ namespace io
       int writeOctToFile(FILE* outfile,const ot::TreeNode<TNT, dim>* pNodes,const size_t num)
       {
           if(outfile==NULL) {std::cout<<"Output file invalid "<<std::endl; return 1;}
-          fwrite(&num,sizeof(unsigned int),1,outfile); // write out the number of elements.
+          int err = 1 != fwrite(&num,sizeof(unsigned int),1,outfile); // write out the number of elements.
+          if (err)
+            return err;
 
           if(num>0)
-            fwrite(pNodes,sizeof(ot::TreeNode<TNT, dim>),num,outfile);  // ok if TreeNodes are TriviallyCopyable
+            err = num != fwrite(pNodes,sizeof(ot::TreeNode<TNT, dim>),num,outfile);
+            // ok if TreeNodes are TriviallyCopyable
 
-          return 0;
+          return err;
       }
 
       template <typename TNT, unsigned int dim>
@@ -109,9 +112,9 @@ namespace io
       {
           FILE* outfile = fopen(fName,"w");
           if(outfile==NULL) {std::cout<<fName<<" file open failed "<<std::endl; return 1;}
-          writeOctToFile(outfile, pNodes, num);
+          int err = writeOctToFile(outfile, pNodes, num);
           fclose(outfile);
-          return 0;
+          return err;
       }
 
 
@@ -120,16 +123,20 @@ namespace io
       {
           if(inpfile==NULL) {std::cout<<"Input file invalid "<<std::endl; return 1;}
           unsigned int num=0;
-          fread(&num,sizeof(unsigned int ),1,inpfile);
-
           pNodes.resize(0);
+
+          int err = 1 != fread(&num,sizeof(unsigned int ),1,inpfile);
+          if (err)
+            return err;
+
           if(num>0)
           {
               pNodes.resize(num);
-              fread(&(*(pNodes.begin())),(sizeof(ot::TreeNode<TNT, dim>)),num,inpfile);  // ok if TreeNodes are TriviallyCopyable
+              err = num != fread(&(*(pNodes.begin())),(sizeof(ot::TreeNode<TNT, dim>)),num,inpfile);
+              // ok if TreeNodes are TriviallyCopyable
           }
 
-          return 0;
+          return err;
       }
 
       template <typename TNT, unsigned int dim>
@@ -137,9 +144,9 @@ namespace io
       {
           FILE* inpfile = fopen(fName,"r");
           if(inpfile==NULL) {std::cout<<fName<<" file open failed "<<std::endl; return 1;}
-          readOctFromFile(inpfile, pNodes);
+          int err = readOctFromFile(inpfile, pNodes);
           fclose(inpfile);
-          return 0;
+          return err;
       }
 
 
@@ -159,18 +166,20 @@ namespace io
             return  1;
           }
 
-          fwrite(&daTotalNodalSz,   sizeof(size_t), 1, outfile);
-          fwrite(&daLocalNodeBegin, sizeof(size_t), 1, outfile);
-          fwrite(&daLocalNodeEnd,   sizeof(size_t), 1, outfile);
-          fwrite(&ndofs,          sizeof(int),    1, outfile);
+          int err = 0;
+          if (!err)  err = 1 != fwrite(&daTotalNodalSz,   sizeof(size_t), 1, outfile);
+          if (!err)  err = 1 != fwrite(&daLocalNodeBegin, sizeof(size_t), 1, outfile);
+          if (!err)  err = 1 != fwrite(&daLocalNodeEnd,   sizeof(size_t), 1, outfile);
+          if (!err)  err = 1 != fwrite(&ndofs,          sizeof(int),    1, outfile);
 
           const size_t offset = (isGhosted ? daLocalNodeBegin*ndofs : 0);
 
           if(daLocalNodalSz > 0)
-            fwrite((vec + offset), sizeof(T), daLocalNodalSz*ndofs, outfile);
+            if (!err)
+              err = daLocalNodalSz*ndofs != fwrite((vec + offset), sizeof(T), daLocalNodalSz*ndofs, outfile);
 
           fclose(outfile);
-          return 0;
+          return err;
       }
 
 
@@ -183,11 +192,11 @@ namespace io
           const size_t daLocalNodeBegin = da->getLocalNodeBegin();
           const size_t daLocalNodeEnd   = daLocalNodalSz + daLocalNodeBegin;
 
-          size_t fTotalNodalSz;
-          size_t fLocalNodalSz;
-          size_t fLocalNodeBegin;
-          size_t fLocalNodeEnd;
-          int fNdofs;
+          size_t fTotalNodalSz = 0;
+          size_t fLocalNodalSz = 0;
+          size_t fLocalNodeBegin = 0;
+          size_t fLocalNodeEnd = 0;
+          int fNdofs = 0;
 
           FILE * infile = fopen(fName,"r");
           if (infile == NULL)
@@ -197,10 +206,11 @@ namespace io
           }
 
 
-          fread(&fTotalNodalSz,   sizeof(size_t), 1, infile);
-          fread(&fLocalNodeBegin, sizeof(size_t), 1, infile);
-          fread(&fLocalNodeEnd,   sizeof(size_t), 1, infile);
-          fread(&fNdofs,          sizeof(int),    1, infile);
+          int err = 0;
+          if (!err)  err = 1 != fread(&fTotalNodalSz,   sizeof(size_t), 1, infile);
+          if (!err)  err = 1 != fread(&fLocalNodeBegin, sizeof(size_t), 1, infile);
+          if (!err)  err = 1 != fread(&fLocalNodeEnd,   sizeof(size_t), 1, infile);
+          if (!err)  err = 1 != fread(&fNdofs,          sizeof(int),    1, infile);
 
           if (fTotalNodalSz != daTotalNodalSz)
             std::cout << fName << " file number of total node mismatched with da." << "\n";
@@ -214,19 +224,20 @@ namespace io
           if (fNdofs != ndofs)
             std::cout << fName << " file ndofs mismatched with function argument ndofs." << "\n";
 
-          if (fTotalNodalSz   != daTotalNodalSz    ||
-              fLocalNodeBegin != daLocalNodeBegin  ||
-              fLocalNodeEnd   != daLocalNodeEnd    ||
-              fNdofs          != ndofs)
-            return 1;
+          if (!err)
+            if (fTotalNodalSz   != daTotalNodalSz    ||
+                fLocalNodeBegin != daLocalNodeBegin  ||
+                fLocalNodeEnd   != daLocalNodeEnd    ||
+                fNdofs          != ndofs)
+              err = 1;
 
           const size_t offset = (isGhosted ? daLocalNodeBegin*ndofs : 0);
 
           if(daLocalNodalSz > 0)
-            fread((vec + offset), sizeof(T), daLocalNodalSz*ndofs, infile);
+            if (!err)  err = daLocalNodalSz*ndofs != fread((vec + offset), sizeof(T), daLocalNodalSz*ndofs, infile);
 
           fclose(infile);
-          return 0;
+          return err;
       }
 
 
@@ -241,13 +252,14 @@ namespace io
       template <unsigned int dim>
       int verifyDACoordsVsFile(const char * fName, const ot::DA<dim> *da, bool &match)
       {
+        match = false;
         std::vector<ot::TreeNode<unsigned, dim>> fileNodeCoords;
-        int code = readDACoordsFromFile(fName, fileNodeCoords);
-        if (code)
-          return code;
+        int err = readDACoordsFromFile(fName, fileNodeCoords);
+        if (err)
+          return err;
         match = (fileNodeCoords.size() == da->getTotalNodalSz()) and
             std::equal(fileNodeCoords.begin(), fileNodeCoords.end(), da->getTNCoords());
-        return code;
+        return err;
       }
 
       // readDACoordsFromFile()
