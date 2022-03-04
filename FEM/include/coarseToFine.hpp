@@ -49,6 +49,14 @@ namespace fem
           const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
           std::vector<double> &to_cell_dofs);
 
+  template <unsigned dim>
+  void local_inherit(
+          const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
+          const double *from_total_cell_dofs,
+          const int ndofs,
+          const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
+          double *to_cell_dofs);
+
 
   template <unsigned dim>
   void flag_essential_nodes(
@@ -520,11 +528,30 @@ namespace fem
           const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
           std::vector<double> &to_cell_dofs)
   {
+    assert(from_cell_dofs.size() == from_octlist.size() * ndofs);
+    assert(to_cell_dofs.size() == to_octlist.size() * ndofs);
+
+    local_inherit(
+        from_octlist,
+        from_cell_dofs.data(),
+        ndofs,
+        to_octlist,
+        to_cell_dofs.data());
+  }
+
+  template <unsigned dim>
+  void local_inherit(
+          const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
+          const double *from_cell_dofs,
+          const int ndofs,
+          const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
+          double *to_cell_dofs)
+  {
     ot::Segment<const ot::TreeNode<unsigned, dim>> from_seg = segment_all(from_octlist);
     ot::Segment<const ot::TreeNode<unsigned, dim>> to_seg = segment_all(to_octlist);
 
     local_inherit_rec(
-        from_seg, to_seg, ndofs, from_cell_dofs.data(), to_cell_dofs.data());
+        from_seg, to_seg, ndofs, from_cell_dofs, to_cell_dofs);
 
     assert(from_seg.empty());
     assert(to_seg.empty());

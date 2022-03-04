@@ -176,8 +176,7 @@ namespace ot
         SFC_Tree<T, dim>::locRefine(inTree.getTreePartFiltered(), std::move(delta_level));
 
     DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
-    // If refining only, then already sorted. Don't need to re-sort and rm dups.
-    SFC_Tree<T, dim>::distTreePartition(newOctList, sfc_tol, comm);
+    SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
     SFC_Tree<T, dim>::distMinimalBalanced(newOctList, sfc_tol, comm);
     SFC_Tree<T, dim>::distCoalesceSiblings(newOctList, comm);
 

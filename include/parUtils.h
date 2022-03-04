@@ -348,6 +348,13 @@ namespace par {
     Mpi_Allreduce(&t, &all, 1, MPI_MIN, comm);
     return all;
   }
+  template <typename T>
+  T mpi_max(T t, MPI_Comm comm)
+  {
+    T all;
+    Mpi_Allreduce(&t, &all, 1, MPI_MAX, comm);
+    return all;
+  }
 
   /**
    * @author Rahul S. Sampath
@@ -619,6 +626,14 @@ namespace par {
     */
   template <typename T>
     void bitonicSort(std::vector<T> & in, MPI_Comm comm) ;
+
+
+  template <typename T>
+  void shift(
+      MPI_Comm comm,
+      const T *srcLocal, size_t srcSizeLocal, DendroIntL srcBeginGlobal,
+            T *dstLocal, size_t dstSizeLocal, DendroIntL dstBeginGlobal,
+      int ndofs = 1);
 
   /**
    * @title Debugging MPI programs with the GNU debugger
