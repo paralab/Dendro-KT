@@ -119,6 +119,10 @@ int _main(int argc, char * argv[])
                  genDTree.getTreePartFiltered().size());
   io::checkpoint::writeVecToFile((filePrefix + "_vec.dktv").c_str(), &genDA, &(*storeVec.begin()), ndofs, isGhosted);
 
+  // Store nodal coordinates for verification.
+  io::checkpoint::writeDACoordsToFile((filePrefix + "_da.dkto").c_str(), &genDA);
+
+
 
   // Read octree.
   io::checkpoint::readOctFromFile((filePrefix + "_tree.dkto").c_str(), loadTree);
@@ -126,6 +130,12 @@ int _main(int argc, char * argv[])
   // Create DTree and DA before reading vec.
   ot::DistTree<unsigned int, dim> loadDTree(loadTree, comm);
   ot::DA<dim> loadDA(loadDTree, comm, eleOrder);
+
+  // Verify DA against file.
+  bool da_coords_match = false;
+  io::checkpoint::verifyDACoordsVsFile((filePrefix + "_da.dkto").c_str(), &loadDA, da_coords_match);
+  if (not da_coords_match)
+    std::cout << "rank [" + std::to_string(rProc) + "]: DA coordinates mismatch.\n";
 
   // Read vector.
   // Must allocate loadVec before reading.

@@ -15,6 +15,7 @@
 #include "oda.h"
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 
 namespace io
 {
@@ -43,6 +44,19 @@ namespace io
 
       template <typename TNT, unsigned int dim>
       int readOctFromFile(const char * fName,std::vector<ot::TreeNode<TNT, dim>> & pNodes);
+
+
+      /**
+       * @brief Write and read ghosted nodal coordinates, to verify loaded checkpoints across API changes.
+       */
+      template <unsigned int dim>
+      int writeDACoordsToFile(const char * fName, const ot::DA<dim> *da);  //write file
+
+      template <unsigned int dim>
+      int verifyDACoordsVsFile(const char * fName, const ot::DA<dim> *da, bool &match);  //read file and compare DA
+
+      template <unsigned int dim>
+      int readDACoordsFromFile(const char * fName, std::vector<ot::TreeNode<unsigned, dim>> &coords);  //read file
 
 
       /**
@@ -85,7 +99,7 @@ namespace io
           fwrite(&num,sizeof(unsigned int),1,outfile); // write out the number of elements.
 
           if(num>0)
-            fwrite(pNodes,sizeof(ot::TreeNode<TNT, dim>),num,outfile);
+            fwrite(pNodes,sizeof(ot::TreeNode<TNT, dim>),num,outfile);  // ok if TreeNodes are TriviallyCopyable
 
           return 0;
       }
@@ -112,7 +126,7 @@ namespace io
           if(num>0)
           {
               pNodes.resize(num);
-              fread(&(*(pNodes.begin())),(sizeof(ot::TreeNode<TNT, dim>)),num,inpfile);
+              fread(&(*(pNodes.begin())),(sizeof(ot::TreeNode<TNT, dim>)),num,inpfile);  // ok if TreeNodes are TriviallyCopyable
           }
 
           return 0;
@@ -214,6 +228,37 @@ namespace io
           fclose(infile);
           return 0;
       }
+
+
+      // writeDACoordsToFile()
+      template <unsigned int dim>
+      int writeDACoordsToFile(const char * fName, const ot::DA<dim> *da)
+      {
+        return writeOctToFile(fName, da->getTNCoords(), da->getTotalNodalSz());
+      }
+
+      // verifyDACoordsVsFile()
+      template <unsigned int dim>
+      int verifyDACoordsVsFile(const char * fName, const ot::DA<dim> *da, bool &match)
+      {
+        std::vector<ot::TreeNode<unsigned, dim>> fileNodeCoords;
+        int code = readDACoordsFromFile(fName, fileNodeCoords);
+        if (code)
+          return code;
+        match = (fileNodeCoords.size() == da->getTotalNodalSz()) and
+            std::equal(fileNodeCoords.begin(), fileNodeCoords.end(), da->getTNCoords());
+        return code;
+      }
+
+      // readDACoordsFromFile()
+      template <unsigned int dim>
+      int readDACoordsFromFile(const char * fName, std::vector<ot::TreeNode<unsigned, dim>> &coords)
+      {
+        return readOctFromFile(fName, coords);
+      }
+
+
+
 
 
   } // end of namespace checkpoint
