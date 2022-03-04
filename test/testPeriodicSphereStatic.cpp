@@ -25,7 +25,7 @@ constexpr int numSpheres = 2;
 /// constexpr int numSpheres = 1;
 
 // spheres()
-const std::array<double, DIM> spheres(int i)
+std::array<double, DIM> spheres(int i)
 {
   const std::array<double, DIM> spheres[numSpheres] = {
     {0.0, 0.5}, 
@@ -35,7 +35,7 @@ const std::array<double, DIM> spheres(int i)
 }
 
 // radii()
-const double radii(int i)
+double radii(int i)
 {
   const double radius = 0.125;
   return radius;
@@ -145,8 +145,8 @@ ibm::Partition DomainDecider::operator()(
     double furthest[DIM];
     for (int d = 0; d < DIM; ++d)
     {
-      double a = abs(originToCenter[d] - 0);
-      double b = abs(originToCenter[d] - elemPhysSize);
+      double a = fabs(originToCenter[d] - 0);
+      double b = fabs(originToCenter[d] - elemPhysSize);
       furthest[d] = (a >= b ? 0 : elemPhysSize);
     }
     double furthestDist2 = 0;
