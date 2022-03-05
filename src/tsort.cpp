@@ -593,7 +593,7 @@ using Buckets = std::array<size_t, nbuckets + 1>;
 // imported from restart:test/restart/restart.cpp
 // future: move implementation to where it belongs.
 template <typename T, unsigned int dim>
-inline Buckets<nchild(dim)+1> bucket_sfc(
+inline Buckets<nchild(dim)+1> bucket_sfc_keys(
     TreeNode<T, dim> *xs, size_t begin, size_t end, int child_level, const SFC_State<int(dim)> sfc)
 {
   using X = TreeNode<T, dim>;
@@ -634,6 +634,9 @@ template <typename T, unsigned int dim, typename...Y>
 inline Buckets<nchild(dim)+1> bucket_sfc(
     TreeNode<T, dim> *xs, Y* ...ys, size_t begin, size_t end, int child_level, const SFC_State<int(dim)> sfc)
 {
+  if (sizeof...(Y) == 0)
+    return bucket_sfc_keys(xs, begin, end, child_level, sfc);
+
   using X = TreeNode<T, dim>;
   constexpr int nbuckets = nchild(dim) + 1;
   Buckets<nbuckets> sfc_buckets = {};            // Zeros
@@ -1108,6 +1111,8 @@ void distTreePartition_kway_impl(
     LLU Ng;
     LLU const Nl = octants.size();
     par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
+    if (Ng == 0)
+      break;
 
     parent_buckets.reset(octants.size(), root, sfc);
     child_buckets.reset();
@@ -3119,11 +3124,10 @@ void appendNeighbours_rec(
   const auto incident = [&](const Oct &oct0, const Oct &oct1) -> bool {
     int count_edge = 0,  count_overlaps = 0;
     for (int d = 0; d < dim; ++d)
-      if (oct0.minX(d) == oct1.maxX(d) or oct1.minX(d) == oct0.maxX(d))
-        ++count_edge;
-      else if (oct0.minX(d) < oct1.maxX(d) and oct1.minX(d) < oct0.maxX(d))
-        ++count_overlaps;
-    return count_edge + count_overlaps == dim and count_edge >= 1;
+      count_edge += (oct0.minX(d) == oct1.maxX(d) or oct1.minX(d) == oct0.maxX(d));
+    for (int d = 0; d < dim; ++d)
+      count_overlaps += (oct0.minX(d) <= oct1.maxX(d) and oct1.minX(d) <= oct0.maxX(d));
+    return count_overlaps == dim and count_edge >= 1;
   };
 
   // key: exclusively incident child number, or nchild(dim)
@@ -4207,15 +4211,22 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
   std::vector<size_t> indices(keys.size());
   std::fill(indices.begin(), indices.begin() + numSplitters, -1);
   std::iota(indices.begin() + numSplitters, indices.end(), 0);
+  assert(numSplitters > 0);
+  assert(indices.size() > 0);
+  assert(indices[0] == -1);
 
   SFC_Tree<T, dim>::locTreeSort(keys, indices);  // Assumed to be stable.
+
+  // If the leading treeNode is coarser than the leading splitter,
+  // the first key will not be a splitter but a treeNode.
+  // Cannot send to a rank before 0; instead, clamp destination to 0.
 
   int rank = -1;
   for (size_t ii = 0; ii < keys.size(); ++ii)
     if (indices[ii] == -1)
       ++rank;
     else
-      rankIds[indices[ii]] = rank;
+      rankIds[indices[ii]] = std::max(0, rank);
 
   return rankIds;
 }
@@ -4258,25 +4269,41 @@ std::vector<IntRange<>> SFC_Tree<T, dim>::treeNode2PartitionRanks(
       (sorted ? treeNodes_ : sortedTreeNodes);
   assert(treeNodes.size() == treeNodes_.size());
 
-  // Lower bound: For each octant in treeNodes, first splitter equal or greater.
-  std::vector<size_t> lowerBounds = lower_bound(splitters, treeNodes);
 
-  // Overlapped processes for each octant:
-  //   - oct.isAncestorInclusive(fronts[r])  OR
-  //   - oct.isAncestorInclusive(backs[r])   OR
-  //   - lower_bound(fronts[r]) < oct < lowerBound(backs[r])
+  // lower_bound(list, {k}) -> {i} : least such that k <= list[i].
+
+  // Overlap between octant x and partition [F..B]
+  //   Case 1:  F < x <= B                      -->  lb(S, x) = B
+  //   Case 2:  x <= F  and  x ancestor of F    -->  lb(S, x) <= F
+  //   Case 3:  B <= x  and  B ancestor of x    -->  lb(X, B) <= x
+
   std::vector<IntRange<>> ranges(treeNodes.size());
+
+  const std::vector<size_t> lb_S_of_tn = lower_bound(splitters, treeNodes);
   for (size_t i = 0; i < treeNodes.size(); ++i)
   {
-    size_t j = lowerBounds[i];
-    if (j < splitters.size() && j % 2 == 1)  // back splitter
+    const TreeNode<T, dim> tn = treeNodes[i];
+    const size_t lb = lb_S_of_tn[i];
+
+    if (lb < splitters.size() && (lb % 2 == 1))  //1
+      ranges[i].include(lb/2);
+
+    for (size_t j = lb;
+         j < splitters.size() and tn.isAncestorInclusive(splitters[j]);  //2
+         ++j)
       ranges[i].include(j/2);
-    while (j < splitters.size()
-        && treeNodes[i].isAncestorInclusive(splitters[j]))
-    {
+  }
+
+  const std::vector<size_t> lb_tn_of_S = lower_bound(treeNodes, splitters);
+  for (size_t j = 1; j < splitters.size(); j += 2)
+  {
+    const size_t lb = lb_tn_of_S[j];
+    const TreeNode<T, dim> s = splitters[j];
+
+    for (size_t i = lb;
+        i < treeNodes.size() and s.isAncestorInclusive(treeNodes[i]);  //3
+        ++i)
       ranges[i].include(j/2);
-      ++j;
-    }
   }
 
   // Undo sort if not originally sorted.

@@ -85,9 +85,9 @@ namespace par
   int * P2PMeta::send_offsets() { return &m_send_meta[m_partners->nDest()]; }
   int * P2PMeta::recv_sizes()   { return &m_recv_meta[0]; }
   int * P2PMeta::recv_offsets() { return &m_recv_meta[m_partners->nSrc()]; }
-  const int P2PMeta::recv_total() const { return m_recv_total; }
-  const int P2PMeta::self_size() const { return m_self_size; }
-  const int P2PMeta::self_offset() const { return m_self_offset; }
+  int P2PMeta::recv_total() const { return m_recv_total; }
+  int P2PMeta::self_size() const { return m_self_size; }
+  int P2PMeta::self_offset() const { return m_self_offset; }
   long long unsigned P2PMeta::bytes_sent() const { return m_bytes_sent; }
   long long unsigned P2PMeta::bytes_rcvd() const { return m_bytes_rcvd; }
 

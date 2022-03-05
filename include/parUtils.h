@@ -348,6 +348,13 @@ namespace par {
     Mpi_Allreduce(&t, &all, 1, MPI_MIN, comm);
     return all;
   }
+  template <typename T>
+  T mpi_max(T t, MPI_Comm comm)
+  {
+    T all;
+    Mpi_Allreduce(&t, &all, 1, MPI_MAX, comm);
+    return all;
+  }
 
   /**
    * @author Rahul S. Sampath
