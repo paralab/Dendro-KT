@@ -85,10 +85,13 @@ struct AMatWrapper
               int ndofs = 1)
   {
     mesh.da()->allocAMatMaps(meshMaps, mesh.distTree()->getTreePartFiltered(), boundaryValues, ndofs);
-    mesh.da()->createAMat(stMatFree, meshMaps);
-    stMatFree->set_matfree_type((par::MATFREE_TYPE)1);
+    if (meshMaps != nullptr)
+      mesh.da()->createAMat(stMatFree, meshMaps);
+    if (stMatFree != nullptr)
+      stMatFree->set_matfree_type((par::MATFREE_TYPE)1);
     poissonMat.getAssembledAMat(stMatFree);
-    stMatFree->finalize();
+    if (stMatFree != nullptr)
+      stMatFree->finalize();
   }
 
   ~AMatWrapper()
@@ -202,9 +205,9 @@ std::vector<bool> boundaryFlags(
     const ot::DA<dim> &da);
 
 
-inline bool is_root() { int r; MPI_Comm_rank(MPI_COMM_WORLD, &r); return !r; }
-#define Printf(...)  (is_root() and ((printf(__VA_ARGS__)), true))
-#define FPrintf(...) (is_root() and ((fprintf(__VA_ARGS__)), true))
+inline int comm_rank(MPI_Comm comm) { int r; MPI_Comm_rank(comm, &r); return r; }
+inline bool is_root(MPI_Comm comm) { return comm_rank(comm) == 0; }
+#define FPrintf(comm, ...) (is_root(comm) and ((fprintf(__VA_ARGS__)), true))
 
 
 //
@@ -248,6 +251,8 @@ int main(int argc, char * argv[])
   Mesh_t mesh(&dtree, &das, 0);
   printf("localElements=%lu\n", mesh.numElements());
   /// printf("boundaryNodes=%lu\n", mesh.da()->getBoundaryNodeIndices().size());
+
+  MPI_Comm acomm = mesh.da()->getCommActive();
 
   // Indicate boundary elements should be 'explicit'.
   if (method == hybridJacobi)
@@ -337,7 +342,7 @@ int main(int argc, char * argv[])
       LocalVector<double> diag_vec(mesh, singleDof);
       equation.assembleDiag(mesh, diag_vec);
 
-      FPrintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
+      FPrintf(comm, stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
       double check_res = std::numeric_limits<double>::infinity();
       for (int iter = 0; iter < max_iter && check_res > tol; ++iter)
       {
@@ -361,12 +366,12 @@ int main(int argc, char * argv[])
         // Check solution error
         if ((iter + 1) % 50 == 0 || (iter + 1 == 1))
         {
-          FPrintf(stdout, "[%3d] solution err_max==%e", iter+1, sol_err_max());
-          /// FPrintf(stdout, "\n");
-          FPrintf(stdout, "\t\t max_change==%e", iter_diff.max());
-          /// FPrintf(stdout, "\n");
-          FPrintf(stdout, "\t res==%e", residual.max());
-          FPrintf(stdout, "\n");
+          FPrintf(comm, stdout, "[%3d] solution err_max==%e", iter+1, sol_err_max());
+          /// FPrintf(comm, stdout, "\n");
+          FPrintf(comm, stdout, "\t\t max_change==%e", iter_diff.max());
+          /// FPrintf(comm, stdout, "\n");
+          FPrintf(comm, stdout, "\t res==%e", residual.max());
+          FPrintf(comm, stdout, "\n");
 
           check_res = residual.max();
         }
@@ -376,51 +381,54 @@ int main(int argc, char * argv[])
 
     case aMatAssembly:
     {
-      const AMatWrapper & amatWrapper = equation.atOrInsertAMat(mesh);
-      Mat petscMat = amatWrapper.stMatFree->get_matrix();
+      if (mesh.da()->isActive())
+      {
+        const AMatWrapper & amatWrapper = equation.atOrInsertAMat(mesh);
+        Mat petscMat = amatWrapper.stMatFree->get_matrix();
 
-      // PETSc solver context: Create and set KSP
-      KSP ksp;
-      KSPCreate(comm, &ksp);
-      KSPSetType(ksp, KSPCG);
-      KSPSetFromOptions(ksp);
+        // PETSc solver context: Create and set KSP
+        KSP ksp;
+        KSPCreate(mesh.da()->getCommActive(), &ksp);
+        KSPSetType(ksp, KSPCG);
+        KSPSetFromOptions(ksp);
 
-      // Set tolerances.
-      KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter);
+        // Set tolerances.
+        KSPSetTolerances(ksp, tol, PETSC_DEFAULT, PETSC_DEFAULT, max_iter);
 
-      // Set operators.
-      KSPSetOperators(ksp, petscMat, petscMat);
+        // Set operators.
+        KSPSetOperators(ksp, petscMat, petscMat);
 
-      // Set preconditioner.
-      PC pc;
-      KSPGetPC(ksp, &pc);
-      PCSetType(pc, PCJACOBI);
-      PCSetFromOptions(pc);
+        // Set preconditioner.
+        PC pc;
+        KSPGetPC(ksp, &pc);
+        PCSetType(pc, PCJACOBI);
+        PCSetFromOptions(pc);
 
-      // Compensate r.h.s. of weak formulation. Amat subtracts boundary from rhs.
-      LocalPetscVector<double> Mfrhs(mesh, ndofs, rhs_vec.ptr());
-      amatWrapper.stMatFree->apply_bc(Mfrhs.vec());
+        // Compensate r.h.s. of weak formulation. Amat subtracts boundary from rhs.
+        LocalPetscVector<double> Mfrhs(mesh, ndofs, rhs_vec.ptr());
+        amatWrapper.stMatFree->apply_bc(Mfrhs.vec());
 
-      VecAssemblyBegin(Mfrhs.vec());
-      VecAssemblyEnd(Mfrhs.vec());
+        VecAssemblyBegin(Mfrhs.vec());
+        VecAssemblyEnd(Mfrhs.vec());
 
-      // Copy vectors to Petsc vectors.
-      LocalPetscVector<double> ux(mesh, ndofs, u_vec.ptr());
-      /// print(mesh, u_vec);  // 2D grid of values in the terminal
+        // Copy vectors to Petsc vectors.
+        LocalPetscVector<double> ux(mesh, ndofs, u_vec.ptr());
+        /// print(mesh, u_vec);  // 2D grid of values in the terminal
 
-      // Solve the system.
-      KSPSolve(ksp, Mfrhs.vec(), ux.vec());
-      VecAssemblyBegin(ux.vec());
-      VecAssemblyEnd(ux.vec());
+        // Solve the system.
+        KSPSolve(ksp, Mfrhs.vec(), ux.vec());
+        VecAssemblyBegin(ux.vec());
+        VecAssemblyEnd(ux.vec());
 
-      PetscInt numIterations;
-      KSPGetIterationNumber(ksp, &numIterations);
+        PetscInt numIterations;
+        KSPGetIterationNumber(ksp, &numIterations);
 
-      // Copy back from Petsc vector.
-      copyFromPetscVector(u_vec, ux);
-      FPrintf(stdout, "[%3d] solution err_max==%e\n", numIterations, sol_err_max());
+        // Copy back from Petsc vector.
+        copyFromPetscVector(u_vec, ux);
+        FPrintf(acomm, stdout, "[%3d] solution err_max==%e\n", numIterations, sol_err_max());
 
-      KSPDestroy(&ksp);
+        KSPDestroy(&ksp);
+      }
       break;
     }
 
