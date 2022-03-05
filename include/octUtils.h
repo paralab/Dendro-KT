@@ -1121,7 +1121,7 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
   elemIndex++;
 
   const double maxPadding = 0.00;
-  const char * alpha = "FF";
+  const char * alpha = "00";
 
   for (const TreeNode<T, dim> quad : treePart)
   {

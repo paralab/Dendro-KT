@@ -202,6 +202,9 @@ std::vector<bool> boundaryFlags(
     const ot::DA<dim> &da);
 
 
+inline bool is_root() { int r; MPI_Comm_rank(MPI_COMM_WORLD, &r); return !r; }
+#define Printf(...)  (is_root() and ((printf(__VA_ARGS__)), true))
+#define FPrintf(...) (is_root() and ((fprintf(__VA_ARGS__)), true))
 
 
 //
@@ -227,7 +230,8 @@ int main(int argc, char * argv[])
   const size_t singleDof = 1;
 
   enum Method { matrixFreeJacobi, aMatAssembly, hybridJacobi };
-  const Method method = aMatAssembly;
+  /// const Method method = aMatAssembly;
+  const Method method = matrixFreeJacobi;
 
   // Mesh
 
@@ -236,6 +240,8 @@ int main(int argc, char * argv[])
 
   DTree_t dtree = fringeExample<DIM>(fineLevel, comm, sfc_tol);  // fringe
   /// DTree_t dtree = tinyExample<DIM>(2, comm, sfc_tol);  // minimal # elements
+
+  /// ot::quadTreeToGnuplot(dtree.getTreePartFiltered(), 10, "quadtree/dtree", comm);
 
   std::vector<DA_t> das(1);
   das[0].constructStratum(dtree, 0, comm, eleOrder, dummyInt, sfc_tol);
@@ -331,7 +337,7 @@ int main(int argc, char * argv[])
       LocalVector<double> diag_vec(mesh, singleDof);
       equation.assembleDiag(mesh, diag_vec);
 
-      fprintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
+      FPrintf(stdout, "[%3d] solution err_max==%e\n", 0, sol_err_max());
       double check_res = std::numeric_limits<double>::infinity();
       for (int iter = 0; iter < max_iter && check_res > tol; ++iter)
       {
@@ -355,12 +361,12 @@ int main(int argc, char * argv[])
         // Check solution error
         if ((iter + 1) % 50 == 0 || (iter + 1 == 1))
         {
-          fprintf(stdout, "[%3d] solution err_max==%e", iter+1, sol_err_max());
-          /// fprintf(stdout, "\n");
-          fprintf(stdout, "\t\t max_change==%e", iter_diff.max());
-          /// fprintf(stdout, "\n");
-          fprintf(stdout, "\t res==%e", residual.max());
-          fprintf(stdout, "\n");
+          FPrintf(stdout, "[%3d] solution err_max==%e", iter+1, sol_err_max());
+          /// FPrintf(stdout, "\n");
+          FPrintf(stdout, "\t\t max_change==%e", iter_diff.max());
+          /// FPrintf(stdout, "\n");
+          FPrintf(stdout, "\t res==%e", residual.max());
+          FPrintf(stdout, "\n");
 
           check_res = residual.max();
         }
@@ -412,7 +418,7 @@ int main(int argc, char * argv[])
 
       // Copy back from Petsc vector.
       copyFromPetscVector(u_vec, ux);
-      fprintf(stdout, "[%3d] solution err_max==%e\n", numIterations, sol_err_max());
+      FPrintf(stdout, "[%3d] solution err_max==%e\n", numIterations, sol_err_max());
 
       KSPDestroy(&ksp);
       break;
