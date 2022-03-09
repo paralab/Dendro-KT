@@ -77,6 +77,11 @@ namespace periodic
 
       inline void truncate(int bottomLevels);
       inline PCoord truncated(int bottomLevels) const;
+
+    private:
+      static std::array<T, dim> default_masks() {
+        std::array<T, dim> m;  m.fill(-1);  return m;
+      }
   };
 
 
