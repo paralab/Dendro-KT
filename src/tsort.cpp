@@ -1031,7 +1031,7 @@ void distTreePartition_kway_impl(
       std::vector<X> &...w,
       BucketRef<T, int(dim)> b)
   {
-    return bucket_sfc<T, dim, X...>(
+    Buckets<1+nchild(dim)> buckets = bucket_sfc<T, dim, X...>(
         &(*v.begin()),
         (&(*w.begin()))...,
         b.local_begin,
@@ -1039,6 +1039,15 @@ void distTreePartition_kway_impl(
         b.octant.getLevel() + 1,
         b.sfc);
     //future: use locate instead of bucketing if octants is already sorted.
+
+    // Force parent onto next nonempty child.
+    const size_t parent_begin = buckets[0],  parent_end = buckets[1];
+    const size_t family_end = buckets[1+nchild(dim)];
+    if (parent_end < family_end)
+      for (int i = 1; buckets[i] == parent_end; ++i)
+        buckets[i] = parent_begin;
+
+    return buckets;
   };
 
   // Splitters.
@@ -1812,6 +1821,43 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
 
 template <typename T, unsigned int dim>
 void
+SFC_Tree<T,dim>::splitParents(std::vector<TreeNode<T,dim>> &tree)
+{
+  // Even if there are duplicates next to each other,
+  // if the last duplicate is a parent of the next octant,
+  // it will be split.
+
+  assert(isLocallySorted(tree));
+
+  // Scan for parents.
+  size_t n_parents = 0;
+  for (size_t i = 1; i < tree.size(); ++i)
+    n_parents += (tree[i-1].isAncestor(tree[i]));
+  if (n_parents == 0)
+    return;
+
+  std::vector<TreeNode<T, dim>> split;
+  split.reserve(tree.size() + n_parents * (nchild(dim) - 1));
+
+  for (size_t i = 1; i < tree.size(); ++i)
+  {
+    const TreeNode<T, dim> predecessor = tree[i-1],  successor = tree[i];
+    if (predecessor.isAncestor(successor))
+      for (sfc::ChildNum c(0); c < nchild(dim); ++c)  // morton
+        split.push_back(predecessor.getChildMorton(c));
+    else
+      split.push_back(predecessor);
+  }
+  if (tree.size() > 0)  // Should always be true since n_parents > 0
+    split.push_back(tree.back());  // Last cannot be parent
+
+  std::swap(tree, split);
+  locTreeSort(tree);  // Uncles maybe out of order, also children in morton order
+}
+
+
+template <typename T, unsigned int dim>
+void
 SFC_Tree<T,dim>:: locRemoveDuplicates(std::vector<TreeNode<T,dim>> &tnodes)
 {
   const TreeNode<T,dim> *tEnd = &(*tnodes.end());
@@ -2409,10 +2455,13 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
   outTree = inTree;
   locTreeSort(res);
   SFC_Tree<T, dim>::locMatchResolution(outTree, res);
-  SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);
+  SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);  // Need children under parents
+  SFC_Tree<T, dim>::splitParents(outTree);  // Same domain as with parents, maybe expanded original
   SFC_Tree<T, dim>::distRemoveDuplicates(outTree, loadFlexibility, RM_DUPS_AND_ANC, comm);
   SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
   SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
+  // Domain possibly expanded. Require filterTree() afterward (e.g. in DistTree::distRemeshSubdomain())
+  // future: Move this function body directly into DistTree::distRemeshSubdomain().
 }
 
 template <typename T, unsigned int dim>
