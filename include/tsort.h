@@ -706,6 +706,8 @@ struct SFC_Tree
   //   - Nodes only removed if strictly equal to other nodes. Ancestors retained.
   static void locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes);
 
+  static void splitParents(std::vector<TreeNode<T,dim>> &tree);
+
   /**
    * distCoalesceSiblings()
    *
