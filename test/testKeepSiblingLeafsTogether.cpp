@@ -155,7 +155,7 @@ bool testRandTree(MPI_Comm comm)
       for (int d = 0; d < dim; d++)
         coords[d] = coordDis(gen) & mask;
 
-      pointCoords.emplace_back(1, coords, lev);
+      pointCoords.emplace_back(coords, lev);
     }
 
     // Make points at least locally unique.

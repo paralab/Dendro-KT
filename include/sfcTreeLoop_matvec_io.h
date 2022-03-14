@@ -1166,6 +1166,7 @@ namespace ot
                 childSubtreesSFC[child_sfc],
                 myNodes[nIdx],
                 m_eleOrder );
+        assert(nodeRank < npe);
 
         // Node coordinates.
         /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
@@ -1470,6 +1471,7 @@ namespace ot
                 childSubtreesSFC[child_sfc],
                 myNodes[nIdx],
                 m_eleOrder );
+        assert(nodeRank < npe);
 
         // Node coordinates.
         /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
@@ -1708,6 +1710,7 @@ namespace ot
                 childSubtreesSFC[child_sfc],
                 myNodes[nIdx],
                 m_eleOrder );
+        assert(nodeRank < npe);
 
         // Node coordinates.
         /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
@@ -1849,6 +1852,7 @@ namespace ot
                   childSubtreesSFC[child_sfc],
                   myNodes[nIdx],
                   m_eleOrder );
+          assert(nodeRank < npe);
 
           if (childOutIsDirty[nodeRank])
           {
@@ -1979,6 +1983,7 @@ namespace ot
                   TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
                                                                myNodes[nIdx],
                                                                m_eleOrder );
+              assert(nodeRank < npe);
               myOutIsDirty[nIdx] |= bool(parentIPT_IsDirty[nodeRank]);
             }
           }

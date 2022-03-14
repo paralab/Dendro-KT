@@ -2,6 +2,7 @@
 
 #include "dendro.h"
 
+#include "pcoord.h"
 #include "distTree.h"
 #include "oda.h"
 #include "filterFunction.h"
@@ -20,21 +21,21 @@ struct DomainDecider
 ot::DistTree<uint, DIM> refineOnBoundary(const ot::DistTree<uint, DIM> &distTree);
 double distMeasureVolume(const ot::DistTree<uint, DIM> &distTree, MPI_Comm comm);
 
-/// constexpr int numSpheres = 2;
-constexpr int numSpheres = 1;
+constexpr int numSpheres = 2;
+/// constexpr int numSpheres = 1;
 
 // spheres()
-const std::array<double, DIM> spheres(int i)
+std::array<double, DIM> spheres(int i)
 {
   const std::array<double, DIM> spheres[numSpheres] = {
-    {0.0, 0.5}/*, 
-    {0.5, 0.5}*/
+    {0.0, 0.5}, 
+    {0.5, 0.5}
   };
   return spheres[i];
 }
 
 // radii()
-const double radii(int i)
+double radii(int i)
 {
   const double radius = 0.125;
   return radius;
@@ -48,6 +49,9 @@ int main(int argc, char * argv[])
   DendroScopeBegin();
 
   _InitializeHcurve(DIM);
+  periodic::PCoord<uint, DIM>::periods({(1u<<m_uiMaxDepth)/2, periodic::NO_PERIOD});
+  /// periodic::PCoord<uint, DIM>::periods({(1u<<m_uiMaxDepth), periodic::NO_PERIOD});
+  /// periodic::PCoord<uint, DIM>::periods({periodic::NO_PERIOD, periodic::NO_PERIOD});
 
   MPI_Comm comm = MPI_COMM_WORLD;
   int comm_size, comm_rank;
@@ -61,14 +65,19 @@ int main(int argc, char * argv[])
   for (int level = 0; level <= fineLevel; ++level)
     distTree = refineOnBoundary(distTree);
 
-  ot::quadTreeToGnuplot(distTree.getTreePartFiltered(), fineLevel, "sphereMesh", comm);
+  const bool balanced = ot::is2to1Balanced(distTree.getTreePartFiltered(), comm);
+
+  /// ot::quadTreeToGnuplot(distTree.getTreePartFiltered(), fineLevel+1, "sphereMesh", comm);
 
   const double measureVolume = distMeasureVolume(distTree, comm);
   if (comm_rank == 0)
   {
+    if (not balanced)
+      printf(RED "Not balanced\n" NRM);
+
     const double expectedMissing = M_PI * (radii(0) * radii(0));
-    const double measureMissing = 1.0 - measureVolume;
-    const bool isExpected = abs(measureMissing - expectedMissing) / expectedMissing < 0.05;
+    const double measureMissing = 0.5 - measureVolume;
+    const bool isExpected = fabs(measureMissing - expectedMissing) / expectedMissing < 0.05;
     printf("Expected=%f  %sMeasure=%f%s\n",
         expectedMissing, (isExpected ? GRN : RED), measureMissing, NRM);
   }
@@ -136,8 +145,8 @@ ibm::Partition DomainDecider::operator()(
     double furthest[DIM];
     for (int d = 0; d < DIM; ++d)
     {
-      double a = abs(originToCenter[d] - 0);
-      double b = abs(originToCenter[d] - elemPhysSize);
+      double a = fabs(originToCenter[d] - 0);
+      double b = fabs(originToCenter[d] - elemPhysSize);
       furthest[d] = (a >= b ? 0 : elemPhysSize);
     }
     double furthestDist2 = 0;

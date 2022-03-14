@@ -654,6 +654,7 @@ namespace ot
                 childSubtreesSFC[child_sfc],
                 myNodes[nIdx],
                 m_eleOrder );
+        assert(nodeRank < npe);
 
         // Node coordinates.
         /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
@@ -785,6 +786,7 @@ namespace ot
                   childSubtreesSFC[child_sfc],
                   myNodes[nIdx],
                   m_eleOrder );
+          assert(nodeRank < npe);
 
           // Nodal values.
           for (int dof = 0; dof < m_ndofs; dof++)

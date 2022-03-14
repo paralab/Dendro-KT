@@ -55,12 +55,15 @@ namespace ot
           std::array<C,dim> eleCoords;
           for (int d = 0; d < dim; d++)
             eleCoords[d] = len * eleMultiIdx[d];
-          outTree[ii] = ot::TreeNode<C,dim>(1, eleCoords, endL);
+          outTree[ii] = ot::TreeNode<C,dim>(eleCoords, endL);
 
           incrementBaseB<C,dim>(eleMultiIdx, numElem1D);    // Lexicographic advancement.
         }
 
         SFC_Tree<C,dim>::distTreeSort(outTree, sfc_tol, comm);
+        SFC_Tree<C, dim>::distRemoveDuplicates(
+            outTree, sfc_tol, SFC_Tree<C, dim>::RM_DUPS_AND_ANC, comm);
+        // There would only be duplicates in the periodic case.
       }
 
     }//namespace ot::util

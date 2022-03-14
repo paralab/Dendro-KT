@@ -1016,6 +1016,8 @@ namespace ot
 
       // Re-partition.
       SFC_Tree<T, dim>::distTreeSort(finerTreePart, sfc_tol, comm);
+      SFC_Tree<T, dim>::distRemoveDuplicates(
+          finerTreePart, sfc_tol, SFC_Tree<T, dim>::RM_DUPS_ONLY, comm);
       SFC_Tree<T, dim>::distCoalesceSiblings(finerTreePart, comm);
 
       std::swap(treePart, finerTreePart);
@@ -1065,6 +1067,8 @@ namespace ot
 
       // Re-partition.
       SFC_Tree<T, dim>::distTreeSort(finerTreePart, sfc_tol, comm);
+      SFC_Tree<T, dim>::distRemoveDuplicates(
+          finerTreePart, sfc_tol, SFC_Tree<T, dim>::RM_DUPS_ONLY, comm);
       SFC_Tree<T, dim>::distCoalesceSiblings(finerTreePart, comm);
 
       std::swap(treePart, finerTreePart);

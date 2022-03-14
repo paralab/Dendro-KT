@@ -53,7 +53,7 @@ struct SelectSlice
 
   bool operator() (const ot::TreeNode<T,K> &tn) const
   {
-    return tn.minX(d) <= val && val <= tn.maxX(d);
+    return tn.lowerBound(d) <= val && val <= tn.upperBound(d);
   }
 };
 

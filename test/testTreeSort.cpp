@@ -133,7 +133,7 @@ void test_distTreeSort(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
   int locallySorted = true;
   for (int ii = 1; ii < points.size(); ii++)
   {
-    if (!(points[ii-1] <= points[ii]))
+    if (ot::compareMorton(points[ii-1], points[ii]) > 0)
     {
       locallySorted = false;
       break;
@@ -185,7 +185,7 @@ void test_distTreeSort(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
     {
       if (allFinalNumPoints[ii] == 0)
         continue;
-      if (!(allEndpoints[2*prev+1] < allEndpoints[2*ii+1]))
+      if (ot::compareMorton(allEndpoints[2*prev+1], allEndpoints[2*ii+1]) >= 0)
       {
         globallySorted = false;
         break;

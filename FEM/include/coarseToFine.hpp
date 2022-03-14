@@ -410,7 +410,7 @@ namespace fem
       else if (from_loop.isPre() and from_loop.isLeaf())  // Coarse leaf
       {
         const double * coarse_nodes = from_loop.subtreeInfo().readNodeValsIn();
-        const std::array<unsigned, dim> coarse_origin = subtree(from_loop).getX();
+        periodic::PCoord<unsigned, dim> coarse_origin = subtree(from_loop).coords();
 
         while (not to_loop.isFinished() and in(subtree(to_loop), subtree(from_loop)))
         {
@@ -425,10 +425,13 @@ namespace fem
             // Interpolate each fine node.
             for (unsigned to_vertex = 0; to_vertex < npe; ++to_vertex)
             {
+              const periodic::PCoord<unsigned, dim> diff =
+                  fine_nodes[to_vertex].coords() - coarse_origin;
+
               std::array<double, dim> t[2];  // t[0] = 1 - t[1]
               for (int d = 0; d < dim; ++d)
               {
-                t[1][d] = ((fine_nodes[to_vertex].getX(d) - coarse_origin[d]) >> fine_height) * ratio;
+                t[1][d] = (diff.coord(d) >> fine_height) * ratio;
                 t[0][d] = 1.0 - t[1][d];
               }
 

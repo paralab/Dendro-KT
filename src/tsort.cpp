@@ -1090,7 +1090,7 @@ void distTreePartition_kway_impl(
       std::vector<X> &...w,
       BucketRef<T, int(dim)> b)
   {
-    return bucket_sfc<T, dim, X...>(
+    Buckets<1+nchild(dim)> buckets = bucket_sfc<T, dim, X...>(
         &(*v.begin()),
         (&(*w.begin()))...,
         b.local_begin,
@@ -1098,6 +1098,15 @@ void distTreePartition_kway_impl(
         b.octant.getLevel() + 1,
         b.sfc);
     //future: use locate instead of bucketing if octants is already sorted.
+
+    // Force parent onto next nonempty child.
+    const size_t parent_begin = buckets[0],  parent_end = buckets[1];
+    const size_t family_end = buckets[1+nchild(dim)];
+    if (parent_end < family_end)
+      for (int i = 1; buckets[i] == parent_end; ++i)
+        buckets[i] = parent_begin;
+
+    return buckets;
   };
 
   // Splitters.
@@ -1896,6 +1905,43 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
 
 template <typename T, unsigned int dim>
 void
+SFC_Tree<T,dim>::splitParents(std::vector<TreeNode<T,dim>> &tree)
+{
+  // Even if there are duplicates next to each other,
+  // if the last duplicate is a parent of the next octant,
+  // it will be split.
+
+  assert(isLocallySorted(tree));
+
+  // Scan for parents.
+  size_t n_parents = 0;
+  for (size_t i = 1; i < tree.size(); ++i)
+    n_parents += (tree[i-1].isAncestor(tree[i]));
+  if (n_parents == 0)
+    return;
+
+  std::vector<TreeNode<T, dim>> split;
+  split.reserve(tree.size() + n_parents * (nchild(dim) - 1));
+
+  for (size_t i = 1; i < tree.size(); ++i)
+  {
+    const TreeNode<T, dim> predecessor = tree[i-1],  successor = tree[i];
+    if (predecessor.isAncestor(successor))
+      for (sfc::ChildNum c(0); c < nchild(dim); ++c)  // morton
+        split.push_back(predecessor.getChildMorton(c));
+    else
+      split.push_back(predecessor);
+  }
+  if (tree.size() > 0)  // Should always be true since n_parents > 0
+    split.push_back(tree.back());  // Last cannot be parent
+
+  std::swap(tree, split);
+  locTreeSort(tree);  // Uncles maybe out of order, also children in morton order
+}
+
+
+template <typename T, unsigned int dim>
+void
 SFC_Tree<T,dim>:: locRemoveDuplicates(std::vector<TreeNode<T,dim>> &tnodes)
 {
   const TreeNode<T,dim> *tEnd = &(*tnodes.end());
@@ -2493,10 +2539,13 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
   outTree = inTree;
   locTreeSort(res);
   SFC_Tree<T, dim>::locMatchResolution(outTree, res);
-  SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);
+  SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);  // Need children under parents
+  SFC_Tree<T, dim>::splitParents(outTree);  // Same domain as with parents, maybe expanded original
   SFC_Tree<T, dim>::distRemoveDuplicates(outTree, loadFlexibility, RM_DUPS_AND_ANC, comm);
   SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
   SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
+  // Domain possibly expanded. Require filterTree() afterward (e.g. in DistTree::distRemeshSubdomain())
+  // future: Move this function body directly into DistTree::distRemeshSubdomain().
 }
 
 template <typename T, unsigned int dim>
@@ -2874,7 +2923,7 @@ struct RangeUnion
 
       void begin_valid() {
         while (outer < ru->m_ranges.size() and inner == ru->end(outer))
-          begin_range(++outer);
+          begin_range(outer + 1);
       }
 
     public:
@@ -3119,15 +3168,16 @@ void appendNeighbours_rec(
     if ((c & periodic_axes) == 0)
       uniq_children[c] = true;
 
-  assert(uniq_children.all());  // Note: If periodic, remove assertion.
-
   const auto incident = [&](const Oct &oct0, const Oct &oct1) -> bool {
+    const auto range0 = oct0.range(),  range1 = oct1.range();
     int count_edge = 0,  count_overlaps = 0;
     for (int d = 0; d < dim; ++d)
-      count_edge += (oct0.minX(d) == oct1.maxX(d) or oct1.minX(d) == oct0.maxX(d));
+      count_edge += (range0.min(d) == range1.max(d) or
+                     range1.min(d) == range0.max(d));
     for (int d = 0; d < dim; ++d)
-      count_overlaps += (oct0.minX(d) <= oct1.maxX(d) and oct1.minX(d) <= oct0.maxX(d));
-    return count_overlaps == dim and count_edge >= 1;
+      count_overlaps += (range0.closedContains(d, range1.min(d)) or
+                         range1.closedContains(d, range0.min(d)));
+    return (count_overlaps == dim) and (count_edge >= 1);
   };
 
   // key: exclusively incident child number, or nchild(dim)
@@ -3317,6 +3367,10 @@ void mergeSorted(std::vector<TreeNode<T, dim>> &octList, size_t prefix)
 
   Segment<const Oct> first(octList.data(), 0, prefix);
   Segment<const Oct> second(octList.data(), prefix, octList.size());
+
+  assert(isLocallySorted(first.ptr, first.begin, first.end));
+  assert(isLocallySorted(second.ptr, second.begin, second.end));
+
   mergeSorted_rec<T, dim>(first, second, Oct(), SFC_State<dim>::root(), output);
 
   std::swap(octList, output);
@@ -3371,6 +3425,7 @@ void SFC_Tree<T, dim>::locMinimalBalanced(std::vector<TreeNode<T, dim>> &tree)
   }
   locTreeSort(resolution);
   locRemoveDuplicates(resolution);
+
   locResolveTree(tree, std::move(resolution));
 }
 
@@ -4435,6 +4490,20 @@ template bool is2to1Balanced<unsigned, 2u>(const std::vector<TreeNode<unsigned, 
 template bool is2to1Balanced<unsigned, 3u>(const std::vector<TreeNode<unsigned, 3u>> &, MPI_Comm);
 template bool is2to1Balanced<unsigned, 4u>(const std::vector<TreeNode<unsigned, 4u>> &, MPI_Comm);
 
+
+
+template <typename T, unsigned int dim>
+bool isLocallySorted(const TreeNode<T, dim> *octList, size_t begin, size_t end)
+{
+  return (end - begin) == lenContainedSorted<T, dim>(
+      octList,
+      begin, end,
+      TreeNode<T, dim>(),
+      SFC_State<dim>::root());
+}
+template bool isLocallySorted<unsigned, 2u>(const TreeNode<unsigned, 2u> *, size_t, size_t);
+template bool isLocallySorted<unsigned, 3u>(const TreeNode<unsigned, 3u> *, size_t, size_t);
+template bool isLocallySorted<unsigned, 4u>(const TreeNode<unsigned, 4u> *, size_t, size_t);
 
 
 template <typename T, unsigned int dim>

@@ -719,6 +719,8 @@ struct SFC_Tree
   //   - Nodes only removed if strictly equal to other nodes. Ancestors retained.
   static void locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes);
 
+  static void splitParents(std::vector<TreeNode<T,dim>> &tree);
+
   /**
    * distCoalesceSiblings()
    *
@@ -900,6 +902,9 @@ bool isPartitioned(std::vector<TreeNode<T, dim>> octants, MPI_Comm comm);
 
 template <typename T, unsigned int dim>
 bool isLocallySorted(const std::vector<TreeNode<T, dim>> &octList);
+
+template <typename T, unsigned int dim>
+bool isLocallySorted(const TreeNode<T, dim> *octList, size_t begin, size_t end);
 
 template <typename T, unsigned int dim>
 size_t lenContainedSorted(
