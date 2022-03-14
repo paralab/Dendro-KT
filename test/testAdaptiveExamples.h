@@ -161,7 +161,12 @@ struct Example3
         for (unsigned char ch = 0; ch < numCh; ch++)
         {
           ot::TreeNode<T,dim> f = parent.getChildMorton(ch);
-          if (f.isTouchingDomainBoundary())
+          std::array<T, dim> extreme = f.range().min().coords();
+          const T min_min = *std::min_element(extreme.begin(), extreme.end());
+          extreme = f.range().max().coords();
+          const T max_max = *std::max_element(extreme.begin(), extreme.end());
+
+          if (min_min == 0 or max_max == (1u << m_uiMaxDepth))
             subdivide_element(f, endL, outTree);
           else
             outTree.push_back(f);
