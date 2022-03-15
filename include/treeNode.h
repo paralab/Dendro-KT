@@ -26,6 +26,8 @@ extern unsigned int m_uiMaxDepth;
 
 namespace ot {
 
+    constexpr bool debug_have_periodic = true;
+
     // Template forward declarations.
     template <typename T, unsigned int dim> class TreeNode;
     template <typename T, unsigned int dim> std::ostream& operator<<(std::ostream& os, TreeNode<T,dim> const& other);
