@@ -397,29 +397,30 @@ namespace fem
     const int npe = 1u << dim;
     std::vector<double> leaf_nodes(npe * ndofs, 0.0f);
 
+    const auto subtree =[](const auto &loop) { return loop.getCurrentSubtree(); };
     const auto in = [](const Oct &a, const Oct &b) { return b.isAncestorInclusive(a); };
 
     size_t to_counter = 0;
     while (not from_loop.isFinished() and not to_loop.isFinished())
     {
-      if (not in(to_loop.getCurrentSubtree(), from_loop.getCurrentSubtree()))
+      if (not in(subtree(to_loop), subtree(from_loop)))
       {
         from_loop.next();
       }
       else if (from_loop.isPre() and from_loop.isLeaf())  // Coarse leaf
       {
         const double * coarse_nodes = from_loop.subtreeInfo().readNodeValsIn();
-        periodic::PCoord<unsigned, dim> coarse_origin = from_loop.getCurrentSubtree().coords();
+        periodic::PCoord<unsigned, dim> coarse_origin = subtree(from_loop).coords();
 
-        while (not to_loop.isFinished() and in(to_loop.getCurrentSubtree(), from_loop.getCurrentSubtree()))
+        while (not to_loop.isFinished() and in(subtree(to_loop), subtree(from_loop)))
         {
           if (to_loop.isPre() and to_loop.isLeaf())  // Fine leaf
           {
             assert(degree == 1);  // Octant-based formula only valid for linear.
 
             const ot::TreeNode<unsigned int, dim> * fine_nodes = to_loop.subtreeInfo().readNodeCoordsIn();
-            const double ratio = 1.0 / (1u << (to_loop.getCurrentSubtree().getLevel() - from_loop.getCurrentSubtree().getLevel()));
-            const int fine_height = m_uiMaxDepth - to_loop.getCurrentSubtree().getLevel();
+            const double ratio = 1.0 / (1u << (subtree(to_loop).getLevel() - subtree(from_loop).getLevel()));
+            const int fine_height = m_uiMaxDepth - subtree(to_loop).getLevel();
 
             // Interpolate each fine node.
             for (unsigned to_vertex = 0; to_vertex < npe; ++to_vertex)
