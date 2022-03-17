@@ -90,7 +90,8 @@ protected:
          * 
          * If you need to do a few rows at a time, use this method as a pattern.
          */
-        ot::MatCompactRows collectMatrixEntries();
+        template <typename AssembleElemental>
+        void collectMatrixEntries(AssembleElemental assemble_e);
 
 
 #ifdef BUILD_WITH_PETSC
@@ -553,12 +554,12 @@ class SubMatView
 
 
 template <typename LeafT, unsigned int dim>
-ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
+template <typename AssembleElemental>
+void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
 {
   const ot::DA<dim> &m_oda = *this->da();
   const unsigned int eleOrder = m_oda.getElementOrder();
   const unsigned int nPe = m_oda.getNumNodesPerElement();
-  ot::MatCompactRows matRowChunks(nPe, m_uiDof);
 
   // Loop over all elements, adding row chunks from elemental matrices.
   // Get the node indices on an element using MatvecBaseIn<dim, unsigned int, false>.
@@ -769,20 +770,12 @@ ot::MatCompactRows feMatrix<LeafT, dim>::collectMatrixEntries()
 
           }//end mult p2c c2p
 
-          // Collect the rows of the elemental matrix into matRowChunks.
-          for (unsigned int r = 0; r < rowIdxBuffer.size(); r++)
-          {
-            matRowChunks.appendChunk(rowIdxBuffer[r],
-                                     &colIdxBuffer[r * nPe * m_uiDof],
-                                     &colValBuffer[r * nPe * m_uiDof]);
-          }
+          assemble_e(rowIdxBuffer, colIdxBuffer, colValBuffer);
         }
       }
       treeLoopIn.step();
     }
   }
-
-  return matRowChunks;
 }
 
 
@@ -830,18 +823,21 @@ void feMatrix<LeafT, dim>::setDiag(Vec& out, double scale)
 template <typename LeafT, unsigned int dim>
 bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {DOLLAR("getAssembledMatrix()")
+  using ScalarT = typename ot::MatCompactRows::ScalarT;
+  using IndexT = typename ot::MatCompactRows::IndexT;
+  const int n = this->da()->getNumNodesPerElement() * this->ndofs();
+
   preMat();
-  ot::MatCompactRows matCompactRows = collectMatrixEntries();
+  collectMatrixEntries(
+      [&]( const std::vector<IndexT>  & rowIdxBuffer,
+           const std::vector<IndexT>  & colIdxBuffer,
+           const std::vector<ScalarT> & colValBuffer )
+      {
+        for (int r = 0; r < n; r++)
+          for (int c = 0; c < n; c++)
+            MatSetValue(*J, rowIdxBuffer[r], colIdxBuffer[r*n+c], colValBuffer[r*n+c], ADD_VALUES);
+      });
   postMat();
-  for (int r = 0; r < matCompactRows.getNumRows(); r++) {
-    for (int c = 0; c < matCompactRows.getChunkSize(); c++) {
-      MatSetValue(*J,
-                  matCompactRows.getRowIdxs()[r],
-                  matCompactRows.getColIdxs()[r * matCompactRows.getChunkSize() + c],
-                  matCompactRows.getColVals()[r * matCompactRows.getChunkSize() + c],
-                  ADD_VALUES);
-    }
-  }
 
   return true;
 }
