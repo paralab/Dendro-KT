@@ -11,9 +11,13 @@
 
 #include "treeNode.h"
 #include "octUtils.h"
+#include "lazy.hpp"
+#include "passive_shared_ptr.hpp"
 #include "mpi.h"
 
 #include "filterFunction.h"
+
+#include <memory>
 
 namespace ot
 {
@@ -253,6 +257,15 @@ namespace ot
         }
       };
 
+      using LivePtr = std::weak_ptr<const DistTree>;
+      using LivePtrOwner = std::shared_ptr<const DistTree>;
+      // The current DistTree/DA assumption is that you will be keeping DistTree
+      // whenever you use a DA created from it.
+      // In debug mode, the DA methods can check this assumption:
+      //   live_ptr.expired()   returns false only if the DistTree is still valid.
+      // Of course, live_ptr() called from a dangling reference is invalid.
+      // Recommended to use a raw pointer, only check live_ptr.expired() in debug.
+      LivePtr live_ptr() const { return lazy_live_ptr().get(); }
 
     protected:
       // Member variables.
@@ -289,6 +302,13 @@ namespace ot
 
       void assignDomainDecider(const ::ibm::DomainDecider &domainDecider);
 
+      mutable LazyPerishable<LivePtrOwner> m_alive;
+      LazyPerishable<LivePtrOwner> & lazy_live_ptr() const
+      {
+        if (not m_alive.initialized())
+          m_alive = ownership::passive_shared_ptr(this);
+        return m_alive;
+      }
 
       //
       // Intrinsic Deciders (not callable directly).

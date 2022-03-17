@@ -171,6 +171,8 @@ set(DENDRO_KT_INC include/dendro.h
                   include/serialize.hpp
                   include/p2p.h
                   include/p2p.tcc
+                  include/lazy.hpp
+                  include/passive_shared_ptr.hpp
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
                   array/include/arraySlice.h

@@ -18,6 +18,7 @@
 #include "binUtils.h"
 #include "octUtils.h"
 #include "distTree.h"
+#include "lazy.hpp"
 
 #include "filterFunction.h"
 
@@ -267,6 +268,16 @@ class DA
     /**@brief: for each (ghosted) node, the global element id of owning element. */
     std::vector<DendroIntL> m_ghostedNodeOwnerElements;
 
+    mutable Lazy<std::vector<int>> m_elements_per_node;  // ghosted, note petsc wants local
+
+    /**@brief: Pointer to the DistTree used in construction. */
+    const DistTree<C, dim> * dist_tree() const {
+      assert(not m_dist_tree_lifetime.expired());
+      return m_dist_tree;
+    }
+    const DistTree<C, dim> *m_dist_tree;
+    typename DistTree<C, dim>::LivePtr m_dist_tree_lifetime;
+
     //TODO I don't think RefElement member belongs in DA (distributed array),
     //  but it has to go somewhere that the polyOrder is known.
     //
@@ -335,7 +346,7 @@ class DA
 
 
         // move constructor
-        /// DA(DA &&movedDA) = default;
+        DA(DA &&movedDA) = default;
 
 
         /**
@@ -461,6 +472,8 @@ class DA
 
         /**@brief returns a const ref to boundary node indices. */
         inline const std::vector<size_t> & getBoundaryNodeIndices() const { return m_uiBdyNodeIds; }
+
+        inline const std::vector<int> & elements_per_node() const;  // ghosted, note petsc wants local
 
         /**
           * @brief Creates a ODA vector
