@@ -704,6 +704,8 @@ namespace ot
 
       m_totalSendSz = computeTotalSendSz(m_sm);
       m_totalRecvSz = totalRecvSz(m_gm);
+      m_numDestNeighbors = m_sm.m_sendProc.size();
+      m_numSrcNeighbors = m_gm.m_recvProc.size();
 
       // TODO for cleaner code, factor the scattermap/gatthermap as GhostExchange
       // for now, use the DA interface for ghost exchange.

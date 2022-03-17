@@ -212,6 +212,8 @@ class DA
 
     size_t m_totalSendSz;
     size_t m_totalRecvSz;
+    int m_numDestNeighbors;
+    int m_numSrcNeighbors;
 
     /**@brief contexts for async data transfers*/
     mutable std::vector<AsyncExchangeContex> m_uiMPIContexts;
@@ -395,6 +397,8 @@ class DA
 
         size_t getTotalSendSz() const { return m_totalSendSz; }
         size_t getTotalRecvSz() const { return m_totalRecvSz; }
+        int getNumDestNeighbors() const { return m_numDestNeighbors; }
+        int getNumSrcNeighbors() const { return m_numSrcNeighbors; }
 
         /**@brief get number of nodes per element*/
         inline unsigned int getNumNodesPerElement() const { return m_uiNpE; }
