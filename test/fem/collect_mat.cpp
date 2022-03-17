@@ -64,18 +64,19 @@ class AllOnes : public feMatrix<AllOnes, DIM>
       const int ndofs = this->ndofs();
       const int npe = this->m_npe;
 
+      int x = 0.0;
       for (int i = 0; i < npe; ++i)
         for (int id = 0; id < ndofs; ++id)
           for (int j = 0; j < npe; ++j)
             for (int jd = 0; jd < ndofs; ++jd)
-              records.push_back(ot::MatRecord(i, j, id, jd, 1.0f));
+              records.push_back(ot::MatRecord(i, j, id, jd, double(x++ & 255)));
     }
 };
 
 
 void usage(const char *prog)
 {
-  fprintf(stderr, "Usage: %s ndofs iterations\n", prog);
+  fprintf(stderr, "Usage: %s ndofs iterations save_mats\n", prog);
 }
 
 
@@ -97,10 +98,11 @@ int main(int argc, char * argv[])
   const size_t grain = 4e4;
   const int degree = 1;
 
-  if (argc < 3)
+  if (argc < 4)
     return (usage(argv[0]), 1);
   const int ndofs = atol(argv[1]);
   const int iterations = atol(argv[2]);
+  const bool save_mats = atol(argv[3]);
 
   if (comm_rank == 0)
     printf("ndofs=%d  iterations=%d\n", ndofs, iterations);
@@ -126,7 +128,20 @@ int main(int argc, char * argv[])
   for (int iteration = 0; iteration < iterations; ++iteration)
     matrix.getAssembledMatrix(&petsc_mat, MATAIJ);
 
+  MatAssemblyBegin(petsc_mat, MAT_FINAL_ASSEMBLY);
+  MatAssemblyEnd(petsc_mat, MAT_FINAL_ASSEMBLY);
+
   print_dollars(comm);
+
+  if (save_mats)
+  {
+    PetscViewer viewer;
+    PetscViewerASCIIOpen(
+        comm,
+        ("matrix_d" + std::to_string(ndofs) + "_i" + std::to_string(iterations)).c_str(),
+        &viewer);
+    MatView(petsc_mat, viewer);
+  }
 
   _DestroyHcurve();
   DendroScopeEnd();
