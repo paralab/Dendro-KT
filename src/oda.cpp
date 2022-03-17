@@ -1275,7 +1275,7 @@ namespace ot
 
     template <unsigned int dim>
     PetscErrorCode DA<dim>::createMatrix(Mat &M, MatType mtype, unsigned int dof) const
-    {
+    {DOLLAR("createMatrix")
 
         if(m_uiIsActive)
         {

@@ -829,7 +829,7 @@ void feMatrix<LeafT, dim>::setDiag(Vec& out, double scale)
  */
 template <typename LeafT, unsigned int dim>
 bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
-{
+{DOLLAR("getAssembledMatrix()")
   preMat();
   ot::MatCompactRows matCompactRows = collectMatrixEntries();
   postMat();

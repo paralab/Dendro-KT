@@ -94,7 +94,7 @@ int main(int argc, char * argv[])
   MPI_Comm_rank(comm, &comm_rank);
 
   const double sfc_tol = 0.1;
-  const size_t grain = 5e4;
+  const size_t grain = 4e4;
   const int degree = 1;
 
   if (argc < 3)
