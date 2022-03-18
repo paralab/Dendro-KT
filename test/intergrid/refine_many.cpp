@@ -97,7 +97,8 @@ int main(int argc, char * argv[])
   {DOLLAR("coarse_da")
     coarse_da = new DA(coarse_dtree, comm, degree, int{}, sfc_tol);
   }
-    printf("[%d] da size (e:%lu n:%lu)\n", comm_rank, coarse_da->getLocalElementSz(), coarse_da->getLocalNodalSz());
+    printf("[%d] da size (e:%lu n:%lu dest:%d src:%d)\n", comm_rank, coarse_da->getLocalElementSz(), coarse_da->getLocalNodalSz(),
+        coarse_da->getNumDestNeighbors(), coarse_da->getNumSrcNeighbors());
   /// ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
   /// ot::quadTreeToGnuplot(coarse_da->getTNVec(), 8, "coarse.da", comm);
 
@@ -113,7 +114,8 @@ int main(int argc, char * argv[])
   {DOLLAR("fine_da")
     fine_da = new DA(fine_dtree, comm, degree, int{}, sfc_tol);
   }
-  printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
+  printf("[%d] refined size (e:%lu n:%lu dest:%d src:%d)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz(),
+      fine_da->getNumDestNeighbors(), fine_da->getNumSrcNeighbors());
   /// ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
 
   /// const int local_coarsest = coarsest_level(fine_dtree);

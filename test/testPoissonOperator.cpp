@@ -217,24 +217,21 @@ int main(int argc, char * argv[])
   std::cout << "    (dim==" << dim << ",  numElements==" << numElements << ",  eleOrder==" << eleOrder << ")\n";
   std::cout << "\n";
 
-  using ScalarT = typename ot::MatCompactRows::ScalarT;
-  using IndexT = typename ot::MatCompactRows::IndexT;
+  using ScalarT = PetscScalar;
+  using IndexT = PetscInt;
   std::map<IndexT, std::map<IndexT, ScalarT>> mapMat;
 
-  const ot::MatCompactRows rowChunks = pmat.collectMatrixEntries();
-  const size_t numChunks = rowChunks.getNumRows();
-  const size_t chunkSz = rowChunks.getChunkSize();
-  const std::vector<IndexT> & rowIdxs = rowChunks.getRowIdxs();
-  const std::vector<IndexT> & colIdxs = rowChunks.getColIdxs();
-  const std::vector<ScalarT> & colVals = rowChunks.getColVals();
+  const int ndofs = 1;
+  const int n = daRoot.getNumNodesPerElement() * ndofs;
 
-  for (int r = 0; r < numChunks; r++)
-  {
-    for (int c = 0; c < chunkSz; c++)
-    {
-      mapMat[rowIdxs[r]][colIdxs[r*chunkSz + c]] += colVals[r*chunkSz + c];
-    }
-  }
+  pmat.collectMatrixEntries(
+      [&]( const std::vector<PetscInt>& ids,
+           const std::vector<ScalarT>& mat)
+      {
+        for (int r = 0; r < n; ++r)
+          for (int c = 0; c < n; ++c)
+            mapMat[ids[r]][ids[c]] += mat[r * n + c];
+      });
 
   int row = 0;
   for (auto rowIter : mapMat)

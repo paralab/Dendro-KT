@@ -259,53 +259,42 @@ namespace fem
     using GI = typename AMATType::GIType;
     using LI = typename AMATType::LIType;
 
+#ifdef BUILD_WITH_PETSC
+    using ScalarT = PetscScalar;
+    using IndexT = PetscInt;
+#else
+    using ScalarT = DendroScalar;
+    using IndexT = long long unsigned;
+#endif
+
     if(subset.da()->isActive())
     {
       const size_t numLocElem = subset.getLocalElementSz();
-
-      /// preMat();
-      std::vector<unsigned char> elemNonzero(numLocElem, false);
-      ot::MatCompactRows matCompactRows = fematrix.collectMatrixEntries(
-          subset.relevantOctList(),
-          subset.relevantNodes(),
-          subset.getNodeLocalToGlobalMap(),  // identity
-          elemNonzero.data());
-      /// postMat();
-
-      const unsigned ndofs = matCompactRows.getNdofs();
-      const unsigned nPe = matCompactRows.getNpe();
-      const std::vector<ot::MatCompactRows::ScalarT> & entryVals = matCompactRows.getColVals();
+      const unsigned ndofs = fematrix.ndofs();
+      const unsigned nPe = subset.da()->getNumNodesPerElement();
+      const unsigned n = nPe * ndofs;
 
       EigenMat* eMat[2] = {nullptr, nullptr};
       eMat[0] = new EigenMat();
       eMat[0]->resize(ndofs*nPe, ndofs*nPe);
       const EigenMat * read_eMat[2] = {eMat[0], eMat[1]};
 
-      unsigned aggRow = 0;
-      for (unsigned int eid = 0; eid < numLocElem; ++eid)
-      {
-        if (elemNonzero[eid])
-        {
-          // Clear elemental matrix.
-          for(unsigned int r = 0; r < (nPe*ndofs); ++r)
-            for(unsigned int c = 0; c < (nPe*ndofs); ++c)
-              (*(eMat[0]))(r,c) = 0;
-
-          // Overwrite elemental matrix.
-          for (unsigned int r = 0; r < (nPe*ndofs); ++r)
-          {
-            for (unsigned int c = 0; c < (nPe*ndofs); ++c)
-              (*(eMat[0]))(r,c) = entryVals[aggRow * (nPe*ndofs) + c];
-            aggRow++;
-          }
-
-          LI n_i[1]={0};
-          LI n_j[1]={0};
-          J->set_element_matrix(eid, n_i, n_j, read_eMat, 1u);
-          // note that read_eMat[0] points to the same memory as eMat[0].
-        }
-      }
-
+      int eid = 0;
+      fematrix.collectMatrixEntries(
+          subset.relevantOctList(),
+          subset.relevantNodes(),
+          subset.getNodeLocalToGlobalMap(),  // identity
+          [&] ( const std::vector<IndexT> &rowIdxBuffer,
+                const std::vector<ScalarT> &colValBuffer ) {
+            for (int r = 0; r < n; ++r)
+              for (int c = 0; c < n; ++c)
+                (*(eMat[0]))(r,c) = colValBuffer[r * n + c];
+            LI n_i[1]={0};
+            LI n_j[1]={0};
+            J->set_element_matrix(eid, n_i, n_j, read_eMat, 1u);
+            // note that read_eMat[0] points to the same memory as eMat[0].
+            ++eid;
+          });
       delete eMat[0];
     }
     PetscFunctionReturn(0);
@@ -318,33 +307,36 @@ namespace fem
       const ot::LocalSubset<dim> &subset,
       feMatrix<feMatLeafT, dim> &fematrix)
   {
-    std::vector<EigenMat> e_mats;
+#ifdef BUILD_WITH_PETSC
+    using ScalarT = PetscScalar;
+    using IndexT = PetscInt;
+#else
+    using ScalarT = DendroScalar;
+    using IndexT = long long unsigned;
+#endif
+
+    const size_t numLocElem = subset.getLocalElementSz();
+    std::vector<EigenMat> e_mats(numLocElem);
     if(subset.da()->isActive())
     {
-      const size_t numLocElem = subset.getLocalElementSz();
+      const unsigned ndofs = fematrix.ndofs();
+      const unsigned nPe = subset.da()->getNumNodesPerElement();
+      const unsigned n = nPe * ndofs;
 
-      std::vector<unsigned char> elemNonzero(numLocElem, false);
-      ot::MatCompactRows matCompactRows = fematrix.collectMatrixEntries(
+      int eid = 0;
+      fematrix.collectMatrixEntries(
           subset.relevantOctList(),
           subset.relevantNodes(),
           subset.getNodeLocalToGlobalMap(),  // identity
-          elemNonzero.data());
-
-      const int dofPe = matCompactRows.getNdofs() * matCompactRows.getNpe();
-      const std::vector<ot::MatCompactRows::ScalarT> & entryVals = matCompactRows.getColVals();
-
-      e_mats.resize(numLocElem);
-      size_t aggRow = 0;
-      for (size_t eid = 0; eid < numLocElem; ++eid)
-      {
-        if (elemNonzero[eid])
-        {
-          e_mats[eid].resize(dofPe, dofPe);
-          for (int r = 0; r < dofPe; ++r, ++aggRow)
-            for (int c = 0; c < dofPe; ++c)
-              e_mats[eid](r,c) = entryVals[aggRow * dofPe + c];
-        }
-      }
+          [&] ( const std::vector<IndexT> &rowIdxBuffer,
+                const std::vector<ScalarT> &colValBuffer ) {
+            EigenMat &eMat = e_mats[eid];
+            eMat.resize(n, n);
+            for (int r = 0; r < n; ++r)
+              for (int c = 0; c < n; ++c)
+                eMat(r,c) = colValBuffer[r * n + c];
+            ++eid;
+          });
     }
     return e_mats;
   }

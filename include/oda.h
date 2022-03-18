@@ -18,6 +18,7 @@
 #include "binUtils.h"
 #include "octUtils.h"
 #include "distTree.h"
+#include "lazy.hpp"
 
 #include "filterFunction.h"
 
@@ -220,6 +221,8 @@ class DA
 
     size_t m_totalSendSz;
     size_t m_totalRecvSz;
+    int m_numDestNeighbors;
+    int m_numSrcNeighbors;
 
     /**@brief contexts for async data transfers*/
     mutable std::vector<AsyncExchangeContex> m_uiMPIContexts;
@@ -274,6 +277,16 @@ class DA
 
     /**@brief: for each (ghosted) node, the global element id of owning element. */
     std::vector<DendroIntL> m_ghostedNodeOwnerElements;
+
+    mutable Lazy<std::vector<int>> m_elements_per_node;  // ghosted, note petsc wants local
+
+    /**@brief: Pointer to the DistTree used in construction. */
+    const DistTree<C, dim> * dist_tree() const {
+      assert(not m_dist_tree_lifetime.expired());
+      return m_dist_tree;
+    }
+    const DistTree<C, dim> *m_dist_tree;
+    typename DistTree<C, dim>::LivePtr m_dist_tree_lifetime;
 
     //TODO I don't think RefElement member belongs in DA (distributed array),
     //  but it has to go somewhere that the polyOrder is known.
@@ -343,7 +356,7 @@ class DA
 
 
         // move constructor
-        /// DA(DA &&movedDA) = default;
+        DA(DA &&movedDA) = default;
 
 
         /**
@@ -409,6 +422,8 @@ class DA
 
         size_t getTotalSendSz() const { return m_totalSendSz; }
         size_t getTotalRecvSz() const { return m_totalRecvSz; }
+        int getNumDestNeighbors() const { return m_numDestNeighbors; }
+        int getNumSrcNeighbors() const { return m_numSrcNeighbors; }
 
         /**@brief get number of nodes per element*/
         inline unsigned int getNumNodesPerElement() const { return m_uiNpE; }
@@ -486,6 +501,8 @@ class DA
 
         /**@brief Compute ghosted node ids of nodes on each element. */
         std::vector<size_t> createE2NMapping(const std::vector<TreeNode<unsigned, dim>> &octList) const;
+
+        inline const std::vector<int> & elements_per_node() const;  // ghosted, note petsc wants local
 
         /**
           * @brief Creates a ODA vector
