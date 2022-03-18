@@ -552,16 +552,27 @@ class SubMatView
 };
 
 
-enum Scopes { Total, Loop, Leaf, Input, Sorting, Mapping, Clear, Buffer, Hanging, Assemble, NUM_SCOPES};
-constexpr const char * scopes[] = { "Total", "Loop", "Leaf", "Input", "Sorting", "Mapping", "Clear", "Buffer", "Hanging", "Assemble" };
+enum Scopes { Total, Loop, Leaf, Input, Mapping, Buffer, Hanging, Assemble,
+  NUM_SCOPES};
+constexpr const char * scopes[] = { "Total", "Loop", "Leaf", "Input", "Mapping", "Buffer", "Hanging", "Assemble",
+};
 extern std::array<std::chrono::nanoseconds, NUM_SCOPES> dt;
+#define ACTIVATE_TIMERS 1
 template <Scopes scope>  struct StaticTimer
 {
   using Clock = std::chrono::high_resolution_clock;
   using TimePoint = std::chrono::time_point<Clock>;
-  const TimePoint begin;
-  StaticTimer() : begin(Clock::now()) { }
-  ~StaticTimer() { dt[scope] += (Clock::now() - begin); }
+  struct Wrap { TimePoint tp; };
+  const Wrap m_begin;
+#if ACTIVATE_TIMERS
+  StaticTimer() : m_begin(start()) { }
+  ~StaticTimer() { stop(m_begin); }
+  static Wrap start() { return {Clock::now()}; }
+  static void stop(Wrap begin)  { dt[scope] += (Clock::now() - begin.tp); }
+#else
+  static Wrap start() { return {}; }
+  static void stop(Wrap begin)  { }
+#endif
 };
 
 template <typename LeafT, unsigned int dim>
@@ -571,7 +582,8 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
   const ot::DA<dim> &m_oda = *this->da();
   const unsigned int eleOrder = m_oda.getElementOrder();
   const unsigned int nPe = m_oda.getNumNodesPerElement();
-  const unsigned int n = nPe * m_uiDof;
+  const unsigned int ndofs = m_uiDof;
+  const unsigned int n = nPe * ndofs;
   const unsigned int n_squared = n * n;
 
   // Loop over all elements, adding row chunks from elemental matrices.
@@ -597,6 +609,8 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
     InterpMatrices<dim, ScalarT> interp_matrices(eleOrder);
     std::vector<ScalarT> wksp_col(n);
     std::vector<ScalarT> wksp_mat(n_squared);
+
+    std::vector<ScalarT> nonhanging(n);
 
     const bool visitEmpty = false;
     const unsigned int padLevel = 0;
@@ -640,8 +654,8 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
         {
           {StaticTimer<Mapping> _;
           for (int i = 0; i < nPe; ++i)
-            for (int id = 0; id < m_uiDof; ++id)
-              rowIdxBuffer[i * m_uiDof + id] = nodeIdsFlat[i] * m_uiDof + id;
+            for (int id = 0; id < ndofs; ++id)
+              rowIdxBuffer[i * ndofs + id] = nodeIdsFlat[i] * ndofs + id;
           }
           {StaticTimer<Buffer> _;
           for (int ij = 0; ij < n_squared; ++ij)
@@ -649,125 +663,66 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
             const ot::MatRecord rec = elemRecords[ij];
             const int i = rec.getRowID(), j = rec.getColID();
             const int id = rec.getRowDim(), jd = rec.getColDim();
-            colValBuffer[((i * m_uiDof + id) * nPe + j) * m_uiDof + jd] = rec.getMatVal();
+            colValBuffer[((i * ndofs + id) * nPe + j) * ndofs + jd] = rec.getMatVal();
           }
           }
 
           // Multiply p2c and c2p.
           if (subtreeInfo.getNumNonhangingNodes() != nPe)
           {StaticTimer<Hanging> _;
-            // ------------------------------------------------------------------------
-            //     ^[subset of rows] _[subset of columns]
-            //
-            // Not decomposable into blocks,
-            //   but each block of Ke is multiplied differently.
-            //
-            //   A: Ke^[nh]_[nh]
-            //   
-            //   B: ( (Q^[h])^T (Ke^[nh]_[h])^T )^T
-            //   
-            //   C: (Q^[h])^T (Ke^[h]_[nh])
-            //   
-            //   D: (Q^[h])^T ( (Q^[h])^T (Ke^[h]_[h])^T )^T
-            //
-            // Ke' = A + B + C + D
-            // ------------------------------------------------------------------------
-
             const unsigned char child_m = subtree.getMortonIndex();
 
-            const std::vector<bool> nodeNonhangingIn = subtreeInfo.readNodeNonhangingIn();
+            const std::vector<bool> &nodeNonhangingIn = subtreeInfo.readNodeNonhangingIn();
             const ot::TreeNode<CoordT, dim> * nodeCoordsIn = subtreeInfo.readNodeCoordsIn();
 
-            std::vector<bool> slice_nh, slice_h, slice_all;
-            for (unsigned nIdx = 0; nIdx < nodeNonhangingIn.size(); ++nIdx)
-              for (int dofIdx = 0; dofIdx < m_uiDof; ++dofIdx)
-              {
-                // Since parent nodes on hanging faces are mapped, need to consider
-                // nonhanging child nodes on hanging faces as though hanging.
-                const bool nh = (nodeNonhangingIn[nIdx]
-                    && nodeCoordsIn[nIdx].getLevel() == subtree.getLevel());
-                slice_nh.push_back(nh);
-                slice_h.push_back(!nh);
-                slice_all.push_back(true);
-              }
-
-            constexpr bool C2P = InterpMatrices<dim, ScalarT>::C2P;
-
-            constexpr auto ROW_MAJOR = SubMatView<ScalarT>::ROW_MAJOR;
-            constexpr auto COL_MAJOR = SubMatView<ScalarT>::COL_MAJOR;
-
-            // Since the pieces overlap, need to move blocks out and
-            // replace them by zero, do the multiplication, and then
-            // ADD the result back to the matrix.
-            //
-            // Have to be careful what order these additions happen
-            // to not corrupt the rest of the matrix.
-
-            // A: No change.
-
-            // B & D (part I): Move B & D ([h] columns) to the mat buffer.
-            SubMatView<ScalarT> Ke_all_h(&colValBuffer[0], slice_all, slice_h, ROW_MAJOR);
-            SubMatView<ScalarT> KeT_h_all = Ke_all_h.transpose_view();
-            SubMatView<ScalarT> wksp_mat_view(&wksp_mat[0], slice_h, slice_all, COL_MAJOR);
-            std::fill(wksp_mat.begin(), wksp_mat.end(), 0);
-            wksp_mat_view.swap(KeT_h_all);  // Data 'moved' rather than 'copied'.
-
-            // C: Left-multiply C [h] rows by Q^T.
-            SubMatView<ScalarT> Ke_h_nh(&colValBuffer[0], slice_h, slice_nh, ROW_MAJOR);
-            for (const SliceIter &c : Ke_h_nh.slice_c_range())
+            // Initialize diags nonhanging and hanging.  [ I        ]
+            // Pre- and post- Qt to mult by block.       [          ] = nh + h Qt h
+            //                                           [   Qt^h_h ]
+            for (int nIdx = 0, flat = 0; nIdx < nPe; ++nIdx)
             {
-              std::fill(wksp_col.begin(), wksp_col.end(), 0);
-              for (const SliceIter &r : Ke_h_nh.slice_r_range())
-              {
-                wksp_col[r.get_idx()] = Ke_h_nh(r, c);
-                Ke_h_nh(r, c) = 0;  // Data 'moved' rather than 'copied'.
-              }
-
-              interp_matrices.template IKD_ParentChildInterpolation<C2P>(
-                  &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
-
-              // When we add back, it is the all the rows.
-              for (const SliceIter &r : SliceIterRange{slice_all})
-                Ke_h_nh(r, c) += wksp_col[r.get_idx()];
+              // Block factorization needs entire faces to be hanging or not.
+              const bool is_nonhanging = nodeNonhangingIn[nIdx] and
+                nodeCoordsIn[nIdx].getLevel() == subtree.getLevel();
+              const ScalarT nh = (is_nonhanging ? 1.0f : 0.0f);
+              for (const int dofEnd = flat + ndofs; flat < dofEnd; ++flat)
+                nonhanging[flat] = nh;
             }
 
-            // B & D (part II): Right-multiply both by Q^T ...
-            assert(wksp_mat_view.is_col_major());
-            for (int c = 0; c < nPe*m_uiDof; ++c)
-            {
-              ScalarT *colPtr = &wksp_mat[c * (nPe*m_uiDof)];
-              interp_matrices.template IKD_ParentChildInterpolation<C2P>(
-                  colPtr, colPtr, m_uiDof, child_m);
-            }
-            SubMatView<ScalarT> QT_BTDT(&wksp_mat[0], slice_all, slice_all, COL_MAJOR);
-            SubMatView<ScalarT> QT_DT(&wksp_mat[0], slice_all, slice_h, COL_MAJOR);
-            SubMatView<ScalarT> BD_Q = QT_BTDT.transpose_view();
-            SubMatView<ScalarT> D_Q = QT_DT.transpose_view();
-            //
-            //                  ... then left-multiply [h] rows by Q^T ...
-            for (const SliceIter &c : D_Q.slice_c_range())
-            {
-              std::fill(wksp_col.begin(), wksp_col.end(), 0);
-              for (const SliceIter &r : D_Q.slice_r_range())
+            // Transpose
+            const auto transpose = [&](ScalarT *e_mat) {
+              for (int i = 0; i < n; ++i)
+                for (int j = i; j < n; ++j)
+                  std::swap(e_mat[i*n+j], e_mat[j*n+i]);
+            };
+
+            // Right-multiply the hanging block of e_mat by Q.
+            const auto Q_right = [&](ScalarT *e_mat) {
+              for (int i = 0; i < n; ++i)
               {
-                wksp_col[r.get_idx()] = D_Q(r, c);
-                D_Q(r, c) = 0;  // Data 'moved' rather than 'copied'.
+                ScalarT *row = &e_mat[i*n];
+                ScalarT *wksp = wksp_col.data();
+                for (int j = 0; j < n; ++j)
+                {
+                  const ScalarT entry = row[j];
+                  wksp[j] = (1.0 - nonhanging[j]) * entry;  // Diag H
+                  row[j] = nonhanging[j] * entry;           // Diag NH
+                }
+
+                // Treat each row of e_mat as a column vec and left-mult by Q^t.
+                constexpr bool C2P = InterpMatrices<dim, ScalarT>::C2P;
+                interp_matrices.template IKD_ParentChildInterpolation<C2P>(
+                    wksp, wksp, ndofs, child_m);
+
+                for (int j = 0; j < n; ++j)
+                  row[j] += (1.0 - nonhanging[j]) * wksp[j];  // Diag H
               }
+            };
 
-              interp_matrices.template IKD_ParentChildInterpolation<C2P>(
-                  &wksp_col[0], &wksp_col[0], m_uiDof, child_m);
-
-              // When we add back, it is the all the rows.
-              for (const SliceIter &r : SliceIterRange{slice_all})
-                D_Q(r, c) += wksp_col[r.get_idx()];
-            }
-            //
-            //                  ... and add back to the elemental matrix.
-            SubMatView<ScalarT> colValBufView(&colValBuffer[0], slice_all, slice_all, ROW_MAJOR);
-            for (const SliceIter &r : BD_Q.slice_r_range())
-              for (const SliceIter &c : BD_Q.slice_c_range())
-                colValBufView(r, c) += BD_Q(r, c);
-
+            ScalarT *e_mat = colValBuffer.data();
+            Q_right(e_mat);
+            transpose(e_mat);
+            Q_right(e_mat);
+            transpose(e_mat);
           }//end mult p2c c2p
 
           {StaticTimer<Assemble> _;
