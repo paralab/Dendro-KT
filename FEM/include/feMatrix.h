@@ -552,8 +552,8 @@ class SubMatView
 };
 
 
-enum Scopes { Total, Loop, Leaf, Input, Sorting, Mapping, Hanging, Assemble, NUM_SCOPES};
-constexpr const char * scopes[] = { "Total", "Loop", "Leaf", "Input", "Sorting", "Mapping", "Hanging", "Assemble" };
+enum Scopes { Total, Loop, Leaf, Input, Sorting, Mapping, Clear, Buffer, Hanging, Assemble, NUM_SCOPES};
+constexpr const char * scopes[] = { "Total", "Loop", "Leaf", "Input", "Sorting", "Mapping", "Clear", "Buffer", "Hanging", "Assemble" };
 extern std::array<std::chrono::nanoseconds, NUM_SCOPES> dt;
 template <Scopes scope>  struct StaticTimer
 {
@@ -590,7 +590,6 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
 
     std::vector<ot::MatRecord> elemRecords;
     std::vector<IndexT> rowIdxBuffer;
-    std::vector<IndexT> colIdxBuffer;
     std::vector<ScalarT> colValBuffer;
 
     InterpMatrices<dim, ScalarT> interp_matrices(eleOrder);
@@ -646,15 +645,17 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
           fprintf(stderr, "getElementalMatrix() did not return any rows! (%s:%lu)\n", __FILE__, __LINE__);
 #endif// __DEBUG__
 
+        {StaticTimer<Clear> _;
         rowIdxBuffer.clear();
-        colIdxBuffer.clear();
         colValBuffer.clear();
+        }
 
         if (elemRecords.size() > 0)
         {
 
           // Copy elemental matrix to sorted order.
           size_t countEntries = 0;
+          {StaticTimer<Buffer> _;
           for (const ot::MatRecord &rec : elemRecords)
           {
             const IndexT rowIdx = rec.getRowID() * m_uiDof + rec.getRowDim();
@@ -669,9 +670,9 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
               countEntries = 0;
               rowIdxBuffer.push_back(rowIdx);
             }
-            colIdxBuffer.push_back(rec.getColID() * m_uiDof + rec.getColDim());
             colValBuffer.push_back(rec.getMatVal());
             countEntries++;
+          }
           }
 
           // Multiply p2c and c2p.
@@ -792,7 +793,7 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
           }//end mult p2c c2p
 
           {StaticTimer<Assemble> _;
-          assemble_e(rowIdxBuffer, colIdxBuffer, colValBuffer);
+          assemble_e(rowIdxBuffer, colValBuffer);
           }
         }
       }
@@ -853,12 +854,11 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
   preMat();
   collectMatrixEntries(
       [&]( const std::vector<IndexT>  & rowIdxBuffer,
-           const std::vector<IndexT>  & colIdxBuffer,
            const std::vector<ScalarT> & colValBuffer )
       {
         for (int r = 0; r < n; r++)
           for (int c = 0; c < n; c++)
-            MatSetValue(*J, rowIdxBuffer[r], colIdxBuffer[r*n+c], colValBuffer[r*n+c], ADD_VALUES);
+            MatSetValue(*J, rowIdxBuffer[r], rowIdxBuffer[c], colValBuffer[r*n+c], ADD_VALUES);
       });
   postMat();
 
