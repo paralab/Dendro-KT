@@ -109,24 +109,17 @@ namespace ot
     template <unsigned int dim>
     DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : DA(inDistTree, 0, comm, order, grainSz, sfc_tol)
-    {
-      // Do NOT destroyTree. Let user decide.
-    }
+    { }
 
     // Construct multiple DA for multigrid.
     template <unsigned int dim>
     void DA<dim>::multiLevelDA(std::vector<DA> &outDAPerStratum, const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
       const int numStrata = inDistTree.getNumStrata();
-
       outDAPerStratum.clear();
-
-      std::vector<DA> daPerStratum(numStrata);
-
+      outDAPerStratum.reserve(numStrata);
       for (int l = 0; l < numStrata; ++l)
-        daPerStratum[l].constructStratum(inDistTree, l, comm, order, grainSz, sfc_tol);
-      std::swap(outDAPerStratum, daPerStratum);
-      // Do NOT destroyTree. Let user decide.
+        outDAPerStratum.emplace_back(inDistTree, l, comm, order, grainSz, sfc_tol);
     }
 
 
@@ -291,6 +284,9 @@ namespace ot
       bool isActive = (nActiveEle > 0);
       MPI_Comm activeComm;
       MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
+
+      m_dist_tree = &distTree;
+      m_dist_tree_lifetime = distTree.live_ptr();
 
       TreeNode<C, dim> treePartFront;
       TreeNode<C, dim> treePartBack;
@@ -967,6 +963,47 @@ namespace ot
     }
 
 
+    template <unsigned int dim>
+    const std::vector<int> & DA<dim>::elements_per_node() const
+    {
+      if (not m_elements_per_node.initialized())
+      {
+        std::vector<int> element_count(this->getTotalNodalSz(), 0);
+
+        const TreeNode<C, dim> *tn_list = this->dist_tree()->getTreePartFiltered().data();
+        const TreeNode<C, dim> *node_list = this->getTNCoords();
+        const size_t tn_list_sz = this->dist_tree()->getTreePartFiltered().size();
+        const size_t node_list_sz = this->getTotalNodalSz();
+        const int single_dof = 1;
+        const int degree = this->getElementOrder();
+        const int one = 1;
+
+        MatvecBaseOut<dim, int, true> loop(
+            node_list_sz, single_dof, degree, false, 0, node_list, tn_list, tn_list_sz,
+            dummyOctant<dim>(), dummyOctant<dim>());
+        while (not loop.isFinished())
+        {
+          if (loop.isPre() and loop.isLeaf())
+          {
+            loop.subtreeInfo().overwriteNodeValsOutScalar(&one);
+            loop.next();
+          }
+          else
+            loop.step();
+        }
+        loop.finalize(element_count.data());
+
+        this->writeToGhostsBegin(element_count.data());
+        this->writeToGhostsEnd(element_count.data());
+        this->readFromGhostBegin(element_count.data());
+        this->readFromGhostEnd(element_count.data());
+
+        m_elements_per_node = element_count;
+      }
+
+      return m_elements_per_node.get();
+    }
+
 
 
     template <unsigned int dim>
@@ -1240,23 +1277,25 @@ namespace ot
 
     template <unsigned int dim>
     PetscErrorCode DA<dim>::createMatrix(Mat &M, MatType mtype, unsigned int dof) const
-    {
-
-
+    {DOLLAR("createMatrix")
 
         if(m_uiIsActive)
         {
+            const size_t lSz = dof * this->getLocalNodalSz();
+            const unsigned int dofsPerElem = dof * this->getNumNodesPerElement();
+            const std::vector<int> &epn_ghosted = this->elements_per_node();
+            std::vector<PetscInt> nnz_bound;
+            nnz_bound.reserve(lSz);
+            for (size_t i = this->getLocalNodeBegin(),
+                end = i + this->getLocalNodalSz(); i < end; ++i)
+            {
+              const int relevant_cells = epn_ghosted[i];
+              nnz_bound.insert(nnz_bound.end(), dof, dofsPerElem * relevant_cells);
+            }
 
             const unsigned int npesAll=m_uiGlobalNpes;
             const unsigned int eleOrder=m_uiElementOrder;
 
-            // intPow(2*eleOrder+1, dim): # nodes in 2^dim neighbor elems.
-            // *2: parent or child
-            // *dof: all dofs may interact
-            const unsigned int preAllocFactor=dof*2*intPow(2*eleOrder+1, dim);
-
-            // first determine the size ...
-            size_t lSz = dof*(m_uiLocalNodalSz);
             MPI_Comm activeComm=m_uiActiveComm;
 
             PetscBool isAij, isAijSeq, isAijPrl, isSuperLU, isSuperLU_Dist;
@@ -1273,9 +1312,9 @@ namespace ot
 
             if(isAij || isAijSeq || isAijPrl || isSuperLU || isSuperLU_Dist) {
                 if(npesAll > 1) {
-                    MatMPIAIJSetPreallocation(M, preAllocFactor , PETSC_NULL, preAllocFactor , PETSC_NULL);
+                    MatMPIAIJSetPreallocation(M, int{}, nnz_bound.data(), int{} , nnz_bound.data());
                 }else {
-                    MatSeqAIJSetPreallocation(M, preAllocFactor, PETSC_NULL);
+                    MatSeqAIJSetPreallocation(M, int{}, nnz_bound.data());
                 }
             }
 

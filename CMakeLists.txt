@@ -172,6 +172,8 @@ set(DENDRO_KT_INC include/dendro.h
                   include/serialize.hpp
                   include/p2p.h
                   include/p2p.tcc
+                  include/lazy.hpp
+                  include/passive_shared_ptr.hpp
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
                   array/include/arraySlice.h
@@ -449,6 +451,12 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/intergrid/refine_many.cpp
 add_executable(tstIntergridRefineMany ${SRC_FILES})
 target_include_directories(tstIntergridRefineMany PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tstIntergridRefineMany dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/fem/collect_mat.cpp
+              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/multisphere.h)
+add_executable(tstFemCollectMat ${SRC_FILES})
+target_include_directories(tstFemCollectMat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(tstFemCollectMat dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/dist_partition.cpp
               ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/gaussian.hpp)
