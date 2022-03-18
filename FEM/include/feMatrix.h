@@ -591,7 +591,7 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
     const std::vector<RankI> &ghostedGlobalNodeId = m_oda.getNodeLocalToGlobalMap();
 
     std::vector<ot::MatRecord> elemRecords;
-    std::vector<IndexT> rowIdxBuffer(n);
+    std::vector<PetscInt> rowIdxBuffer(n);
     std::vector<ScalarT> colValBuffer(n_squared);
 
     InterpMatrices<dim, ScalarT> interp_matrices(eleOrder);
@@ -832,12 +832,10 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 
   preMat();
   collectMatrixEntries(
-      [&]( const std::vector<IndexT>  & rowIdxBuffer,
+      [&]( const std::vector<PetscInt>& rowIdxBuffer,
            const std::vector<ScalarT> & colValBuffer )
       {
-        for (int r = 0; r < n; r++)
-          for (int c = 0; c < n; c++)
-            MatSetValue(*J, rowIdxBuffer[r], rowIdxBuffer[c], colValBuffer[r*n+c], ADD_VALUES);
+        MatSetValues(*J, n, rowIdxBuffer.data(), n, rowIdxBuffer.data(), colValBuffer.data(), ADD_VALUES);
       });
   postMat();
 
