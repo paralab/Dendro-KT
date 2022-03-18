@@ -570,8 +570,14 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
   {
     using CoordT = typename ot::DA<dim>::C;
     using ot::RankI;
-    using ScalarT = typename ot::MatCompactRows::ScalarT;
-    using IndexT = typename ot::MatCompactRows::IndexT;
+
+#ifdef BUILD_WITH_PETSC
+    using ScalarT = PetscScalar;
+    using IndexT = PetscInt;
+#else
+    using ScalarT = DendroScalar;
+    using IndexT = long long unsigned;
+#endif
 
     const size_t ghostedNodalSz = m_oda.getTotalNodalSz();
     const ot::TreeNode<CoordT, dim> *odaCoords = m_oda.getTNCoords();
@@ -745,9 +751,8 @@ void feMatrix<LeafT, dim>::setDiag(Vec& out, double scale)
 template <typename LeafT, unsigned int dim>
 bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {DOLLAR("getAssembledMatrix()")
-  using ScalarT = typename ot::MatCompactRows::ScalarT;
-  using IndexT = typename ot::MatCompactRows::IndexT;
-  using ot::RankI;
+  using ScalarT = PetscScalar;
+  using IndexT = PetscInt;
   const int n = this->da()->getNumNodesPerElement() * this->ndofs();
 
   preMat();
