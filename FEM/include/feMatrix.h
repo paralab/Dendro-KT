@@ -552,29 +552,6 @@ class SubMatView
 };
 
 
-enum Scopes { Total, Loop, Leaf, Input, Mapping, Buffer, Hanging, Assemble,
-  NUM_SCOPES};
-constexpr const char * scopes[] = { "Total", "Loop", "Leaf", "Input", "Mapping", "Buffer", "Hanging", "Assemble",
-};
-extern std::array<std::chrono::nanoseconds, NUM_SCOPES> dt;
-#define ACTIVATE_TIMERS 1
-template <Scopes scope>  struct StaticTimer
-{
-  using Clock = std::chrono::high_resolution_clock;
-  using TimePoint = std::chrono::time_point<Clock>;
-  struct Wrap { TimePoint tp; };
-  const Wrap m_begin;
-#if ACTIVATE_TIMERS
-  StaticTimer() : m_begin(start()) { }
-  ~StaticTimer() { stop(m_begin); }
-  static Wrap start() { return {Clock::now()}; }
-  static void stop(Wrap begin)  { dt[scope] += (Clock::now() - begin.tp); }
-#else
-  static Wrap start() { return {}; }
-  static void stop(Wrap begin)  { }
-#endif
-};
-
 template <typename LeafT, unsigned int dim>
 template <typename AssembleElemental>
 void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
@@ -591,8 +568,6 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
 
   if (m_oda.isActive())
   {
-    StaticTimer<Total> _;
-
     using CoordT = typename ot::DA<dim>::C;
     using ot::RankI;
     using ScalarT = typename ot::MatCompactRows::ScalarT;
@@ -629,21 +604,17 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
     // Iterate over all leafs of the local part of the tree.
     while (!treeLoopIn.isFinished())
     {
-      StaticTimer<Loop> _;
       const ot::TreeNode<CoordT, dim> subtree = treeLoopIn.getCurrentSubtree();
       const auto subtreeInfo = treeLoopIn.subtreeInfo();
 
       if (treeLoopIn.isPre() && subtreeInfo.isLeaf())
       {
-        StaticTimer<Leaf> _;
         const double * nodeCoordsFlat = subtreeInfo.getNodeCoords();
         const RankI * nodeIdsFlat = subtreeInfo.readNodeValsIn();
 
         // Get elemental matrix for the current leaf element.
         elemRecords.clear();
-        {StaticTimer<Input> _;
         this->getElementalMatrix(elemRecords, nodeCoordsFlat, subtreeInfo.isElementBoundary());
-        }
 
 #ifdef __DEBUG__
         if (!elemRecords.size())
@@ -652,12 +623,9 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
 
         if (elemRecords.size() > 0)
         {
-          {StaticTimer<Mapping> _;
           for (int i = 0; i < nPe; ++i)
             for (int id = 0; id < ndofs; ++id)
               rowIdxBuffer[i * ndofs + id] = nodeIdsFlat[i] * ndofs + id;
-          }
-          {StaticTimer<Buffer> _;
           for (int ij = 0; ij < n_squared; ++ij)
           {
             const ot::MatRecord rec = elemRecords[ij];
@@ -665,11 +633,10 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
             const int id = rec.getRowDim(), jd = rec.getColDim();
             colValBuffer[((i * ndofs + id) * nPe + j) * ndofs + jd] = rec.getMatVal();
           }
-          }
 
           // Multiply p2c and c2p.
           if (subtreeInfo.getNumNonhangingNodes() != nPe)
-          {StaticTimer<Hanging> _;
+          {
             const unsigned char child_m = subtree.getMortonIndex();
 
             const std::vector<bool> &nodeNonhangingIn = subtreeInfo.readNodeNonhangingIn();
@@ -725,9 +692,7 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
             transpose(e_mat);
           }//end mult p2c c2p
 
-          {StaticTimer<Assemble> _;
           assemble_e(rowIdxBuffer, colValBuffer);
-          }
         }
       }
       treeLoopIn.step();

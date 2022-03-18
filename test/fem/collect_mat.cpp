@@ -31,7 +31,6 @@ ot::DistTree<uint, DIM> make_dist_tree(size_t grain, double sfc_tol, MPI_Comm co
 // print_dollars()
 void print_dollars(MPI_Comm comm);
 
-std::array<std::chrono::nanoseconds, NUM_SCOPES> dt = {};
 
 class AllOnes : public feMatrix<AllOnes, DIM>
 {
@@ -131,13 +130,6 @@ int main(int argc, char * argv[])
 
   MatAssemblyBegin(petsc_mat, MAT_FINAL_ASSEMBLY);
   MatAssemblyEnd(petsc_mat, MAT_FINAL_ASSEMBLY);
-
-#if ACTIVATE_TIMERS
-  printf("Breakdown\t");
-  for (int s = 0; s < NUM_SCOPES; ++s)
-    printf(" [%s]:%-5.0f", scopes[s], std::chrono::duration<double, std::milli>(dt[s]).count());
-  printf("\n");
-#endif
 
   print_dollars(comm);
 
