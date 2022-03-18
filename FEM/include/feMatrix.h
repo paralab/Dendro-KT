@@ -571,6 +571,8 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
   const ot::DA<dim> &m_oda = *this->da();
   const unsigned int eleOrder = m_oda.getElementOrder();
   const unsigned int nPe = m_oda.getNumNodesPerElement();
+  const unsigned int n = nPe * m_uiDof;
+  const unsigned int n_squared = n * n;
 
   // Loop over all elements, adding row chunks from elemental matrices.
   // Get the node indices on an element using MatvecBaseIn<dim, unsigned int, false>.
@@ -589,12 +591,12 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
     const std::vector<RankI> &ghostedGlobalNodeId = m_oda.getNodeLocalToGlobalMap();
 
     std::vector<ot::MatRecord> elemRecords;
-    std::vector<IndexT> rowIdxBuffer;
-    std::vector<ScalarT> colValBuffer;
+    std::vector<IndexT> rowIdxBuffer(n);
+    std::vector<ScalarT> colValBuffer(n_squared);
 
     InterpMatrices<dim, ScalarT> interp_matrices(eleOrder);
-    std::vector<ScalarT> wksp_col(nPe*m_uiDof);
-    std::vector<ScalarT> wksp_mat((nPe*m_uiDof) * (nPe*m_uiDof));
+    std::vector<ScalarT> wksp_col(n);
+    std::vector<ScalarT> wksp_mat(n_squared);
 
     const bool visitEmpty = false;
     const unsigned int padLevel = 0;
@@ -628,50 +630,26 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
         {StaticTimer<Input> _;
         this->getElementalMatrix(elemRecords, nodeCoordsFlat, subtreeInfo.isElementBoundary());
         }
-        // Sort using local (lexicographic) node ordering, BEFORE map to global.
-        {StaticTimer<Sorting> _;
-        std::sort(elemRecords.begin(), elemRecords.end());
-        }
-        {StaticTimer<Mapping> _;
-        for (ot::MatRecord &mr : elemRecords)
-        {
-          mr.setRowID(nodeIdsFlat[mr.getRowID()]);
-          mr.setColID(nodeIdsFlat[mr.getColID()]);
-        }
-        }
 
 #ifdef __DEBUG__
         if (!elemRecords.size())
           fprintf(stderr, "getElementalMatrix() did not return any rows! (%s:%lu)\n", __FILE__, __LINE__);
 #endif// __DEBUG__
 
-        {StaticTimer<Clear> _;
-        rowIdxBuffer.clear();
-        colValBuffer.clear();
-        }
-
         if (elemRecords.size() > 0)
         {
-
-          // Copy elemental matrix to sorted order.
-          size_t countEntries = 0;
+          {StaticTimer<Mapping> _;
+          for (int i = 0; i < nPe; ++i)
+            for (int id = 0; id < m_uiDof; ++id)
+              rowIdxBuffer[i * m_uiDof + id] = nodeIdsFlat[i] * m_uiDof + id;
+          }
           {StaticTimer<Buffer> _;
-          for (const ot::MatRecord &rec : elemRecords)
+          for (int ij = 0; ij < n_squared; ++ij)
           {
-            const IndexT rowIdx = rec.getRowID() * m_uiDof + rec.getRowDim();
-            if (rowIdxBuffer.size() == 0 || rowIdx != rowIdxBuffer.back())
-            {
-#ifdef __DEBUG__
-              if (countEntries != 0 && countEntries != nPe * m_uiDof)
-                fprintf(stderr, "Unexpected #entries in row of elemental matrix, "
-                                "RowId==%lu RowDim==%lu. Expected %u, got %u.\n",
-                                rec.getRowID(), rec.getRowDim(), nPe*m_uiDof, countEntries);
-#endif// __DEBUG__
-              countEntries = 0;
-              rowIdxBuffer.push_back(rowIdx);
-            }
-            colValBuffer.push_back(rec.getMatVal());
-            countEntries++;
+            const ot::MatRecord rec = elemRecords[ij];
+            const int i = rec.getRowID(), j = rec.getColID();
+            const int id = rec.getRowDim(), jd = rec.getColDim();
+            colValBuffer[((i * m_uiDof + id) * nPe + j) * m_uiDof + jd] = rec.getMatVal();
           }
           }
 
@@ -849,6 +827,7 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 {DOLLAR("getAssembledMatrix()")
   using ScalarT = typename ot::MatCompactRows::ScalarT;
   using IndexT = typename ot::MatCompactRows::IndexT;
+  using ot::RankI;
   const int n = this->da()->getNumNodesPerElement() * this->ndofs();
 
   preMat();
