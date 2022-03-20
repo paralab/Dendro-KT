@@ -166,7 +166,8 @@ namespace ot
       const DistTree &inTree,
       std::vector<int> &&delta_level,  // Consumed. To reuse, clear() and resize().
       DistTree &outTree,
-      double sfc_tol)
+      double sfc_tol,
+      bool repartition)
   {
     MPI_Comm comm = inTree.getComm();
 
@@ -177,11 +178,32 @@ namespace ot
 
     DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
     SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
+
     SFC_Tree<T, dim>::distMinimalBalanced(newOctList, sfc_tol, comm);
+    DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
+    if (repartition)
+      SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
+
     SFC_Tree<T, dim>::distCoalesceSiblings(newOctList, comm);
 
     outTree = DistTree<T, dim>(newOctList, comm);
-    outTree.filterTree(inTree.getDomainDecider());
+    outTree.assignDomainDecider(inTree.getDomainDecider());
+    outTree.m_hasBeenFiltered = true;
+  }
+
+
+  template <typename T, unsigned int dim>
+  DistTree<T, dim> DistTree<T, dim>::repartitioned(const double sfc_tol) &&
+  {
+    std::vector<TreeNode<T, dim>> &octList = this->get_m_treePartFiltered();
+    SFC_Tree<T, dim>::distTreeSort(octList, sfc_tol, this->getComm());//future: distTreePartition(), if stable
+    SFC_Tree<T, dim>::distCoalesceSiblings(octList, this->getComm());
+
+    DistTree outTree = DistTree<T, dim>(octList, this->getComm());
+    outTree.assignDomainDecider(this->getDomainDecider());
+    outTree.m_hasBeenFiltered = true;
+
+    return outTree;
   }
 
 

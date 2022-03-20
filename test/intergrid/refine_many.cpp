@@ -110,6 +110,7 @@ int main(int argc, char * argv[])
     increase.push_back(oct.getIsOnTreeBdry() or refine_all ? amount : 0);
   {DOLLAR("Refine")
     coarse_dtree.distRefine(coarse_dtree, std::move(increase), fine_dtree, sfc_tol);
+    fine_dtree = std::move(fine_dtree).repartitioned(sfc_tol);
   }
   {DOLLAR("fine_da")
     fine_da = new DA(fine_dtree, comm, degree, int{}, sfc_tol);

@@ -111,7 +111,11 @@ namespace ot
           const DistTree &inTree,
           std::vector<int> &&delta_level,  // Need std::move() if not a temporary. To reuse a move()'d container, clear() and resize().
           DistTree &outTree,
-          double sfc_tol);
+          double sfc_tol,
+          bool repartition = false);
+
+      /** @brief Usage: dtree = std::move(dtree).repartitioned(sfc_tol); */
+      DistTree repartitioned(const double sfc_tol) &&;
 
 
       // insertRefinedGrid()
