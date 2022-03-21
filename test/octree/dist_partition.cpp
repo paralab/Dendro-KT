@@ -72,12 +72,30 @@ int main(int argc, char * argv[])
 
   /// ot::quadTreeToGnuplot(octants, max_level, "points.pre", comm);
 
-  const double sfc_tol = 0.1;
+  const double sfc_tol = 0.01;
   std::vector<ot::TNPoint<uint, DIM>> xs;
   for (const Oct &oct : octants)
     xs.emplace_back(oct.getX(), oct.getLevel());
 
   ot::distTreePartition_kway(comm, octants, xs, sfc_tol);
+
+  const long int local_excess = size(octants) - Nl;
+  const double relative_excess = (Nl == 0 ? 0 : double(local_excess) / double(Nl));
+  std::vector<double> gather_excess(comm_size * (comm_rank == 0));
+  par::Mpi_Gather(&relative_excess, gather_excess.data(), 1, 0, comm);
+  if (comm_rank == 0)
+  {
+    printf("Partitioning:\n");
+    for (int r = 0; r < comm_size;)
+    {
+      for (const int e = std::min(comm_size, r + 10); r < e; ++r)
+        printf("  [%2d]:%s%+.2f%%%s",
+            r,
+            (fabs(gather_excess[r]) <= 2*sfc_tol ? GRN : RED),
+            gather_excess[r] * 100, NRM);
+      printf("\n");
+    }
+  }
 
   OctList ys;
   for (const auto &pt : xs)
@@ -93,7 +111,7 @@ int main(int argc, char * argv[])
     if (not partitioned)
       printf(RED "Edges unsorted\n" NRM);
 
-  ot::distTreePartition_kway(comm, octants, sfc_tol);
+  ot::distTreePartition_kway(comm, octants, sfc_tol);  // check overload
 
   _DestroyHcurve();
   DendroScopeEnd();
