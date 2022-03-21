@@ -1147,26 +1147,21 @@ void distTreePartition_kway_impl(
     parent_buckets.all_reduce(comm);
     /// parent_buckets.plot(plot);
 
-    // Mapping of splitters within array, induces mapping within buckets.
-    const auto ideal =    [=](int blk) { assert(blk <= nblocks); return blk * Ng / nblocks; };
-    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
-    const auto next_blk = [=](LLU item) { assert(item <= Ng);    return int((item * nblocks + Ng - 1) / Ng); };
-    const LLU min_tol =  Ng                / nblocks * sfc_tol;
-    const LLU max_tol = (Ng + nblocks - 1) / nblocks * sfc_tol;
+    // Naive: Each block weighted equally. (Despite having +/-1 processes).
+    // Relative: Blocks weighted by #proc, abs_tol = Ng / nblocks * rel_tol.
+    // Absolute: Blocks weighted by #proc, abs_tol = Ng / comm_size * rel_tol.
+    // ----
+    // Relative strategy cannot guarantee exact tolerances of final partition,
+    // unlike absolute strategy. However, absolute strategy requires equal
+    // number of Allreduce on each stage. Relative should be dominated by
+    // the final stage, where the precision is highest. Quick calculation:
+    // If #rounds_per_stage ~ O(Ng/abs_tol), [denote p=comm_size, r=relative_tol]
+    //   Relative #rounds ~ O(1/r * p)  Absolute #rounds ~ O(1/r * p log_K(p))
+    // With p=10^6 and K=128, the difference would be a factor of 2.8x.
+    // In theory the same tradeoff can be made by adjusting tol in absolute.
+    // Hopefully #rounds is much less, else we are in trouble either way.
 
-    const auto too_wide = [=](LLU begin, LLU end) -> bool {
-      const bool wider_than_margins = end - begin > 2 * min_tol + 1;
-      const LLU margin_left = begin + min_tol < end ? begin + min_tol + 1 : end;
-      const LLU margin_right = end >= min_tol ? end - min_tol : 0;
-      const int far_blk_begin = next_blk(margin_left);
-      const int far_blk_end = next_blk(margin_right);
-      return wider_than_margins and far_blk_begin < far_blk_end;
-    };
-
-    const auto local_block_sz = [&](int blk) {
-      assert(blk < nblocks);
-      return local_block[blk+1] - local_block[blk];
-    };
+    // Block -> task -> global item
 
     // Mapping of tasks within blocks.
     const auto block_to_task =  [=](int blk) { return blk * comm_size / nblocks; };
@@ -1178,6 +1173,33 @@ void distTreePartition_kway_impl(
       int blk = task_to_block_(task);
       assert(block_to_task(blk) <= task and task < block_to_task(blk+1));
       return blk;
+    };
+    const auto task_to_next_block = [=](int task) { return (task * nblocks + comm_size - 1) / comm_size; };
+
+    // Mapping of splitters within array, induces mapping within buckets.
+    const auto ideal =    [=](int blk) { assert(blk <= nblocks); return block_to_task(blk) * Ng / comm_size; };
+    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
+    const auto next_blk = [=](LLU item) { assert(item <= Ng);
+      const int next_task = (item * comm_size + Ng - 1) / Ng;
+      return task_to_next_block(next_task);
+    };
+
+    // "Relative" strategy: Relative tolerance applying to block, not task.
+    /// const LLU min_tol =  Ng                / nblocks * sfc_tol;
+    /// const LLU max_tol = (Ng + nblocks - 1) / nblocks * sfc_tol;
+
+    // "Absolute" strategy: Relative tolerance applying to task, not block.
+    // Give the user what they ask for and allow them to adjust the tradeoff.
+    const LLU min_tol =  Ng                  / comm_size * sfc_tol;
+    const LLU max_tol = (Ng + comm_size - 1) / comm_size * sfc_tol;
+
+    const auto too_wide = [=](LLU begin, LLU end) -> bool {
+      const bool wider_than_margins = end - begin > 2 * min_tol + 1;
+      const LLU margin_left = begin + min_tol < end ? begin + min_tol + 1 : end;
+      const LLU margin_right = end >= min_tol ? end - min_tol : 0;
+      const int far_blk_begin = next_blk(margin_left);
+      const int far_blk_end = next_blk(margin_right);
+      return wider_than_margins and far_blk_begin < far_blk_end;
     };
 
     const int self_blk = task_to_block(comm_rank);
@@ -1195,6 +1217,11 @@ void distTreePartition_kway_impl(
     local_block.clear();
     local_block.resize(nblocks + 1, -1);
     local_block[nblocks] = octants.size();
+
+    const auto local_block_sz = [&](int blk) {
+      assert(blk < nblocks);
+      return local_block[blk+1] - local_block[blk];
+    };
 
     // commit()
     const auto commit = [&](int blk, const BucketRef<T, int(dim)> b) {
