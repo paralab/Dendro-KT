@@ -334,7 +334,7 @@ namespace par {
     int Mpi_Allreduce( const T* sendbuf, T* recvbuf, int count, MPI_Op op, MPI_Comm comm);
 
   template <typename T>
-  T mpi_sum(T t, MPI_Comm comm)
+  T mpi_sum(const T t, MPI_Comm comm)
   {
     T sum;
     Mpi_Allreduce(&t, &sum, 1, MPI_SUM, comm);
@@ -342,14 +342,23 @@ namespace par {
   }
 
   template <typename T>
-  T mpi_min(T t, MPI_Comm comm)
+  T mpi_and(const T t_, MPI_Comm comm)
+  {
+    const int t = bool(t_);
+    int all;
+    Mpi_Allreduce(&t, &all, 1, MPI_LAND, comm);
+    return T(bool(all));
+  }
+
+  template <typename T>
+  T mpi_min(const T t, MPI_Comm comm)
   {
     T all;
     Mpi_Allreduce(&t, &all, 1, MPI_MIN, comm);
     return all;
   }
   template <typename T>
-  T mpi_max(T t, MPI_Comm comm)
+  T mpi_max(const T t, MPI_Comm comm)
   {
     T all;
     Mpi_Allreduce(&t, &all, 1, MPI_MAX, comm);
