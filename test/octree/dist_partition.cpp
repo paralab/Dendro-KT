@@ -85,15 +85,22 @@ int main(int argc, char * argv[])
   par::Mpi_Gather(&relative_excess, gather_excess.data(), 1, 0, comm);
   if (comm_rank == 0)
   {
-    printf("Partitioning:\n");
-    for (int r = 0; r < comm_size;)
+    bool within_tolerance = true;
+    for (int r = 0; r < comm_size; ++r)
+      within_tolerance &= fabs(gather_excess[r]) <= 2 * sfc_tol;
+
+    if (not within_tolerance)
     {
-      for (const int e = std::min(comm_size, r + 10); r < e; ++r)
-        printf("  [%2d]:%s%+.2f%%%s",
-            r,
-            (fabs(gather_excess[r]) <= 2*sfc_tol ? GRN : RED),
-            gather_excess[r] * 100, NRM);
-      printf("\n");
+      printf("Partitioning:\n");
+      for (int r = 0; r < comm_size;)
+      {
+        for (const int e = std::min(comm_size, r + 10); r < e; ++r)
+          printf("  [%2d]:%s%+.2f%%%s",
+              r,
+              (fabs(gather_excess[r]) <= 2*sfc_tol ? GRN : RED),
+              gather_excess[r] * 100, NRM);
+        printf("\n");
+      }
     }
   }
 
