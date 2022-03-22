@@ -187,8 +187,7 @@ namespace ot
     SFC_Tree<T, dim>::distCoalesceSiblings(newOctList, comm);
 
     outTree = DistTree<T, dim>(newOctList, comm);
-    outTree.assignDomainDecider(inTree.getDomainDecider());
-    outTree.m_hasBeenFiltered = true;
+    outTree.filterTree(inTree.getDomainDecider());
   }
 
 
@@ -200,8 +199,7 @@ namespace ot
     SFC_Tree<T, dim>::distCoalesceSiblings(octList, this->getComm());
 
     DistTree outTree = DistTree<T, dim>(octList, this->getComm());
-    outTree.assignDomainDecider(this->getDomainDecider());
-    outTree.m_hasBeenFiltered = true;
+    outTree.filterTree(this->getDomainDecider());
 
     return outTree;
   }
