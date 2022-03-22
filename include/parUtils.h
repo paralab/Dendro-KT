@@ -351,6 +351,15 @@ namespace par {
   }
 
   template <typename T>
+  T mpi_or(const T t_, MPI_Comm comm)
+  {
+    const int t = bool(t_);
+    int all;
+    Mpi_Allreduce(&t, &all, 1, MPI_LOR, comm);
+    return T(bool(all));
+  }
+
+  template <typename T>
   T mpi_min(const T t, MPI_Comm comm)
   {
     T all;
