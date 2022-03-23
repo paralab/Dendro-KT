@@ -720,6 +720,7 @@ struct SFC_Tree
   static void distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
                                     MPI_Comm comm );
 
+  static void distAdoptAncestors(std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm);
 
   // -------------------------------------------------------------
 
