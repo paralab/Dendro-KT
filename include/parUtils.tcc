@@ -92,6 +92,19 @@ namespace par {
   }
 
   template<typename T>
+  inline int Mpi_Exscan(const T *sendbuf, T *recvbuf, int count, MPI_Op op, MPI_Comm comm) {
+#ifdef __PROFILE_WITH_BARRIER__
+    MPI_Barrier(comm);
+#endif
+    PROF_PAR_SCAN_BEGIN
+
+    MPI_Exscan(sendbuf, recvbuf, count, par::Mpi_datatype<T>::value(), op, comm);
+
+    PROF_PAR_SCAN_END
+  }
+
+
+  template<typename T>
   inline int Mpi_Allreduce(const T *sendbuf, T *recvbuf, int count, MPI_Op op, MPI_Comm comm) {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
