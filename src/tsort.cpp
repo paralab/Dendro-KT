@@ -1040,13 +1040,6 @@ void distTreePartition_kway_impl(
         b.sfc);
     //future: use locate instead of bucketing if octants is already sorted.
 
-    // Force parent onto next nonempty child.
-    const size_t parent_begin = buckets[0],  parent_end = buckets[1];
-    const size_t family_end = buckets[1+nchild(dim)];
-    if (parent_end < family_end)
-      for (int i = 1; buckets[i] == parent_end; ++i)
-        buckets[i] = parent_begin;
-
     return buckets;
   };
 
@@ -1946,6 +1939,8 @@ template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
                                            MPI_Comm comm_ )
 {
+  //future: use mpi_next_if()
+
   MPI_Comm comm = comm_;
 
   int nProc, rProc;
@@ -2072,6 +2067,76 @@ void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree
     MPI_Comm_free(&comm);
 
 }
+
+
+
+//
+// distAdoptAncestors()
+//
+template <typename T, unsigned int dim>
+void SFC_Tree<T, dim>::distAdoptAncestors(
+    std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
+{
+  // Assume sorted. Identify predecessor/successor.
+  // If last is ancestor of successor first,
+  // then move all consecutive ancestors of last to successor.
+  // Repeat until converge.
+
+  int comm_size, comm_rank;
+  MPI_Comm_size(comm, &comm_size);
+  MPI_Comm_rank(comm, &comm_rank);
+
+  bool converged = (comm_size == 1);
+  while (not converged)
+  {
+    bool nonempty = tree.size() > 0;
+    int predecessor, successor;
+    std::tie(predecessor, successor) = par::mpi_next_if(nonempty, comm);
+
+    bool must_send = false;
+
+    if (nonempty)
+    {
+      TreeNode<T, dim> successor_front;
+      par::Mpi_Sendrecv(&tree.front(), 1, predecessor, int{},
+                        &successor_front, 1, successor, int{},
+                        comm, MPI_STATUS_IGNORE);
+
+      if (successor != MPI_PROC_NULL and tree.back().isAncestor(successor_front))
+        must_send = true;
+    }
+
+    converged = par::mpi_and(not must_send, comm);
+
+    if (not converged and nonempty)
+    {
+      // Count number of consecutive ancestors at tail of local partition.
+      int send_sz = 0;
+      if (must_send)
+      {
+        send_sz = 1;
+        for (auto tail = tree.crbegin() + 1;
+            tail != tree.crend() and tail->isAncestorInclusive(*(tail - 1));
+            ++tail)
+          ++send_sz;
+      }
+
+      int recv_sz = 0;
+      par::Mpi_Sendrecv(&send_sz, 1, successor, int{},
+                        &recv_sz, 1, predecessor, int{},
+                        comm, MPI_STATUS_IGNORE);
+
+      tree.insert(tree.begin(), recv_sz, {});
+      par::Mpi_Sendrecv(&(*tree.end()) - send_sz, send_sz, successor, int{},
+                        &(*tree.begin()), recv_sz, predecessor, int{},
+                        comm, MPI_STATUS_IGNORE);
+      tree.erase(tree.end() - send_sz, tree.end());
+    }
+  }
+}
+
+
+
 
 // locRefine_rec()
 template <typename T, unsigned dim>
@@ -2482,7 +2547,9 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
   outTree = inTree;
   locTreeSort(res);
   SFC_Tree<T, dim>::locMatchResolution(outTree, res);
-  SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);  // Need children under parents
+  // Need children under parents
+  SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);
+  SFC_Tree<T, dim>::distAdoptAncestors(outTree, comm);
   SFC_Tree<T, dim>::splitParents(outTree);  // Same domain as with parents, maybe expanded original
   SFC_Tree<T, dim>::distRemoveDuplicates(outTree, loadFlexibility, RM_DUPS_AND_ANC, comm);
   SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);

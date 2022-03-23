@@ -24,6 +24,7 @@
 
 #include "mpi.h"
 #include <vector>
+#include <utility> //std::pair
 #include "dendro.h"
 #include "string.h"
 
@@ -320,6 +321,9 @@ namespace par {
    */
   template <typename T>
     int Mpi_Scan( const T* sendbuf, T* recvbuf, int count, MPI_Op op, MPI_Comm comm);
+
+  template <typename T>
+    int Mpi_Exscan( const T* sendbuf, T* recvbuf, int count, MPI_Op op, MPI_Comm comm); // must be intracommunicator
 
   /**
    * @author Rahul S. Sampath
@@ -645,6 +649,17 @@ namespace par {
   template <typename T>
     void bitonicSort(std::vector<T> & in, MPI_Comm comm) ;
 
+
+
+
+  /**
+   * mpi_next_if()
+   * @author Masado Ishii
+   * @date 2022-03-23
+   * @brief Get ranks of nonempty predecessor and successor without comm split.
+   * @return Rank of {predecessor, successor} or MPI_PROC_NULL
+   */
+  std::pair<int, int> mpi_next_if(bool included, MPI_Comm comm);
 
   template <typename T>
   void shift(
