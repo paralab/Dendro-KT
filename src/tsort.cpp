@@ -1658,6 +1658,29 @@ SFC_Tree<T,dim>:: distTreeConstruction(std::vector<TreeNode<T,dim>> &points,
 }
 
 
+
+template <typename T, unsigned int dim>
+void
+SFC_Tree<T,dim>:: distMinimalComplete(
+    std::vector<TreeNode<T,dim>> &tree, double sfc_tol, MPI_Comm comm)
+{
+  std::vector<TreeNode<T, dim>> res;
+  std::swap(res, tree);
+
+  distRemoveDuplicates(res, sfc_tol, false, comm);
+
+  assert(isLocallySorted(res));
+  /// tree.reserve(res.size() * 2);
+  locCompleteResolved(
+      res.data(), tree, 0, res.size(),
+      SFC_State<dim>::root(), TreeNode<T, dim>());
+
+  distRemoveDuplicates(tree, sfc_tol, false, comm);
+  assert(isPartitioned(tree, comm));
+  assert(coversUnitCube(tree, comm));
+}
+
+
 template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: distTreeConstructionWithFilter(
@@ -2567,7 +2590,11 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
   SFC_Tree<T, dim>::distAdoptAncestors(outTree, comm);
   SFC_Tree<T, dim>::splitParents(outTree);  // Same domain as with parents, maybe expanded original
   SFC_Tree<T, dim>::distRemoveDuplicates(outTree, loadFlexibility, RM_DUPS_AND_ANC, comm);
-  SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
+#ifndef USE_2TO1_GLOBAL_SORT
+    SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
+#else
+    SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(outTree, loadFlexibility, comm);
+#endif
   SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
   // Domain possibly expanded. Require filterTree() afterward (e.g. in DistTree::distRemeshSubdomain())
   // future: Move this function body directly into DistTree::distRemeshSubdomain().
@@ -2734,8 +2761,6 @@ SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
   std::vector<std::vector<TreeNode<T,dim>>> treeLevels = stratifyTree(srcNodes);
   srcNodes.clear();
 
-  ///std::cout << "Starting at        level " << m_uiMaxDepth << ", level size \t " << treeLevels[m_uiMaxDepth].size() << "\n";  //DEBUG
-
   // Bottom-up traversal using stratified levels.
   for (unsigned int l = m_uiMaxDepth; l > 0; l--)
   {
@@ -2752,9 +2777,6 @@ SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
     // TODO Consider more efficient algorithms for removing duplicates from lp level.
     locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, SFC_State<dim>::root());
     locRemoveDuplicates(treeLevels[lp]);
-
-    ///const size_t newLevelSize = treeLevels[lp].size();
-    ///std::cout << "Finished adding to level " << lp << ", level size \t " << oldLevelSize << "\t -> " << newLevelSize << "\n";  // DEBUG
   }
 
   // Reserve space before concatenating all the levels.
@@ -2856,6 +2878,35 @@ SFC_Tree<T,dim>:: distTreeBalancing(std::vector<TreeNode<T,dim>> &points,
   distTreeConstruction(tree, newTree, 1, loadFlexibility, comm);  // Still want only leaves.
 
   tree = newTree;
+}
+
+//
+// distMinimalBalancedGlobalSort()
+//
+template <typename T, unsigned int dim>
+void
+SFC_Tree<T,dim>:: distMinimalBalancedGlobalSort(
+    std::vector<TreeNode<T,dim>> &tree,
+    double sfc_tol,
+    MPI_Comm comm)
+{
+  assert(isLocallySorted(tree));
+  assert(isPartitioned(tree, comm));
+
+  const std::vector<TreeNode<T, dim>> original = tree;
+
+  propagateNeighbours(tree);
+  distMinimalComplete(tree, sfc_tol, comm);
+
+  // If subdomain, the fill-in may have wrong resolution.
+  // Also want to treat domain decider as multi-level test:
+  // Assume INTERCEPTED is a catch-all, utilize prior finer-resolved tests.
+
+  // Prune parts that don't overlap original.
+  tree = getSurrogateGrid(SurrogateOutByIn, original, tree, comm);
+  retainDescendants(tree, original);
+
+  assert(is2to1Balanced(tree, comm));
 }
 
 //
@@ -4573,6 +4624,27 @@ template bool isPartitioned(std::vector<TreeNode<unsigned, 3u>> octants, MPI_Com
 template bool isPartitioned(std::vector<TreeNode<unsigned, 4u>> octants, MPI_Comm comm);
 
 
+
+template <typename T, unsigned dim>
+bool coversUnitCube(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
+{
+  using LLU = long long unsigned;
+  std::vector<LLU> level_histogram(m_uiMaxDepth + 1, 0);
+  for (const TreeNode<T, dim> &tn : tree)
+    ++level_histogram[tn.getLevel()];
+  std::vector<LLU> global_histogram = level_histogram;
+  par::Mpi_Allreduce( level_histogram.data(), global_histogram.data(),
+                      m_uiMaxDepth + 1, MPI_SUM, comm);
+
+  for (int l = m_uiMaxDepth; l > 0; --l)
+    global_histogram[l-1] += global_histogram[l] / nchild(dim);
+
+  return global_histogram[0] = 1;
+}
+
+template bool coversUnitCube(const std::vector<TreeNode<unsigned, 2u>> &tree, MPI_Comm comm);
+template bool coversUnitCube(const std::vector<TreeNode<unsigned, 3u>> &tree, MPI_Comm comm);
+template bool coversUnitCube(const std::vector<TreeNode<unsigned, 4u>> &tree, MPI_Comm comm);
 
 
 } // namspace ot

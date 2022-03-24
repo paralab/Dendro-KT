@@ -14,7 +14,7 @@
 
 #include "test/octree/multisphere.h"
 
-constexpr int DIM = 3;
+constexpr int DIM = 2;
 using uint = unsigned int;
 using DofT = double;
 
@@ -98,7 +98,7 @@ int main(int argc, char * argv[])
     coarse_da = new DA(coarse_dtree, comm, degree, int{}, sfc_tol);
   }
     printf("[%d] da size (e:%lu n:%lu)\n", comm_rank, coarse_da->getLocalElementSz(), coarse_da->getLocalNodalSz());
-  /// ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
+  ot::quadTreeToGnuplot(coarse_dtree.getTreePartFiltered(), 8, "coarse.tree", comm);
   /// ot::quadTreeToGnuplot(coarse_da->getTNVec(), 8, "coarse.da", comm);
 
   std::vector<int> increase;
@@ -115,7 +115,7 @@ int main(int argc, char * argv[])
     fine_da = new DA(fine_dtree, comm, degree, int{}, sfc_tol);
   }
   printf("[%d] refined size (e:%lu n:%lu)\n", comm_rank, fine_da->getLocalElementSz(), fine_da->getLocalNodalSz());
-  /// ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
+  ot::quadTreeToGnuplot(fine_dtree.getTreePartFiltered(), 10, "fine.tree", comm);
 
   /// const int local_coarsest = coarsest_level(fine_dtree);
   /// const int global_coarsest = par::mpi_min(local_coarsest, comm);
