@@ -962,6 +962,20 @@ struct BucketArray
 #endif
   }
 
+  void update_ancestors(const BucketArray &child_buckets)
+  {
+    size_t cb = 0;
+    for (BucketRef<T, dim> b : *this)
+      if (b.marked_split())
+      {
+        b.local_end = child_buckets.m_local_begin[cb];
+        b.global_end = child_buckets.m_global_begin[cb];
+        cb += nchild(dim);
+      }
+    //future: If want to absorb ancestors into nonempty child, can do it here.
+    //As long as the initial_depth stops at globally coarsest level.
+  }
+
   size_t size() const { return m_local_begin.size(); }
 
   struct Iterator
@@ -1047,7 +1061,7 @@ void distTreePartition_kway_impl(
   std::vector<size_t> local_block;
   local_block.reserve(kway + 1);
 
-  std::string plot_prefix = "partition";
+  std::string plot_prefix = "partition/kway";
 
   while (nblocks > 1)
   {
@@ -1190,8 +1204,9 @@ void distTreePartition_kway_impl(
         }
       }
 
-      // Allreduce children to get global begins of children.
+      // Allreduce children to get global begins of children, update parents.
       child_buckets.all_reduce(comm);
+      parent_buckets.update_ancestors(child_buckets);
       /// child_buckets.plot(plot);
 
       // Commit any splitters that are not inheritted by children.
