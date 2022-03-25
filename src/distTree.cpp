@@ -179,7 +179,11 @@ namespace ot
     DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
     SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
 
+#ifndef USE_2TO1_GLOBAL_SORT
     SFC_Tree<T, dim>::distMinimalBalanced(newOctList, sfc_tol, comm);
+#else
+    SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(newOctList, sfc_tol, comm);
+#endif
     DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
     if (repartition)
       SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
@@ -1163,7 +1167,11 @@ namespace ot
     treeIntercepted.clear();
     treeIntercepted.shrink_to_fit();
     SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
+#ifndef USE_2TO1_GLOBAL_SORT
     SFC_Tree<T, dim>::distMinimalBalanced(treeFinal, sfc_tol, comm);
+#else
+    SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(treeFinal, sfc_tol, comm);
+#endif
     SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
     SFC_Tree<T, dim>::distCoalesceSiblings(treeFinal, comm);
 
@@ -1211,7 +1219,11 @@ namespace ot
       SFC_Tree<T, dim>::locTreeSort(tree);
       SFC_Tree<T, dim>::locRemoveDuplicates(tree);
       SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm);  //future: distTreePartition(), once stable
+#ifndef USE_2TO1_GLOBAL_SORT
       SFC_Tree<T, dim>::distMinimalBalanced(tree, sfc_tol, comm);
+#else
+      SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(tree, sfc_tol, comm);
+#endif
       SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm);  //future: distTreePartition(), once stable
       SFC_Tree<T, dim>::distCoalesceSiblings(tree, comm);
       filterOctList(domainDecider, tree);

@@ -51,8 +51,10 @@ namespace ot
       //
       DistTree();
       DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm, CoalesceOption coalesceSiblings = Coalesce);
-      DistTree(const DistTree &other) { this->operator=(other); }
+      DistTree(const DistTree &other) { *this = other; }
+      DistTree(DistTree &&other) { *this = std::move(other); }
       DistTree & operator=(const DistTree &other);
+      DistTree & operator=(DistTree &&other);
 
       static DistTree constructSubdomainDistTree(
           unsigned int finestLevel,
@@ -486,6 +488,27 @@ namespace ot
     m_originalTreePartSz =    other.m_originalTreePartSz;
     m_filteredTreePartSz =    other.m_filteredTreePartSz;
     m_numStrata =             other.m_numStrata;
+
+    this->assignDomainDecider(other.m_domainDecider);
+
+    return *this;
+  }
+
+  //
+  // operator=()
+  //
+  template <typename T, unsigned int dim>
+  DistTree<T, dim> &  DistTree<T, dim>::operator=(DistTree &&other)
+  {
+    m_comm =                  other.m_comm;
+    m_hasBeenFiltered =       other.m_hasBeenFiltered;
+    m_tpFrontStrata =         other.m_tpFrontStrata;
+    m_tpBackStrata =          other.m_tpBackStrata;
+    m_originalTreePartSz =    other.m_originalTreePartSz;
+    m_filteredTreePartSz =    other.m_filteredTreePartSz;
+    m_numStrata =             other.m_numStrata;
+
+    m_gridStrata =            std::move(other.m_gridStrata);
 
     this->assignDomainDecider(other.m_domainDecider);
 

@@ -655,6 +655,8 @@ struct SFC_Tree
       SFC_State<dim> sfc,
       TreeNode<T,dim> pNode);
 
+  static void distMinimalComplete(
+      std::vector<TreeNode<T,dim>> &tree, double sfc_tol, MPI_Comm comm);
 
   static void locTreeConstructionWithFilter( const ibm::DomainDecider &decider,
                                              TreeNode<T,dim> *points,
@@ -777,6 +779,10 @@ struct SFC_Tree
                                    double loadFlexibility,
                                    MPI_Comm comm);
 
+  static void distMinimalBalancedGlobalSort(std::vector<TreeNode<T,dim>> &tree,
+                                            double sfc_tol,
+                                            MPI_Comm comm);
+
   static void locTreeBalancingWithFilter(
                                const ibm::DomainDecider &decider,
                                std::vector<TreeNode<T,dim>> &points,
@@ -881,6 +887,9 @@ bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm);
 
 template <typename T, unsigned dim>
 bool isPartitioned(std::vector<TreeNode<T, dim>> octants, MPI_Comm comm);
+
+template <typename T, unsigned dim>
+bool coversUnitCube(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm);
 
 template <typename T, unsigned int dim>
 bool isLocallySorted(const std::vector<TreeNode<T, dim>> &octList);
