@@ -142,6 +142,7 @@ namespace ot
                            double sfc_tol,
                            MPI_Comm comm)
     {
+      DOLLAR("globallySortNodes()");
       // distTreePartition only works on TreeNode inside the unit cube, not TNPoint.
       // Create a key for each tnpoint.
       std::vector<TreeNode<C, dim>> keys;
@@ -167,6 +168,7 @@ namespace ot
         const unsigned int eleOrder,
         const DA<dim> &ghostExchange)  //TODO factor part as class GhostExchange
     {
+      DOLLAR("getNodeElementOwnership()");
       using OwnershipT = DendroIntL;
       using DirtyT = char;
 
@@ -271,6 +273,7 @@ namespace ot
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     void DA<dim>::constructStratum(const ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
+      DOLLAR("DA::constructStratum()");
       // TODO remove grainSz parameter from ODA, which must respect the tree!
 
       int nProc, rProc;
@@ -363,7 +366,7 @@ namespace ot
 
         std::vector<TNPoint<C, dim>> combinedNodes;
         std::vector<TreeNode<C, dim>> combinedElems;
-        {
+        {DOLLAR("emit.combinedNodes");
           // Generate nodes from the tree. First, element-exterior nodes.
           std::vector<TNPoint<C,dim>> exteriorNodeList;
           std::vector<TNPoint<C,dim>> cancelNodeList;
@@ -376,6 +379,7 @@ namespace ot
           cancelNodeList.reserve(inElements * cancelNpe);
           exteriorNodeElements.reserve(inElements * exteriorNpe);
           cancelNodeElements.reserve(inElements * cancelNpe);
+          {DOLLAR("emit.separate");
           for (const TreeNode<C, dim> &elem : inTreeFiltered)
           {
               size_t countNewNodes1 = exteriorNodeList.size();
@@ -390,11 +394,12 @@ namespace ot
               exteriorNodeElements.insert(exteriorNodeElements.end(), countNewNodes1, elem);
               cancelNodeElements.insert(cancelNodeElements.end(), countNewNodes2, elem);
           }
+          }
           // Also appends cancellation nodes where potential hanging nodes could be.
           // Only tests domainDecider if the element has been flagged as a boundary element.
 
           // Compact local exterior node list and local cancellation node list.
-          {
+          {DOLLAR("sortUniqXPreferCoarser");
             std::vector<TNPoint<C,dim>> tmpList;
             std::vector<TreeNode<C,dim>> tmpElemList;
             sortUniqXPreferCoarser(exteriorNodeList, exteriorNodeElements, tmpList, tmpElemList);
@@ -404,6 +409,7 @@ namespace ot
           // Create a combined list of edges to be sorted.
           combinedNodes.reserve(exteriorNodeList.size() + cancelNodeList.size());
           combinedElems.reserve(exteriorNodeElements.size() + cancelNodeElements.size());
+          {DOLLAR("combine");
           for (size_t ii = 0; ii < exteriorNodeList.size(); ++ii)
           {
             const TNPoint<C, dim> pt = exteriorNodeList[ii];
@@ -418,11 +424,16 @@ namespace ot
             combinedNodes.push_back(pt);
             combinedElems.push_back(elem);
           }
+          }
         }
 
+        {DOLLAR("distPartitionEdges(combined)");
         if (nProcActive > 1)
           distPartitionEdges(combinedNodes, combinedElems, sfc_tol, activeComm);
+        }
+        {DOLLAR("locTreeSortMaxDepth(combined)");
         SFC_Tree<C, dim>::locTreeSortMaxDepth(combinedNodes, combinedElems);
+        }
 
 
         //
@@ -430,7 +441,7 @@ namespace ot
         //
         std::vector<TNPoint<C, dim>> convertedNodes;
         std::vector<TreeNode<C, dim>> convertedElems;
-        {
+        {DOLLAR("convert.hanging");
           size_t nNonCancellation = 0;
           for (const TNPoint<C, dim> &tnp : combinedNodes)
             nNonCancellation += !tnp.getIsCancellation();
@@ -484,9 +495,13 @@ namespace ot
         combinedNodes.clear();
         combinedElems.clear();
 
+        {DOLLAR("distPartitionEdges(converted)");
         if (nProcActive > 1)
           distPartitionEdges(convertedNodes, convertedElems, sfc_tol, activeComm);
+        }
+        {DOLLAR("locTreeSortMaxDepth(converted)");
         SFC_Tree<C, dim>::locTreeSortMaxDepth(convertedNodes, convertedElems);
+        }
 
         assert((convertedNodes.size() == convertedElems.size()));
 
@@ -511,7 +526,7 @@ namespace ot
         std::swap(ownShareElems, combinedElems);
         ownShareDestRank.reserve(2 * convertedNodes.size());
 
-        {
+        {DOLLAR("assign.owners");
           std::set<int> ranksOfNode;
           size_t nextEdgeId = 0;
           for (size_t edgeId = 0; edgeId < convertedNodes.size(); edgeId = nextEdgeId)
@@ -557,10 +572,14 @@ namespace ot
         convertedNodes.clear();
         convertedElems.clear();
 
+        {DOLLAR("sendAll(ownShare)");
         ownShareNodes = par::sendAll(ownShareNodes, ownShareDestRank, activeComm);
         ownShareElems = par::sendAll(ownShareElems, ownShareDestRank, activeComm);
         ownShareDestRank.clear();
+        }
+        {DOLLAR("locTreeSortMaxDepth(ownShare)");
         SFC_Tree<C, dim>::locTreeSortMaxDepth(ownShareNodes, ownShareElems);
+        }
 
 
         // The information for scattermap and gathermap is jumbled together.
@@ -569,7 +588,7 @@ namespace ot
         std::vector<TreeNode<C, dim>> ownedAndScatteredElems;
         std::vector<std::vector<TreeNode<C, dim>>> gatherSets(nProcActive);
         std::vector<std::vector<RankI>> scatterSets(nProcActive);
-        {
+        {DOLLAR("scatter.gather.stage");
           size_t nextId;
           for (size_t edgeId = 0; edgeId < ownShareNodes.size(); edgeId = nextId)
           {
@@ -609,13 +628,15 @@ namespace ot
         // to be next to element-exterior nodes for the same element.
         // 
         // Also element sort must be stable so that forEachInNodeGroup() works.
+        {DOLLAR("locTreeSort(by.element)");
         SFC_Tree<C, dim>::locTreeSort(ownedAndScatteredElems,
                                       ownedAndScatteredNodes);
+        }
 
         // Merge exterior nodes and interior nodes
         // (both are now sorted by element)
         // and separate owned-node-indicators from scattering-indicators.
-        {
+        {DOLLAR("merge.interior.nodes");
           std::vector<TNPoint<C,dim>> interiorNodeList;
 
           // Append element-by-element.
@@ -655,6 +676,7 @@ namespace ot
         // then the scatterSets must be mapped to the new indices.
 
         // Compute scatterMap and gatherMap using scatterSets and gatherSets.
+        {DOLLAR("scatter.gather.create");
         RankI smapSendOffset = 0;
         for (int r = 0; r < scatterSets.size(); ++r)
         {
@@ -694,9 +716,12 @@ namespace ot
         }
         gatherMap.m_totalCount = gmapRecvOffset;
       }
+      }
 
       // Finish assigning object attributes.
+      {DOLLAR("DA::_constructInner()");
       this->_constructInner(myTNCoords, scatterMap, gatherMap, order, &treePartFront, &treePartBack, isActive, comm, activeComm);
+      }
 
       m_totalSendSz = computeTotalSendSz(m_sm);
       m_totalRecvSz = totalRecvSz(m_gm);

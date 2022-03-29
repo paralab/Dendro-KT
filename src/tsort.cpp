@@ -236,6 +236,7 @@ Overlaps<T, dim>::Overlaps(
     m_sortedOcts(sortedOcts),
     m_sortedKeys(sortedKeys)
 {
+  DOLLAR("Overlaps()");
   /** For each key, returns two things from sortedOcts:
    *    - The index of the first element not less than the key, and
    *    - a list of zero or more indices of ancestor octants (appended).
@@ -449,6 +450,7 @@ void SFC_Tree<T, dim>::retainDescendants(
       std::vector<TreeNode<T, dim>> &sortedOcts,
       const std::vector<TreeNode<T, dim>> &sortedKeys)
 {
+  DOLLAR("retainDescendants()");
   const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, sortedKeys);
   size_t kept = 0;
   size_t i = 0;
@@ -495,6 +497,7 @@ SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
+  DOLLAR("distTreeSort()");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -521,6 +524,7 @@ void distTreePartition_kway(
     std::vector<TreeNode<T, dim>> &octants,  //keys
     const double sfc_tol)
 {
+  DOLLAR("distTreePartition_kway.keys");
   distTreePartition_kway_impl<T, dim>(comm, octants, sfc_tol);
 }
 
@@ -531,6 +535,7 @@ void distTreePartition_kway(
     std::vector<X> &xs,                      //values
     const double sfc_tol)
 {
+  DOLLAR("distTreePartition_kway.values1");
   distTreePartition_kway_impl<T, dim, X>(comm, octants, xs, sfc_tol);
 }
 
@@ -542,6 +547,7 @@ void distTreePartition_kway(
     std::vector<Y> &ys,                      //values
     const double sfc_tol)
 {
+  DOLLAR("distTreePartition_kway.values2");
   distTreePartition_kway_impl<T, dim, X, Y>(comm, octants, xs, ys, sfc_tol);
 }
 
@@ -1630,6 +1636,7 @@ SFC_Tree<T,dim>:: distTreeConstruction(std::vector<TreeNode<T,dim>> &points,
                                    double loadFlexibility,
                                    MPI_Comm comm)
 {
+  DOLLAR("distTreeConstruction()");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -1664,6 +1671,7 @@ void
 SFC_Tree<T,dim>:: distMinimalComplete(
     std::vector<TreeNode<T,dim>> &tree, double sfc_tol, MPI_Comm comm)
 {
+  DOLLAR("distMinimalComplete()");
   std::vector<TreeNode<T, dim>> res;
   std::swap(res, tree);
 
@@ -1829,6 +1837,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, double loadFlexibility, bool strict, MPI_Comm comm)
 {
+  DOLLAR("distRemoveDuplicates()");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -1881,6 +1890,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>::splitParents(std::vector<TreeNode<T,dim>> &tree)
 {
+  DOLLAR("splitParents()");
   // Even if there are duplicates next to each other,
   // if the last duplicate is a parent of the next octant,
   // it will be split.
@@ -1918,6 +1928,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: locRemoveDuplicates(std::vector<TreeNode<T,dim>> &tnodes)
 {
+  DOLLAR("locRemoveDuplicates()");
   const TreeNode<T,dim> *tEnd = &(*tnodes.end());
   TreeNode<T,dim> *tnCur = &(*tnodes.begin());
   size_t numUnique = 0;
@@ -1946,6 +1957,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes)
 {
+  DOLLAR("locRemoveDuplicatesStrict()");
   const TreeNode<T,dim> *tEnd = &(*tnodes.end());
   TreeNode<T,dim> *tnCur = &(*tnodes.begin());
   size_t numUnique = 0;
@@ -1977,6 +1989,7 @@ template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
                                            MPI_Comm comm_ )
 {
+  DOLLAR("distCoalesceSiblings()");
   //future: use mpi_next_if()
 
   MPI_Comm comm = comm_;
@@ -1990,6 +2003,7 @@ void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree
 
   while (!globDone)
   {
+    DOLLAR("distCoalesceSiblings.inner");
     // Exclude self if don't contain any TreeNodes.
     bool isActive = (tree.size() > 0);
     MPI_Comm activeComm;
@@ -2115,6 +2129,7 @@ template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::distAdoptAncestors(
     std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
 {
+  DOLLAR("distAdoptAncestors()");
   // Assume sorted. Identify predecessor/successor.
   // If last is ancestor of successor first,
   // then move all consecutive ancestors of last to successor.
@@ -2212,6 +2227,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefine(
     const std::vector<TreeNode<T, dim>> &tree,
     std::vector<int> &&delta_level)
 {
+  DOLLAR("locRefine()");
   const size_t old_sz = tree.size();
   size_t new_sz = 0;
   for (size_t i = 0; i < old_sz; ++i)
@@ -2506,6 +2522,7 @@ SFC_Tree<T, dim>::distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &in
                                        double loadFlexibility,
                                        MPI_Comm comm )
 {
+  DOLLAR("distRemeshWholeDomain()");
   constexpr ChildI NumChildren = 1u << dim;
 
   outTree.clear();
@@ -2516,6 +2533,7 @@ SFC_Tree<T, dim>::distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &in
   // With a proper level-respecting treeBalancing() routine, don't need to
   // make all siblings of all treeNodes for OCT_NO_CHANGE and OCT_COARSEN.
   std::vector<TreeNode<T, dim>> seed;
+  {DOLLAR("emit.seeds");
   for (size_t i = 0; i < inTree.size(); ++i)
   {
     switch(refnFlags[i])
@@ -2539,6 +2557,7 @@ SFC_Tree<T, dim>::distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &in
         throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
     }
   }
+  }
 
   SFC_Tree<T, dim>::distTreeSort(seed, loadFlexibility, comm);
   SFC_Tree<T, dim>::distRemoveDuplicates(seed, loadFlexibility, RM_DUPS_AND_ANC, comm);
@@ -2555,11 +2574,13 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
                                        double loadFlexibility,
                                        MPI_Comm comm )
 {
+  DOLLAR("distRemeshSubdomain()");
   constexpr ChildI NumChildren = 1u << dim;
 
   /// SFC_Tree<T, dim>::distCoalesceSiblings(inTree, comm);
 
   std::vector<TreeNode<T, dim>> res;
+  {DOLLAR("emit.res");
   for (size_t i = 0; i < inTree.size(); ++i)
   {
     switch(refnFlags[i])
@@ -2580,6 +2601,7 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
       default:
         throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
     }
+  }
   }
 
   outTree = inTree;
@@ -2630,6 +2652,7 @@ template <typename T, unsigned int dim>
 std::vector<int> getSendcounts(const std::vector<TreeNode<T, dim>> &items,
                                const std::vector<TreeNode<T, dim>> &frontSplitters)
 {
+  DOLLAR("getSendcounts()");
   int numSplittersSeen = 0;
   int ancCarry = 0;
   std::vector<int> scounts(frontSplitters.size(), 0);
@@ -2684,6 +2707,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
                                     const std::vector<TreeNode<T, dim>> &splittersFromGrid,
                                     MPI_Comm comm )
 {
+  DOLLAR("getSurrogateGrid()");
   std::vector<TreeNode<T, dim>> surrogateGrid;
 
   int nProc, rProc;
@@ -2716,7 +2740,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
 
   std::vector<int> surrogateRecvCounts(nProc, 0);
 
-  {
+  {DOLLAR("Mpi_Alltoall()");
   par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, comm);
   }
 
@@ -2734,7 +2758,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
   surrogateGrid.resize(surrogateRecvDispls.back());
 
   // Copy replicateGrid grid to surrogate grid.
-  {
+  {DOLLAR("Mpi_Alltoallv_sparse()");
   par::Mpi_Alltoallv_sparse(replicateGrid.data(),
                             surrogateSendCounts.data(),
                             surrogateSendDispls.data(),
@@ -2758,6 +2782,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
 {
+  DOLLAR("propagateNeighbours()");
   std::vector<std::vector<TreeNode<T,dim>>> treeLevels = stratifyTree(srcNodes);
   srcNodes.clear();
 
@@ -2867,6 +2892,7 @@ SFC_Tree<T,dim>:: distTreeBalancing(std::vector<TreeNode<T,dim>> &points,
                                    double loadFlexibility,
                                    MPI_Comm comm)
 {
+  DOLLAR("distTreeBalancing()");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -2890,6 +2916,7 @@ SFC_Tree<T,dim>:: distMinimalBalancedGlobalSort(
     double sfc_tol,
     MPI_Comm comm)
 {
+  DOLLAR("distMinimalBalanced()");
   assert(isLocallySorted(tree));
   assert(isPartitioned(tree, comm));
 
@@ -3631,6 +3658,7 @@ template <typename T, unsigned dim>
 void SFC_Tree<T, dim>::locMatchResolution(
     std::vector<TreeNode<T, dim>> &tree, const std::vector<TreeNode<T, dim>> &res)
 {
+  DOLLAR("locMatchResolution()");
   assert(isLocallySorted(tree));
   assert(isLocallySorted(res));
 
@@ -3705,6 +3733,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
     const bool dangerLeft,
     const bool dangerRight)
 {
+  DOLLAR("unstableOctants()");
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
 
@@ -3809,6 +3838,7 @@ std::vector<int> recvFromActive(
     const std::vector<int> &sendToActive,
     MPI_Comm comm)
 {
+  DOLLAR("recvFromActive()");
   //future: choose a better collective pattern
 
   int commSize, commRank;
@@ -3879,6 +3909,8 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   //   doi = {10.1137/070681727}, URL = { https://doi.org/10.1137/070681727 }
   // }
 
+  DOLLAR("distMinimalBalanced()");
+
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
 
@@ -3888,7 +3920,9 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   const bool isActive = tree.size() > 0;
 
+  {DOLLAR("locMinimalBalanced.pre");
   locMinimalBalanced(tree);
+  }
 
   // The unstable octants (processor boundary octants) may need to be refined.
   const OctList unstableOwned = unstableOctants(tree, commRank > 0, commRank < commSize - 1);
@@ -3909,11 +3943,13 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   // Source indices later used to effectively undo the sort.
   OctList insulationOfOwned;
   std::vector<size_t> beginInsulationOfOwned, endInsulationOfOwned;
+  {DOLLAR("emit.insulationOfOwned");
   for (const Oct &u : unstableOwned)
   {
     beginInsulationOfOwned.push_back(insulationOfOwned.size());
     u.appendAllNeighbours(insulationOfOwned);
     endInsulationOfOwned.push_back(insulationOfOwned.size());
+  }
   }
 
   // Every insulation octant overlaps a range of active ranks.
@@ -3925,6 +3961,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   std::set<int> queryDestSet;
   std::map<int, std::vector<Oct>> sendQueryInform;
   std::map<int, std::vector<Oct>> sendInformOnly;
+  {DOLLAR("stage.round1");
   for (size_t ui = 0; ui < unstableOwned.size(); ++ui)
   {
     std::set<int> unstableProcSet;
@@ -3943,6 +3980,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
     queryDestSet.insert(unstableProcSet.cbegin(), unstableProcSet.cend());
   }
+  }
 
   std::vector<int> queryDest(queryDestSet.cbegin(), queryDestSet.cend());
   std::vector<int> querySrc = recvFromActive(active, queryDest, comm);
@@ -3959,6 +3997,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   for (int r : queryDest)  queryDestGlobal.push_back(active[r]);
   for (int r : querySrc)   querySrcGlobal.push_back(active[r]);
   {
+    DOLLAR("p2p.round1");
     P2PPartners partners(queryDestGlobal, querySrcGlobal, comm);
 
     // Sizes
@@ -3995,6 +4034,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   // (Round 2)  Recreate the insulation layers of remote unstable query octants.
   OctList insulationRemote;
   std::vector<int> insulationRemoteOrigin;
+  {DOLLAR("emit.insulationRemote");
   for (int r : querySrc)
   {
     const size_t oldSz = insulationRemote.size();
@@ -4002,6 +4042,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
       remoteUnstable.appendAllNeighbours(insulationRemote);
     const size_t newSz = insulationRemote.size();
     std::fill_n(std::back_inserter(insulationRemoteOrigin), newSz - oldSz, r);
+  }
   }
   locTreeSort(insulationRemote, insulationRemoteOrigin);
 
@@ -4012,6 +4053,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   std::map<int, std::vector<Oct>> sendQueryAnswer;
   std::vector<size_t> overlapIdxs;
   std::set<int> octAnswerProcs;
+  {DOLLAR("stage.round2");
   for (size_t ui = 0; ui < unstableOwned.size(); ++ui)
   {
     overlapIdxs.clear();
@@ -4023,17 +4065,21 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
     for (int r : octAnswerProcs)
       sendQueryAnswer[r].push_back(unstableOwned[ui]);
   }
+  }
 
   // Do not need to send if already sent.
+  {DOLLAR("removeEqual.queries");
   for (int r : querySrc)
   {
     removeEqual(sendQueryAnswer[r], sendInformOnly[r]);
     removeEqual(sendQueryAnswer[r], sendQueryInform[r]);
   }
+  }
 
   // (Round 2)  Send/recv
   std::map<int, std::vector<Oct>> recvQueryAnswer;
   {
+    DOLLAR("p2p.round2");
     P2PPartners partners(querySrcGlobal, queryDestGlobal, comm);
 
     // Sizes
@@ -4060,6 +4106,8 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   OctList unstablePlus;
   {
+    DOLLAR("cat.unstablePlus");
+  {
     size_t total = unstableOwned.size();
     for (int r : querySrc)
     {
@@ -4078,10 +4126,13 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   }
   for (int r : queryDest)
     appendVec(unstablePlus, recvQueryAnswer[r]);
+  }
 
   // Balance unstable octants against received insulation.
   locTreeSort(unstablePlus);
+  {DOLLAR("locMinimalBalanced.post");
   locMinimalBalanced(unstablePlus);
+  }
   retainDescendants(unstablePlus, unstableOwned);
 
   // Replace unstable with unstable balanced.
@@ -4212,6 +4263,7 @@ PartitionFront<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
     MPI_Comm comm,
     std::vector<int> *activeList)
 {
+  DOLLAR("allgatherSplitters");
   int commSize, commRank;
   MPI_Comm_size(comm, &commSize);
   MPI_Comm_rank(comm, &commRank);
@@ -4248,6 +4300,7 @@ PartitionFrontBack<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
     MPI_Comm comm,
     std::vector<int> *activeList)
 {
+  DOLLAR("allgatherSplitters");
   int commSize, commRank;
   MPI_Comm_size(comm, &commSize);
   MPI_Comm_rank(comm, &commRank);
@@ -4292,6 +4345,7 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
     const std::vector<TreeNode<T, dim>> &treeNodes,
     const PartitionFront<T, dim> &partitionSplitters)
 {
+  DOLLAR("treeNode2PartitionRank()");
   // Result
   std::vector<int> rankIds(treeNodes.size(), 0);
 
@@ -4349,6 +4403,7 @@ std::vector<IntRange<>> SFC_Tree<T, dim>::treeNode2PartitionRanks(
     const PartitionFrontBack<T, dim> &partition,
     const std::vector<int> *activePtr)
 {
+  DOLLAR("treeNode2PartitionRanks()");
   if (treeNodes_.size() == 0)
     return std::vector<IntRange<>>();
 

@@ -30,6 +30,7 @@ SFC_Tree<T,dim>:: locTreeSort(PointType *points,
                           LevI eLev,
                           SFC_State<dim> sfc)
 {
+  DOLLAR("locTreeSort()");
   locTreeSort_rec<T, dim, PointType>(points, begin, end, sLev, eLev, sfc);
 }
 

@@ -78,9 +78,9 @@ int main(int argc, char *argv[])
     std::cout << "\n" << "[Mean]\n";
     reduce_mean.tsv(std::cout);
     std::cout << "\n" << "[Min]\n";
-    reduce_mean.tsv(std::cout);
+    reduce_min.tsv(std::cout);
     std::cout << "\n" << "[Max]\n";
-    reduce_mean.tsv(std::cout);
+    reduce_max.tsv(std::cout);
 
     /// reduce_mean.print(std::cout);
     /// reduce_min.print(std::cout);

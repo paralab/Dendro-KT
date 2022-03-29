@@ -578,6 +578,7 @@ namespace ot
   void DistTree<T, dim>::filterOctList(const ::ibm::DomainDecider &domainDecider,
                                        std::vector<TreeNode<T, dim>> &treeNodeElem)
   {
+    DOLLAR("filterOctList()");
     const size_t oldSz = treeNodeElem.size();
     size_t newSz = 0;
 

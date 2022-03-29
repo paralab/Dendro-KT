@@ -86,6 +86,7 @@ namespace fem
       std::vector<double> &to_node_dofs,
       std::vector<double> &to_cell_dofs)
   {
+    DOLLAR("coarse_to_fine()");
     using Oct = ot::TreeNode<unsigned, dim>;
     using OctList = std::vector<Oct>;
 
@@ -108,7 +109,9 @@ namespace fem
     // Ghost read begin.
     std::vector<double> from_nodes_ghosted;
     from_da->nodalVecToGhostedNodal(from_node_dofs, from_nodes_ghosted, false, node_dofs);
+    {DOLLAR("readFromGhostBegin()");
     from_da->readFromGhostBegin(from_nodes_ghosted.data(), node_dofs);
+    }
 
     // Find elements in coarse grid that overlap with fine partitions.
 
@@ -193,7 +196,9 @@ namespace fem
 
 
     // Ghost read end.
+    {DOLLAR("readFromGhostEnd()");
     from_da->readFromGhostEnd(from_nodes_ghosted.data(), node_dofs);
+    }
 
     // Cell sets to node sets
     OctList send_nodes;
@@ -226,14 +231,18 @@ namespace fem
     }
 
     // Send the sizes and payloads.
+    {DOLLAR("send.sizes");
     for (int dst = 0; dst < partners.nDest(); ++dst)
       p2p_scalar.send(dst,
           p2p_cells.send_sizes()[dst],
           p2p_nodes.send_sizes()[dst]);
+    }
+    {DOLLAR("send.payloads");
     p2p_cells.send(from_octlist.data());
     p2p_nodes.send(send_nodes.data());
     p2p_cells.send_dofs(from_cell_dofs.data(), cell_dofs);
     p2p_nodes.send_dofs(send_node_dofs.data(), node_dofs);
+    }
 
     // Self node size and selection.
     size_t self_nodes = 0;
@@ -251,7 +260,7 @@ namespace fem
     }
 
     // Receive sizes.
-    {
+    {DOLLAR("recv.sizes");
       int src = 0;
       for (; src < partners.nSrc() and partners.src(src) < comm_rank; ++src)
       {
@@ -276,6 +285,7 @@ namespace fem
     std::vector<double> from_total_node_dofs((p2p_nodes.recv_total() + self_nodes) * node_dofs);
 
     // Copy self overlap.
+    {DOLLAR("copy.self");
     if (is_active and self_range.nonempty())
     {
       // Cells
@@ -300,16 +310,21 @@ namespace fem
           ++j;
         }
     }
+    }
 
     // Receive payloads.
+    {DOLLAR("recv.payloads");
     p2p_cells.recv(from_total_cells.data());
     p2p_nodes.recv(from_total_nodes.data());
     p2p_cells.recv_dofs(from_total_cell_dofs.data(), cell_dofs);
     p2p_nodes.recv_dofs(from_total_node_dofs.data(), node_dofs);
+    }
 
     // Wait on sends.
+    {DOLLAR("wait.for.sends");
     p2p_cells.wait_all();
     p2p_nodes.wait_all();
+    }
 
     /// quadTreeToGnuplot(from_total_cells, 8, "total.cells", comm);
 
@@ -354,6 +369,7 @@ namespace fem
       const size_t to_nodes_sz,
       double * to_dofs)
   {
+    DOLLAR("local_lerp()");
     using Oct = ot::TreeNode<unsigned, dim>;
     using OctList = std::vector<Oct>;
 
@@ -550,6 +566,7 @@ namespace fem
           const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
           double *to_cell_dofs)
   {
+    DOLLAR("local_inherit()");
     ot::Segment<const ot::TreeNode<unsigned, dim>> from_seg = segment_all(from_octlist);
     ot::Segment<const ot::TreeNode<unsigned, dim>> to_seg = segment_all(to_octlist);
 
@@ -571,6 +588,7 @@ namespace fem
       const ot::DA<dim> *da,
       std::vector<char> &node_essential)
   {
+    DOLLAR("flag_essential_nodes()");
     ot::MatvecBaseOut<dim, char, true> loop(
         da->getTotalNodalSz(),
         1,
