@@ -713,7 +713,8 @@ struct SFC_Tree
   /**
    * distCoalesceSiblings()
    *
-   * @brief If all siblings are leafs, push them onto the first incident rank.
+   * @brief If all siblings are leafs, push them onto the last incident rank.
+   * (last, not first, so that algorithm is same as distAdoptAncestors).
    *
    * Enforcing this criterion is a prerequisite to intergrid transfer.
    *

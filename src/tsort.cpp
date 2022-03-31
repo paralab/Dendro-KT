@@ -1986,138 +1986,66 @@ SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes
 // distCoalesceSiblings()
 //
 template <typename T, unsigned int dim>
-void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
-                                           MPI_Comm comm_ )
+void SFC_Tree<T, dim>::distCoalesceSiblings(
+    std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
 {
   DOLLAR("distCoalesceSiblings()");
-  //future: use mpi_next_if()
+  // Assume sorted. Identify predecessor/successor.
+  // If last is sibling of successor first,
+  // then move all consecutive siblings of last to successor.
+  // Repeat until converge.
 
-  MPI_Comm comm = comm_;
+  int comm_size, comm_rank;
+  MPI_Comm_size(comm, &comm_size);
+  MPI_Comm_rank(comm, &comm_rank);
 
-  int nProc, rProc;
-  MPI_Comm_size(comm, &nProc);
-  MPI_Comm_rank(comm, &rProc);
-
-  int locDone = false;
-  int globDone = false;
-
-  while (!globDone)
+  bool converged = (comm_size == 1);
+  while (not converged)
   {
-    DOLLAR("distCoalesceSiblings.inner");
-    // Exclude self if don't contain any TreeNodes.
-    bool isActive = (tree.size() > 0);
-    MPI_Comm activeComm;
-    MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
-    if (comm != comm_ && comm != MPI_COMM_NULL)
-      MPI_Comm_free(&comm);
-    comm = activeComm;
+    bool nonempty = tree.size() > 0;
+    int predecessor, successor;
+    std::tie(predecessor, successor) = par::mpi_next_if(nonempty, comm);
 
-    if (!isActive)
-      break;
+    bool must_send = false;
 
-    MPI_Comm_size(comm, &nProc);
-    MPI_Comm_rank(comm, &rProc);
-
-
-    // Assess breakage on front and back.
-    TreeNode<T, dim> locFrontParent = tree.front().getParent();
-    TreeNode<T, dim> locBackParent = tree.back().getParent();
-    bool locFrontIsBroken = false;
-    bool locBackIsBroken = false;
-
-    int sendLeft = 0, recvRight = 0;
-
-    int idx = 0;
-    while (idx < tree.size()
-        && !locFrontIsBroken
-        && locFrontParent.isAncestorInclusive(tree[idx]))
+    if (nonempty)
     {
-      if (tree[idx].getParent() != locFrontParent)
-        locFrontIsBroken = true;
-      else
-        sendLeft++;
+      TreeNode<T, dim> successor_front;
+      par::Mpi_Sendrecv(&tree.front(), 1, predecessor, int{},
+                        &successor_front, 1, successor, int{},
+                        comm, MPI_STATUS_IGNORE);
 
-      idx++;
+      if (successor != MPI_PROC_NULL and tree.back().getParent() == successor_front.getParent())
+        must_send = true;
     }
 
-    idx = tree.size()-1;
-    while (idx >= 0
-        && !locBackIsBroken
-        && locBackParent.isAncestorInclusive(tree[idx]))
+    converged = par::mpi_and(not must_send, comm);
+
+    if (not converged and nonempty)
     {
-      if (tree[idx].getParent() != locBackParent)
-        locBackIsBroken = true;
+      // Count number of consecutive siblings at tail of local partition.
+      int send_sz = 0;
+      if (must_send)
+      {
+        send_sz = 1;
+        for (auto tail = tree.crbegin() + 1;
+            tail != tree.crend() and tail->getParent() == (tail-1)->getParent();
+            ++tail)
+          ++send_sz;
+      }
 
-      idx--;
+      int recv_sz = 0;
+      par::Mpi_Sendrecv(&send_sz, 1, successor, int{},
+                        &recv_sz, 1, predecessor, int{},
+                        comm, MPI_STATUS_IGNORE);
+
+      tree.insert(tree.begin(), recv_sz, {});
+      par::Mpi_Sendrecv(&(*tree.end()) - send_sz, send_sz, successor, int{},
+                        &(*tree.begin()), recv_sz, predecessor, int{},
+                        comm, MPI_STATUS_IGNORE);
+      tree.erase(tree.end() - send_sz, tree.end());
     }
-
-
-    // Check with left and right ranks to see if an exchange is needed.
-    TreeNode<T, dim> leftParent, rightParent;
-    bool leftIsBroken, rightIsBroken;
-
-    bool exchangeLeft = false;
-    bool exchangeRight = false;
-
-    constexpr int tagToLeft1 = 72;
-    constexpr int tagToRight1 = 73;
-    constexpr int tagToLeft2 = 74;
-    constexpr int tagToRight2 = 75;
-    constexpr int tagToLeft3 = 76;
-    constexpr int tagToLeft4 = 77;
-    MPI_Status status;
-
-    int leftRank = (rProc > 0 ? rProc - 1 : MPI_PROC_NULL);
-    int rightRank = (rProc < nProc-1 ? rProc+1 : MPI_PROC_NULL);
-
-    par::Mpi_Sendrecv(&locFrontParent, 1, leftRank, tagToLeft1,
-                      &rightParent, 1, rightRank, tagToLeft1, comm, &status);
-    par::Mpi_Sendrecv(&locBackParent, 1, rightRank, tagToRight1,
-                      &leftParent, 1, leftRank, tagToRight1, comm, &status);
-
-    par::Mpi_Sendrecv(&locFrontIsBroken, 1, leftRank, tagToLeft2,
-                      &rightIsBroken, 1, rightRank, tagToLeft2, comm, &status);
-    par::Mpi_Sendrecv(&locBackIsBroken, 1, rightRank, tagToRight2,
-                      &leftIsBroken, 1, leftRank, tagToRight2, comm, &status);
-
-    if (rProc > 0)
-      exchangeLeft = (!locFrontIsBroken && !leftIsBroken && locFrontParent == leftParent);
-
-    if (rProc < nProc-1)
-      exchangeRight = (!locBackIsBroken && !rightIsBroken && locBackParent == rightParent);
-
-
-    // Do the exchanges. Send to left, recv from right.
-    if (!exchangeLeft)
-      leftRank = MPI_PROC_NULL;
-    if (!exchangeRight)
-      rightRank = MPI_PROC_NULL;
-
-    par::Mpi_Sendrecv(&sendLeft, 1, leftRank, tagToLeft3,
-                      &recvRight, 1, rightRank, tagToLeft3, comm, &status);
-
-    if (exchangeRight)
-    {
-      tree.resize(tree.size() + recvRight);
-    }
-
-    par::Mpi_Sendrecv(&(*tree.begin()), sendLeft, leftRank, tagToLeft4,
-                      &(*tree.end()) - recvRight, recvRight, rightRank, tagToLeft4,
-                      comm, &status);
-
-    if (exchangeLeft)
-    {
-      tree.erase(tree.begin(), tree.begin() + sendLeft);
-    }
-
-
-    // Global reduction to find out if the tree partition has converged.
-    locDone = (!exchangeLeft && !exchangeRight);
-    par::Mpi_Allreduce(&locDone, &globDone, 1, MPI_LAND, comm);
   }
-  if (comm != comm_ && comm != MPI_COMM_NULL)
-    MPI_Comm_free(&comm);
-
 }
 
 
