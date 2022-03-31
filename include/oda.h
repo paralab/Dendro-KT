@@ -237,9 +237,6 @@ class DA
     /**@brief: true if current DA is active, part of the active comm.*/
     bool m_uiIsActive;
 
-    /**@brief Global rank[m_activeRank2globalRank[i]] is active. */
-    std::vector<int> m_activeRank2globalRank;
-
     /**@brief: element order*/  
     unsigned int m_uiElementOrder;
 

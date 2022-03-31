@@ -862,32 +862,6 @@ namespace ot
       m_uiActiveComm = activeComm;
       m_uiIsActive = isActive;
 
-      // m_activeRank2globalRank
-      {
-        m_activeRank2globalRank.clear();
-
-        std::vector<int> rankIsActive;
-        if (rProc == 0)
-          rankIsActive.resize(nProc);
-        const int locIsActive = isActive;
-        par::Mpi_Gather(&locIsActive, rankIsActive.data(), 1, 0, globalComm);
-
-        int numActiveRanks;
-
-        if (rProc == 0)
-        {
-          for (int r = 0; r < nProc; ++r)
-            if (rankIsActive[r])
-              m_activeRank2globalRank.push_back(r);
-          numActiveRanks = (int) m_activeRank2globalRank.size();
-        }
-
-        par::Mpi_Bcast(&numActiveRanks, 1, 0, globalComm);
-        m_activeRank2globalRank.resize(numActiveRanks);
-
-        par::Mpi_Bcast(m_activeRank2globalRank.data(), numActiveRanks, 0, globalComm);
-      }
-
 
       if (m_uiIsActive)
       {
