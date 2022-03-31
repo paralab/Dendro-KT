@@ -285,8 +285,10 @@ namespace ot
 
       // A processor is 'active' if it has elements, otherwise 'inactive'.
       bool isActive = (nActiveEle > 0);
-      MPI_Comm activeComm;
-      MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
+      const bool allActive = par::mpi_and(isActive, comm);
+      MPI_Comm activeComm = comm;
+      if (not allActive)
+        MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
 
       m_dist_tree = &distTree;
       m_dist_tree_lifetime = distTree.live_ptr();
