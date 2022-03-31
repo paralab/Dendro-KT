@@ -2606,18 +2606,32 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
 
   outTree = inTree;
   locTreeSort(res);
-  SFC_Tree<T, dim>::locMatchResolution(outTree, res);
+  {DOLLAR("locMatchResolution")
+    SFC_Tree<T, dim>::locMatchResolution(outTree, res);
+  }
   // Need children under parents
+{DOLLAR("distTreeSort")
   SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);
+}
+{DOLLAR("distAdoptAncestors")
   SFC_Tree<T, dim>::distAdoptAncestors(outTree, comm);
+}
+{DOLLAR("splitParents")
   SFC_Tree<T, dim>::splitParents(outTree);  // Same domain as with parents, maybe expanded original
+}
+{DOLLAR("distRemoveDuplicates")
   SFC_Tree<T, dim>::distRemoveDuplicates(outTree, loadFlexibility, RM_DUPS_AND_ANC, comm);
+}
+{DOLLAR("Balancing")
 #ifndef USE_2TO1_GLOBAL_SORT
     SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
 #else
     SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(outTree, loadFlexibility, comm);
 #endif
+}
+{DOLLAR("distCoalesceSiblings")
   SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
+}
   // Domain possibly expanded. Require filterTree() afterward (e.g. in DistTree::distRemeshSubdomain())
   // future: Move this function body directly into DistTree::distRemeshSubdomain().
 }

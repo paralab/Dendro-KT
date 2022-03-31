@@ -385,8 +385,8 @@ namespace ot
               size_t countNewNodes1 = exteriorNodeList.size();
               size_t countNewNodes2 = cancelNodeList.size();
 
-              Element<C,dim>(elem).appendExteriorNodes(order, exteriorNodeList, distTree.getDomainDecider());
-              Element<C,dim>(elem).appendCancellationNodes(order, cancelNodeList);
+              Element<C, dim>(elem).appendExteriorNodes(order, exteriorNodeList, distTree.getDomainDecider());
+              Element<C, dim>(elem).appendCancellationNodes(order, cancelNodeList);
 
               countNewNodes1 = exteriorNodeList.size() - countNewNodes1;
               countNewNodes2 = cancelNodeList.size() - countNewNodes2;
