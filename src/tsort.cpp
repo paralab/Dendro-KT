@@ -1031,7 +1031,10 @@ void distTreePartition_kway_impl(
         [](const TreeNode<T, dim> &a, const TreeNode<T, dim> &b) {
           return a.getLevel() < b.getLevel();
         })->getLevel());
-  const int global_coarsest_level = par::mpi_min(local_coarsest_level, comm_in);
+  int global_coarsest_level;
+  {DOLLAR("mpi_min.global_coarsest_level");
+    global_coarsest_level = par::mpi_min(local_coarsest_level, comm_in);
+  }
 
   BucketArray<T, int(dim)> parent_buckets,  child_buckets;
   parent_buckets.reserve(kway_roundup * nchild(dim));
@@ -1069,11 +1072,17 @@ void distTreePartition_kway_impl(
 
   std::string plot_prefix = "partition/kway";
 
+  int round = 0;
+
   while (nblocks > 1)
   {
+    const std::string round_suffix = ".round=" + std::to_string(round);
+
     LLU Ng;
     LLU const Nl = octants.size();
-    par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
+    {DOLLAR("allreduce.Ng" + round_suffix);
+      par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
+    }
     if (Ng == 0)
       break;
 
@@ -1082,23 +1091,27 @@ void distTreePartition_kway_impl(
 
     // Initial buckets.
     int depth = 0;
-    for (; depth + root.getLevel() < global_coarsest_level and (1 << (depth*dim)) < nblocks; ++depth)
-    {
-      child_buckets.reset();
-      for (BucketRef<T, int(dim)> b : parent_buckets)
+    {DOLLAR("initial.buckets" + round_suffix);
+      for (; depth + root.getLevel() < global_coarsest_level and (1 << (depth*dim)) < nblocks; ++depth)
       {
-        const size_t split_sz = nchild(dim) + 1;
-        Buckets<split_sz> split = bucket_split(octants, xs..., b);
-        child_buckets.push_children(b, split);
+        child_buckets.reset();
+        for (BucketRef<T, int(dim)> b : parent_buckets)
+        {
+          const size_t split_sz = nchild(dim) + 1;
+          Buckets<split_sz> split = bucket_split(octants, xs..., b);
+          child_buckets.push_children(b, split);
+        }
+        std::swap(child_buckets, parent_buckets);
       }
-      std::swap(child_buckets, parent_buckets);
     }
     const int initial_depth = depth;
 
     /// DistPartPlot plot(Ng, nblocks, m_uiMaxDepth - initial_depth, plot_prefix, comm);
 
     // Allreduce parents to get global begins of parents.
-    parent_buckets.all_reduce(comm);
+    {DOLLAR("allreduce.parent_buckets" + round_suffix);
+      parent_buckets.all_reduce(comm);
+    }
     /// parent_buckets.plot(plot);
 
     // Naive: Each block weighted equally. (Despite having +/-1 processes).
@@ -1187,56 +1200,68 @@ void distTreePartition_kway_impl(
     };
 
     // Keep splitting buckets to tolerance or until max depth reached.
-    for (; parent_buckets.size() > 0 and depth + root.getLevel() < m_uiMaxDepth; ++depth)
-    {
-      child_buckets.reset();
-
-      // If all splitters acceptable or there are none, commit. Else, split.
-      for (BucketRef<T, int(dim)> b : parent_buckets)
+    {DOLLAR("keep.splitting" + round_suffix);
+      for (; parent_buckets.size() > 0 and depth + root.getLevel() < m_uiMaxDepth; ++depth)
       {
-        if (not too_wide(b.global_begin, b.global_end))
-        {
-          const int begin = next_blk(b.global_begin);
-          const int end = next_blk(b.global_end);
-          for (int blk = begin; blk < end; ++blk)
-            commit(blk, b);
+        child_buckets.reset();
+
+        // If all splitters acceptable or there are none, commit. Else, split.
+        {DOLLAR("commit.and.split" + round_suffix);
+          for (BucketRef<T, int(dim)> b : parent_buckets)
+          {
+            if (not too_wide(b.global_begin, b.global_end))
+            {
+              const int begin = next_blk(b.global_begin);
+              const int end = next_blk(b.global_end);
+              for (int blk = begin; blk < end; ++blk)
+                commit(blk, b);
+            }
+            else
+            {
+              b.mark_split();
+              const size_t split_sz = nchild(dim) + 1;
+              Buckets<split_sz> split = bucket_split(octants, xs..., b);
+              child_buckets.push_children(b, split);
+            }
+          }
         }
-        else
-        {
-          b.mark_split();
-          const size_t split_sz = nchild(dim) + 1;
-          Buckets<split_sz> split = bucket_split(octants, xs..., b);
-          child_buckets.push_children(b, split);
+
+        // Allreduce children to get global begins of children, update parents.
+        {DOLLAR("allreduce.child_buckets" + round_suffix);
+          child_buckets.all_reduce(comm);
         }
+        {DOLLAR("update_ancestors" + round_suffix);
+          parent_buckets.update_ancestors(child_buckets);
+        }
+        /// child_buckets.plot(plot);
+
+        // Commit any splitters that are not inheritted by children.
+        size_t cb = 0;
+        {DOLLAR("commit.ancestors" + round_suffix);
+          for (BucketRef<T, int(dim)> b : parent_buckets)
+            if (b.marked_split())
+            {
+              const int parent_begin = next_blk(b.global_begin);
+              const int child_begin = next_blk(child_buckets.ref(cb).global_begin);
+              for (int blk = parent_begin; blk < child_begin; ++blk)
+                commit(blk, b);
+              cb += nchild(dim);
+            }
+        }
+
+        std::swap(parent_buckets, child_buckets);
       }
-
-      // Allreduce children to get global begins of children, update parents.
-      child_buckets.all_reduce(comm);
-      parent_buckets.update_ancestors(child_buckets);
-      /// child_buckets.plot(plot);
-
-      // Commit any splitters that are not inheritted by children.
-      size_t cb = 0;
-      for (BucketRef<T, int(dim)> b : parent_buckets)
-        if (b.marked_split())
-        {
-          const int parent_begin = next_blk(b.global_begin);
-          const int child_begin = next_blk(child_buckets.ref(cb).global_begin);
-          for (int blk = parent_begin; blk < child_begin; ++blk)
-            commit(blk, b);
-          cb += nchild(dim);
-        }
-
-      std::swap(parent_buckets, child_buckets);
     }
 
     // If ran out of levels, commit any remaining splitters.
-    for (const BucketRef<T, int(dim)> b : parent_buckets)
-    {
-      const int begin = next_blk(b.global_begin);
-      const int end = next_blk(b.global_end);
-      for (int blk = begin; blk < end; ++blk)
-        commit(blk, b);
+    {DOLLAR("commit.remainder" + round_suffix);
+      for (const BucketRef<T, int(dim)> b : parent_buckets)
+      {
+        const int begin = next_blk(b.global_begin);
+        const int end = next_blk(b.global_end);
+        for (int blk = begin; blk < end; ++blk)
+          commit(blk, b);
+      }
     }
 
     // Validate splitters.
@@ -1245,78 +1270,109 @@ void distTreePartition_kway_impl(
 
 
     // Exchange data to match block boundaries.
+    {DOLLAR("Exchange" + round_suffix);
 
-    int total_srcs = 0;
-    for (int blk = 0; blk < nblocks; ++blk)
-      if (blk != self_blk)
-        total_srcs += srcs_per_blk(blk);
-
-    assert(par::mpi_sum(total_srcs, comm) == comm_size * (nblocks - 1));
-
-    p2p_partners.reset(nblocks - 1, total_srcs, comm);
-    p2p_sizes.reset(&p2p_partners);
-    p2p_meta.reset(&p2p_partners);
-
-    for (int blk = 0, dst_idx = 0; blk < nblocks; ++blk)
-      if (blk != self_blk)
-      {
-        p2p_partners.dest(dst_idx, blk_id_to_task(blk, dest_blk_id(blk)));
-        p2p_sizes.send(dst_idx, local_block_sz(blk));
-        p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block[blk]);
-        dst_idx++;
+      int total_srcs = 0;
+      {DOLLAR("total_srcs" + round_suffix);
+        for (int blk = 0; blk < nblocks; ++blk)
+          if (blk != self_blk)
+            total_srcs += srcs_per_blk(blk);
       }
 
-    for (int blk = 0, src_idx = 0; blk < nblocks; ++blk)
-      if (blk == self_blk)
-        p2p_meta.self_size(src_idx, local_block[self_blk+1] - local_block[self_blk]);
-      else
-        for (int s = 0; s < srcs_per_blk(blk); ++s)
-        {
-          p2p_partners.src(src_idx, blk_id_to_task(blk, src_blk_id(blk, s)));
-          p2p_meta.recv_size(src_idx,  p2p_sizes.recv(src_idx));
-          src_idx++;
-        }
+      assert(par::mpi_sum(total_srcs, comm) == comm_size * (nblocks - 1));
 
-    p2p_meta.tally_recvs();
+      {DOLLAR("p2p.reset" + round_suffix);
+        p2p_partners.reset(nblocks - 1, total_srcs, comm);
+        p2p_sizes.reset(&p2p_partners);
+        p2p_meta.reset(&p2p_partners);
+      }
+
+      {DOLLAR("send+schedule_send" + round_suffix);
+        for (int blk = 0, dst_idx = 0; blk < nblocks; ++blk)
+          if (blk != self_blk)
+          {
+            p2p_partners.dest(dst_idx, blk_id_to_task(blk, dest_blk_id(blk)));
+            p2p_sizes.send(dst_idx, local_block_sz(blk));
+            p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block[blk]);
+            dst_idx++;
+          }
+      }
+
+      {DOLLAR("self_size+recv+recv_size" + round_suffix);
+        for (int blk = 0, src_idx = 0; blk < nblocks; ++blk)
+          if (blk == self_blk)
+            p2p_meta.self_size(src_idx, local_block[self_blk+1] - local_block[self_blk]);
+          else
+            for (int s = 0; s < srcs_per_blk(blk); ++s)
+            {
+              p2p_partners.src(src_idx, blk_id_to_task(blk, src_blk_id(blk, s)));
+              p2p_meta.recv_size(src_idx,  p2p_sizes.recv(src_idx));
+              src_idx++;
+            }
+      }
+
+      p2p_meta.tally_recvs();
 
 
-    // For variadic templates, reuse pack argument vector.
-    // Make more space at the end, send from beginning, receive to end.
-    // Copy to self block place in receiving segment.
+      // For variadic templates, reuse pack argument vector.
+      // Make more space at the end, send from beginning, receive to end.
+      // Copy to self block place in receiving segment.
 
-    const size_t old_sz = Nl;
-    const size_t receiving = p2p_meta.recv_total();
-    const size_t copy_to = p2p_meta.self_offset();
-    const size_t copying = local_block[self_blk+1] - local_block[self_blk];
-    const size_t new_sz = receiving + copying;
-    assert(par::mpi_sum(LLU(new_sz), comm) == Ng);
+      const size_t old_sz = Nl;
+      const size_t receiving = p2p_meta.recv_total();
+      const size_t copy_to = p2p_meta.self_offset();
+      const size_t copying = local_block[self_blk+1] - local_block[self_blk];
+      const size_t new_sz = receiving + copying;
+      assert(par::mpi_sum(LLU(new_sz), comm) == Ng);
 
-    octants.resize(old_sz + new_sz);
-    p2p_meta.send(&octants[0]);
-    DENDRO_FOR_PACK(xs.resize(old_sz + new_sz));
-    DENDRO_FOR_PACK(p2p_meta.send(&xs[0]));
+      {DOLLAR("resize.octants" + round_suffix);
+        octants.resize(old_sz + new_sz);
+      }
+      {DOLLAR("send.octants" + round_suffix);
+        p2p_meta.send(&octants[0]);
+      }
+      {DOLLAR("resize.xs" + round_suffix);
+        DENDRO_FOR_PACK(xs.resize(old_sz + new_sz));
+      }
+      {DOLLAR("send.xs" + round_suffix);
+        DENDRO_FOR_PACK(p2p_meta.send(&xs[0]));
+      }
 
-    // Copy local segment to self block position.
-    std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + copy_to]);
-    DENDRO_FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + copy_to]));
+      // Copy local segment to self block position.
+      {DOLLAR("self.copy" + round_suffix);
+        std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + copy_to]);
+        DENDRO_FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + copy_to]));
+      }
 
-    // Receive remote segments into end segment.
-    p2p_meta.recv(&octants[old_sz]);
-    DENDRO_FOR_PACK(p2p_meta.recv(&xs[old_sz]));
+      // Receive remote segments into end segment.
+      {DOLLAR("recv.octants" + round_suffix);
+        p2p_meta.recv(&octants[old_sz]);
+      }
+      {DOLLAR("recv.xs" + round_suffix);
+        DENDRO_FOR_PACK(p2p_meta.recv(&xs[old_sz]));
+      }
 
-    p2p_sizes.wait_all();
-    p2p_meta.wait_all();
-    // Do not move the send buffer until finished sending!
-    octants.erase(octants.begin(), octants.begin() + old_sz);
-    DENDRO_FOR_PACK(xs.erase(xs.begin(), xs.begin() + old_sz));
+      {DOLLAR("wait_all" + round_suffix);
+        p2p_sizes.wait_all();
+        p2p_meta.wait_all();
+      }
+      // Do not move the send buffer until finished sending!
+      {DOLLAR("erase" + round_suffix);
+        octants.erase(octants.begin(), octants.begin() + old_sz);
+        DENDRO_FOR_PACK(xs.erase(xs.begin(), xs.begin() + old_sz));
+      }
+    }
 
     plot_prefix += "_" + std::to_string(self_blk);
 
     if (comm_size > kway)
     {
+      DOLLAR("Comm_split" + round_suffix);
       MPI_Comm new_comm;
       MPI_Comm_split(comm, self_blk, self_blk_id, &new_comm);
-      to_be_freed.push_back(new_comm);
+      {DOLLAR("to_be_freed.push_back" + round_suffix);
+        to_be_freed.push_back(new_comm);
+      }
 
       comm = new_comm;
       MPI_Comm_size(comm, &comm_size);
@@ -1325,10 +1381,14 @@ void distTreePartition_kway_impl(
     }
     else
       break;  // Avoid splitting comm at the very end.
+
+    ++round;
   }
 
-  for (MPI_Comm new_comm : to_be_freed)
-    MPI_Comm_free(&new_comm);
+  {DOLLAR("MPI_Comm_free");
+    for (MPI_Comm new_comm : to_be_freed)
+      MPI_Comm_free(&new_comm);
+  }
 }
 
 
