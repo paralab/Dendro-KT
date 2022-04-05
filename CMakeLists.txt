@@ -155,6 +155,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/seqUtils.tcc
                   include/parUtils.h
                   include/parUtils.tcc
+                  include/comm_hierarchy.h
                   include/templateUtils.h
                   include/tsort.h
                   include/filterFunction.h
@@ -202,6 +203,7 @@ set(DENDRO_KT_INC include/dendro.h
 set(DENDRO_KT_SRC src/binUtils.cpp
                   src/octUtils.cpp
                   src/parUtils.cpp
+                  src/comm_hierarchy.cpp
                   src/point.cpp
                   src/profiler.cpp
                   src/KDhcurvedata.cpp

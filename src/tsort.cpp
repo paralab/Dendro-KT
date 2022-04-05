@@ -13,6 +13,7 @@
 #include "octUtils.h"
 #include "tnUtils.h"
 #include "p2p.h"
+#include "comm_hierarchy.h"
 
 #include "filterFunction.h"
 
@@ -514,7 +515,6 @@ void distTreePartition_kway_impl(
     std::vector<TreeNode<T, dim>> &octants,  //keys
     std::vector<X> & ...xs, //values
     const double sfc_tol = 0.3,
-    const int kway = KWAY,
     TreeNode<T, dim> root = TreeNode<T, dim>(),
     SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
 
@@ -1009,21 +1009,22 @@ void distTreePartition_kway_impl(
     std::vector<TreeNode<T, dim>> &octants,
     std::vector<X> & ...xs,
     const double sfc_tol,
-    const int kway,
     TreeNode<T, dim> root,
     SFC_State<int(dim)> sfc)
 {
+  const par::KwayComms &kway = par::KwayComms::attach_once(comm);
+
   int comm_size, comm_rank;
   MPI_Comm_size(comm, &comm_size);
   MPI_Comm_rank(comm, &comm_rank);
-  int nblocks = std::min(comm_size, kway);
+  int nblocks = kway.blockmap(0).nblocks();
 
   const MPI_Comm comm_in = comm;
   const int comm_size_in = comm_size;
   const int comm_rank_in = comm_rank;
 
   using LLU = long long unsigned;
-  const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(kway);
+  const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(KWAY);
   assert(kway_roundup > 0);
 
   const int local_coarsest_level = (octants.size() == 0 ? m_uiMaxDepth :
@@ -1043,11 +1044,9 @@ void distTreePartition_kway_impl(
   using par::P2PPartners;
   using par::P2PScalar;
   using par::P2PMeta;
-  P2PPartners p2p_partners;  p2p_partners.reserve(kway, 2 * kway);
-  P2PScalar<> p2p_sizes;     p2p_sizes.reserve(kway, 2 * kway);
-  P2PMeta p2p_meta;          p2p_meta.reserve(kway, 2 * kway, 1 + sizeof...(xs));
-
-  std::vector<MPI_Comm> to_be_freed;
+  P2PPartners p2p_partners;  p2p_partners.reserve(KWAY, 2 * KWAY);
+  P2PScalar<> p2p_sizes;     p2p_sizes.reserve(KWAY, 2 * KWAY);
+  P2PMeta p2p_meta;          p2p_meta.reserve(KWAY, 2 * KWAY, 1 + sizeof...(xs));
 
   const auto bucket_split = [](
       std::vector<TreeNode<T, dim>> &v,
@@ -1068,14 +1067,18 @@ void distTreePartition_kway_impl(
 
   // Splitters.
   std::vector<size_t> local_block;
-  local_block.reserve(kway + 1);
+  local_block.reserve(KWAY + 1);
 
   std::string plot_prefix = "partition/kway";
 
-  int round = 0;
-
-  while (nblocks > 1)
+  for (int round = 0; round < kway.levels(); ++round)
   {
+    comm = kway.comm(round);
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+    par::KwayBlocks blockmap = kway.blockmap(round);
+    nblocks = blockmap.nblocks();
+
     const std::string round_suffix = ".round=" + std::to_string(round);
 
     LLU Ng;
@@ -1130,25 +1133,20 @@ void distTreePartition_kway_impl(
 
     // Block -> task -> global item
 
-    // Mapping of tasks within blocks.
-    const auto block_to_task =  [=](int blk) { return blk * comm_size / nblocks; };
-    const auto block_tasks =    [=](int blk) { return block_to_task(blk+1) - block_to_task(blk); };
-    const auto blk_id_to_task = [=](int blk, int blk_id) { return block_to_task(blk) + blk_id; };
+    /// const auto kway_map = par::KwayBlocks(comm_size, nblocks);
 
-    const auto task_to_block_ =  [=](int task) { return ((task + 1) * nblocks - 1) / comm_size; };
-    const auto task_to_block = [=](int task) {
-      int blk = task_to_block_(task);
-      assert(block_to_task(blk) <= task and task < block_to_task(blk+1));
-      return blk;
-    };
-    const auto task_to_next_block = [=](int task) { return (task * nblocks + comm_size - 1) / comm_size; };
+    // Mapping of tasks within blocks is defined by blockmap.
 
     // Mapping of splitters within array, induces mapping within buckets.
-    const auto ideal =    [=](int blk) { assert(blk <= nblocks); return block_to_task(blk) * Ng / comm_size; };
-    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
+    const auto ideal =    [=](int blk) { assert(blk <= nblocks);
+      return blockmap.block_to_task(blk) * Ng / comm_size;
+    };
+    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks);
+      return ideal(blk + 1) - ideal(blk);
+    };
     const auto next_blk = [=](LLU item) { assert(item <= Ng);
       const int next_task = (item * comm_size + Ng - 1) / Ng;
-      return task_to_next_block(next_task);
+      return blockmap.task_to_next_block(next_task);
     };
 
     // "Relative" strategy: Relative tolerance applying to block, not task.
@@ -1169,14 +1167,18 @@ void distTreePartition_kway_impl(
       return wider_than_margins and far_blk_begin < far_blk_end;
     };
 
-    const int self_blk = task_to_block(comm_rank);
-    const int self_blk_id = comm_rank - block_to_task(self_blk);
+    const int self_blk = blockmap.task_to_block(comm_rank);
+    const int self_blk_id = blockmap.task_to_block_id(comm_rank);
 
-    const auto dest_blk_id =  [=](int blk) { return self_blk_id % block_tasks(blk); };//future: more balanced
-    const auto src_blk_id =   [=](int blk, int src) { return src == 0 ? self_blk_id : block_tasks(self_blk); };
+    const auto dest_blk_id =  [=](int blk) {
+      return self_blk_id % blockmap.block_tasks(blk);//future: more balanced
+    };
+    const auto src_blk_id =   [=](int blk, int src) {
+      return src == 0 ? self_blk_id : blockmap.block_tasks(self_blk);
+    };
     const auto srcs_per_blk = [=](int blk) {
-      if (self_blk_id == block_tasks(blk)) return 0;
-      if (self_blk_id == 0 and block_tasks(blk) > block_tasks(self_blk)) return 2;
+      if (self_blk_id == blockmap.block_tasks(blk)) return 0;
+      if (self_blk_id == 0 and blockmap.block_tasks(blk) > blockmap.block_tasks(self_blk)) return 2;
       else return 1;
     };
 
@@ -1291,7 +1293,7 @@ void distTreePartition_kway_impl(
         for (int blk = 0, dst_idx = 0; blk < nblocks; ++blk)
           if (blk != self_blk)
           {
-            p2p_partners.dest(dst_idx, blk_id_to_task(blk, dest_blk_id(blk)));
+            p2p_partners.dest(dst_idx, blockmap.blk_id_to_task(blk, dest_blk_id(blk)));
             p2p_sizes.send(dst_idx, local_block_sz(blk));
             p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block[blk]);
             dst_idx++;
@@ -1305,7 +1307,7 @@ void distTreePartition_kway_impl(
           else
             for (int s = 0; s < srcs_per_blk(blk); ++s)
             {
-              p2p_partners.src(src_idx, blk_id_to_task(blk, src_blk_id(blk, s)));
+              p2p_partners.src(src_idx, blockmap.blk_id_to_task(blk, src_blk_id(blk, s)));
               p2p_meta.recv_size(src_idx,  p2p_sizes.recv(src_idx));
               src_idx++;
             }
@@ -1364,30 +1366,6 @@ void distTreePartition_kway_impl(
     }
 
     plot_prefix += "_" + std::to_string(self_blk);
-
-    if (comm_size > kway)
-    {
-      DOLLAR("Comm_split" + round_suffix);
-      MPI_Comm new_comm;
-      MPI_Comm_split(comm, self_blk, self_blk_id, &new_comm);
-      {DOLLAR("to_be_freed.push_back" + round_suffix);
-        to_be_freed.push_back(new_comm);
-      }
-
-      comm = new_comm;
-      MPI_Comm_size(comm, &comm_size);
-      MPI_Comm_rank(comm, &comm_rank);
-      nblocks = std::min(comm_size, kway);
-    }
-    else
-      break;  // Avoid splitting comm at the very end.
-
-    ++round;
-  }
-
-  {DOLLAR("MPI_Comm_free");
-    for (MPI_Comm new_comm : to_be_freed)
-      MPI_Comm_free(&new_comm);
   }
 }
 
