@@ -130,7 +130,23 @@ protected:
 
 #ifdef BUILD_WITH_AMAT
         template<typename AMATType>
-        bool getAssembledAMat(AMATType* J);
+        bool getAssembledAMat_template(AMATType* J);
+
+        virtual bool getAssembledAMat(
+            par::aMat<par::aMatBased<double, unsigned long, unsigned int>, double, unsigned long, unsigned int> *J
+            ) override
+        {
+          return getAssembledAMat_template(J);
+        }
+
+        virtual bool getAssembledAMat(
+            par::aMat<par::aMatFree<double, unsigned long, unsigned int>, double, unsigned long, unsigned int> *J
+            ) override
+        {
+          return getAssembledAMat_template(J);
+        }
+
+
 
         template<typename AMATType>
         bool setDiagonalAMat(const VECType * diag, AMATType* J) const;
@@ -814,7 +830,7 @@ bool feMatrix<LeafT,dim>::getAssembledMatrix(Mat *J, MatType mtype)
 #ifdef BUILD_WITH_AMAT
     template <typename LeafT, unsigned int dim>
     template<typename AMATType>
-    bool feMatrix<LeafT, dim>::getAssembledAMat(AMATType* J)
+    bool feMatrix<LeafT, dim>::getAssembledAMat_template(AMATType* J)
     {
       using DT = typename AMATType::DTType;
       using GI = typename AMATType::GIType;

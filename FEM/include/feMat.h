@@ -151,6 +151,17 @@ public:
      * */
     virtual bool getAssembledMatrix(Mat *J, MatType mtype) = 0;
 
+
+#ifdef BUILD_WITH_AMAT
+    virtual bool getAssembledAMat(
+        par::aMat<par::aMatBased<double, unsigned long, unsigned int>, double, unsigned long, unsigned int> *J
+        ) = 0;
+
+    virtual bool getAssembledAMat(
+        par::aMat<par::aMatFree<double, unsigned long, unsigned int>, double, unsigned long, unsigned int> *J
+        ) = 0;
+#endif
+
 #endif
 
 
