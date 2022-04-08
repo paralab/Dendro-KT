@@ -57,6 +57,7 @@ namespace fem
                          char * isDirtyOut = nullptr)
   {
 #warning "locIntergridTransfer() needs to give refElement to MatvecBaseIn/Out"
+    DOLLAR("locIntergridTransfer()");
     if (in.sz == 0 && out.sz == 0)
       return;
 

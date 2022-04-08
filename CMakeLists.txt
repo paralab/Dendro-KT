@@ -38,6 +38,7 @@ option(BUILD_WITH_PETSC " build dendro with PETSC " ON)
 option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" OFF)
 option(BUILD_EXAMPLES "build example programs" ON)
 option(BUILD_WITH_AMAT "build with aMat support" ON)
+option(USE_2TO1_GLOBAL_SORT "Use global sort instead of two-pass method for 2:1 balancing" OFF)
 
 set(KWAY 128 CACHE INT 128)
 set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
@@ -130,6 +131,9 @@ if(BUILD_WITH_PETSC)
     add_definitions(-DBUILD_WITH_PETSC)
 endif()
 
+if(USE_2TO1_GLOBAL_SORT)
+  add_definitions(-DUSE_2TO1_GLOBAL_SORT)
+endif()
 
 
 if(DIM_2)
@@ -189,6 +193,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/seqUtils.tcc
                   include/parUtils.h
                   include/parUtils.tcc
+                  include/comm_hierarchy.h
                   include/templateUtils.h
                   include/tsort.h
                   include/filterFunction.h
@@ -239,6 +244,7 @@ set(DENDRO_KT_INC include/dendro.h
 set(DENDRO_KT_SRC src/binUtils.cpp
                   src/octUtils.cpp
                   src/parUtils.cpp
+                  src/comm_hierarchy.cpp
                   src/point.cpp
                   src/profiler.cpp
                   src/KDhcurvedata.cpp

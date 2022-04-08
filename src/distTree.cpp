@@ -91,6 +91,7 @@ namespace ot
                                               RemeshPartition remeshPartition,
                                               double loadFlexibility)
   {
+    DOLLAR("DistTree::distRemeshSubdomainViaWhole()");
     MPI_Comm comm = inTree.m_comm;
 
     const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();
@@ -131,6 +132,7 @@ namespace ot
                                               RemeshPartition remeshPartition,
                                               double loadFlexibility)
   {
+    DOLLAR("DistTree::distRemeshSubdomain()");
     MPI_Comm comm = inTree.m_comm;
 
     const std::vector<TreeNode<T, dim>> &inTreeVec = inTree.getTreePartFiltered();
@@ -169,6 +171,7 @@ namespace ot
       double sfc_tol,
       bool repartition)
   {
+    DOLLAR("DistTree::distRefine()");
     MPI_Comm comm = inTree.getComm();
 
     // future: Repartition using weights based on delta_level.
@@ -179,7 +182,11 @@ namespace ot
     DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
     SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
 
+#ifndef USE_2TO1_GLOBAL_SORT
     SFC_Tree<T, dim>::distMinimalBalanced(newOctList, sfc_tol, comm);
+#else
+    SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(newOctList, sfc_tol, comm);
+#endif
     DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
     if (repartition)
       SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
@@ -194,6 +201,7 @@ namespace ot
   template <typename T, unsigned int dim>
   DistTree<T, dim> DistTree<T, dim>::repartitioned(const double sfc_tol) &&
   {
+    DOLLAR("repartitioned()");
     std::vector<TreeNode<T, dim>> &octList = this->get_m_treePartFiltered();
     SFC_Tree<T, dim>::distTreeSort(octList, sfc_tol, this->getComm());//future: distTreePartition(), if stable
     SFC_Tree<T, dim>::distCoalesceSiblings(octList, this->getComm());
@@ -1163,7 +1171,11 @@ namespace ot
     treeIntercepted.clear();
     treeIntercepted.shrink_to_fit();
     SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
+#ifndef USE_2TO1_GLOBAL_SORT
     SFC_Tree<T, dim>::distMinimalBalanced(treeFinal, sfc_tol, comm);
+#else
+    SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(treeFinal, sfc_tol, comm);
+#endif
     SFC_Tree<T, dim>::distTreeSort(treeFinal, sfc_tol, comm);
     SFC_Tree<T, dim>::distCoalesceSiblings(treeFinal, comm);
 
@@ -1211,7 +1223,11 @@ namespace ot
       SFC_Tree<T, dim>::locTreeSort(tree);
       SFC_Tree<T, dim>::locRemoveDuplicates(tree);
       SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm);  //future: distTreePartition(), once stable
+#ifndef USE_2TO1_GLOBAL_SORT
       SFC_Tree<T, dim>::distMinimalBalanced(tree, sfc_tol, comm);
+#else
+      SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(tree, sfc_tol, comm);
+#endif
       SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm);  //future: distTreePartition(), once stable
       SFC_Tree<T, dim>::distCoalesceSiblings(tree, comm);
       filterOctList(domainDecider, tree);

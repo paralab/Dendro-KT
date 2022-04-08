@@ -13,6 +13,7 @@
 #include "octUtils.h"
 #include "tnUtils.h"
 #include "p2p.h"
+#include "comm_hierarchy.h"
 
 #include "filterFunction.h"
 
@@ -236,6 +237,7 @@ Overlaps<T, dim>::Overlaps(
     m_sortedOcts(sortedOcts),
     m_sortedKeys(sortedKeys)
 {
+  DOLLAR("Overlaps()");
   /** For each key, returns two things from sortedOcts:
    *    - The index of the first element not less than the key, and
    *    - a list of zero or more indices of ancestor octants (appended).
@@ -449,6 +451,7 @@ void SFC_Tree<T, dim>::retainDescendants(
       std::vector<TreeNode<T, dim>> &sortedOcts,
       const std::vector<TreeNode<T, dim>> &sortedKeys)
 {
+  DOLLAR("retainDescendants()");
   const std::vector<size_t> lowerBounds = lower_bound(sortedOcts, sortedKeys);
   size_t kept = 0;
   size_t i = 0;
@@ -495,6 +498,7 @@ SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,
                           double loadFlexibility,
                           MPI_Comm comm)
 {
+  DOLLAR("distTreeSort()");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -511,7 +515,6 @@ void distTreePartition_kway_impl(
     std::vector<TreeNode<T, dim>> &octants,  //keys
     std::vector<X> & ...xs, //values
     const double sfc_tol = 0.3,
-    const int kway = KWAY,
     TreeNode<T, dim> root = TreeNode<T, dim>(),
     SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
 
@@ -521,6 +524,7 @@ void distTreePartition_kway(
     std::vector<TreeNode<T, dim>> &octants,  //keys
     const double sfc_tol)
 {
+  DOLLAR("distTreePartition_kway.keys");
   distTreePartition_kway_impl<T, dim>(comm, octants, sfc_tol);
 }
 
@@ -531,6 +535,7 @@ void distTreePartition_kway(
     std::vector<X> &xs,                      //values
     const double sfc_tol)
 {
+  DOLLAR("distTreePartition_kway.values1");
   distTreePartition_kway_impl<T, dim, X>(comm, octants, xs, sfc_tol);
 }
 
@@ -542,6 +547,7 @@ void distTreePartition_kway(
     std::vector<Y> &ys,                      //values
     const double sfc_tol)
 {
+  DOLLAR("distTreePartition_kway.values2");
   distTreePartition_kway_impl<T, dim, X, Y>(comm, octants, xs, ys, sfc_tol);
 }
 
@@ -1021,6 +1027,20 @@ struct BucketArray
 #endif
   }
 
+  void update_ancestors(const BucketArray &child_buckets)
+  {
+    size_t cb = 0;
+    for (BucketRef<T, dim> b : *this)
+      if (b.marked_split())
+      {
+        b.local_end = child_buckets.m_local_begin[cb];
+        b.global_end = child_buckets.m_global_begin[cb];
+        cb += nchild(dim);
+      }
+    //future: If want to absorb ancestors into nonempty child, can do it here.
+    //As long as the initial_depth stops at globally coarsest level.
+  }
+
   size_t size() const { return m_local_begin.size(); }
 
   struct Iterator
@@ -1048,21 +1068,22 @@ void distTreePartition_kway_impl(
     std::vector<TreeNode<T, dim>> &octants,
     std::vector<X> & ...xs,
     const double sfc_tol,
-    const int kway,
     TreeNode<T, dim> root,
     SFC_State<int(dim)> sfc)
 {
+  const par::KwayComms &kway = par::KwayComms::attach_once(comm);
+
   int comm_size, comm_rank;
   MPI_Comm_size(comm, &comm_size);
   MPI_Comm_rank(comm, &comm_rank);
-  int nblocks = std::min(comm_size, kway);
+  int nblocks = kway.blockmap(0).nblocks();
 
   const MPI_Comm comm_in = comm;
   const int comm_size_in = comm_size;
   const int comm_rank_in = comm_rank;
 
   using LLU = long long unsigned;
-  const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(kway);
+  const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(KWAY);
   assert(kway_roundup > 0);
 
   const int local_coarsest_level = (octants.size() == 0 ? m_uiMaxDepth :
@@ -1070,7 +1091,10 @@ void distTreePartition_kway_impl(
         [](const TreeNode<T, dim> &a, const TreeNode<T, dim> &b) {
           return a.getLevel() < b.getLevel();
         })->getLevel());
-  const int global_coarsest_level = par::mpi_min(local_coarsest_level, comm_in);
+  int global_coarsest_level;
+  {DOLLAR("mpi_min.global_coarsest_level");
+    global_coarsest_level = par::mpi_min(local_coarsest_level, comm_in);
+  }
 
   BucketArray<T, int(dim)> parent_buckets,  child_buckets;
   parent_buckets.reserve(kway_roundup * nchild(dim));
@@ -1079,11 +1103,9 @@ void distTreePartition_kway_impl(
   using par::P2PPartners;
   using par::P2PScalar;
   using par::P2PMeta;
-  P2PPartners p2p_partners;  p2p_partners.reserve(kway, 2 * kway);
-  P2PScalar<> p2p_sizes;     p2p_sizes.reserve(kway, 2 * kway);
-  P2PMeta p2p_meta;          p2p_meta.reserve(kway, 2 * kway, 1 + sizeof...(xs));
-
-  std::vector<MPI_Comm> to_be_freed;
+  P2PPartners p2p_partners;  p2p_partners.reserve(KWAY, 2 * KWAY);
+  P2PScalar<> p2p_sizes;     p2p_sizes.reserve(KWAY, 2 * KWAY);
+  P2PMeta p2p_meta;          p2p_meta.reserve(KWAY, 2 * KWAY, 1 + sizeof...(xs));
 
   const auto bucket_split = [](
       std::vector<TreeNode<T, dim>> &v,
@@ -1104,15 +1126,25 @@ void distTreePartition_kway_impl(
 
   // Splitters.
   std::vector<size_t> local_block;
-  local_block.reserve(kway + 1);
+  local_block.reserve(KWAY + 1);
 
-  std::string plot_prefix = "partition";
+  std::string plot_prefix = "partition/kway";
 
-  while (nblocks > 1)
+  for (int round = 0; round < kway.levels(); ++round)
   {
+    comm = kway.comm(round);
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+    par::KwayBlocks blockmap = kway.blockmap(round);
+    nblocks = blockmap.nblocks();
+
+    const std::string round_suffix = ".round=" + std::to_string(round);
+
     LLU Ng;
     LLU const Nl = octants.size();
-    par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
+    {DOLLAR("allreduce.Ng" + round_suffix);
+      par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm);
+    }
     if (Ng == 0)
       break;
 
@@ -1121,23 +1153,27 @@ void distTreePartition_kway_impl(
 
     // Initial buckets.
     int depth = 0;
-    for (; depth + root.getLevel() < global_coarsest_level and (1 << (depth*dim)) < nblocks; ++depth)
-    {
-      child_buckets.reset();
-      for (BucketRef<T, int(dim)> b : parent_buckets)
+    {DOLLAR("initial.buckets" + round_suffix);
+      for (; depth + root.getLevel() < global_coarsest_level and (1 << (depth*dim)) < nblocks; ++depth)
       {
-        const size_t split_sz = nchild(dim) + 1;
-        Buckets<split_sz> split = bucket_split(octants, xs..., b);
-        child_buckets.push_children(b, split);
+        child_buckets.reset();
+        for (BucketRef<T, int(dim)> b : parent_buckets)
+        {
+          const size_t split_sz = nchild(dim) + 1;
+          Buckets<split_sz> split = bucket_split(octants, xs..., b);
+          child_buckets.push_children(b, split);
+        }
+        std::swap(child_buckets, parent_buckets);
       }
-      std::swap(child_buckets, parent_buckets);
     }
     const int initial_depth = depth;
 
     /// DistPartPlot plot(Ng, nblocks, m_uiMaxDepth - initial_depth, plot_prefix, comm);
 
     // Allreduce parents to get global begins of parents.
-    parent_buckets.all_reduce(comm);
+    {DOLLAR("allreduce.parent_buckets" + round_suffix);
+      parent_buckets.all_reduce(comm);
+    }
     /// parent_buckets.plot(plot);
 
     // Naive: Each block weighted equally. (Despite having +/-1 processes).
@@ -1156,25 +1192,20 @@ void distTreePartition_kway_impl(
 
     // Block -> task -> global item
 
-    // Mapping of tasks within blocks.
-    const auto block_to_task =  [=](int blk) { return blk * comm_size / nblocks; };
-    const auto block_tasks =    [=](int blk) { return block_to_task(blk+1) - block_to_task(blk); };
-    const auto blk_id_to_task = [=](int blk, int blk_id) { return block_to_task(blk) + blk_id; };
+    /// const auto kway_map = par::KwayBlocks(comm_size, nblocks);
 
-    const auto task_to_block_ =  [=](int task) { return ((task + 1) * nblocks - 1) / comm_size; };
-    const auto task_to_block = [=](int task) {
-      int blk = task_to_block_(task);
-      assert(block_to_task(blk) <= task and task < block_to_task(blk+1));
-      return blk;
-    };
-    const auto task_to_next_block = [=](int task) { return (task * nblocks + comm_size - 1) / comm_size; };
+    // Mapping of tasks within blocks is defined by blockmap.
 
     // Mapping of splitters within array, induces mapping within buckets.
-    const auto ideal =    [=](int blk) { assert(blk <= nblocks); return block_to_task(blk) * Ng / comm_size; };
-    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks); return ideal(blk + 1) - ideal(blk); };
+    const auto ideal =    [=](int blk) { assert(blk <= nblocks);
+      return blockmap.block_to_task(blk) * Ng / comm_size;
+    };
+    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks);
+      return ideal(blk + 1) - ideal(blk);
+    };
     const auto next_blk = [=](LLU item) { assert(item <= Ng);
       const int next_task = (item * comm_size + Ng - 1) / Ng;
-      return task_to_next_block(next_task);
+      return blockmap.task_to_next_block(next_task);
     };
 
     // "Relative" strategy: Relative tolerance applying to block, not task.
@@ -1195,14 +1226,18 @@ void distTreePartition_kway_impl(
       return wider_than_margins and far_blk_begin < far_blk_end;
     };
 
-    const int self_blk = task_to_block(comm_rank);
-    const int self_blk_id = comm_rank - block_to_task(self_blk);
+    const int self_blk = blockmap.task_to_block(comm_rank);
+    const int self_blk_id = blockmap.task_to_block_id(comm_rank);
 
-    const auto dest_blk_id =  [=](int blk) { return self_blk_id % block_tasks(blk); };//future: more balanced
-    const auto src_blk_id =   [=](int blk, int src) { return src == 0 ? self_blk_id : block_tasks(self_blk); };
+    const auto dest_blk_id =  [=](int blk) {
+      return self_blk_id % blockmap.block_tasks(blk);//future: more balanced
+    };
+    const auto src_blk_id =   [=](int blk, int src) {
+      return src == 0 ? self_blk_id : blockmap.block_tasks(self_blk);
+    };
     const auto srcs_per_blk = [=](int blk) {
-      if (self_blk_id == block_tasks(blk)) return 0;
-      if (self_blk_id == 0 and block_tasks(blk) > block_tasks(self_blk)) return 2;
+      if (self_blk_id == blockmap.block_tasks(blk)) return 0;
+      if (self_blk_id == 0 and blockmap.block_tasks(blk) > blockmap.block_tasks(self_blk)) return 2;
       else return 1;
     };
 
@@ -1226,55 +1261,68 @@ void distTreePartition_kway_impl(
     };
 
     // Keep splitting buckets to tolerance or until max depth reached.
-    for (; parent_buckets.size() > 0 and depth + root.getLevel() < m_uiMaxDepth; ++depth)
-    {
-      child_buckets.reset();
-
-      // If all splitters acceptable or there are none, commit. Else, split.
-      for (BucketRef<T, int(dim)> b : parent_buckets)
+    {DOLLAR("keep.splitting" + round_suffix);
+      for (; parent_buckets.size() > 0 and depth + root.getLevel() < m_uiMaxDepth; ++depth)
       {
-        if (not too_wide(b.global_begin, b.global_end))
-        {
-          const int begin = next_blk(b.global_begin);
-          const int end = next_blk(b.global_end);
-          for (int blk = begin; blk < end; ++blk)
-            commit(blk, b);
+        child_buckets.reset();
+
+        // If all splitters acceptable or there are none, commit. Else, split.
+        {DOLLAR("commit.and.split" + round_suffix);
+          for (BucketRef<T, int(dim)> b : parent_buckets)
+          {
+            if (not too_wide(b.global_begin, b.global_end))
+            {
+              const int begin = next_blk(b.global_begin);
+              const int end = next_blk(b.global_end);
+              for (int blk = begin; blk < end; ++blk)
+                commit(blk, b);
+            }
+            else
+            {
+              b.mark_split();
+              const size_t split_sz = nchild(dim) + 1;
+              Buckets<split_sz> split = bucket_split(octants, xs..., b);
+              child_buckets.push_children(b, split);
+            }
+          }
         }
-        else
-        {
-          b.mark_split();
-          const size_t split_sz = nchild(dim) + 1;
-          Buckets<split_sz> split = bucket_split(octants, xs..., b);
-          child_buckets.push_children(b, split);
+
+        // Allreduce children to get global begins of children, update parents.
+        {DOLLAR("allreduce.child_buckets" + round_suffix);
+          child_buckets.all_reduce(comm);
         }
+        {DOLLAR("update_ancestors" + round_suffix);
+          parent_buckets.update_ancestors(child_buckets);
+        }
+        /// child_buckets.plot(plot);
+
+        // Commit any splitters that are not inheritted by children.
+        size_t cb = 0;
+        {DOLLAR("commit.ancestors" + round_suffix);
+          for (BucketRef<T, int(dim)> b : parent_buckets)
+            if (b.marked_split())
+            {
+              const int parent_begin = next_blk(b.global_begin);
+              const int child_begin = next_blk(child_buckets.ref(cb).global_begin);
+              for (int blk = parent_begin; blk < child_begin; ++blk)
+                commit(blk, b);
+              cb += nchild(dim);
+            }
+        }
+
+        std::swap(parent_buckets, child_buckets);
       }
-
-      // Allreduce children to get global begins of children.
-      child_buckets.all_reduce(comm);
-      /// child_buckets.plot(plot);
-
-      // Commit any splitters that are not inheritted by children.
-      size_t cb = 0;
-      for (BucketRef<T, int(dim)> b : parent_buckets)
-        if (b.marked_split())
-        {
-          const int parent_begin = next_blk(b.global_begin);
-          const int child_begin = next_blk(child_buckets.ref(cb).global_begin);
-          for (int blk = parent_begin; blk < child_begin; ++blk)
-            commit(blk, b);
-          cb += nchild(dim);
-        }
-
-      std::swap(parent_buckets, child_buckets);
     }
 
     // If ran out of levels, commit any remaining splitters.
-    for (const BucketRef<T, int(dim)> b : parent_buckets)
-    {
-      const int begin = next_blk(b.global_begin);
-      const int end = next_blk(b.global_end);
-      for (int blk = begin; blk < end; ++blk)
-        commit(blk, b);
+    {DOLLAR("commit.remainder" + round_suffix);
+      for (const BucketRef<T, int(dim)> b : parent_buckets)
+      {
+        const int begin = next_blk(b.global_begin);
+        const int end = next_blk(b.global_end);
+        for (int blk = begin; blk < end; ++blk)
+          commit(blk, b);
+      }
     }
 
     // Validate splitters.
@@ -1283,90 +1331,101 @@ void distTreePartition_kway_impl(
 
 
     // Exchange data to match block boundaries.
+    {DOLLAR("Exchange" + round_suffix);
 
-    int total_srcs = 0;
-    for (int blk = 0; blk < nblocks; ++blk)
-      if (blk != self_blk)
-        total_srcs += srcs_per_blk(blk);
-
-    assert(par::mpi_sum(total_srcs, comm) == comm_size * (nblocks - 1));
-
-    p2p_partners.reset(nblocks - 1, total_srcs, comm);
-    p2p_sizes.reset(&p2p_partners);
-    p2p_meta.reset(&p2p_partners);
-
-    for (int blk = 0, dst_idx = 0; blk < nblocks; ++blk)
-      if (blk != self_blk)
-      {
-        p2p_partners.dest(dst_idx, blk_id_to_task(blk, dest_blk_id(blk)));
-        p2p_sizes.send(dst_idx, local_block_sz(blk));
-        p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block[blk]);
-        dst_idx++;
+      int total_srcs = 0;
+      {DOLLAR("total_srcs" + round_suffix);
+        for (int blk = 0; blk < nblocks; ++blk)
+          if (blk != self_blk)
+            total_srcs += srcs_per_blk(blk);
       }
 
-    for (int blk = 0, src_idx = 0; blk < nblocks; ++blk)
-      if (blk == self_blk)
-        p2p_meta.self_size(src_idx, local_block[self_blk+1] - local_block[self_blk]);
-      else
-        for (int s = 0; s < srcs_per_blk(blk); ++s)
-        {
-          p2p_partners.src(src_idx, blk_id_to_task(blk, src_blk_id(blk, s)));
-          p2p_meta.recv_size(src_idx,  p2p_sizes.recv(src_idx));
-          src_idx++;
-        }
+      assert(par::mpi_sum(total_srcs, comm) == comm_size * (nblocks - 1));
 
-    p2p_meta.tally_recvs();
+      {DOLLAR("p2p.reset" + round_suffix);
+        p2p_partners.reset(nblocks - 1, total_srcs, comm);
+        p2p_sizes.reset(&p2p_partners);
+        p2p_meta.reset(&p2p_partners);
+      }
+
+      {DOLLAR("send+schedule_send" + round_suffix);
+        for (int blk = 0, dst_idx = 0; blk < nblocks; ++blk)
+          if (blk != self_blk)
+          {
+            p2p_partners.dest(dst_idx, blockmap.blk_id_to_task(blk, dest_blk_id(blk)));
+            p2p_sizes.send(dst_idx, local_block_sz(blk));
+            p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block[blk]);
+            dst_idx++;
+          }
+      }
+
+      {DOLLAR("self_size+recv+recv_size" + round_suffix);
+        for (int blk = 0, src_idx = 0; blk < nblocks; ++blk)
+          if (blk == self_blk)
+            p2p_meta.self_size(src_idx, local_block[self_blk+1] - local_block[self_blk]);
+          else
+            for (int s = 0; s < srcs_per_blk(blk); ++s)
+            {
+              p2p_partners.src(src_idx, blockmap.blk_id_to_task(blk, src_blk_id(blk, s)));
+              p2p_meta.recv_size(src_idx,  p2p_sizes.recv(src_idx));
+              src_idx++;
+            }
+      }
+
+      p2p_meta.tally_recvs();
 
 
-    // For variadic templates, reuse pack argument vector.
-    // Make more space at the end, send from beginning, receive to end.
-    // Copy to self block place in receiving segment.
+      // For variadic templates, reuse pack argument vector.
+      // Make more space at the end, send from beginning, receive to end.
+      // Copy to self block place in receiving segment.
 
-    const size_t old_sz = Nl;
-    const size_t receiving = p2p_meta.recv_total();
-    const size_t copy_to = p2p_meta.self_offset();
-    const size_t copying = local_block[self_blk+1] - local_block[self_blk];
-    const size_t new_sz = receiving + copying;
-    assert(par::mpi_sum(LLU(new_sz), comm) == Ng);
+      const size_t old_sz = Nl;
+      const size_t receiving = p2p_meta.recv_total();
+      const size_t copy_to = p2p_meta.self_offset();
+      const size_t copying = local_block[self_blk+1] - local_block[self_blk];
+      const size_t new_sz = receiving + copying;
+      assert(par::mpi_sum(LLU(new_sz), comm) == Ng);
 
-    octants.resize(old_sz + new_sz);
-    p2p_meta.send(&octants[0]);
-    DENDRO_FOR_PACK(xs.resize(old_sz + new_sz));
-    DENDRO_FOR_PACK(p2p_meta.send(&xs[0]));
+      {DOLLAR("resize.octants" + round_suffix);
+        octants.resize(old_sz + new_sz);
+      }
+      {DOLLAR("send.octants" + round_suffix);
+        p2p_meta.send(&octants[0]);
+      }
+      {DOLLAR("resize.xs" + round_suffix);
+        DENDRO_FOR_PACK(xs.resize(old_sz + new_sz));
+      }
+      {DOLLAR("send.xs" + round_suffix);
+        DENDRO_FOR_PACK(p2p_meta.send(&xs[0]));
+      }
 
-    // Copy local segment to self block position.
-    std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + copy_to]);
-    DENDRO_FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + copy_to]));
+      // Copy local segment to self block position.
+      {DOLLAR("self.copy" + round_suffix);
+        std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + copy_to]);
+        DENDRO_FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + copy_to]));
+      }
 
-    // Receive remote segments into end segment.
-    p2p_meta.recv(&octants[old_sz]);
-    DENDRO_FOR_PACK(p2p_meta.recv(&xs[old_sz]));
+      // Receive remote segments into end segment.
+      {DOLLAR("recv.octants" + round_suffix);
+        p2p_meta.recv(&octants[old_sz]);
+      }
+      {DOLLAR("recv.xs" + round_suffix);
+        DENDRO_FOR_PACK(p2p_meta.recv(&xs[old_sz]));
+      }
 
-    p2p_sizes.wait_all();
-    p2p_meta.wait_all();
-    // Do not move the send buffer until finished sending!
-    octants.erase(octants.begin(), octants.begin() + old_sz);
-    DENDRO_FOR_PACK(xs.erase(xs.begin(), xs.begin() + old_sz));
+      {DOLLAR("wait_all" + round_suffix);
+        p2p_sizes.wait_all();
+        p2p_meta.wait_all();
+      }
+      // Do not move the send buffer until finished sending!
+      {DOLLAR("erase" + round_suffix);
+        octants.erase(octants.begin(), octants.begin() + old_sz);
+        DENDRO_FOR_PACK(xs.erase(xs.begin(), xs.begin() + old_sz));
+      }
+    }
 
     plot_prefix += "_" + std::to_string(self_blk);
-
-    if (comm_size > kway)
-    {
-      MPI_Comm new_comm;
-      MPI_Comm_split(comm, self_blk, self_blk_id, &new_comm);
-      to_be_freed.push_back(new_comm);
-
-      comm = new_comm;
-      MPI_Comm_size(comm, &comm_size);
-      MPI_Comm_rank(comm, &comm_rank);
-      nblocks = std::min(comm_size, kway);
-    }
-    else
-      break;  // Avoid splitting comm at the very end.
   }
-
-  for (MPI_Comm new_comm : to_be_freed)
-    MPI_Comm_free(&new_comm);
 }
 
 
@@ -1674,6 +1733,7 @@ SFC_Tree<T,dim>:: distTreeConstruction(std::vector<TreeNode<T,dim>> &points,
                                    double loadFlexibility,
                                    MPI_Comm comm)
 {
+  DOLLAR("distTreeConstruction()");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -1724,6 +1784,30 @@ SFC_Tree<T,dim>:: distTreeCompletion(std::vector<TreeNode<T,dim>> &points,
                       SFC_State<dim>::root(), TreeNode<T,dim>());
 
   distRemoveDuplicates(tree, loadFlexibility, false, comm);
+}
+
+
+
+template <typename T, unsigned int dim>
+void
+SFC_Tree<T,dim>:: distMinimalComplete(
+    std::vector<TreeNode<T,dim>> &tree, double sfc_tol, MPI_Comm comm)
+{
+  DOLLAR("distMinimalComplete()");
+  std::vector<TreeNode<T, dim>> res;
+  std::swap(res, tree);
+
+  distRemoveDuplicates(res, sfc_tol, false, comm);
+
+  assert(isLocallySorted(res));
+  /// tree.reserve(res.size() * 2);
+  locCompleteResolved(
+      res.data(), tree, 0, res.size(),
+      SFC_State<dim>::root(), TreeNode<T, dim>());
+
+  distRemoveDuplicates(tree, sfc_tol, false, comm);
+  assert(isPartitioned(tree, comm));
+  assert(coversUnitCube(tree, comm));
 }
 
 
@@ -1875,6 +1959,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, double loadFlexibility, bool strict, MPI_Comm comm)
 {
+  DOLLAR("distRemoveDuplicates()");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -1927,6 +2012,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>::splitParents(std::vector<TreeNode<T,dim>> &tree)
 {
+  DOLLAR("splitParents()");
   // Even if there are duplicates next to each other,
   // if the last duplicate is a parent of the next octant,
   // it will be split.
@@ -1964,6 +2050,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: locRemoveDuplicates(std::vector<TreeNode<T,dim>> &tnodes)
 {
+  DOLLAR("locRemoveDuplicates()");
   const TreeNode<T,dim> *tEnd = &(*tnodes.end());
   TreeNode<T,dim> *tnCur = &(*tnodes.begin());
   size_t numUnique = 0;
@@ -1992,6 +2079,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes)
 {
+  DOLLAR("locRemoveDuplicatesStrict()");
   const TreeNode<T,dim> *tEnd = &(*tnodes.end());
   TreeNode<T,dim> *tnCur = &(*tnodes.begin());
   size_t numUnique = 0;
@@ -2020,136 +2108,66 @@ SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes
 // distCoalesceSiblings()
 //
 template <typename T, unsigned int dim>
-void SFC_Tree<T, dim>::distCoalesceSiblings( std::vector<TreeNode<T, dim>> &tree,
-                                           MPI_Comm comm_ )
+void SFC_Tree<T, dim>::distCoalesceSiblings(
+    std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
 {
-  //future: use mpi_next_if()
+  DOLLAR("distCoalesceSiblings()");
+  // Assume sorted. Identify predecessor/successor.
+  // If last is sibling of successor first,
+  // then move all consecutive siblings of last to successor.
+  // Repeat until converge.
 
-  MPI_Comm comm = comm_;
+  int comm_size, comm_rank;
+  MPI_Comm_size(comm, &comm_size);
+  MPI_Comm_rank(comm, &comm_rank);
 
-  int nProc, rProc;
-  MPI_Comm_size(comm, &nProc);
-  MPI_Comm_rank(comm, &rProc);
-
-  int locDone = false;
-  int globDone = false;
-
-  while (!globDone)
+  bool converged = (comm_size == 1);
+  while (not converged)
   {
-    // Exclude self if don't contain any TreeNodes.
-    bool isActive = (tree.size() > 0);
-    MPI_Comm activeComm;
-    MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
-    if (comm != comm_ && comm != MPI_COMM_NULL)
-      MPI_Comm_free(&comm);
-    comm = activeComm;
+    bool nonempty = tree.size() > 0;
+    int predecessor, successor;
+    std::tie(predecessor, successor) = par::mpi_next_if(nonempty, comm);
 
-    if (!isActive)
-      break;
+    bool must_send = false;
 
-    MPI_Comm_size(comm, &nProc);
-    MPI_Comm_rank(comm, &rProc);
-
-
-    // Assess breakage on front and back.
-    TreeNode<T, dim> locFrontParent = tree.front().getParent();
-    TreeNode<T, dim> locBackParent = tree.back().getParent();
-    bool locFrontIsBroken = false;
-    bool locBackIsBroken = false;
-
-    int sendLeft = 0, recvRight = 0;
-
-    int idx = 0;
-    while (idx < tree.size()
-        && !locFrontIsBroken
-        && locFrontParent.isAncestorInclusive(tree[idx]))
+    if (nonempty)
     {
-      if (tree[idx].getParent() != locFrontParent)
-        locFrontIsBroken = true;
-      else
-        sendLeft++;
+      TreeNode<T, dim> successor_front;
+      par::Mpi_Sendrecv(&tree.front(), 1, predecessor, int{},
+                        &successor_front, 1, successor, int{},
+                        comm, MPI_STATUS_IGNORE);
 
-      idx++;
+      if (successor != MPI_PROC_NULL and tree.back().getParent() == successor_front.getParent())
+        must_send = true;
     }
 
-    idx = tree.size()-1;
-    while (idx >= 0
-        && !locBackIsBroken
-        && locBackParent.isAncestorInclusive(tree[idx]))
+    converged = par::mpi_and(not must_send, comm);
+
+    if (not converged and nonempty)
     {
-      if (tree[idx].getParent() != locBackParent)
-        locBackIsBroken = true;
+      // Count number of consecutive siblings at tail of local partition.
+      int send_sz = 0;
+      if (must_send)
+      {
+        send_sz = 1;
+        for (auto tail = tree.crbegin() + 1;
+            tail != tree.crend() and tail->getParent() == (tail-1)->getParent();
+            ++tail)
+          ++send_sz;
+      }
 
-      idx--;
+      int recv_sz = 0;
+      par::Mpi_Sendrecv(&send_sz, 1, successor, int{},
+                        &recv_sz, 1, predecessor, int{},
+                        comm, MPI_STATUS_IGNORE);
+
+      tree.insert(tree.begin(), recv_sz, {});
+      par::Mpi_Sendrecv(&(*tree.end()) - send_sz, send_sz, successor, int{},
+                        &(*tree.begin()), recv_sz, predecessor, int{},
+                        comm, MPI_STATUS_IGNORE);
+      tree.erase(tree.end() - send_sz, tree.end());
     }
-
-
-    // Check with left and right ranks to see if an exchange is needed.
-    TreeNode<T, dim> leftParent, rightParent;
-    bool leftIsBroken, rightIsBroken;
-
-    bool exchangeLeft = false;
-    bool exchangeRight = false;
-
-    constexpr int tagToLeft1 = 72;
-    constexpr int tagToRight1 = 73;
-    constexpr int tagToLeft2 = 74;
-    constexpr int tagToRight2 = 75;
-    constexpr int tagToLeft3 = 76;
-    constexpr int tagToLeft4 = 77;
-    MPI_Status status;
-
-    int leftRank = (rProc > 0 ? rProc - 1 : MPI_PROC_NULL);
-    int rightRank = (rProc < nProc-1 ? rProc+1 : MPI_PROC_NULL);
-
-    par::Mpi_Sendrecv(&locFrontParent, 1, leftRank, tagToLeft1,
-                      &rightParent, 1, rightRank, tagToLeft1, comm, &status);
-    par::Mpi_Sendrecv(&locBackParent, 1, rightRank, tagToRight1,
-                      &leftParent, 1, leftRank, tagToRight1, comm, &status);
-
-    par::Mpi_Sendrecv(&locFrontIsBroken, 1, leftRank, tagToLeft2,
-                      &rightIsBroken, 1, rightRank, tagToLeft2, comm, &status);
-    par::Mpi_Sendrecv(&locBackIsBroken, 1, rightRank, tagToRight2,
-                      &leftIsBroken, 1, leftRank, tagToRight2, comm, &status);
-
-    if (rProc > 0)
-      exchangeLeft = (!locFrontIsBroken && !leftIsBroken && locFrontParent == leftParent);
-
-    if (rProc < nProc-1)
-      exchangeRight = (!locBackIsBroken && !rightIsBroken && locBackParent == rightParent);
-
-
-    // Do the exchanges. Send to left, recv from right.
-    if (!exchangeLeft)
-      leftRank = MPI_PROC_NULL;
-    if (!exchangeRight)
-      rightRank = MPI_PROC_NULL;
-
-    par::Mpi_Sendrecv(&sendLeft, 1, leftRank, tagToLeft3,
-                      &recvRight, 1, rightRank, tagToLeft3, comm, &status);
-
-    if (exchangeRight)
-    {
-      tree.resize(tree.size() + recvRight);
-    }
-
-    par::Mpi_Sendrecv(&(*tree.begin()), sendLeft, leftRank, tagToLeft4,
-                      &(*tree.end()) - recvRight, recvRight, rightRank, tagToLeft4,
-                      comm, &status);
-
-    if (exchangeLeft)
-    {
-      tree.erase(tree.begin(), tree.begin() + sendLeft);
-    }
-
-
-    // Global reduction to find out if the tree partition has converged.
-    locDone = (!exchangeLeft && !exchangeRight);
-    par::Mpi_Allreduce(&locDone, &globDone, 1, MPI_LAND, comm);
   }
-  if (comm != comm_ && comm != MPI_COMM_NULL)
-    MPI_Comm_free(&comm);
-
 }
 
 
@@ -2161,6 +2179,7 @@ template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::distAdoptAncestors(
     std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
 {
+  DOLLAR("distAdoptAncestors()");
   // Assume sorted. Identify predecessor/successor.
   // If last is ancestor of successor first,
   // then move all consecutive ancestors of last to successor.
@@ -2258,6 +2277,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefine(
     const std::vector<TreeNode<T, dim>> &tree,
     std::vector<int> &&delta_level)
 {
+  DOLLAR("locRefine()");
   const size_t old_sz = tree.size();
   size_t new_sz = 0;
   for (size_t i = 0; i < old_sz; ++i)
@@ -2552,6 +2572,7 @@ SFC_Tree<T, dim>::distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &in
                                        double loadFlexibility,
                                        MPI_Comm comm )
 {
+  DOLLAR("distRemeshWholeDomain()");
   constexpr ChildI NumChildren = 1u << dim;
 
   outTree.clear();
@@ -2562,6 +2583,7 @@ SFC_Tree<T, dim>::distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &in
   // With a proper level-respecting treeBalancing() routine, don't need to
   // make all siblings of all treeNodes for OCT_NO_CHANGE and OCT_COARSEN.
   std::vector<TreeNode<T, dim>> seed;
+  {DOLLAR("emit.seeds");
   for (size_t i = 0; i < inTree.size(); ++i)
   {
     switch(refnFlags[i])
@@ -2585,6 +2607,7 @@ SFC_Tree<T, dim>::distRemeshWholeDomain( const std::vector<TreeNode<T, dim>> &in
         throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
     }
   }
+  }
 
   SFC_Tree<T, dim>::distTreeSort(seed, loadFlexibility, comm);
   SFC_Tree<T, dim>::distRemoveDuplicates(seed, loadFlexibility, RM_DUPS_AND_ANC, comm);
@@ -2601,11 +2624,13 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
                                        double loadFlexibility,
                                        MPI_Comm comm )
 {
+  DOLLAR("distRemeshSubdomain()");
   constexpr ChildI NumChildren = 1u << dim;
 
   /// SFC_Tree<T, dim>::distCoalesceSiblings(inTree, comm);
 
   std::vector<TreeNode<T, dim>> res;
+  {DOLLAR("emit.res");
   for (size_t i = 0; i < inTree.size(); ++i)
   {
     switch(refnFlags[i])
@@ -2627,17 +2652,36 @@ SFC_Tree<T, dim>::distRemeshSubdomain( const std::vector<TreeNode<T, dim>> &inTr
         throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
     }
   }
+  }
 
   outTree = inTree;
   locTreeSort(res);
-  SFC_Tree<T, dim>::locMatchResolution(outTree, res);
+  {DOLLAR("locMatchResolution")
+    SFC_Tree<T, dim>::locMatchResolution(outTree, res);
+  }
   // Need children under parents
+{DOLLAR("distTreeSort")
   SFC_Tree<T, dim>::distTreeSort(outTree, loadFlexibility, comm);
+}
+{DOLLAR("distAdoptAncestors")
   SFC_Tree<T, dim>::distAdoptAncestors(outTree, comm);
+}
+{DOLLAR("splitParents")
   SFC_Tree<T, dim>::splitParents(outTree);  // Same domain as with parents, maybe expanded original
+}
+{DOLLAR("distRemoveDuplicates")
   SFC_Tree<T, dim>::distRemoveDuplicates(outTree, loadFlexibility, RM_DUPS_AND_ANC, comm);
-  SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
+}
+{DOLLAR("Balancing")
+#ifndef USE_2TO1_GLOBAL_SORT
+    SFC_Tree<T, dim>::distMinimalBalanced(outTree, loadFlexibility, comm);
+#else
+    SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(outTree, loadFlexibility, comm);
+#endif
+}
+{DOLLAR("distCoalesceSiblings")
   SFC_Tree<T, dim>::distCoalesceSiblings(outTree, comm);
+}
   // Domain possibly expanded. Require filterTree() afterward (e.g. in DistTree::distRemeshSubdomain())
   // future: Move this function body directly into DistTree::distRemeshSubdomain().
 }
@@ -2672,6 +2716,7 @@ template <typename T, unsigned int dim>
 std::vector<int> getSendcounts(const std::vector<TreeNode<T, dim>> &items,
                                const std::vector<TreeNode<T, dim>> &frontSplitters)
 {
+  DOLLAR("getSendcounts()");
   int numSplittersSeen = 0;
   int ancCarry = 0;
   std::vector<int> scounts(frontSplitters.size(), 0);
@@ -2726,6 +2771,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
                                     const std::vector<TreeNode<T, dim>> &splittersFromGrid,
                                     MPI_Comm comm )
 {
+  DOLLAR("getSurrogateGrid()");
   std::vector<TreeNode<T, dim>> surrogateGrid;
 
   int nProc, rProc;
@@ -2758,7 +2804,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
 
   std::vector<int> surrogateRecvCounts(nProc, 0);
 
-  {
+  {DOLLAR("Mpi_Alltoall()");
   par::Mpi_Alltoall(surrogateSendCounts.data(), surrogateRecvCounts.data(), 1, comm);
   }
 
@@ -2776,7 +2822,7 @@ SFC_Tree<T, dim>::getSurrogateGrid( const std::vector<TreeNode<T, dim>> &replica
   surrogateGrid.resize(surrogateRecvDispls.back());
 
   // Copy replicateGrid grid to surrogate grid.
-  {
+  {DOLLAR("Mpi_Alltoallv_sparse()");
   par::Mpi_Alltoallv_sparse(replicateGrid.data(),
                             surrogateSendCounts.data(),
                             surrogateSendDispls.data(),
@@ -2800,10 +2846,9 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
 {
+  DOLLAR("propagateNeighbours()");
   std::vector<std::vector<TreeNode<T,dim>>> treeLevels = stratifyTree(srcNodes);
   srcNodes.clear();
-
-  ///std::cout << "Starting at        level " << m_uiMaxDepth << ", level size \t " << treeLevels[m_uiMaxDepth].size() << "\n";  //DEBUG
 
   // Bottom-up traversal using stratified levels.
   for (unsigned int l = m_uiMaxDepth; l > 0; l--)
@@ -2821,9 +2866,6 @@ SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
     // TODO Consider more efficient algorithms for removing duplicates from lp level.
     locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, SFC_State<dim>::root());
     locRemoveDuplicates(treeLevels[lp]);
-
-    ///const size_t newLevelSize = treeLevels[lp].size();
-    ///std::cout << "Finished adding to level " << lp << ", level size \t " << oldLevelSize << "\t -> " << newLevelSize << "\n";  // DEBUG
   }
 
   // Reserve space before concatenating all the levels.
@@ -2914,6 +2956,7 @@ SFC_Tree<T,dim>:: distTreeBalancing(std::vector<TreeNode<T,dim>> &points,
                                    double loadFlexibility,
                                    MPI_Comm comm)
 {
+  DOLLAR("distTreeBalancing()");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -2953,6 +2996,36 @@ SFC_Tree<T,dim>:: distTreeBalancing(std::vector<TreeNode<T,dim>> &points,
 }
 
 
+
+//
+// distMinimalBalancedGlobalSort()
+//
+template <typename T, unsigned int dim>
+void
+SFC_Tree<T,dim>:: distMinimalBalancedGlobalSort(
+    std::vector<TreeNode<T,dim>> &tree,
+    double sfc_tol,
+    MPI_Comm comm)
+{
+  DOLLAR("distMinimalBalanced()");
+  assert(isLocallySorted(tree));
+  assert(isPartitioned(tree, comm));
+
+  const std::vector<TreeNode<T, dim>> original = tree;
+
+  propagateNeighbours(tree);
+  distMinimalComplete(tree, sfc_tol, comm);
+
+  // If subdomain, the fill-in may have wrong resolution.
+  // Also want to treat domain decider as multi-level test:
+  // Assume INTERCEPTED is a catch-all, utilize prior finer-resolved tests.
+
+  // Prune parts that don't overlap original.
+  tree = getSurrogateGrid(SurrogateOutByIn, original, tree, comm);
+  retainDescendants(tree, original);
+
+  assert(is2to1Balanced(tree, comm));
+}
 
 //
 // distTreeBalancingWithFilter()
@@ -3676,6 +3749,7 @@ template <typename T, unsigned dim>
 void SFC_Tree<T, dim>::locMatchResolution(
     std::vector<TreeNode<T, dim>> &tree, const std::vector<TreeNode<T, dim>> &res)
 {
+  DOLLAR("locMatchResolution()");
   assert(isLocallySorted(tree));
   assert(isLocallySorted(res));
 
@@ -3750,6 +3824,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::unstableOctants(
     const bool dangerLeft,
     const bool dangerRight)
 {
+  DOLLAR("unstableOctants()");
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
 
@@ -3854,6 +3929,7 @@ std::vector<int> recvFromActive(
     const std::vector<int> &sendToActive,
     MPI_Comm comm)
 {
+  DOLLAR("recvFromActive()");
   //future: choose a better collective pattern
 
   int commSize, commRank;
@@ -3924,6 +4000,8 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   //   doi = {10.1137/070681727}, URL = { https://doi.org/10.1137/070681727 }
   // }
 
+  DOLLAR("distMinimalBalanced()");
+
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
 
@@ -3933,7 +4011,9 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   const bool isActive = tree.size() > 0;
 
+  {DOLLAR("locMinimalBalanced.pre");
   locMinimalBalanced(tree);
+  }
 
   // The unstable octants (processor boundary octants) may need to be refined.
   const OctList unstableOwned = unstableOctants(tree, commRank > 0, commRank < commSize - 1);
@@ -3954,11 +4034,13 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   // Source indices later used to effectively undo the sort.
   OctList insulationOfOwned;
   std::vector<size_t> beginInsulationOfOwned, endInsulationOfOwned;
+  {DOLLAR("emit.insulationOfOwned");
   for (const Oct &u : unstableOwned)
   {
     beginInsulationOfOwned.push_back(insulationOfOwned.size());
     u.appendAllNeighbours(insulationOfOwned);
     endInsulationOfOwned.push_back(insulationOfOwned.size());
+  }
   }
 
   // Every insulation octant overlaps a range of active ranks.
@@ -3970,6 +4052,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   std::set<int> queryDestSet;
   std::map<int, std::vector<Oct>> sendQueryInform;
   std::map<int, std::vector<Oct>> sendInformOnly;
+  {DOLLAR("stage.round1");
   for (size_t ui = 0; ui < unstableOwned.size(); ++ui)
   {
     std::set<int> unstableProcSet;
@@ -3988,6 +4071,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
     queryDestSet.insert(unstableProcSet.cbegin(), unstableProcSet.cend());
   }
+  }
 
   std::vector<int> queryDest(queryDestSet.cbegin(), queryDestSet.cend());
   std::vector<int> querySrc = recvFromActive(active, queryDest, comm);
@@ -4004,6 +4088,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   for (int r : queryDest)  queryDestGlobal.push_back(active[r]);
   for (int r : querySrc)   querySrcGlobal.push_back(active[r]);
   {
+    DOLLAR("p2p.round1");
     P2PPartners partners(queryDestGlobal, querySrcGlobal, comm);
 
     // Sizes
@@ -4040,6 +4125,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   // (Round 2)  Recreate the insulation layers of remote unstable query octants.
   OctList insulationRemote;
   std::vector<int> insulationRemoteOrigin;
+  {DOLLAR("emit.insulationRemote");
   for (int r : querySrc)
   {
     const size_t oldSz = insulationRemote.size();
@@ -4047,6 +4133,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
       remoteUnstable.appendAllNeighbours(insulationRemote);
     const size_t newSz = insulationRemote.size();
     std::fill_n(std::back_inserter(insulationRemoteOrigin), newSz - oldSz, r);
+  }
   }
   locTreeSort(insulationRemote, insulationRemoteOrigin);
 
@@ -4057,6 +4144,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   std::map<int, std::vector<Oct>> sendQueryAnswer;
   std::vector<size_t> overlapIdxs;
   std::set<int> octAnswerProcs;
+  {DOLLAR("stage.round2");
   for (size_t ui = 0; ui < unstableOwned.size(); ++ui)
   {
     overlapIdxs.clear();
@@ -4068,17 +4156,21 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
     for (int r : octAnswerProcs)
       sendQueryAnswer[r].push_back(unstableOwned[ui]);
   }
+  }
 
   // Do not need to send if already sent.
+  {DOLLAR("removeEqual.queries");
   for (int r : querySrc)
   {
     removeEqual(sendQueryAnswer[r], sendInformOnly[r]);
     removeEqual(sendQueryAnswer[r], sendQueryInform[r]);
   }
+  }
 
   // (Round 2)  Send/recv
   std::map<int, std::vector<Oct>> recvQueryAnswer;
   {
+    DOLLAR("p2p.round2");
     P2PPartners partners(querySrcGlobal, queryDestGlobal, comm);
 
     // Sizes
@@ -4105,6 +4197,8 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
 
   OctList unstablePlus;
   {
+    DOLLAR("cat.unstablePlus");
+  {
     size_t total = unstableOwned.size();
     for (int r : querySrc)
     {
@@ -4123,10 +4217,13 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   }
   for (int r : queryDest)
     appendVec(unstablePlus, recvQueryAnswer[r]);
+  }
 
   // Balance unstable octants against received insulation.
   locTreeSort(unstablePlus);
+  {DOLLAR("locMinimalBalanced.post");
   locMinimalBalanced(unstablePlus);
+  }
   retainDescendants(unstablePlus, unstableOwned);
 
   // Replace unstable with unstable balanced.
@@ -4252,6 +4349,7 @@ PartitionFront<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
     MPI_Comm comm,
     std::vector<int> *activeList)
 {
+  DOLLAR("allgatherSplitters");
   int commSize, commRank;
   MPI_Comm_size(comm, &commSize);
   MPI_Comm_rank(comm, &commRank);
@@ -4288,6 +4386,7 @@ PartitionFrontBack<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
     MPI_Comm comm,
     std::vector<int> *activeList)
 {
+  DOLLAR("allgatherSplitters");
   int commSize, commRank;
   MPI_Comm_size(comm, &commSize);
   MPI_Comm_rank(comm, &commRank);
@@ -4332,6 +4431,7 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
     const std::vector<TreeNode<T, dim>> &treeNodes,
     const PartitionFront<T, dim> &partitionSplitters)
 {
+  DOLLAR("treeNode2PartitionRank()");
   // Result
   std::vector<int> rankIds(treeNodes.size(), 0);
 
@@ -4389,6 +4489,7 @@ std::vector<IntRange<>> SFC_Tree<T, dim>::treeNode2PartitionRanks(
     const PartitionFrontBack<T, dim> &partition,
     const std::vector<int> *activePtr)
 {
+  DOLLAR("treeNode2PartitionRanks()");
   if (treeNodes_.size() == 0)
     return std::vector<IntRange<>>();
 
@@ -4684,6 +4785,27 @@ template bool isPartitioned(std::vector<TreeNode<unsigned, 3u>> octants, MPI_Com
 template bool isPartitioned(std::vector<TreeNode<unsigned, 4u>> octants, MPI_Comm comm);
 
 
+
+template <typename T, unsigned dim>
+bool coversUnitCube(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
+{
+  using LLU = long long unsigned;
+  std::vector<LLU> level_histogram(m_uiMaxDepth + 1, 0);
+  for (const TreeNode<T, dim> &tn : tree)
+    ++level_histogram[tn.getLevel()];
+  std::vector<LLU> global_histogram = level_histogram;
+  par::Mpi_Allreduce( level_histogram.data(), global_histogram.data(),
+                      m_uiMaxDepth + 1, MPI_SUM, comm);
+
+  for (int l = m_uiMaxDepth; l > 0; --l)
+    global_histogram[l-1] += global_histogram[l] / nchild(dim);
+
+  return global_histogram[0] = 1;
+}
+
+template bool coversUnitCube(const std::vector<TreeNode<unsigned, 2u>> &tree, MPI_Comm comm);
+template bool coversUnitCube(const std::vector<TreeNode<unsigned, 3u>> &tree, MPI_Comm comm);
+template bool coversUnitCube(const std::vector<TreeNode<unsigned, 4u>> &tree, MPI_Comm comm);
 
 
 } // namspace ot

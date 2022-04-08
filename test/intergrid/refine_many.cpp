@@ -14,7 +14,7 @@
 
 #include "test/octree/multisphere.h"
 
-constexpr int DIM = 3;
+constexpr int DIM = 2;
 using uint = unsigned int;
 using DofT = double;
 

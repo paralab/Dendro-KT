@@ -52,10 +52,12 @@ namespace fem
       const ot::DA<dim> *fine_da,
       double *fine_cell_dofs)
   {
+    DOLLAR("cell_transfer_refine()");
     // Surrogate must be coarse partitioned by fine.
     assert(coarse_da->getGlobalElementSz() == surrogate_da->getGlobalElementSz());
 
     std::vector<double> surr_cell_dofs(surrogate_da->getLocalElementSz() * cell_ndofs);
+    {DOLLAR("shift()");
     par::shift(
         coarse_da->getGlobalComm(),
         coarse_cell_dofs,
@@ -65,6 +67,7 @@ namespace fem
         surrogate_da->getLocalElementSz(),
         surrogate_da->getGlobalElementBegin(),
         cell_ndofs);
+    }
 
     local_inherit(
         surrogate_dtree.getTreePartFiltered(),
@@ -99,6 +102,7 @@ namespace fem
         surrogate_dtree.getTreePartFiltered(),
         surr_cell_dofs.data());
 
+    {DOLLAR("shift()");
     par::shift(
         coarse_da->getGlobalComm(),
         surr_cell_dofs.data(),
@@ -108,6 +112,7 @@ namespace fem
         coarse_da->getLocalElementSz(),
         coarse_da->getGlobalElementBegin(),
         cell_ndofs);
+    }
   }
 }
 
