@@ -969,14 +969,6 @@ namespace ot
       GI dof_end_global   = da_local2global[this->getLocalNodeBegin()+this->getLocalNodalSz()-1]*dof + (dof-1);
       GI total_dof_global = this->getGlobalNodeSz() * dof;
 
-      // Boundary data
-      const std::vector<size_t> &ghostedBoundaryIndices = this->getGhostedBoundaryNodeIndices();
-      std::vector<GI> global_boundary_dofs(ghostedBoundaryIndices.size() * dof);
-      for (size_t ii = 0; ii < ghostedBoundaryIndices.size(); ++ii)
-        for (unsigned v = 0; v < dof; ++v)
-          global_boundary_dofs[dof * ii + v] =
-              dof * da_local2global[ghostedBoundaryIndices[ii]] + v;
-
       // Define output meshMaps.
       meshMaps = new par::Maps<DT,GI,LI>(acomm);
 
@@ -989,9 +981,24 @@ namespace ot
           dof_end_global,
           total_dof_global);
 
-      meshMaps->set_bdr_map(global_boundary_dofs.data(),
-                            const_cast<DT *>( prescribedGhostedBoundaryVals ),  // hack until AMat fixes const
-                            global_boundary_dofs.size());
+      if (prescribedGhostedBoundaryVals != nullptr)
+      {
+        // Boundary data
+        const std::vector<size_t> &ghostedBoundaryIndices = this->getGhostedBoundaryNodeIndices();
+        std::vector<GI> global_boundary_dofs(ghostedBoundaryIndices.size() * dof);
+        for (size_t ii = 0; ii < ghostedBoundaryIndices.size(); ++ii)
+          for (unsigned v = 0; v < dof; ++v)
+            global_boundary_dofs[dof * ii + v] =
+                dof * da_local2global[ghostedBoundaryIndices[ii]] + v;
+
+        meshMaps->set_bdr_map(global_boundary_dofs.data(),
+                              const_cast<DT *>( prescribedGhostedBoundaryVals ),  // hack until AMat fixes const
+                              global_boundary_dofs.size());
+      }
+      else
+      {
+        meshMaps->set_bdr_map(nullptr, nullptr , 0);
+      }
 
       // cleanup.
       for(unsigned int i=0; i < localElems; i++)
