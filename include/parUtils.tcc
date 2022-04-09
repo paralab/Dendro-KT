@@ -66,6 +66,19 @@ namespace par {
 
   }
 
+  template <typename T>
+  inline int Mpi_Mrecv(T* buf, int count, MPI_Message *message, MPI_Status *status)
+  {
+    return MPI_Mrecv(buf, count, par::Mpi_datatype<T>::value(), message, status);
+  }
+
+  template <typename T>
+  inline int Mpi_Imrecv(T* buf, int count, MPI_Message *message, MPI_Request* request)
+  {
+    return MPI_Imrecv(buf, count, par::Mpi_datatype<T>::value(), message, request);
+  }
+
+
   template<typename T, typename S>
   inline int Mpi_Sendrecv(const T *sendBuf, int sendCount, int dest, int sendTag,
                           S *recvBuf, int recvCount, int source, int recvTag,
@@ -755,9 +768,172 @@ namespace par {
     }
 
 
+
+
+
+
+  /** @brief Nonblocking Consensus due to (Hoefler et al., 2010).
+   * Allows alltoall sparse exchange without calling any alltoall.
+   */
+  inline int Mpi_NBX_neighbors(
+      const int *destinations, const int ndest,
+      std::vector<int> &sources,
+      MPI_Comm comm,
+      bool sort_sources)
+  {
+    std::vector<int> dummy_recvbuf;
+    return Mpi_NBX<int>(
+        destinations, ndest, nullptr, 0, sources, dummy_recvbuf, comm,
+        sort_sources);
+  }
+
+  inline int Mpi_NBX_sizes(
+      const int *destinations, const int *send_sizes, const int ndest,
+      std::vector<int> &sources, std::vector<int> &recv_sizes,
+      MPI_Comm comm,
+      bool sort_sources)
+  {
+    const int count = 1;
+    return Mpi_NBX<int>(
+        destinations, ndest, send_sizes, count, sources, recv_sizes, comm,
+        sort_sources);
+  }
+
+  template <typename T>
+  inline int Mpi_NBX(
+      const int *destinations, const int ndest,
+      const T *sendbuf, const int count,
+      std::vector<int> &sources, std::vector<T> &recvbuf,
+      MPI_Comm comm,
+      bool sort_sources)
+  {
+    /** (Hoefler et al., 2010)
+     * https://doi-org.ezproxy.lib.utah.edu/10.1145/1693453.1693476
+     */
+
+    // Pseudocode (Algorithm 2) from the paper.
+    // Input: List I of destinations and data
+    // Output: List O of received data and sources
+    //
+    // done=false;
+    // barr_act=false;
+    // foreach i ∈ I do
+    //   start nonblocking synchronous send to process dest(i);
+    // while not done do
+    //   msg = nonblocking probe for incoming message;
+    //   if msg found then
+    //     allocate buffer, receive message, add buffer to O;
+    //   if barr_act then
+    //     comp = test barrier for completion;
+    //     if comp then done=true;
+    //   else
+    //     if all sends are finished then
+    //       start nonblocking barrier;
+    //       barr act=true;
+
+    static std::vector<MPI_Request> send_requests(
+        2 * ndest);
+    send_requests.clear();
+    send_requests.resize(ndest);
+    for (int dest_idx = 0; dest_idx < ndest; ++dest_idx)
+      par::Mpi_Issend(
+          sendbuf + dest_idx * count, count, destinations[dest_idx],
+          int{}, comm, &send_requests[dest_idx]);
+
+    sources.clear();
+    recvbuf.clear();
+    sources.reserve(ndest);
+    recvbuf.reserve(ndest * count);
+
+    int done = false,  barrier_active = false;
+    MPI_Request barrier_request;
+    while (not done)
+    {
+      // Nonblocking matching probe, with matched receive, if there is message.
+      int there_is_message = false;
+      MPI_Message msg;
+      MPI_Status status;
+      MPI_Improbe(MPI_ANY_SOURCE, int{}, comm, &there_is_message, &msg, &status);
+      if (there_is_message)
+      {
+        sources.push_back(status.MPI_SOURCE);
+        recvbuf.resize(sources.size() * count);
+        Mpi_Mrecv(&(*recvbuf.end()) - count, count, &msg, &status);
+        // Chose blocking recv here, otherwise next recv could resize buffer.
+      }
+
+      // Exit if the barrier has completed, i.e. all dependents have received.
+      if (barrier_active)
+      {
+        int barrier_complete = false;
+        MPI_Test(&barrier_request, &barrier_complete, MPI_STATUS_IGNORE);
+        if (barrier_complete)
+          done = true;
+      }
+      else
+      {
+        // Enter barrier only once Ssend's complete, i.e. own dependents received.
+        int ssends_complete = false;
+        MPI_Testall(ndest, send_requests.data(), &ssends_complete, MPI_STATUSES_IGNORE);
+        if (ssends_complete)
+        {
+          MPI_Ibarrier(comm, &barrier_request);
+          barrier_active = true;
+        }
+      }
+    }
+
+    if (sort_sources)
+    {
+      // future: factor out to a non-template non-inline function
+
+      // Sparse .. average num sources is small .. sort with std::sort().
+      const int nsrc = sources.size();
+      static std::vector<int> permutation(
+          2 * nsrc);
+      permutation.clear();
+      permutation.resize(nsrc);
+      std::iota(permutation.begin(), permutation.end(), 0);
+      std::sort(permutation.begin(), permutation.end(),
+          [&sources](int i, int j) { return sources[i] < sources[j]; });
+
+      // Permute sources.
+      union Union { int i; T t; };
+      const size_t szU = sizeof(Union);
+      static std::vector<Union> reorder;
+
+      reorder.clear();
+      reorder.resize((nsrc * sizeof(int) + szU - 1) / szU);
+      int *reorder_src = reinterpret_cast<int *>(reorder.data());
+      for (int i = 0; i < nsrc; ++i)
+        reorder_src[i] = sources[permutation[i]];
+      for (int i = 0; i < nsrc; ++i)
+        sources[i] = reorder_src[i];
+
+      // Permute recv data, maintaining order within each message.
+      reorder.clear();
+      reorder.resize((nsrc * sizeof(T) * count + szU - 1) / szU);
+      T *reorder_buf = reinterpret_cast<T *>(reorder.data());
+      for (int i = 0; i < nsrc; ++i)
+        for (int j = 0; j < count; ++j)
+          reorder_buf[i * count + j] = recvbuf[permutation[i] * count + j];
+      for (int i = 0; i < nsrc * count; ++i)
+        recvbuf[i] = reorder_buf[i];
+    }
+    assert(std::is_sorted(sources.begin(), sources.end()));
+
+    return MPI_SUCCESS;
+  }
+
+
+
+
+
     template <typename T>
     std::vector<T> sendAll(const std::vector<T> &sdata, const std::vector<int> &sdest, MPI_Comm comm)
     {
+      // future: Utilize the NBX algorithm
+
       if (sdata.size() != sdest.size())
         throw std::logic_error("sdata and sdest must have the same size.");
 

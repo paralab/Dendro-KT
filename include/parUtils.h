@@ -296,6 +296,12 @@ namespace par {
   template <typename T>
     int Mpi_Irecv(T* buf, int count, int source, int tag, MPI_Comm comm, MPI_Request* request);
 
+  template <typename T>
+    int Mpi_Mrecv(T* buf, int count, MPI_Message *message, MPI_Status *status);
+
+  template <typename T>
+    int Mpi_Imrecv(T* buf, int count, MPI_Message *message, MPI_Request* request);
+
   /**
    * @author Rahul S. Sampath
    */
@@ -385,10 +391,39 @@ namespace par {
     int Mpi_Alltoall(const T* sendbuf, T* recvbuf, int count, MPI_Comm comm); 
 
 
-  // future: Alltoall sparse avoiding any alltoall,
-  //   instead using reduce(p) and scatter(p) to convert #senders to #recvers.
-  //   The throughput should be the same as alltoall, but much reduced latency.
-  //   See ot::recvFromActive() for a prototype.
+  /**
+   * @author Masado Ishii
+   * @brief Nonblocking Consensus due to (Hoefler et al., 2010).
+   * Allows sparse alltoall exchange without calling any alltoall.
+   */
+  inline int Mpi_NBX_neighbors(
+      const int *destinations, const int ndest,
+      std::vector<int> &sources,
+      MPI_Comm comm,
+      bool sort_sources = true);
+
+  /**
+   * @author Masado Ishii
+   * @brief Nonblocking Consensus due to (Hoefler et al., 2010).
+   */
+  inline int Mpi_NBX_sizes(
+      const int *destinations, const int *send_sizes, const int ndest,
+      std::vector<int> &sources, std::vector<int> &recv_sizes,
+      MPI_Comm comm,
+      bool sort_sources = true);
+
+  /**
+   * @author Masado Ishii
+   * @brief Nonblocking Consensus due to (Hoefler et al., 2010).
+   */
+  template <typename T>
+  inline int Mpi_NBX(
+      const int *destinations, const int ndest,
+      const T *sendbuf, const int count,
+      std::vector<int> &sources, std::vector<T> &recvbuf,
+      MPI_Comm comm,
+      bool sort_sources = true);
+
 
 
   /**
