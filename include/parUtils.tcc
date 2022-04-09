@@ -831,14 +831,17 @@ namespace par {
     //       start nonblocking barrier;
     //       barr act=true;
 
+    int err = MPI_SUCCESS;
+#define ABORT_ERR(mpi_call) if ((err = (mpi_call)) != MPI_SUCCESS) { return err; }
+
     static std::vector<MPI_Request> send_requests(
         2 * ndest);
     send_requests.clear();
     send_requests.resize(ndest);
     for (int dest_idx = 0; dest_idx < ndest; ++dest_idx)
-      par::Mpi_Issend(
-          sendbuf + dest_idx * count, count, destinations[dest_idx],
-          int{}, comm, &send_requests[dest_idx]);
+      ABORT_ERR( par::Mpi_Issend(
+                     sendbuf + dest_idx * count, count, destinations[dest_idx],
+                     int{}, comm, &send_requests[dest_idx]) );
 
     sources.clear();
     recvbuf.clear();
@@ -853,12 +856,12 @@ namespace par {
       int there_is_message = false;
       MPI_Message msg;
       MPI_Status status;
-      MPI_Improbe(MPI_ANY_SOURCE, int{}, comm, &there_is_message, &msg, &status);
+      ABORT_ERR(MPI_Improbe(MPI_ANY_SOURCE, int{}, comm, &there_is_message, &msg, &status));
       if (there_is_message)
       {
         sources.push_back(status.MPI_SOURCE);
         recvbuf.resize(sources.size() * count);
-        Mpi_Mrecv(&(*recvbuf.end()) - count, count, &msg, &status);
+        ABORT_ERR(Mpi_Mrecv(&(*recvbuf.end()) - count, count, &msg, &status));
         // Chose blocking recv here, otherwise next recv could resize buffer.
       }
 
@@ -866,7 +869,7 @@ namespace par {
       if (barrier_active)
       {
         int barrier_complete = false;
-        MPI_Test(&barrier_request, &barrier_complete, MPI_STATUS_IGNORE);
+        ABORT_ERR(MPI_Test(&barrier_request, &barrier_complete, MPI_STATUS_IGNORE));
         if (barrier_complete)
           done = true;
       }
@@ -874,14 +877,16 @@ namespace par {
       {
         // Enter barrier only once Ssend's complete, i.e. own dependents received.
         int ssends_complete = false;
-        MPI_Testall(ndest, send_requests.data(), &ssends_complete, MPI_STATUSES_IGNORE);
+        ABORT_ERR(MPI_Testall(ndest, send_requests.data(), &ssends_complete, MPI_STATUSES_IGNORE));
         if (ssends_complete)
         {
-          MPI_Ibarrier(comm, &barrier_request);
+          ABORT_ERR(MPI_Ibarrier(comm, &barrier_request));
           barrier_active = true;
         }
       }
     }
+
+#undef ABORT_ERR
 
     if (sort_sources)
     {
