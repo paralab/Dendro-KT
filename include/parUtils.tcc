@@ -14,6 +14,8 @@
 #include <iostream>
 #include <algorithm>
 #include <numeric>
+#include <set>
+#include <map>
 #include "dendro.h"
 #include "ompUtils.h"
 #include <chrono>
@@ -66,6 +68,19 @@ namespace par {
               source, tag, comm, request);
 
   }
+
+  template <typename T>
+  inline int Mpi_Mrecv(T* buf, int count, MPI_Message *message, MPI_Status *status)
+  {
+    return MPI_Mrecv(buf, count, Mpi_datatype<T>::value(), message, status);
+  }
+
+  template <typename T>
+  inline int Mpi_Imrecv(T* buf, int count, MPI_Message *message, MPI_Request* request)
+  {
+    return MPI_Imrecv(buf, count, Mpi_datatype<T>::value(), message, request);
+  }
+
 
   template<typename T, typename S>
   inline int Mpi_Sendrecv(const T *sendBuf, int sendCount, int dest, int sendTag,
@@ -756,55 +771,354 @@ namespace par {
     }
 
 
+
+
+
+
+  /** @brief Nonblocking Consensus due to (Hoefler et al., 2010).
+   * Allows alltoall sparse exchange without calling any alltoall.
+   */
+  inline int Mpi_NBX_neighbors(
+      const int *destinations, const int ndest,
+      std::vector<int> &sources,
+      MPI_Comm comm,
+      bool sort_sources)
+  {
+    std::vector<int> dummy_recvbuf;
+    return Mpi_NBX<int>(
+        destinations, ndest, nullptr, 0, sources, dummy_recvbuf, comm,
+        sort_sources);
+  }
+
+  inline int Mpi_NBX_sizes(
+      const int *destinations, const int *send_sizes, const int ndest,
+      std::vector<int> &sources, std::vector<int> &recv_sizes,
+      MPI_Comm comm,
+      bool sort_sources)
+  {
+    const int count = 1;
+    return Mpi_NBX<int>(
+        destinations, ndest, send_sizes, count, sources, recv_sizes, comm,
+        sort_sources);
+  }
+
+  inline int Mpi_NBX_neighbors(
+      const int *destinations, const int ndest,
+      std::vector<int> &sources,
+      MPI_Comm comm,
+      MPI_Request * synch_p2p,     // array of length ndest
+      MPI_Request * synch_global,
+      bool sort_sources)
+  {
+    std::vector<int> dummy_recvbuf;
+    return Mpi_NBX<int>(
+        destinations, ndest, nullptr, 0, sources, dummy_recvbuf, comm,
+        synch_p2p, synch_global,
+        sort_sources);
+  }
+
+  inline int Mpi_NBX_sizes(
+      const int *destinations, const int *send_sizes, const int ndest,
+      std::vector<int> &sources, std::vector<int> &recv_sizes,
+      MPI_Comm comm,
+      MPI_Request * synch_p2p,     // array of length ndest
+      MPI_Request * synch_global,
+      bool sort_sources)
+  {
+    const int count = 1;
+    return Mpi_NBX<int>(
+        destinations, ndest, send_sizes, count, sources, recv_sizes, comm,
+        synch_p2p, synch_global,
+        sort_sources);
+  }
+
+  template <typename T>
+  inline int Mpi_NBX(
+      const int *destinations, const int ndest,
+      const T *sendbuf, const int count,
+      std::vector<int> &sources, std::vector<T> &recvbuf,
+      MPI_Comm comm,
+      bool sort_sources)
+  {
+    MPI_Request final_barrier;
+    int err = Mpi_NBX(destinations, ndest, sendbuf, count, sources, recvbuf, comm,
+        nullptr, &final_barrier,
+        sort_sources);
+    MPI_Wait(&final_barrier, MPI_STATUS_IGNORE);
+    return err;
+  }
+
+  template <typename T>
+  inline int Mpi_NBX(
+      const int *destinations, const int ndest,
+      const T *sendbuf, const int count,
+      std::vector<int> &sources, std::vector<T> &recvbuf,
+      MPI_Comm comm,
+      MPI_Request * synch_p2p,     // array of length ndest
+      MPI_Request * synch_global,
+      bool sort_sources)
+  {
+    /** (Hoefler et al., 2010)
+     * https://doi-org.ezproxy.lib.utah.edu/10.1145/1693453.1693476
+     */
+
+    // Pseudocode (Algorithm 2) from the paper.
+    // Input: List I of destinations and data
+    // Output: List O of received data and sources
+    //
+    // done=false;
+    // barr_act=false;
+    // foreach i ∈ I do
+    //   start nonblocking synchronous send to process dest(i);
+    // while not done do
+    //   msg = nonblocking probe for incoming message;
+    //   if msg found then
+    //     allocate buffer, receive message, add buffer to O;
+    //   if barr_act then
+    //     comp = test barrier for completion;
+    //     if comp then done=true;
+    //   else
+    //     if all sends are finished then
+    //       start nonblocking barrier;
+    //       barr act=true;
+
+    int err = MPI_SUCCESS;
+#define ABORT_ERR(mpi_call) if ((err = (mpi_call)) != MPI_SUCCESS) { return err; }
+
+    const int nbx_tag = 1;
+    const int synch_tag = 2;
+
+    static std::vector<MPI_Request> send_requests(
+        2 * ndest);
+    send_requests.clear();
+    send_requests.resize(ndest, MPI_REQUEST_NULL);
+    for (int dest_idx = 0; dest_idx < ndest; ++dest_idx)
+      ABORT_ERR( par::Mpi_Issend(
+                     sendbuf + dest_idx * count, count, destinations[dest_idx],
+                     nbx_tag, comm, &send_requests[dest_idx]) );
+
+    sources.clear();
+    recvbuf.clear();
+    sources.reserve(ndest);
+    recvbuf.reserve(ndest * count);
+
+    int done = false,  barrier_active = false;
+    MPI_Request barrier_request = MPI_REQUEST_NULL;
+    while (not done)
+    {
+      // Nonblocking matching probe, with matched receive, if there is message.
+      int there_is_message = false;
+      MPI_Message msg;
+      MPI_Status status;
+      ABORT_ERR(MPI_Improbe(MPI_ANY_SOURCE, nbx_tag, comm, &there_is_message, &msg, &status));
+      if (there_is_message)
+      {
+        sources.push_back(status.MPI_SOURCE);
+        recvbuf.resize(sources.size() * count);
+        ABORT_ERR(Mpi_Mrecv(&(*recvbuf.end()) - count, count, &msg, &status));
+        // Chose blocking recv here, otherwise next recv could resize buffer.
+      }
+
+      // Exit if the barrier has completed, i.e. all dependents have received.
+      if (barrier_active)
+      {
+        int barrier_complete = false;
+        ABORT_ERR(MPI_Test(&barrier_request, &barrier_complete, MPI_STATUS_IGNORE));
+        if (barrier_complete)
+          done = true;
+      }
+      else
+      {
+        // Enter barrier only once Ssend's complete, i.e. own dependents received.
+        int ssends_complete = false;
+        ABORT_ERR(MPI_Testall(ndest, send_requests.data(), &ssends_complete, MPI_STATUSES_IGNORE));
+        if (ssends_complete)
+        {
+          ABORT_ERR(MPI_Ibarrier(comm, &barrier_request));
+          barrier_active = true;
+        }
+      }
+    }
+
+    // Need extra synch to avoid race condition due to MPI_ANY_SOURCE:
+    // Maybe the ibarrier first completes on process, A, which exits the loop
+    // and sends some data, and then another process, B, receives that data
+    // within the ibarrier loop.
+
+    std::vector<MPI_Request> send_ack_req(sources.size(), MPI_REQUEST_NULL);
+    if (synch_p2p != nullptr)
+    {
+      // Send ACK to sources, so they know that we know we are done.
+      for (int src_idx = 0, nsrc = sources.size(); src_idx < nsrc; ++src_idx)
+        ABORT_ERR( MPI_Isend(nullptr, 0, MPI_INT, sources[src_idx],
+              synch_tag, comm, &send_ack_req[src_idx]) );
+
+      // The requests to receive ACK are returned for the caller to complete,
+      // e.g., MPI_Waitall(ndest, synch_p2p, MPI_STATUSES_IGNORE)
+      for (int dest_idx = 0; dest_idx < ndest; ++dest_idx)
+        ABORT_ERR( MPI_Irecv(nullptr, 0, MPI_INT, destinations[dest_idx],
+              synch_tag, comm, &synch_p2p[dest_idx]) );
+
+      // Note that synch_tag != nbx_tag. Otherwise, original race comes here.
+    }
+
+    if (synch_global != nullptr)
+    {
+      ABORT_ERR( MPI_Ibarrier(comm, synch_global) );
+    }
+
+    if (sort_sources)
+    {
+      // future: factor out to a non-template non-inline function
+
+      // Sparse .. average num sources is small .. sort with std::sort().
+      const int nsrc = sources.size();
+      static std::vector<int> permutation(
+          2 * nsrc);
+      permutation.clear();
+      permutation.resize(nsrc);
+      std::iota(permutation.begin(), permutation.end(), 0);
+      std::sort(permutation.begin(), permutation.end(),
+          [&sources](int i, int j) { return sources[i] < sources[j]; });
+
+      // Permute sources.
+      union Union { int i; T t; };
+      const size_t szU = sizeof(Union);
+      static std::vector<Union> reorder;
+
+      reorder.clear();
+      reorder.resize((nsrc * sizeof(int) + szU - 1) / szU);
+      int *reorder_src = reinterpret_cast<int *>(reorder.data());
+      for (int i = 0; i < nsrc; ++i)
+        reorder_src[i] = sources[permutation[i]];
+      for (int i = 0; i < nsrc; ++i)
+        sources[i] = reorder_src[i];
+
+      // Permute recv data, maintaining order within each message.
+      reorder.clear();
+      reorder.resize((nsrc * sizeof(T) * count + szU - 1) / szU);
+      T *reorder_buf = reinterpret_cast<T *>(reorder.data());
+      for (int i = 0; i < nsrc; ++i)
+        for (int j = 0; j < count; ++j)
+          reorder_buf[i * count + j] = recvbuf[permutation[i] * count + j];
+      for (int i = 0; i < nsrc * count; ++i)
+        recvbuf[i] = reorder_buf[i];
+
+      assert(std::is_sorted(sources.begin(), sources.end()));
+    }
+
+    ABORT_ERR(MPI_Waitall(sources.size(), send_ack_req.data(), MPI_STATUSES_IGNORE));
+
+#undef ABORT_ERR
+
+    return MPI_SUCCESS;
+  }
+
+
+
+
+
     template <typename T>
     std::vector<T> sendAll(const std::vector<T> &sdata, const std::vector<int> &sdest, MPI_Comm comm)
     {
       if (sdata.size() != sdest.size())
         throw std::logic_error("sdata and sdest must have the same size.");
 
-      int rProc, nProc;
-      MPI_Comm_size(comm, &nProc);
-      MPI_Comm_rank(comm, &rProc);
+      // future: Instead of sendAll, index destinations within neighborhood.
 
-      std::vector<int> sendCounts(nProc, 0);
-      for (int dest : sdest)
-        sendCounts[dest]++;
+      int comm_rank;
+      MPI_Comm_rank(comm, &comm_rank);
 
-      // Inclusive prefix sum.
-      std::vector<int> sendOffsets;
-      int accumulate = 0;
-      for (int count : sendCounts)
+      const auto to_set = [](std::vector<int> v) { return std::set<int>{v.begin(), v.end()}; };
+      const auto to_vector = [](std::set<int> s) { return std::vector<int>{s.begin(), s.end()}; };
+      const std::vector<int> destinations = to_vector(to_set(sdest));
+      const int ndest = destinations.size();
+
+      std::map<int, int> dest2idx;
+      for (int i = 0; i < ndest; ++i)
+        dest2idx[destinations[i]] = i;
+
+      std::vector<int> sdest_idx(sdest.size());
+      for (int i = 0, e = sdest.size(); i < e; ++i)
+        sdest_idx[i] = dest2idx[sdest[i]];
+
+      std::vector<int> send_sizes(ndest, 0);
+      for (int dest_idx : sdest_idx)
+        ++send_sizes[dest_idx];
+
+      std::vector<int> sources;
+      std::vector<int> recv_sizes;
+      std::vector<MPI_Request> nbx_synch_p2p(ndest, MPI_REQUEST_NULL);
+      MPI_Request nbx_synch_global = MPI_REQUEST_NULL;
+      Mpi_NBX_sizes(destinations.data(), send_sizes.data(), ndest,
+          sources, recv_sizes, comm,
+          nbx_synch_p2p.data(),
+          &nbx_synch_global);
+      const int nsrc = sources.size();
+
+      const auto make_offsets = [](const std::vector<int> &sizes) {
+          std::vector<int> offsets(sizes.size(), 0);
+          int sum_sz = 0;
+          for (int i = 0, e = sizes.size(); i < e; ++i)
+          {
+            offsets[i] = sum_sz;
+            sum_sz += sizes[i];
+          }
+          return offsets;
+      };
+
+      const int send_total = sdata.size();
+      const int recv_total = std::accumulate(recv_sizes.begin(), recv_sizes.end(), int{});
+      const std::vector<int> send_offsets = make_offsets(send_sizes);
+      const std::vector<int> recv_offsets = make_offsets(recv_sizes);
+      std::vector<T> rdata(recv_total);
+
+      std::vector<MPI_Request> send_req(ndest, MPI_REQUEST_NULL);
+      std::vector<MPI_Request> recv_req(nsrc, MPI_REQUEST_NULL);
+
+      // Permute data
+      std::vector<T> ordered(send_total);
       {
-        sendOffsets.push_back(accumulate + count);
-        accumulate += count;
+        std::vector<int> pos = send_offsets;
+        for (int i = 0; i < send_total; ++i)
+          ordered[pos[sdest_idx[i]]++] = sdata[i];
       }
 
-      // Insert from back to front. Converts prefix sum to exclusive.
-      std::vector<T> dataPermuteByDest(sdata.size());
-      for (int revI = 0; revI < sdata.size(); revI++)
+      int self_dest_idx = -1;
+      int self_src_idx = -1;
+
+      // Must wait for ACKs from destinations before send again.
+      MPI_Waitall(ndest, nbx_synch_p2p.data(), MPI_STATUSES_IGNORE);
+
+      // Post receives.
+      for (int si = 0; si < nsrc; ++si)
+        if (sources[si] != comm_rank)
+          Mpi_Irecv( &rdata[recv_offsets[si]], recv_sizes[si], sources[si],
+              int{}, comm, &recv_req[si]);
+        else
+          self_src_idx = si;
+
+      // Initiate sends.
+      for (int di = 0; di < ndest; ++di)
+        if (destinations[di] != comm_rank)
+          Mpi_Isend( &ordered[send_offsets[di]], send_sizes[di], destinations[di],
+              int{}, comm, &send_req[di]);
+        else
+          self_dest_idx = di;
+
+      // Copy self.
+      assert((self_src_idx != -1) == (self_dest_idx != -1));
+      if (self_dest_idx != -1 and self_src_idx != -1)
       {
-        const int ii = sdata.size() - 1 - revI;
-        const int dest = sdest[ii];
-        dataPermuteByDest[--sendOffsets[dest]] = sdata[ii];
+        assert(send_sizes[self_dest_idx] == recv_sizes[self_src_idx]);
+        std::copy_n( &ordered[send_offsets[self_dest_idx]],
+            send_sizes[self_dest_idx],
+            &rdata[recv_offsets[self_src_idx]] );
       }
 
-      std::vector<int> recvCounts(nProc, 0);
-      Mpi_Alltoall(sendCounts.data(), recvCounts.data(), 1, comm); 
-
-      // Exclusive prefix sum.
-      std::vector<int> recvOffsets;
-      accumulate = 0;
-      for (int count : recvCounts)
-      {
-        recvOffsets.push_back(accumulate);
-        accumulate += count;
-      }
-
-      std::vector<T> rdata(accumulate);
-
-      Mpi_Alltoallv_sparse(dataPermuteByDest.data(), sendCounts.data(), sendOffsets.data(),
-                           rdata.data(), recvCounts.data(), recvOffsets.data(),
-                           comm);
+      MPI_Waitall(ndest, send_req.data(), MPI_STATUSES_IGNORE);
+      MPI_Waitall(nsrc, recv_req.data(), MPI_STATUSES_IGNORE);
+      MPI_Wait(&nbx_synch_global, MPI_STATUS_IGNORE);
 
       return rdata;
     }
