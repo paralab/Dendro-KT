@@ -319,6 +319,7 @@ std::vector<size_t> SFC_Tree<T, dim>::lower_bound(
   Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
   Segment<const Oct> segSortedKeys(&(*sortedKeys.cbegin()), 0, sortedKeys.size());
   std::vector<size_t> lowerBounds;
+  lowerBounds.reserve(sortedKeys.size());
 
   lower_bound_rec<T, dim>(
       segSortedOcts,
