@@ -430,10 +430,7 @@ std::vector<TreeNode<T,dim>> SFC_Tree<T,dim>::dist_bcastSplitters(const TreeNode
 
   using TreeNode = TreeNode<T,dim>;
   std::vector<TreeNode> splitters(nProc);
-  splitters[rProc] = *start;
-
-  for (int turn = 0; turn < nProc; turn++)
-    par::Mpi_Bcast<TreeNode>(&splitters[turn], 1, turn, comm);
+  par::Mpi_Allgather(start, splitters.data(), 1, comm);
 
   return splitters;
 }
