@@ -3898,25 +3898,16 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   MPI_Comm_size(comm, &commSize);
   MPI_Comm_rank(comm, &commRank);
 
-  const bool isActive = tree.size() > 0;
-
   {DOLLAR("locMinimalBalanced.pre");
   locMinimalBalanced(tree);
   }
 
+  const bool isActive = tree.size() > 0;
+  PartitionFrontBackRequest partition_request(
+      isActive, tree.front(), tree.back(), comm);
+
   // The unstable octants (processor boundary octants) may need to be refined.
   const OctList unstableOwned = unstableOctants(tree, commRank > 0, commRank < commSize - 1);
-
-  // Splitters of active ranks.
-  std::vector<int> active;
-  const PartitionFrontBack<T, dim> partition =
-      allgatherSplitters(tree.size() > 0, tree.front(), tree.back(), comm, &active);
-
-  std::map<int, int> invActive;
-  for (int ar = 0; ar < active.size(); ++ar)
-    invActive[active[ar]] = ar;
-
-  const int activeRank = (isActive ? invActive[commRank] : -1);
 
   // (Round 1)
   // Find insulation layers of unstable octs.
@@ -3931,6 +3922,19 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
     endInsulationOfOwned.push_back(insulationOfOwned.size());
   }
   }
+
+  // Splitters of active ranks.
+  std::vector<int> active;
+  PartitionFrontBack<T, dim> partition;
+  {
+    DOLLAR("allgatherSplitters.complete");
+    partition = std::move(partition_request).complete(&active);
+  }
+
+  std::map<int, int> invActive;
+  for (int ar = 0; ar < active.size(); ++ar)
+    invActive[active[ar]] = ar;
+  const int activeRank = (isActive ? invActive[commRank] : -1);
 
   // Every insulation octant overlaps a range of active ranks.
   // Expect return indices relative to active list.
@@ -4272,6 +4276,7 @@ PartitionFront<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
   return partition;
 }
 
+
 template <typename T, unsigned int dim>
 PartitionFrontBack<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
     bool nonempty_,
@@ -4281,25 +4286,44 @@ PartitionFrontBack<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
     std::vector<int> *activeList)
 {
   DOLLAR("allgatherSplitters");
-  int commSize, commRank;
-  MPI_Comm_size(comm, &commSize);
-  MPI_Comm_rank(comm, &commRank);
+  return PartitionFrontBackRequest(nonempty_, front_, back_, comm)
+    .complete(activeList);
+}
 
-  std::vector<TreeNode<T, dim>> fronts(commSize);
-  std::vector<TreeNode<T, dim>> backs(commSize);
-  std::vector<char> isNonempty(commSize, false);
-  const TreeNode<T, dim> front = (nonempty_ ? front_ : TreeNode<T, dim>());
-  const TreeNode<T, dim> back = (nonempty_ ? back_ : TreeNode<T, dim>());
-  const char nonempty = nonempty_;
-  par::Mpi_Allgather(&front, &(*fronts.begin()), 1, comm);
-  par::Mpi_Allgather(&back, &(*backs.begin()), 1, comm);
-  par::Mpi_Allgather(&nonempty, &(*isNonempty.begin()), 1, comm);
+// PartitionFrontBackRequest()
+template <typename T, unsigned dim>
+SFC_Tree<T, dim>::PartitionFrontBackRequest::PartitionFrontBackRequest(
+    bool nonempty_,
+    const TreeNode<T, dim> &front_,
+    const TreeNode<T, dim> &back_,
+    MPI_Comm comm_)
+  :
+    comm(comm_),
+    pfb(PartitionFrontBack<T, dim>::allocate(par::mpi_comm_size(comm_))),
+    isNonempty(par::mpi_comm_size(comm_), false),
+    front(nonempty_ ? front_ : TreeNode<T, dim>()),
+    back(nonempty_ ? back_ : TreeNode<T, dim>()),
+    nonempty(nonempty_)
+{
+  par::Mpi_Iallgather(&front, &(*pfb.m_fronts.begin()), 1, comm, &requests[0]);
+  par::Mpi_Iallgather(&back, &(*pfb.m_backs.begin()), 1, comm, &requests[1]);
+  par::Mpi_Iallgather(&nonempty, &(*isNonempty.begin()), 1, comm, &requests[2]);
+}
+
+// complete()
+template <typename T, unsigned dim>
+PartitionFrontBack<T, dim>
+SFC_Tree<T, dim>::PartitionFrontBackRequest::complete(
+    std::vector<int> *activeList) &&
+{
+  const int commSize = par::mpi_comm_size(comm);
+  MPI_Waitall(3, requests, MPI_STATUSES_IGNORE);
 
   for (int r = commSize - 2; r >= 0; --r)
     if (!isNonempty[r])
     {
-      fronts[r] = fronts[r + 1];
-      backs[r] = fronts[r + 1];   // To maintain ordering: f[r]<=b[r]<=f[r+1]
+      pfb.m_fronts[r] = pfb.m_fronts[r + 1];
+      pfb.m_backs[r] = pfb.m_fronts[r + 1];   // To maintain ordering: f[r]<=b[r]<=f[r+1]
     }
 
   if (activeList != nullptr)
@@ -4310,10 +4334,7 @@ PartitionFrontBack<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
         activeList->push_back(r);
   }
 
-  PartitionFrontBack<T, dim> partition;
-  partition.m_fronts = fronts;
-  partition.m_backs = backs;
-  return partition;
+  return PartitionFrontBack<T, dim>{std::move(pfb)};
 }
 
 

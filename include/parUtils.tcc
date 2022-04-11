@@ -32,6 +32,20 @@
 
 namespace par {
 
+  inline int mpi_comm_size(MPI_Comm comm)
+  {
+    int comm_size;
+    MPI_Comm_size(comm, &comm_size);
+    return comm_size;
+  }
+
+  inline int mpi_comm_rank(MPI_Comm comm)
+  {
+    int comm_rank;
+    MPI_Comm_rank(comm, &comm_rank);
+    return comm_rank;
+  }
+
   template<typename T>
   inline int Mpi_Isend(const T *buf, int count, int dest, int tag,
                        MPI_Comm comm, MPI_Request *request) {
@@ -247,6 +261,20 @@ namespace par {
 
     PROF_PAR_ALLGATHERV_END
   }
+
+  /** @author Masado Ishii */
+  template <typename T>
+  int Mpi_Iallgather(const T* sendbuf, T* recvbuf, int count,
+        MPI_Comm comm, MPI_Request *request)
+  {
+    return MPI_Iallgather(sendbuf, count, Mpi_datatype<T>::value(),
+                          recvbuf, count, Mpi_datatype<T>::value(),
+                          comm, request);
+  }
+
+
+
+
 
   template<typename T>
   int Mpi_Allgather(const T *sendBuf, T *recvBuf, int count, MPI_Comm comm) {
