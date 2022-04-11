@@ -216,6 +216,12 @@ struct PartitionFrontBack
   std::vector<TreeNode<T, dim>> m_backs;
 
   PartitionFront<T, dim> fronts() const { return { m_fronts }; }
+
+  static PartitionFrontBack allocate(size_t size)
+  {
+    return {std::vector<TreeNode<T, dim>>(size),
+            std::vector<TreeNode<T, dim>>(size)};
+  }
 };
 
 template <typename IntT = int>
@@ -575,6 +581,9 @@ struct SFC_Tree
       MPI_Comm comm,
       std::vector<int> *activeList = nullptr);
 
+  // future: follow same pattern as PartitionFrontBackRequest
+  //         PartitionFrontRequest
+
   /**
    * @brief Allgather first and last TreeNode.
    *        An empty rank's front and back are both set to successor's front.
@@ -585,6 +594,34 @@ struct SFC_Tree
       const TreeNode<T, dim> &back,
       MPI_Comm comm,
       std::vector<int> *activeList = nullptr);
+
+  struct PartitionFrontBackRequest
+  {
+    // Not copyable or movable. Need member pointer stability for Iallgather.
+    // If need to transfer, wrap in std::unique_ptr.
+    PartitionFrontBackRequest() = delete;
+    PartitionFrontBackRequest(const PartitionFrontBackRequest &) = delete;
+    PartitionFrontBackRequest(PartitionFrontBackRequest &&) = delete;
+    PartitionFrontBackRequest & operator=(const PartitionFrontBackRequest &) = delete;
+    PartitionFrontBackRequest & operator=(PartitionFrontBackRequest &&) = delete;
+
+    MPI_Comm comm;
+    PartitionFrontBack<T, dim> pfb;
+    std::vector<char> isNonempty;
+    const TreeNode<T, dim> front;
+    const TreeNode<T, dim> back;
+    const char nonempty;
+    MPI_Request requests[3];
+
+    PartitionFrontBackRequest(
+        bool nonempty_,
+        const TreeNode<T, dim> &front_,
+        const TreeNode<T, dim> &back_,
+        MPI_Comm comm_);
+
+    PartitionFrontBack<T, dim> complete(
+        std::vector<int> *activeList) &&;
+  };
 
   /**
    * @brief Map a set of treeNodes in the domain to the partition ranks

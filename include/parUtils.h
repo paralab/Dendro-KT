@@ -283,6 +283,9 @@ namespace par {
     }
   };
 
+  int mpi_comm_size(MPI_Comm comm);
+
+  int mpi_comm_rank(MPI_Comm comm);
 
   template <typename T>
     int Mpi_Isend(const T* buf, int count, int dest, int tag, MPI_Comm comm, MPI_Request* request);
@@ -389,6 +392,14 @@ namespace par {
    */
   template <typename T>
     int Mpi_Alltoall(const T* sendbuf, T* recvbuf, int count, MPI_Comm comm); 
+
+
+  /* With MPI-3 there are nonblocking collectives. */
+
+  /** @author Masado Ishii */
+  template <typename T>
+    int Mpi_Iallgather(const T* sendbuf, T* recvbuf, int count,
+        MPI_Comm comm, MPI_Request *request);
 
 
   /**
