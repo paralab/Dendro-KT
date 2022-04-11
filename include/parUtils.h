@@ -395,6 +395,9 @@ namespace par {
    * @author Masado Ishii
    * @brief Nonblocking Consensus due to (Hoefler et al., 2010).
    * Allows sparse alltoall exchange without calling any alltoall.
+   * A barrier is automatically called for correctness.
+   * For better control over when the barrier must complete,
+   * supply MPI_Request(s) to the appropriate overloads.
    */
   inline int Mpi_NBX_neighbors(
       const int *destinations, const int ndest,
@@ -424,6 +427,42 @@ namespace par {
       MPI_Comm comm,
       bool sort_sources = true);
 
+  /**
+   * @author Masado Ishii
+   * @brief Nonblocking Consensus due to (Hoefler et al., 2010).
+   * Allows sparse alltoall exchange without calling any alltoall.
+   * However, a non-blocking synch is needed before sending again,
+   * due to implementation of nbx with MPI_ANY_SOURCE.
+   * Must call MPI_Waitall() with synch_p2p[] before sending to destinations.
+   * Must call MPI_Wait() with synch_global before sending to others.
+   * After synch_global completes, synch_p2p[] is not needed,
+   * so synch_p2p=nullptr is ok if no middle phase for destinations only.
+   */
+  inline int Mpi_NBX_neighbors(
+      const int *destinations, const int ndest,
+      std::vector<int> &sources,
+      MPI_Comm comm,
+      MPI_Request * synch_p2p,     // array of length ndest
+      MPI_Request * synch_global,
+      bool sort_sources = true);
+
+  inline int Mpi_NBX_sizes(
+      const int *destinations, const int *send_sizes, const int ndest,
+      std::vector<int> &sources, std::vector<int> &recv_sizes,
+      MPI_Comm comm,
+      MPI_Request * synch_p2p,     // array of length ndest
+      MPI_Request * synch_global,
+      bool sort_sources = true);
+
+  template <typename T>
+  inline int Mpi_NBX(
+      const int *destinations, const int ndest,
+      const T *sendbuf, const int count,
+      std::vector<int> &sources, std::vector<T> &recvbuf,
+      MPI_Comm comm,
+      MPI_Request * synch_p2p,     // array of length ndest
+      MPI_Request * synch_global,
+      bool sort_sources = true);
 
 
   /**
@@ -457,10 +496,6 @@ namespace par {
     template <typename T>
     int Mpi_Alltoallv_Kway(const T* sbuff_, int* s_cnt_, int* sdisp_,
                            T* rbuff_, int* r_cnt_, int* rdisp_, MPI_Comm c);
-
-
-    template <typename T>
-    std::vector<T> sendAll(const std::vector<T> &sdata, const std::vector<int> &sdest, MPI_Comm comm);
 
 
     template <typename T>
