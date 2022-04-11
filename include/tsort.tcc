@@ -424,6 +424,7 @@ SFC_Tree<T,dim>:: SFC_locateBuckets_impl(const PointType *points,
 template <typename T, unsigned int dim>
 std::vector<TreeNode<T,dim>> SFC_Tree<T,dim>::dist_bcastSplitters(const TreeNode<T,dim> *start, MPI_Comm comm)
 {
+  DOLLAR("dist_bcastSplitters.singleComm");
   int nProc, rProc;
   MPI_Comm_rank(comm, &rProc);
   MPI_Comm_size(comm, &nProc);
@@ -447,6 +448,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::dist_bcastSplitters(
     bool isActive,
     std::vector<int> &activeList)
 {
+  DOLLAR("dist_bcastSplitters.2Comm");
   int rProc, nProc;
   MPI_Comm_size(globalComm, &nProc);
   MPI_Comm_rank(globalComm, &rProc);
@@ -495,6 +497,7 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
     const std::vector<TreeNode<T, dim>> &treeNodes,
     const std::vector<TreeNode<T, dim>> &partitionFrontSplitters)
 {
+  DOLLAR("treeNode2PartitionRank.tcc");
   // Result
   std::vector<int> rankIds(treeNodes.size(), -1);
 
