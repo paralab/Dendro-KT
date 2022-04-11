@@ -38,6 +38,7 @@ option(BUILD_WITH_PETSC " build dendro with PETSC " ON)
 option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" OFF)
 option(BUILD_EXAMPLES "build example programs" ON)
 option(BUILD_WITH_AMAT "build with aMat support" ON)
+option(MANUAL_AMAT_UPDATE "if amat directory exists, do not attempt git pull" OFF)
 option(USE_2TO1_GLOBAL_SORT "Use global sort instead of two-pass method for 2:1 balancing" OFF)
 
 set(KWAY 128 CACHE INT 128)
@@ -62,13 +63,17 @@ if(BUILD_WITH_AMAT)
     set(GOT_AMAT False)
 
     if(EXISTS ${EXTERNAL_AMAT_LOCATION})
-        message("Pull changes from aMat")
-        execute_process(
-        COMMAND             ${GIT_EXECUTABLE} pull origin AMatDendro
-        #COMMAND             ${GIT_EXECUTABLE} submodule update --remote
-        WORKING_DIRECTORY   ${EXTERNAL_AMAT_LOCATION}
-        RESULT_VARIABLE     ${GOT_AMAT}
-        )
+        if (NOT ${MANUAL_AMAT_UPDATE})
+            message("Pull changes from aMat")
+            execute_process(
+            COMMAND             ${GIT_EXECUTABLE} pull origin AMatDendro
+            #COMMAND             ${GIT_EXECUTABLE} submodule update --remote
+            WORKING_DIRECTORY   ${EXTERNAL_AMAT_LOCATION}
+            RESULT_VARIABLE     ${GOT_AMAT}
+            )
+        else()
+            message("aMat must be updated manually")
+        endif()
 
     else()
         message("Cloning aMat ${GIT_EXECUTABLE}")
