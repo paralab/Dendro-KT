@@ -232,6 +232,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
 
 
 add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
+target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/dollar-master)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/include)
@@ -491,6 +492,14 @@ add_executable(tstMatAssembly ${SRC_FILES})
 set_property(TARGET tstMatAssembly PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
 target_include_directories(tstMatAssembly PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
 target_link_libraries(tstMatAssembly dendroKT ${MPI_LIBRARIES} m)
+
+
+
+add_executable(doctest_hello_world test_doctests/hello_world.cpp test_doctests/main.cpp)
+set_property(TARGET doctest_hello_world PROPERTY RUNTIME_OUTPUT_DIRECTORY test_doctests)
+target_include_directories(doctest_hello_world PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_hello_world dendroKT ${MPI_LIBRARIES} m)
+
 
 
 ## tsort_bench (./tsortBench)
