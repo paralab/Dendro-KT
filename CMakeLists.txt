@@ -181,6 +181,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/passive_shared_ptr.hpp
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
+        IO/hexlist/json_hexlist.h
                   array/include/arraySlice.h
                   FEM/include/matvec.h
                   FEM/include/tensor.h
@@ -217,6 +218,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/dollar_stat.cpp
                   IO/vtk/src/oct2vtk.cpp
                   IO/vtk/src/checkPoint.cpp
+        IO/hexlist/json_hexlist.cpp
                   src/oda.cpp
                   src/p2p.cpp
                   FEM/src/tensor.cpp
@@ -227,8 +229,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   FEM/src/tensor_special_unsigned.cpp
                   FEM/src/tensor_special_char.cpp
                   FEM/src/refel.cpp
-                  FEM/src/basis.cpp
-                  )
+                  FEM/src/basis.cpp)
 
 
 add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
@@ -299,6 +300,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeVtu.cpp)
 add_executable(tstTreeVtu ${SRC_FILES})
 target_include_directories(tstTreeVtu PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstTreeVtu dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeJson.cpp)
+add_executable(tstTreeJson ${SRC_FILES})
+target_include_directories(tstTreeJson PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstTreeJson dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testHCurveTable.cpp)
 add_executable(tstHCurveTable ${SRC_FILES})
