@@ -499,13 +499,7 @@ set_property(TARGET tstMatAssembly PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FE
 target_include_directories(tstMatAssembly PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
 target_link_libraries(tstMatAssembly dendroKT ${MPI_LIBRARIES} m)
 
-
-
-add_executable(doctest_hello_world test_doctests/hello_world.cpp test_doctests/main.cpp)
-set_property(TARGET doctest_hello_world PROPERTY RUNTIME_OUTPUT_DIRECTORY test_doctests)
-target_include_directories(doctest_hello_world PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(doctest_hello_world dendroKT ${MPI_LIBRARIES} m)
-
+add_subdirectory(test_doctests)
 
 
 ## tsort_bench (./tsortBench)

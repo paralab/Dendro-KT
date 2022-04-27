@@ -25,6 +25,14 @@ namespace io
     void to_octlist(std::vector<ot::TreeNode<T, dim>> &octlist, int unit_level) const;
 
     template <typename T, unsigned dim>
+    std::vector<ot::TreeNode<T, dim>> to_octlist(int unit_level) const
+    {
+      std::vector<ot::TreeNode<T, dim>> ret;
+      this->to_octlist(ret, unit_level);
+      return ret;
+    }
+
+    template <typename T, unsigned dim>
     static JSON_Hexlist from_octlist(const std::vector<ot::TreeNode<T, dim>> &octlist, int unit_level);
 
     bool matching_format() const { return format_version == expected_format; }
