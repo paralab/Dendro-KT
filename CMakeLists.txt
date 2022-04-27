@@ -181,7 +181,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/passive_shared_ptr.hpp
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
-        IO/hexlist/json_hexlist.h
+                  IO/hexlist/json_hexlist.h
                   array/include/arraySlice.h
                   FEM/include/matvec.h
                   FEM/include/tensor.h
@@ -218,7 +218,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/dollar_stat.cpp
                   IO/vtk/src/oct2vtk.cpp
                   IO/vtk/src/checkPoint.cpp
-        IO/hexlist/json_hexlist.cpp
+                  IO/hexlist/json_hexlist.cpp
                   src/oda.cpp
                   src/p2p.cpp
                   FEM/src/tensor.cpp
