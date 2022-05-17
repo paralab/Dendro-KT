@@ -24,7 +24,8 @@ void ZPrintf(Ts && ... ts)
 template <typename T>
 void shift(const std::vector<T> &input,
            std::vector<T> &output,
-           MPI_Comm comm);
+           MPI_Comm comm,
+           const int ndofs = 1);
 
 
 int main(int argc, char * argv[])
@@ -40,19 +41,32 @@ int main(int argc, char * argv[])
   const int length_var = 10;
 
   {
-    ZPrintf("uniform to uniform: ");
-    const std::vector<int> input = uniform(init_length, comm);
-    std::vector<int> output = uniform(init_length, comm);
-    shift(input, output, comm);
-    const bool monotone = par::mpi_and(
-        std::is_sorted(output.begin(), output.end()), comm);
-    ZPrintf("%s\n" NRM, (monotone ? GRN "passed" : RED "failed"));
+    ZPrintf("uniform to uniform (dof=1): ");
+    const int ndofs = 1;
+    const std::vector<int> input = uniform(init_length * ndofs, comm);
+    std::vector<int> output = uniform(init_length * ndofs, comm);
+    std::fill(output.begin(), output.end(), 0);
+    shift(input, output, comm, ndofs);
+    const bool equal = par::mpi_and(output == input, comm);
+    ZPrintf("%s\n" NRM, (equal ? GRN "passed" : RED "failed"));
+  }
+
+  {
+    ZPrintf("uniform to uniform (dof=3): ");
+    const int ndofs = 3;
+    const std::vector<int> input = uniform(init_length * ndofs, comm);
+    std::vector<int> output = uniform(init_length * ndofs, comm);
+    std::fill(output.begin(), output.end(), 0);
+    shift(input, output, comm, ndofs);
+    const bool equal = par::mpi_and(output == input, comm);
+    ZPrintf("%s\n" NRM, (equal ? GRN "passed" : RED "failed"));
   }
 
   {
     ZPrintf("uniform to ragged: ");
     const std::vector<int> input = uniform(init_length, comm);
     std::vector<int> output = ragged(init_length, length_var, comm);
+    std::fill(output.begin(), output.end(), 0);
     shift(input, output, comm);
     const bool monotone = par::mpi_and(
         std::is_sorted(output.begin(), output.end()), comm);
@@ -63,6 +77,7 @@ int main(int argc, char * argv[])
     ZPrintf("ragged to uniform: ");
     const std::vector<int> input = ragged(init_length, length_var, comm);
     std::vector<int> output = uniform(init_length, comm);
+    std::fill(output.begin(), output.end(), 0);
     shift(input, output, comm);
     const bool monotone = par::mpi_and(
         std::is_sorted(output.begin(), output.end()), comm);
@@ -73,6 +88,7 @@ int main(int argc, char * argv[])
     ZPrintf("ragged to ragged: ");
     const std::vector<int> input = ragged(init_length, length_var, comm);
     std::vector<int> output = ragged(init_length, length_var, comm);
+    std::fill(output.begin(), output.end(), 0);
     shift(input, output, comm);
     const bool monotone = par::mpi_and(
         std::is_sorted(output.begin(), output.end()), comm);
@@ -89,15 +105,18 @@ int main(int argc, char * argv[])
 template <typename T>
 void shift(const std::vector<T> &input,
            std::vector<T> &output,
-           MPI_Comm comm)
+           MPI_Comm comm,
+           const int ndofs)
 {
-  const DendroIntL size_local[2] = { (DendroIntL) input.size(), (DendroIntL) output.size() };
+  const DendroIntL size_local[2] = { (DendroIntL) input.size() / ndofs,
+                                     (DendroIntL) output.size() / ndofs };
   DendroIntL begin_global[2] = { 0, 0 };
   par::Mpi_Exscan(size_local, begin_global, 2, MPI_SUM, comm);
   par::shift(
       comm,
       input.data(), size_local[0], begin_global[0],
-      output.data(), size_local[1], begin_global[1]);
+      output.data(), size_local[1], begin_global[1],
+      ndofs);
 }
 
 
