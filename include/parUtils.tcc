@@ -20,6 +20,7 @@
 #include "ompUtils.h"
 #include <chrono>
 #include <assert.h>
+#include <memory>
 
 
 #ifdef __DEBUG__
@@ -2267,6 +2268,108 @@ namespace par {
 
 
 
+  namespace detail
+  {
+    template <typename T>
+    class ShiftP2PContext;
+    class ShiftP2PSchedule;
+
+    //
+    // class ShiftP2PSchedule
+    //
+    class ShiftP2PSchedule
+    {
+      public:
+        ShiftP2PSchedule( MPI_Comm comm,
+                          size_t srcSizeLocal, DendroIntL srcBeginGlobal,
+                          size_t dstSizeLocal, DendroIntL dstBeginGlobal );
+
+        template <typename T>
+        ShiftP2PContext<T> context(const T *srcLocal, T *dstLocal, int ndofs) const;
+
+      private:
+        static constexpr bool printDebug = false;
+        template <typename T>  friend class ShiftP2PContext;
+
+        MPI_Comm comm = MPI_COMM_NULL;  // must be in ctor member init list
+        int nProc = mpi_comm_size(comm);
+        int rProc = mpi_comm_rank(comm);
+        std::vector<int> dstTo;
+        std::vector<int> srcFrom;
+        std::vector<int> dstCount;
+        std::vector<int> srcCount;
+        std::vector<int> dstDspls;
+        std::vector<int> srcDspls;
+        std::string dstRangeStr;
+        std::string srcRangeStr;
+        int selfSrcI = -1;
+        int selfDstI = -1;
+    };
+
+    //
+    // class ShiftP2PContext
+    //
+    template <typename T>
+    class ShiftP2PContext
+    {
+      public:
+        // Borrows schedule; schedule must outlive activity that uses context.
+        ShiftP2PContext(const ShiftP2PSchedule *schedule, const T *srcLocal, T *dstLocal, int ndofs)
+          : s(schedule), srcLocal(srcLocal), dstLocal(dstLocal), ndofs(ndofs)
+        {
+          if (printDebug)
+          { std::stringstream ss;
+            ss << "[" << s->rProc << "] ";
+            rankPrefix = ss.str();
+          }
+        }
+
+        // Moveable, not copyable.
+        ShiftP2PContext(const ShiftP2PContext &) = delete;
+        ShiftP2PContext(ShiftP2PContext &&) = default;
+
+        ShiftP2PContext & isendrecv();
+        ShiftP2PContext & local();
+        ShiftP2PContext & wait();
+
+        ShiftP2PContext & operator=(const ShiftP2PContext &) = delete;
+        ShiftP2PContext & operator=(ShiftP2PContext &&) = default;
+
+        // Above operations must be done in-order on any ShiftP2PContext instance:
+        // A constructed object must call isendrecv() then local() then wait().
+        // An object can be optionally move-assigned, but only after calling wait().
+
+      private:
+        static constexpr bool printDebug = ShiftP2PSchedule::printDebug;
+
+        const ShiftP2PSchedule *s = nullptr;
+        const T * const srcLocal;  T * const dstLocal;  int ndofs;
+
+        // Init'n is in order of declaration: Ctor member init list MUST init s.
+        const std::vector<int> & dstTo    = s->dstTo;
+        const std::vector<int> & srcFrom  = s->srcFrom;
+        const std::vector<int> & dstCount = s->dstCount;
+        const std::vector<int> & srcCount = s->srcCount;
+        const std::vector<int> & dstDspls = s->dstDspls;
+        const std::vector<int> & srcDspls = s->srcDspls;
+
+        // make_unique() needs c++14
+        using VecReq = std::vector<MPI_Request>;
+        std::unique_ptr<VecReq> requests = std::make_unique<VecReq>(
+            srcFrom.size() + dstTo.size(), MPI_REQUEST_NULL);
+
+        int commCnt = 0;
+        std::string rankPrefix;
+    };
+
+    template <typename T>
+    ShiftP2PContext<T> ShiftP2PSchedule::context(const T *srcLocal, T *dstLocal, int ndofs) const
+    {
+      return ShiftP2PContext<T>(this, srcLocal, dstLocal, ndofs);
+    }
+  }
+
+
   template <typename T>
   void shift(
       MPI_Comm comm,
@@ -2274,311 +2377,361 @@ namespace par {
             T *dstLocal, size_t dstSizeLocal, DendroIntL dstBeginGlobal,
       int ndofs)
   {
-    // Upfront Allgather, locally make pairs, point-to-point.
-
-    constexpr bool printDebug = false;
-
-    int rProc, nProc;
-    MPI_Comm_rank(comm, &rProc);
-    MPI_Comm_size(comm, &nProc);
-
-    const DendroIntL mySrcGlobBegin = srcBeginGlobal;
-    const DendroIntL myDstGlobBegin = dstBeginGlobal;
-    const DendroIntL mySrcGlobEnd = mySrcGlobBegin + srcSizeLocal;
-    const DendroIntL myDstGlobEnd = myDstGlobBegin + dstSizeLocal;
-
-    std::string rankPrefix;
-    if (printDebug)
-    { std::stringstream ss;
-      ss << "[" << rProc << "] ";
-      rankPrefix = ss.str();
-    }
-
-    // Includes boundaries, [0]=0 and [n]=(total global number nodes)
-    std::vector<DendroIntL> allSrcSplit(nProc+1, 0);
-    std::vector<DendroIntL> allDstSplit(nProc+1, 0);
-    if(printDebug) std::cerr << rankPrefix << "Begin Allgather (#1)\n";
-    par::Mpi_Allgather(&mySrcGlobEnd, &allSrcSplit[1], 1, comm);
-    if(printDebug) std::cerr << rankPrefix << "Begin Allgather (#2)\n";
-    par::Mpi_Allgather(&myDstGlobEnd, &allDstSplit[1], 1, comm);
-    if(printDebug) std::cerr << rankPrefix << "Concluded Allgather\n";
-
-    const bool isActiveSrc = srcSizeLocal > 0;
-    const bool isActiveDst = dstSizeLocal > 0;
-
-    if (printDebug && rProc == 0)
-    {
-      std::stringstream ss;
-      ss << "allSrcSplit == ";
-      for (DendroIntL split : allSrcSplit)
-        ss << " " << split;
-      ss << "\n";
-      ss << "allDstSplit == ";
-      for (DendroIntL split : allDstSplit)
-        ss << " " << split;
-      ss << "\n";
-      fprintf(stderr, "\n%s\n", ss.str().c_str());
-    }
-
-    if (!isActiveSrc && !isActiveDst)
-    {
-      if(printDebug) std::cerr << rankPrefix << "Not active. Returning.\n";
-      return;
-    }
-
-
-    // Figure out whom to send to / recv from.
-    // - otherDstBegin[r0] <= mySrcBegin <= mySrcRank[x] < mySrcEnd <= otherDstEnd[r1];
-    // - otherSrcBegin[r0] <= myDstBegin <= myDstRank[x] < myDstEnd <= otherSrcEnd[r1];
-
-    int dst_r0, dst_r1;
-    int src_r0, src_r1;
-
-    if(printDebug) std::cerr << rankPrefix << "Begin binary search (#1)\n";
-
-    // Binary search to determine  dst_r0, dst_r1,  src_r0, src_r1.
-    constexpr int bSplit = 0;
-    constexpr int eSplit = 1;
-    // Search for last rank : dstBegin[rank] <= mySrcBegin
-    int r_lb = 0, r_ub = nProc-1;  // Inclusive lower/upper bounds.
-    { while (r_lb < r_ub)
-      {
-        const int test = (r_lb + r_ub + 1)/2;
-        if (allDstSplit[test + bSplit] <= mySrcGlobBegin)
-        {
-          r_lb = test;
-        }
-        else
-        {
-          r_ub = test - 1;
-        }
-      }
-    }
-    dst_r0 = r_lb;
-
-    if(printDebug) std::cerr << rankPrefix << "Begin binary search (#2)\n";
-    // Search for first rank after dst_r0: mySrcEnd <= dstEnd[rank]
-    r_ub = nProc - 1;
-    { while (r_lb < r_ub)
-      {
-        const int test = (r_lb + r_ub)/2;
-        if (mySrcGlobEnd <= allDstSplit[test + eSplit])
-        {
-          r_ub = test;
-        }
-        else
-        {
-          r_lb = test + 1;
-        }
-      }
-    }
-    dst_r1 = r_lb;
-
-    if(printDebug) std::cerr << rankPrefix << "Begin binary search (#3)\n";
-    // Search for last rank : srcBegin[rank] <= myDstBegin
-    r_lb = 0;  r_ub = nProc-1;
-    { while (r_lb < r_ub)
-      {
-        const int test = (r_lb + r_ub + 1)/2;
-        if (allSrcSplit[test + bSplit] <= myDstGlobBegin)
-        {
-          r_lb = test;
-        }
-        else
-        {
-          r_ub = test - 1;
-        }
-      }
-    }
-    src_r0 = r_lb;
-
-    if(printDebug) std::cerr << rankPrefix << "Begin binary search (#4)\n";
-    // Search for first rank after src_r0: myDstEnd <= srcEnd[rank]
-    r_ub = nProc - 1;
-    { while (r_lb < r_ub)
-      {
-        const int test = (r_lb + r_ub)/2;
-        if (myDstGlobEnd <= allSrcSplit[test + eSplit])
-        {
-          r_ub = test;
-        }
-        else
-        {
-          r_lb = test + 1;
-        }
-      }
-    }
-    src_r1 = r_lb;
-
-    if(printDebug) std::cerr << rankPrefix << "Concluded binary search\n";
-
-    // The binary search should automaticallly take care of the case
-    // that some ranks are not active, but if it doesn't, give error.
-    if (!(
-          !(dst_r0+1 < nProc   && allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin) &&
-          !(dst_r1-1 >= dst_r0 && allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd) &&
-          !(src_r0+1 < nProc   && allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin) &&
-          !(src_r1-1 >= src_r0 && allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd)
-         ))
-    {
-      fprintf(stderr, "%s:\n"
-                      "  mySrcGlobBegin--End == %llu--%llu\n"
-                      "  myDstGlobBegin--End == %llu--%llu\n"
-                      "  dst_r0+1 + bSplit == %u    -->   allDstSplit[] == %llu\n"
-                      "  dst_r1-1 + eSplit == %u    -->   allDstSplit[] == %llu\n"
-                      "  src_r0+1 + bSplit == %u    -->   allSrcSplit[] == %llu\n"
-                      "  src_r1-1 + eSplit == %u    -->   allSrcSplit[] == %llu\n",
-                      rankPrefix.c_str(),
-                      mySrcGlobBegin, mySrcGlobEnd,
-                      myDstGlobBegin, myDstGlobEnd,
-                      dst_r0+1 + bSplit, allDstSplit[dst_r0+1 + bSplit],
-                      dst_r1-1 + eSplit, allDstSplit[dst_r1-1 + eSplit],
-                      src_r0+1 + bSplit, allSrcSplit[src_r0+1 + bSplit],
-                      src_r1-1 + eSplit, allSrcSplit[src_r1-1 + eSplit]
-          );
-
-      assert(!(dst_r0+1 < nProc   && allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
-      assert(!(dst_r1-1 >= dst_r0 && allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd));
-      assert(!(src_r0+1 < nProc   && allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
-      assert(!(src_r1-1 >= src_r0 && allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd));
-    }
-
-    std::string dstRangeStr, srcRangeStr;
-    { std::stringstream ss;
-      ss << "dst[" << dst_r0 << "," << dst_r1 << "]  ";
-      dstRangeStr = ss.str();
-      ss.str("");
-      ss << "src[" << src_r0 << "," << src_r1 << "]  ";
-      srcRangeStr = ss.str();
-    }
-
-    if(printDebug) std::cerr << rankPrefix << dstRangeStr << srcRangeStr << "\n";
-
-    // We know whom to exchange with. Next find distribution.
-    std::vector<int> dstTo(dst_r1 - dst_r0 + 1);
-    std::vector<int> srcFrom(src_r1 - src_r0 + 1);
-    std::iota(dstTo.begin(), dstTo.end(), dst_r0);
-    std::iota(srcFrom.begin(), srcFrom.end(), src_r0);
-    std::vector<int> dstCount(dst_r1 - dst_r0 + 1, 0);
-    std::vector<int> srcCount(src_r1 - src_r0 + 1, 0);
-    // otherDstBegin[r], mySrcBegin  <=  mySrcRank[x]  <  mySrcEnd, otherDstEnd[r];
-    // otherSrcBegin[r], myDstBegin  <=  myDstRank[x]  <  myDstEnd, otherSrcEnd[r];
-    for (int i = 0; i < dstTo.size(); ++i)
-      dstCount[i] = ndofs * (std::min(mySrcGlobEnd, allDstSplit[dstTo[i] + eSplit])
-                             - std::max(mySrcGlobBegin, allDstSplit[dstTo[i] + bSplit]));
-    for (int i = 0; i < srcFrom.size(); ++i)
-      srcCount[i] = ndofs * (std::min(myDstGlobEnd, allSrcSplit[srcFrom[i] + eSplit])
-                             - std::max(myDstGlobBegin, allSrcSplit[srcFrom[i] + bSplit]));
-    std::vector<int> dstDspls(1, 0);
-    std::vector<int> srcDspls(1, 0);
-    for (int c : dstCount)
-      dstDspls.emplace_back(dstDspls.back() + c);
-    for (int c : srcCount)
-      srcDspls.emplace_back(srcDspls.back() + c);
-
-    std::string dstCountStr, srcCountStr;
-    { std::stringstream ss;
-      ss << "[";
-      for (int c : dstCount) { ss << c << ", "; }
-      ss << "]";
-      dstCountStr = ss.str();
-      ss.str("");
-      ss << "[";
-      for (int c : srcCount) { ss << c << ", "; }
-      ss << "]";
-      srcCountStr = ss.str();
-    }
-    if(printDebug) std::cerr << rankPrefix << "dstCount==" << dstCountStr
-                            << "    srcCount==" << srcCountStr << "\n";
-
-
-    // Point-to-point exchanges. Based on par::Mpi_Alltoallv_sparse().
-    if(printDebug) std::cerr << rankPrefix << "Begin point-to-point.\n";
-
-    int commCnt = 0;
-
-    MPI_Request* requests = new MPI_Request[(src_r1-src_r0+1) + (dst_r1-dst_r0+1)];
-    assert(requests);
-    MPI_Status* statuses = new MPI_Status[(src_r1-src_r0+1) + (dst_r1-dst_r0+1)];
-    assert(statuses);
-
-    commCnt = 0;
-
-    int selfSrcI = -1, selfDstI = -1;
-
-    //First place all recv requests. Do not recv from self.
-    int i = 0;
-    for(i = 0; i < src_r1-src_r0+1 && srcFrom[i] < rProc; i++) {
-      if(srcCount[i] > 0) {
-        par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], srcFrom[i], 1,
-            comm, &(requests[commCnt]) );
-        commCnt++;
-      }
-    }
-    if (i < src_r1-src_r0+1 && srcFrom[i] == rProc)
-      selfSrcI = i++;
-    for(i; i < src_r1-src_r0+1; i++) {
-      if(srcCount[i] > 0) {
-        par::Mpi_Irecv( &(dstLocal[srcDspls[i]]) , srcCount[i], srcFrom[i], 1,
-            comm, &(requests[commCnt]) );
-        commCnt++;
-      }
-    }
-
-    //Next send the messages. Do not send to self.
-    for(i = 0; i < dst_r1-dst_r0+1 && dstTo[i] < rProc; i++) {
-      if(dstCount[i] > 0) {
-        par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], dstTo[i], 1,
-            comm, &(requests[commCnt]) );
-        commCnt++;
-      }
-    }
-    if (i < dst_r1-dst_r0+1 && dstTo[i] == rProc)
-      selfDstI = i++;
-    for(; i < dst_r1-dst_r0+1; i++) {
-      if(dstCount[i] > 0) {
-        par::Mpi_Issend( &(srcLocal[dstDspls[i]]), dstCount[i], dstTo[i], 1,
-            comm, &(requests[commCnt]) );
-        commCnt++;
-      }
-    }
-
-    // Now copy local portion.
-    // Empty self-sends/recvs don't count.
-    if (selfSrcI != -1 && srcCount[selfSrcI] == 0)
-      selfSrcI = -1;
-    if (selfDstI != -1 && dstCount[selfDstI] == 0)
-      selfDstI = -1;
-
-    const bool selfConsistentSendRecv = (selfSrcI != -1) == (selfDstI != -1);
-    if (!selfConsistentSendRecv)
-    {
-      std::cerr << rankPrefix << "**Violates self consistency. "
-                << dstRangeStr << srcRangeStr << "\n";
-      assert(!"Violates self consistency");
-    }
-    if (selfSrcI != -1)
-    {
-      if (!(srcCount[selfSrcI] == dstCount[selfDstI]))
-      {
-        std::cerr << rankPrefix << "Sending different number to self than receiving from self.\n";
-        assert(!"Sending different number to self than receiving from self.\n");
-      }
-    }
-
-    if (selfSrcI != -1 && srcCount[selfSrcI] > 0)
-      std::copy_n(&srcLocal[dstDspls[selfDstI]], dstCount[selfDstI], &dstLocal[srcDspls[selfSrcI]]);
-
-    if(printDebug) std::cerr << rankPrefix << "Waiting...\n";
-
-    MPI_Waitall(commCnt, requests, statuses);
-
-    if(printDebug) std::cerr << rankPrefix << "  Done.\n";
-
-    delete [] requests;
-    delete [] statuses;
-
+    using namespace detail;
+    const ShiftP2PSchedule schedule(
+        comm, srcSizeLocal, srcBeginGlobal, dstSizeLocal, dstBeginGlobal); 
+    schedule.context(srcLocal, dstLocal, ndofs)
+      .isendrecv()
+      .local()
+      .wait();
   }
+
+
+  namespace detail
+  {
+
+    //
+    // ShiftP2PSchedule::ShiftP2PSchedule()
+    //
+    ShiftP2PSchedule::ShiftP2PSchedule(
+        MPI_Comm comm,
+        size_t srcSizeLocal, DendroIntL srcBeginGlobal,
+        size_t dstSizeLocal, DendroIntL dstBeginGlobal )
+      :
+        comm(comm)
+    {
+      // Upfront Allgather, locally make pairs, point-to-point.
+
+      std::string rankPrefix;
+      if (printDebug)
+      { std::stringstream ss;
+        ss << "[" << rProc << "] ";
+        rankPrefix = ss.str();
+      }
+
+      const DendroIntL mySrcGlobBegin = srcBeginGlobal;
+      const DendroIntL myDstGlobBegin = dstBeginGlobal;
+      const DendroIntL mySrcGlobEnd = srcBeginGlobal + srcSizeLocal;
+      const DendroIntL myDstGlobEnd = dstBeginGlobal + dstSizeLocal;
+
+      // Includes boundaries, [0]=0 and [n]=(total global number nodes)
+      std::vector<DendroIntL> allSrcSplit(nProc+1, 0);
+      std::vector<DendroIntL> allDstSplit(nProc+1, 0);
+      if(printDebug) std::cerr << rankPrefix << "Begin Allgather (#1)\n";
+      par::Mpi_Allgather(&mySrcGlobEnd, &allSrcSplit[1], 1, comm);
+      if(printDebug) std::cerr << rankPrefix << "Begin Allgather (#2)\n";
+      par::Mpi_Allgather(&myDstGlobEnd, &allDstSplit[1], 1, comm);
+      if(printDebug) std::cerr << rankPrefix << "Concluded Allgather\n";
+
+      const bool isActiveSrc = srcSizeLocal > 0;
+      const bool isActiveDst = dstSizeLocal > 0;
+
+      if (printDebug && rProc == 0)
+      {
+        std::stringstream ss;
+        ss << "allSrcSplit == ";
+        for (DendroIntL split : allSrcSplit)
+          ss << " " << split;
+        ss << "\n";
+        ss << "allDstSplit == ";
+        for (DendroIntL split : allDstSplit)
+          ss << " " << split;
+        ss << "\n";
+        fprintf(stderr, "\n%s\n", ss.str().c_str());
+      }
+
+      if (!isActiveSrc && !isActiveDst)
+      {
+        if(printDebug) std::cerr << rankPrefix << "Not active. Returning.\n";
+        return;
+      }
+
+
+      // Figure out whom to send to / recv from.
+      // - otherDstBegin[r0] <= mySrcBegin <= mySrcRank[x] < mySrcEnd <= otherDstEnd[r1];
+      // - otherSrcBegin[r0] <= myDstBegin <= myDstRank[x] < myDstEnd <= otherSrcEnd[r1];
+
+      int dst_r0, dst_r1;
+      int src_r0, src_r1;
+
+      if(printDebug) std::cerr << rankPrefix << "Begin binary search (#1)\n";
+
+      // Binary search to determine  dst_r0, dst_r1,  src_r0, src_r1.
+      constexpr int bSplit = 0;
+      constexpr int eSplit = 1;
+      // Search for last rank : dstBegin[rank] <= mySrcBegin
+      int r_lb = 0, r_ub = nProc-1;  // Inclusive lower/upper bounds.
+      { while (r_lb < r_ub)
+        {
+          const int test = (r_lb + r_ub + 1)/2;
+          if (allDstSplit[test + bSplit] <= mySrcGlobBegin)
+          {
+            r_lb = test;
+          }
+          else
+          {
+            r_ub = test - 1;
+          }
+        }
+      }
+      dst_r0 = r_lb;
+
+      if(printDebug) std::cerr << rankPrefix << "Begin binary search (#2)\n";
+      // Search for first rank after dst_r0: mySrcEnd <= dstEnd[rank]
+      r_ub = nProc - 1;
+      { while (r_lb < r_ub)
+        {
+          const int test = (r_lb + r_ub)/2;
+          if (mySrcGlobEnd <= allDstSplit[test + eSplit])
+          {
+            r_ub = test;
+          }
+          else
+          {
+            r_lb = test + 1;
+          }
+        }
+      }
+      dst_r1 = r_lb;
+
+      if(printDebug) std::cerr << rankPrefix << "Begin binary search (#3)\n";
+      // Search for last rank : srcBegin[rank] <= myDstBegin
+      r_lb = 0;  r_ub = nProc-1;
+      { while (r_lb < r_ub)
+        {
+          const int test = (r_lb + r_ub + 1)/2;
+          if (allSrcSplit[test + bSplit] <= myDstGlobBegin)
+          {
+            r_lb = test;
+          }
+          else
+          {
+            r_ub = test - 1;
+          }
+        }
+      }
+      src_r0 = r_lb;
+
+      if(printDebug) std::cerr << rankPrefix << "Begin binary search (#4)\n";
+      // Search for first rank after src_r0: myDstEnd <= srcEnd[rank]
+      r_ub = nProc - 1;
+      { while (r_lb < r_ub)
+        {
+          const int test = (r_lb + r_ub)/2;
+          if (myDstGlobEnd <= allSrcSplit[test + eSplit])
+          {
+            r_ub = test;
+          }
+          else
+          {
+            r_lb = test + 1;
+          }
+        }
+      }
+      src_r1 = r_lb;
+
+      if(printDebug) std::cerr << rankPrefix << "Concluded binary search\n";
+
+      // The binary search should automaticallly take care of the case
+      // that some ranks are not active, but if it doesn't, give error.
+      if (!(
+            !(dst_r0+1 < nProc   && allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin) &&
+            !(dst_r1-1 >= dst_r0 && allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd) &&
+            !(src_r0+1 < nProc   && allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin) &&
+            !(src_r1-1 >= src_r0 && allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd)
+           ))
+      {
+        fprintf(stderr, "%s:\n"
+                        "  mySrcGlobBegin--End == %llu--%llu\n"
+                        "  myDstGlobBegin--End == %llu--%llu\n"
+                        "  dst_r0+1 + bSplit == %u    -->   allDstSplit[] == %llu\n"
+                        "  dst_r1-1 + eSplit == %u    -->   allDstSplit[] == %llu\n"
+                        "  src_r0+1 + bSplit == %u    -->   allSrcSplit[] == %llu\n"
+                        "  src_r1-1 + eSplit == %u    -->   allSrcSplit[] == %llu\n",
+                        rankPrefix.c_str(),
+                        mySrcGlobBegin, mySrcGlobEnd,
+                        myDstGlobBegin, myDstGlobEnd,
+                        dst_r0+1 + bSplit, allDstSplit[dst_r0+1 + bSplit],
+                        dst_r1-1 + eSplit, allDstSplit[dst_r1-1 + eSplit],
+                        src_r0+1 + bSplit, allSrcSplit[src_r0+1 + bSplit],
+                        src_r1-1 + eSplit, allSrcSplit[src_r1-1 + eSplit]
+            );
+
+        assert(!(dst_r0+1 < nProc   && allDstSplit[dst_r0+1 + bSplit] <= mySrcGlobBegin));
+        assert(!(dst_r1-1 >= dst_r0 && allDstSplit[dst_r1-1 + eSplit] >= mySrcGlobEnd));
+        assert(!(src_r0+1 < nProc   && allSrcSplit[src_r0+1 + bSplit] <= myDstGlobBegin));
+        assert(!(src_r1-1 >= src_r0 && allSrcSplit[src_r1-1 + eSplit] >= myDstGlobEnd));
+      }
+
+      { std::stringstream ss;
+        ss << "dst[" << dst_r0 << "," << dst_r1 << "]  ";
+        dstRangeStr = ss.str();
+        ss.str("");
+        ss << "src[" << src_r0 << "," << src_r1 << "]  ";
+        srcRangeStr = ss.str();
+      }
+
+      if(printDebug) std::cerr << rankPrefix << dstRangeStr << srcRangeStr << "\n";
+
+      // We know whom to exchange with. Next find distribution.
+      const int src_range_sz = src_r1 - src_r0 + 1;
+      const int dst_range_sz = dst_r1 - dst_r0 + 1;
+
+      dstTo = std::vector<int> (dst_range_sz);
+      srcFrom = std::vector<int> (src_range_sz);
+      std::iota(dstTo.begin(), dstTo.end(), dst_r0);
+      std::iota(srcFrom.begin(), srcFrom.end(), src_r0);
+      dstCount = std::vector<int> (dst_range_sz, 0);
+      srcCount = std::vector<int> (src_range_sz, 0);
+      // otherDstBegin[r], mySrcBegin  <=  mySrcRank[x]  <  mySrcEnd, otherDstEnd[r];
+      // otherSrcBegin[r], myDstBegin  <=  myDstRank[x]  <  myDstEnd, otherSrcEnd[r];
+      for (int i = 0; i < dstTo.size(); ++i)
+        dstCount[i] = (std::min(mySrcGlobEnd, allDstSplit[dstTo[i] + eSplit])
+                               - std::max(mySrcGlobBegin, allDstSplit[dstTo[i] + bSplit]));
+      for (int i = 0; i < srcFrom.size(); ++i)
+        srcCount[i] = (std::min(myDstGlobEnd, allSrcSplit[srcFrom[i] + eSplit])
+                               - std::max(myDstGlobBegin, allSrcSplit[srcFrom[i] + bSplit]));
+      dstDspls = std::vector<int> (1, 0);
+      srcDspls = std::vector<int> (1, 0);
+      for (int c : dstCount)
+        dstDspls.emplace_back(dstDspls.back() + c);
+      for (int c : srcCount)
+        srcDspls.emplace_back(srcDspls.back() + c);
+
+      std::string dstCountStr, srcCountStr;
+      { std::stringstream ss;
+        ss << "[";
+        for (int c : dstCount) { ss << c << ", "; }
+        ss << "]";
+        dstCountStr = ss.str();
+        ss.str("");
+        ss << "[";
+        for (int c : srcCount) { ss << c << ", "; }
+        ss << "]";
+        srcCountStr = ss.str();
+      }
+      if(printDebug) std::cerr << rankPrefix << "dstCount==" << dstCountStr
+                              << "    srcCount==" << srcCountStr << "\n";
+
+      for (int i = 0; i < srcFrom.size(); ++i)
+        if (srcFrom[i] == rProc)
+          selfSrcI = i;
+
+      for (int i = 0; i < dstTo.size(); ++i)
+        if (dstTo[i] == rProc)
+          selfDstI = i;
+
+      // Empty self-sends/recvs don't count.
+      if (selfSrcI != -1 && srcCount[selfSrcI] == 0)
+        selfSrcI = -1;
+      if (selfDstI != -1 && dstCount[selfDstI] == 0)
+        selfDstI = -1;
+
+      const bool selfConsistentSendRecv = (selfSrcI != -1) == (selfDstI != -1);
+      if (!selfConsistentSendRecv)
+      {
+        std::cerr << rankPrefix << "**Violates self consistency. "
+                  << dstRangeStr << srcRangeStr << "\n";
+        assert(!"Violates self consistency");
+      }
+      if (selfSrcI != -1)
+      {
+        if (!(srcCount[selfSrcI] == dstCount[selfDstI]))
+        {
+          std::cerr << rankPrefix << "Sending different number to self than receiving from self.\n";
+          assert(!"Sending different number to self than receiving from self.\n");
+        }
+      }
+    }
+
+
+    //
+    // ShiftP2PContext::isendrecv()
+    //
+    template <typename T>
+    ShiftP2PContext<T> & ShiftP2PContext<T>::isendrecv()
+    {
+      // ---------------------------------------------------------------
+      // Point-to-point exchanges. Based on par::Mpi_Alltoallv_sparse().
+      // ---------------------------------------------------------------
+
+      if(printDebug) std::cerr << rankPrefix << "Begin point-to-point.\n";
+
+      const int src_range_sz = srcFrom.size();
+      const int dst_range_sz = dstTo.size();
+      assert(requests->size() == src_range_sz + dst_range_sz);
+
+      //First place all recv requests. Do not recv from self.
+      int i = 0;
+      for(i = 0; i < src_range_sz && srcFrom[i] < s->rProc; i++) {
+        if(srcCount[i] > 0) {
+          par::Mpi_Irecv( &(dstLocal[ndofs * srcDspls[i]]) , ndofs * srcCount[i], srcFrom[i], 1,
+              s->comm, &((*requests)[commCnt++]) );
+        }
+      }
+      if (i < src_range_sz && srcFrom[i] == s->rProc)
+        i++;
+      for(i; i < src_range_sz; i++) {
+        if(srcCount[i] > 0) {
+          par::Mpi_Irecv( &(dstLocal[ndofs * srcDspls[i]]) , ndofs * srcCount[i], srcFrom[i], 1,
+              s->comm, &((*requests)[commCnt++]) );
+        }
+      }
+
+      //Next send the messages. Do not send to self.
+      for(i = 0; i < dst_range_sz && dstTo[i] < s->rProc; i++) {
+        if(dstCount[i] > 0) {
+          par::Mpi_Issend( &(srcLocal[ndofs * dstDspls[i]]), ndofs * dstCount[i], dstTo[i], 1,
+              s->comm, &((*requests)[commCnt++]) );
+        }
+      }
+      if (i < dst_range_sz && dstTo[i] == s->rProc)
+        i++;
+      for(; i < dst_range_sz; i++) {
+        if(dstCount[i] > 0) {
+          par::Mpi_Issend( &(srcLocal[ndofs * dstDspls[i]]), ndofs * dstCount[i], dstTo[i], 1,
+              s->comm, &((*requests)[commCnt++]) );
+        }
+      }
+
+      return *this;
+    }
+
+
+    //
+    // ShiftP2PContext::local()
+    //
+    template <typename T>
+    ShiftP2PContext<T> & ShiftP2PContext<T>::local()
+    {
+      // Now copy local portion.
+      const int selfSrcI = s->selfSrcI;
+      const int selfDstI = s->selfDstI;
+      if (selfSrcI != -1 && srcCount[selfSrcI] > 0)
+        std::copy_n( &srcLocal[ndofs * dstDspls[selfDstI]],
+                     ndofs * dstCount[selfDstI],
+                     &dstLocal[ndofs * srcDspls[selfSrcI]]);
+
+      return *this;
+    }
+
+
+    //
+    // ShiftP2PContext::wait()
+    //
+    template <typename T>
+    ShiftP2PContext<T> & ShiftP2PContext<T>::wait()
+    {
+      if(printDebug) std::cerr << rankPrefix << "Waiting...\n";
+
+      MPI_Waitall(commCnt, requests->data(), MPI_STATUSES_IGNORE);
+
+      if(printDebug) std::cerr << rankPrefix << "  Done.\n";
+
+      return *this;
+    }
+
+  }//namespace detail
 
 
   template <class TN>
