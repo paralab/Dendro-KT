@@ -487,6 +487,11 @@ add_executable(tstParSendall ${SRC_FILES})
 target_include_directories(tstParSendall PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstParSendall dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/par/shift2.cpp)
+add_executable(tstParShift2 ${SRC_FILES})
+target_include_directories(tstParShift2 PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
+target_link_libraries(tstParShift2 dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testDollar.cpp)
 add_executable(tstDollar ${SRC_FILES})
 target_include_directories(tstDollar PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
