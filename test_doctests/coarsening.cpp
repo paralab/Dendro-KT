@@ -10,10 +10,9 @@
 #include <IO/hexlist/json_hexlist.h>
 #include <include/octUtils.h>
 
-#include <fstream>
 #include <vector>
 
-const static std::string bin_dir = DENDRO_KT_DOCTESTS_BIN_DIR;
+const static char * bin_dir = DENDRO_KT_DOCTESTS_BIN_DIR;
 
 using uint = unsigned int;
 
@@ -33,7 +32,7 @@ TEST_CASE("hexlist open")
   MPI_Comm comm = MPI_COMM_WORLD;
 
   const auto filepath = [=](const std::string &file) {
-    return bin_dir + "/assets/" + file;
+    return std::string(bin_dir) + "/assets/" + file;
   };
 
   const auto coarsen_all = [](size_t size) {
