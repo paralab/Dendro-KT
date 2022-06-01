@@ -2280,7 +2280,7 @@ namespace par {
     class ShiftP2PSchedule
     {
       public:
-        ShiftP2PSchedule( MPI_Comm comm,
+        inline ShiftP2PSchedule( MPI_Comm comm,
                           size_t srcSizeLocal, DendroIntL srcBeginGlobal,
                           size_t dstSizeLocal, DendroIntL dstBeginGlobal );
 
