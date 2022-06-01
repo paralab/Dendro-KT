@@ -26,8 +26,7 @@ template <int dim>
 std::vector<ot::TreeNode<uint, dim>> load_octlist(const std::string &filename, int unit_level);
 
 
-/// MPI_TEST_CASE("hexlist open", 1)
-TEST_CASE("hexlist open")
+MPI_TEST_CASE("hexlist open", 1)
 {
   MPI_Comm comm = MPI_COMM_WORLD;
 
