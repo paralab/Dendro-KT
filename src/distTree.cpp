@@ -132,6 +132,9 @@ namespace ot
                                               RemeshPartition remeshPartition,
                                               double loadFlexibility)
   {
+    // validate args
+    DENDRO_KT_ASSERT_SORTED_UNIQ(inTree.getTreePartFiltered(), inTree.m_comm);
+
     DOLLAR("DistTree::distRemeshSubdomain()");
     MPI_Comm comm = inTree.m_comm;
 

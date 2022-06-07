@@ -936,6 +936,19 @@ template <typename T, unsigned int dim>
 bool isLocallySorted(const TreeNode<T, dim> *octList, size_t begin, size_t end);
 
 template <typename T, unsigned int dim>
+bool noLocalConsecutiveDups(const std::vector<TreeNode<T, dim>> &octants);
+
+template <typename T, unsigned int dim>
+bool noRemoteEdgeDups(const std::vector<TreeNode<T, dim>> &octants, MPI_Comm comm);
+
+#define DENDRO_KT_ASSERT_SORTED_UNIQ(octants, comm) \
+    assert(isLocallySorted((octants)));             \
+    assert(isPartitioned((octants), (comm)));       \
+    assert(noLocalConsecutiveDups((octants)));      \
+    assert(noRemoteEdgeDups((octants), (comm)));
+
+
+template <typename T, unsigned int dim>
 size_t lenContainedSorted(
     const TreeNode<T, dim> *octList,
     size_t begin, size_t end,

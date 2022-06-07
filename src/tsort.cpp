@@ -4702,6 +4702,66 @@ template bool isPartitioned(std::vector<TreeNode<unsigned, 4u>> octants, MPI_Com
 
 
 
+template <typename T, unsigned int dim>
+bool noLocalConsecutiveDups(const std::vector<TreeNode<T, dim>> &octants)
+{
+  return std::adjacent_find(octants.begin(), octants.end()) == octants.end();
+}
+
+template bool noLocalConsecutiveDups(const std::vector<TreeNode<unsigned, 2u>> &octants);
+template bool noLocalConsecutiveDups(const std::vector<TreeNode<unsigned, 3u>> &octants);
+template bool noLocalConsecutiveDups(const std::vector<TreeNode<unsigned, 4u>> &octants);
+
+
+template <typename T, unsigned int dim>
+bool noRemoteEdgeDups(const std::vector<TreeNode<T, dim>> &octants, MPI_Comm comm)
+{
+  int comm_size;
+  MPI_Comm_size(comm, &comm_size);
+
+  TreeNode<T, dim> edges[2] = {{}, {}};
+  if (octants.size() > 0)
+  {
+    edges[0] = octants.front();
+    edges[1] = octants.back();
+  }
+  int local_edges = octants.size() > 0 ? 2 : 0;
+  int global_edges = 0;
+  int scan_edges = 0;
+  par::Mpi_Allreduce(&local_edges, &global_edges, 1, MPI_SUM, comm);
+  par::Mpi_Scan(&local_edges, &scan_edges, 1, MPI_SUM, comm);
+  scan_edges -= local_edges;
+
+  std::vector<int> count_edges(comm_size, 0);
+  std::vector<int> displ_edges(comm_size, 0);
+  std::vector<TreeNode<T, dim>> gathered(global_edges);
+
+  par::Mpi_Allgather(&local_edges, &(*count_edges.begin()), 1, comm);
+  par::Mpi_Allgather(&scan_edges, &(*displ_edges.begin()), 1, comm);
+  par::Mpi_Allgatherv(edges, local_edges,
+      &(*gathered.begin()), &(*count_edges.begin()), &(*displ_edges.begin()), comm);
+
+  assert(gathered.size() % 2 == 0);
+
+  if (gathered.size() > 0)
+  {
+    // form pairs of [n].back() : [n+1].front()
+    assert(gathered.size() >= 2);
+    gathered.pop_back();
+    gathered.erase(gathered.begin());
+  }
+
+  for (size_t i = 0; i < gathered.size(); i += 2)
+    if (gathered[i] == gathered[i + 1])
+      return false;
+  return true;
+}
+
+template bool noRemoteEdgeDups(const std::vector<TreeNode<unsigned, 2u>> &octants, MPI_Comm comm);
+template bool noRemoteEdgeDups(const std::vector<TreeNode<unsigned, 3u>> &octants, MPI_Comm comm);
+template bool noRemoteEdgeDups(const std::vector<TreeNode<unsigned, 4u>> &octants, MPI_Comm comm);
+
+
 template <typename T, unsigned dim>
 bool coversUnitCube(const std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
 {
