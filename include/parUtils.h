@@ -438,6 +438,16 @@ namespace par {
       MPI_Comm comm,
       bool sort_sources = true);
 
+  struct NbxSynch
+  {
+    bool const enabled;
+    MPI_Request * const ptr;
+    static NbxSynch enable(MPI_Request *ptr) { return {true, ptr}; }
+    static NbxSynch disable() { return {false, nullptr}; }
+    private:
+      NbxSynch(bool enabled, MPI_Request *ptr) : enabled(enabled), ptr(ptr) {}
+  };
+
   /**
    * @author Masado Ishii
    * @brief Nonblocking Consensus due to (Hoefler et al., 2010).
@@ -453,16 +463,16 @@ namespace par {
       const int *destinations, const int ndest,
       std::vector<int> &sources,
       MPI_Comm comm,
-      MPI_Request * synch_p2p,     // array of length ndest
-      MPI_Request * synch_global,
+      NbxSynch synch_p2p,     // array of length ndest
+      NbxSynch synch_global,
       bool sort_sources = true);
 
   inline int Mpi_NBX_sizes(
       const int *destinations, const int *send_sizes, const int ndest,
       std::vector<int> &sources, std::vector<int> &recv_sizes,
       MPI_Comm comm,
-      MPI_Request * synch_p2p,     // array of length ndest
-      MPI_Request * synch_global,
+      NbxSynch synch_p2p,     // array of length ndest
+      NbxSynch synch_global,
       bool sort_sources = true);
 
   template <typename T>
@@ -471,8 +481,8 @@ namespace par {
       const T *sendbuf, const int count,
       std::vector<int> &sources, std::vector<T> &recvbuf,
       MPI_Comm comm,
-      MPI_Request * synch_p2p,     // array of length ndest
-      MPI_Request * synch_global,
+      NbxSynch synch_p2p,     // array of length ndest
+      NbxSynch synch_global,
       bool sort_sources = true);
 
 
