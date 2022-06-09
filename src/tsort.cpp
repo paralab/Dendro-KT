@@ -2195,6 +2195,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefine(
     std::vector<int> &&delta_level)
 {
   DOLLAR("locRefine()");
+  assert(tree.size() == delta_level.size());
   const size_t old_sz = tree.size();
   size_t new_sz = 0;
   for (size_t i = 0; i < old_sz; ++i)
@@ -2217,6 +2218,35 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefine(
       TreeNode<T, dim>(),
       SFC_State<dim>::root(),
       new_tree);
+
+  // Verify with differnt algorithm.
+  const auto brute_refined_unsorted = [](
+      const std::vector<TreeNode<T, dim>> &octs,
+      const std::vector<int> &new_levels)
+  {
+    const auto add_descendants = [](
+        std::vector<TreeNode<T, dim>> &out, TreeNode<T, dim> oct, int new_level,
+        auto &&recurse) -> void
+    {
+      assert(new_level >= oct.getLevel());
+      if (new_level == oct.getLevel())
+        out.push_back(oct);
+      else
+        for (int c = 0; c < nchild(dim); ++c)
+          recurse(out, oct.getChildMorton(c), new_level, recurse);
+    };
+
+    std::vector<TreeNode<T, dim>> output;
+    for (size_t i = 0; i < octs.size(); ++i)
+      add_descendants(output, octs[i], new_levels[i], add_descendants);
+    return output;
+  };
+  const auto sorted = [](std::vector<TreeNode<T, dim>> &&octs)
+  {
+    SFC_Tree<T, dim>::locTreeSort(octs);
+    return octs;
+  };
+  assert(new_tree == sorted(brute_refined_unsorted(tree, new_level)));
 
   return new_tree;
 }
@@ -2898,8 +2928,7 @@ SFC_Tree<T,dim>:: distMinimalBalancedGlobalSort(
     MPI_Comm comm)
 {
   DOLLAR("distMinimalBalanced()");
-  assert(isLocallySorted(tree));
-  assert(isPartitioned(tree, comm));
+  DENDRO_KT_ASSERT_SORTED_UNIQ(tree, comm);
 
   const std::vector<TreeNode<T, dim>> original = tree;
 
@@ -3891,6 +3920,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   // }
 
   DOLLAR("distMinimalBalanced()");
+  DENDRO_KT_ASSERT_SORTED_UNIQ(tree, comm);
 
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
@@ -4124,6 +4154,8 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   removeEqual(tree, unstableOwned);
   appendVec(tree, unstablePlus);
   locTreeSort(tree);
+
+  assert(is2to1Balanced(tree, comm));
 }
 
 
@@ -4572,10 +4604,8 @@ bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree_, MPI_Comm comm)
   // we can't force an ancestor onto every rank that begins with a descendant).
 
   // Distribute keys by the tree partition.
-  std::vector<int> keyDest = SFC_Tree<T, dim>::treeNode2PartitionRank(
-      keys,
-      SFC_Tree<T, dim>::allgatherSplitters(
-          tree.size() > 0, tree.front(), comm) );
+  auto && splitters = SFC_Tree<T, dim>::allgatherSplitters(tree.size() > 0, tree.front(), comm);
+  std::vector<int> keyDest = SFC_Tree<T, dim>::treeNode2PartitionRank( keys, splitters );
   keys = par::sendAll(keys, keyDest, comm);
   locSortUniq(keys);
 
