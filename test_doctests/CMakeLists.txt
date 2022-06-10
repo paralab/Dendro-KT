@@ -16,3 +16,8 @@ add_executable(doctest_coarsening coarsening.cpp main.cpp)
 add_dependencies(doctest_coarsening copy_assets)
 target_include_directories(doctest_coarsening PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_coarsening dendroKT ${MPI_LIBRARIES} m)
+
+add_executable(doctest_refine_many refine_many.cpp main.cpp)
+add_dependencies(doctest_refine_many copy_assets)
+target_include_directories(doctest_refine_many PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_refine_many dendroKT ${MPI_LIBRARIES} m)
