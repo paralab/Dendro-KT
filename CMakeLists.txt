@@ -179,6 +179,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/p2p.tcc
                   include/lazy.hpp
                   include/passive_shared_ptr.hpp
+                  IO/zlib/inc/zlib.h
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
                   IO/hexlist/json_hexlist.h
@@ -216,6 +217,7 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/pcoord.cpp
                   src/treeNode.cpp
                   src/dollar_stat.cpp
+                  IO/zlib/src/adler32.c
                   IO/vtk/src/oct2vtk.cpp
                   IO/vtk/src/checkPoint.cpp
                   IO/hexlist/json_hexlist.cpp

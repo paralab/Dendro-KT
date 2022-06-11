@@ -21,3 +21,8 @@ add_executable(doctest_refine_many refine_many.cpp main.cpp)
 add_dependencies(doctest_refine_many copy_assets)
 target_include_directories(doctest_refine_many PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_refine_many dendroKT ${MPI_LIBRARIES} m)
+
+add_executable(doctest_octree_adler32 octree_adler32.cpp main.cpp)
+add_dependencies(doctest_octree_adler32 copy_assets)
+target_include_directories(doctest_octree_adler32 PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_octree_adler32 dendroKT ${MPI_LIBRARIES} m)

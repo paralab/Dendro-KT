@@ -15,6 +15,8 @@
 #include <sstream>
 #include <stdio.h>
 
+#include "zlib.h"
+
 #include "refel.h"
 #include "nsort.h"
 #include "tsort.h"
@@ -1145,6 +1147,120 @@ void quadTreeToGnuplot(const std::vector<TreeNode<T, dim>> &treePart, const int 
     elemIndex++;
   }
   treePartFile.close();
+}
+
+
+struct OctreeAdler32
+{
+  long unsigned code = adler32(0L, Z_NULL, 0);
+  size_t len = 0u;
+
+  OctreeAdler32 operator+(const OctreeAdler32 &that) const {
+    return {adler32_combine(code, that.code, that.len), len + that.len};
+  }
+};
+
+}//end namespace ot
+
+//
+// Extend class Mpi_datatype to OctreeAdler32 for mpi reductions.
+//
+namespace par {
+  template <typename T>
+  class Mpi_datatype;
+
+  template <>
+  class Mpi_datatype<ot::OctreeAdler32>
+  {
+    public:
+      static inline MPI_Datatype value();
+      static inline MPI_Op SUM();
+  };
+
+  // Mpi_datatype<OctreeAdler32>::value()
+  MPI_Datatype Mpi_datatype<ot::OctreeAdler32>::value()
+  {
+    // Initialize once.
+    static MPI_Datatype datatype = []{
+      MPI_Datatype _;
+      MPI_Type_contiguous(sizeof(ot::OctreeAdler32), MPI_BYTE, &_);
+      MPI_Type_commit(&_);
+      return _;
+    }();
+
+    return datatype;
+  }
+
+  // Mpi_datatype<OctreeAdler32>::SUM()
+  MPI_Op Mpi_datatype<ot::OctreeAdler32>::SUM()
+  {
+    const auto sum = [](void *in_, void *inout_, int *len_, MPI_Datatype *dptr) -> void {
+      assert(*dptr == value());
+      const int len = *len_;
+      using OctAdler = ot::OctreeAdler32;
+      const OctAdler *in = static_cast<const OctAdler*>(in_);
+      OctAdler *inout = static_cast<OctAdler*>(inout_);
+      for (int i = 0; i < len; ++i)
+        inout[i] = in[i] + inout[i];  // OctreeAdler32::operator+()
+    };
+
+    // Initialize once.
+    static MPI_Op op = [sum]{
+      MPI_Op _;
+      MPI_Op_create(sum, false, &_);
+      return _;
+    }();
+
+    return op;
+  }
+}//end namespace par
+
+namespace ot {
+
+// checksum_octant()
+template <typename T, unsigned int dim>
+OctreeAdler32 checksum_octant(const TreeNode<T, dim> &oct)
+{
+  const unsigned char level = oct.getLevel();
+  auto coords = reinterpret_cast<const unsigned char *>(oct.coords().coords().data());
+  OctreeAdler32 adler;
+  adler.code = adler32(adler.code, coords, sizeof(T) * dim);
+  adler.code = adler32(adler.code, &level, 1);
+  adler.len = sizeof(T) * dim + 1;
+  return adler;
+}
+
+// checksum_octants()
+template <typename T, unsigned int dim>
+OctreeAdler32 checksum_octants(const TreeNode<T, dim> *octs, size_t len)
+{
+  return std::accumulate(octs, octs + len, OctreeAdler32{},
+      [](const OctreeAdler32 &adler, const TreeNode<T, dim> &oct) {
+          return adler + checksum_octant(oct);  // OctreeAdler32::operator+()
+  });
+}
+
+// checksum_octree()
+template <typename T, unsigned int dim>
+OctreeAdler32 checksum_octree(const TreeNode<T, dim> *octs, size_t len, MPI_Comm comm)
+{
+  OctreeAdler32 global,  local = checksum_octants(octs, len);
+  par::Mpi_Allreduce(&local, &global, 1, par::Mpi_datatype<OctreeAdler32>::SUM(), comm);
+  return global;
+}
+
+// checksum_octants()
+template <typename T, unsigned int dim>
+OctreeAdler32 checksum_octants(const std::vector<TreeNode<T, dim>> &octs)
+{
+  return checksum_octants(octs.data(), octs.size());
+}
+
+// checksum_octree()
+template <typename T, unsigned int dim>
+OctreeAdler32 checksum_octree(const std::vector<TreeNode<T, dim>> &octs, MPI_Comm comm)
+{
+  return checksum_octree(octs.data(), octs.size(), comm);
 }
 
 
