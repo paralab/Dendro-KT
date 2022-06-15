@@ -61,9 +61,6 @@ namespace ot {
 
     // TODO void set_flags(FlagType c_orient); // Counts 1s in c_orient and uses count for c_dim.
 
-    static std::array<CellType, (1u<<OuterDim)-1> getExteriorOrientHigh2Low();
-    static std::array<CellType, (1u<<OuterDim)-1> getExteriorOrientLow2High();
-
     // Data members.
     FlagType m_flag;
 
@@ -116,19 +113,10 @@ namespace ot {
       /// long get_globId() const { return m_globId; }
       /// void set_globId(long globId) { m_globId = globId; }
 
-      /**@brief Get type of cell to which point is interior, at native level. */
-      CellType<dim> get_cellType() const;
-
-      /**@brief Get type of cell to which point is interior, at parent of native level. */
-      CellType<dim> get_cellTypeOnParent() const;
-
       /**@brief Get type of cell to which point is interior, at arbitrary level. */
       CellType<dim> get_cellType(LevI lev) const;
 
       static CellType<dim> get_cellType(const TreeNode<T, dim> &tnPoint, LevI lev);
-
-      /**@brief Return whether own cell type differs from cell type on parent. */
-      bool isCrossing() const;
 
       bool getIsCancellation() const;
 
@@ -153,37 +141,11 @@ namespace ot {
     protected:
       // Data members.
       int m_owner = -1;
-      long m_globId = -1;
       //TODO These members could be overlayed in a union if we are careful.
 
 
       bool m_isCancellation = false;
   };
-
-  // The convention to nudge points, including boundary points, into containers.
-  template <typename SrcType, typename RsltType>
-  inline RsltType KeyFunInboundsContainer(const SrcType &pt)
-  {
-    using T = typename SrcType::coordType;
-    constexpr unsigned int dim = ot::coordDim(&pt);
-    std::array<T,dim> coords;
-    pt.getAnchor(coords);
-    /// const unsigned int lev = pt.getLevel();            // Container.
-    const unsigned int lev = m_uiMaxDepth;             // Nearest in-bounds point.
-    const unsigned int len = 1u << (m_uiMaxDepth-lev);
-    const unsigned int domainUpper = (1u<<m_uiMaxDepth) - 1;
-
-    for (int d = 0; d < dim; d++)
-    {
-      if (coords[d] > domainUpper)
-      {
-        /// coords[d] -= len;            // Container.
-        coords[d] = domainUpper;      // Nearest in-bounds point.
-      }
-    }
-
-    return {coords, lev};   // Erases resolution below lev.
-  }
 
   template <typename SrcType, typename RsltType>
   using KeyFunInboundsContainer_t = std::function<RsltType(const SrcType &)>;
@@ -215,20 +177,12 @@ namespace ot {
       void appendExteriorNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList, const ::ibm::DomainDecider &domainDecider) const;
       void appendCancellationNodes(unsigned int order, std::vector<TNPoint<T,dim>> &nodeList) const;
 
-      void appendKFaces(CellType<dim> kface, std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const;
-
 
       /** @brief Maps child (this) hanging nodes to parent nodes
        *         that do not overlap with child nonhanging nodes,
        *         and acts as identity for child non-hanging nodes. */
       std::array<unsigned, dim> hanging2ParentIndicesBijection(
           const std::array<unsigned, dim> &indices, unsigned polyOrder) const;
-
-      /**
-       * @returns true if the coordinates lie in the element or on the element boundary.
-       * @note similar implementation to TreeNode::isOnDomainBoundary().
-       */
-      bool isIncident(const ot::TreeNode<T,dim> &pointCoords) const;
 
       /**
        * @brief Using bit-wise ops, identifies which children are touching a point.
@@ -306,17 +260,6 @@ namespace ot {
   template <typename T, unsigned int dim>
   struct SFC_NodeSort
   {
-    /**
-     * @brief Takes distributed sorted lists of owned nodes, uses key generation to compute sufficient scattermap.
-     * @note Might produce some nodes that don't need to be exchanged. Hopefully it's not too many surplus.
-     */
-    static ScatterMap computeScattermap(const std::vector<TNPoint<T,dim>> &ownedNodes, const TreeNode<T,dim> *treePartStart, MPI_Comm comm);
-
-    /**
-     * @brief Exchange counts from senders to receivers.
-     * @TODO change the name ("gather map" means something else).
-     */
-    static GatherMap scatter2gather(const ScatterMap &sm, RankI localCount, MPI_Comm comm);
 
 
     /** @brief Stage and send our data (using ScatterMap), and receive ghost data into ghost buffers (using GatherMap). */
@@ -325,9 +268,6 @@ namespace ot {
     static void ghostExchange(da *dataAndGhostBuffers, da *sendBufferSpace, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm);
 
     /** @brief Send back contributions to owners (using GatherMap), receive and unstage/accumulate to our data (using ScatterMap). */
-    // TODO move this to the 'oda' class as well.
-    template <typename da>
-    static void ghostReverse(da *dataAndGhostBuffers, da *sendBufferSpace, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm);
 
   }; // struct SFC_NodeSort
 

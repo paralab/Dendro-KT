@@ -539,25 +539,4 @@ std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
 }
 
 
-//
-// treeNode2PartitionRank()  -- mapped to global rank ids
-//
-template <typename T, unsigned int dim>
-std::vector<int> SFC_Tree<T, dim>::treeNode2PartitionRank(
-    const std::vector<TreeNode<T, dim>> &treeNodes,
-    const std::vector<TreeNode<T, dim>> &partitionFrontSplitters,
-    const std::vector<int> &partitionActiveList)
-{
-  std::vector<int> rankIds = SFC_Tree<T, dim>::treeNode2PartitionRank(
-      treeNodes, partitionFrontSplitters);
-
-  for (int &id : rankIds)
-    id = partitionActiveList[id];
-
-  return rankIds;
-}
-
-
-
-
 } // end namespace ot

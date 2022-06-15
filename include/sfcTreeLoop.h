@@ -462,9 +462,6 @@ namespace ot
         // initialize the root data and summary member variables.
       }
 
-      SFC_TreeLoop(const TreeNode<C,dim> *sortedTreePart, size_t localTreeSz)
-        : SFC_TreeLoop(sortedTreePart, localTreeSz, m_uiMaxDepth) {}
-
       SFC_TreeLoop() = delete;
 
       // getRootFrame()
@@ -933,21 +930,6 @@ namespace ot
       virtual void user_defined(std::vector<Types> & ... destNodes, std::vector<Types> & ... srcNodes)
       {
         std::tie(destNodes[m_dest_index]...) = std::tie(srcNodes[m_src_index]...);
-      }
-    };
-
-    template <typename ...Types>
-    struct Adder : public litb::BiTupleExtractor<void, std::vector<Types>...>
-    {
-      size_t m_dest_index;        // set these before calling applied_to().
-      size_t m_src_index;         //
-
-      void set(size_t dest_idx, size_t src_idx) { m_dest_index = dest_idx;
-                                                  m_src_index = src_idx; }
-
-      virtual void user_defined(std::vector<Types> & ... destNodes, std::vector<Types> & ... srcNodes)
-      {
-        std::tie(destNodes[m_dest_index]...) += std::tie(srcNodes[m_src_index]...);
       }
     };
 

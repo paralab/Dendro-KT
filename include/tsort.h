@@ -548,12 +548,6 @@ struct SFC_Tree
                            double loadFlexibility,
                            MPI_Comm comm);
 
-  static par::SendRecvSchedule
-    distTreePartitionSchedule(std::vector<TreeNode<T,dim>> &points,
-                           unsigned int noSplitThresh,
-                           double loadFlexibility,
-                           MPI_Comm comm);
-
   /**
    * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.
    */
@@ -652,18 +646,6 @@ struct SFC_Tree
   static std::vector<int> treeNode2PartitionRank(
       const std::vector<TreeNode<T,dim>> &treeNodes,
       const std::vector<TreeNode<T,dim>> &partitionFrontSplitters);
-
-  /** @brief Map any collection of treeNodes in the domain
-   *         to the partition ranks that own them.
-   *         partitionFrontSplitters contains front elements from active ranks.
-   *         partitionActiveList contains the global rank ids of active ranks.
-   *         The rank ids are returned
-   *         in the range [0 .. max{partitionActiveList}].
-   */
-  static std::vector<int> treeNode2PartitionRank(
-      const std::vector<TreeNode<T,dim>> &treeNodes,
-      const std::vector<TreeNode<T,dim>> &partitionFrontSplitters,
-      const std::vector<int> &partitionActiveList);
 
 
   // -------------------------------------------------------------
@@ -764,9 +746,6 @@ struct SFC_Tree
 
   // -------------------------------------------------------------
 
-  static std::vector<TreeNode<T, dim>> locRemesh( const std::vector<TreeNode<T, dim>> &inTree,
-                                                const std::vector<OCT_FLAGS::Refine> &refnFlags );
-
   /**
    * @note Whichever of the input and output grids is controlling partitioning
    *       of the surrogate grid, it is assumed to either
@@ -821,12 +800,6 @@ struct SFC_Tree
                                             double sfc_tol,
                                             MPI_Comm comm);
 
-  static void locTreeBalancingWithFilter(
-                               const ibm::DomainDecider &decider,
-                               std::vector<TreeNode<T,dim>> &points,
-                               std::vector<TreeNode<T,dim>> &tree,
-                               RankI maxPtsPerRegion);
-
   static void distTreeBalancingWithFilter(
                                    const ibm::DomainDecider &decider,
                                    std::vector<TreeNode<T,dim>> &points,
@@ -868,11 +841,6 @@ struct SFC_Tree
       const std::vector<TreeNode<T, dim>> &tree,
       std::vector<int> &&delta_level);  // negative:coarsen  (positive::error)
 
-  /* Assumes tree is sorted. */
-  static std::vector<TreeNode<T, dim>> locRefineOrCoarsen(
-      const std::vector<TreeNode<T, dim>> &tree,
-      std::vector<int> &&delta_level);  // positive:refine negative:coarsen
-
   // -------------------------------------------------------------
 
   /**
@@ -881,12 +849,6 @@ struct SFC_Tree
    * @note Assumes that the points are at the deepest level.
    * @note Assumes that the partition splitters are already SFC-sorted.
    */
-  // Use this one.
-  static void getContainingBlocks(TreeNode<T,dim> *points,
-                                  RankI begin, RankI end,
-                                  const TreeNode<T,dim> *splitters,
-                                  int numSplitters,
-                                  std::vector<int> &outBlocks);
 
   // Recursive implementation.
   static void getContainingBlocks(TreeNode<T,dim> *points,

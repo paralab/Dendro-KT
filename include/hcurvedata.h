@@ -24,15 +24,6 @@
 #include <vector>
 
 
-
-
-
-
-const int _2D_HILBERT_TABLE=16;
-const int _3D_HILBERT_TABLE=192;
-const int _2D_ROTATIONS_SIZE=32;
-const int _3D_ROTATIONS_SIZE=384;
-
 constexpr int _KD_ROTATIONS_SIZE(int pDim)
 {
   //     pDim choices for the new axis (increases rows);

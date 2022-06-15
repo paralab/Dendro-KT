@@ -2286,42 +2286,6 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locCoarsen(
 }
 
 
-// locRefineOrCoarsen()
-//
-// Assumes tree is sorted.
-template <typename T, unsigned int dim>
-std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefineOrCoarsen(
-    const std::vector<TreeNode<T, dim>> &tree,
-    std::vector<int> &&delta_level)
-{
-  const size_t old_sz = tree.size();
-  size_t new_sz = 0;
-  for (size_t i = 0; i < old_sz; ++i)
-  {
-    new_sz += delta_level[i] > 0 ? (1u << (dim * delta_level[i])) : 1;
-    delta_level[i] += tree[i].getLevel();
-    if (delta_level[i] < 0)
-      delta_level[i] = 0;
-    assert(delta_level[i] <= m_uiMaxDepth);
-  }
-  const std::vector<int> &new_level = delta_level;
-  std::vector<TreeNode<T, dim>> new_tree;
-  new_tree.reserve(new_sz);
-
-  Segment<const TreeNode<T, dim>> segDomain(tree.data(), 0, old_sz);
-  Segment<const int> segLevels(new_level.data(), 0, old_sz);
-
-  locMatchResolution_rec<T, dim>(
-      segDomain,
-      segLevels,
-      TreeNode<T, dim>(),
-      SFC_State<dim>::root(),
-      new_tree);
-
-  return new_tree;
-}
-
-
 // locRefine_rec()
 template <typename T, unsigned dim>
 void locRefine_rec(
@@ -2466,50 +2430,6 @@ int locMatchResolution_rec(
   /// assert(not domain_in(subtree));
 }
 
-
-template <typename T, unsigned int dim>
-std::vector<TreeNode<T, dim>>
-SFC_Tree<T, dim>::locRemesh( const std::vector<TreeNode<T, dim>> &inTree,
-                           const std::vector<OCT_FLAGS::Refine> &refnFlags )
-{
-  // TODO need to finally make a seperate minimal balancing tree routine
-  // that remembers the level of the seeds.
-  // For now, this hack should work because we remove duplicates.
-  // With a proper level-respecting treeBalancing() routine, don't need to
-  // make all siblings of all treeNodes for OCT_NO_CHANGE and OCT_COARSEN.
-  constexpr ChildI NumChildren = 1u << dim;
-  std::vector<TreeNode<T, dim>> outTree;
-  std::vector<TreeNode<T, dim>> seed;
-  for (size_t i = 0; i < inTree.size(); ++i)
-  {
-    switch(refnFlags[i])
-    {
-      case OCT_FLAGS::OCT_NO_CHANGE:
-        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
-          seed.push_back(inTree[i].getParent().getChildMorton(child_m));
-        break;
-
-      case OCT_FLAGS::OCT_COARSEN:
-        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
-          seed.push_back(inTree[i].getParent().getParent().getChildMorton(child_m));
-        break;
-
-      case OCT_FLAGS::OCT_REFINE:
-        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
-          seed.push_back(inTree[i].getChildMorton(child_m));
-        break;
-
-      default:
-        throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
-    }
-  }
-
-  SFC_Tree<T, dim>::locTreeSort(seed);
-  SFC_Tree<T, dim>::locRemoveDuplicates(seed);
-  SFC_Tree<T, dim>::locTreeBalancing(seed, outTree, 1);
-
-  return outTree;
-}
 
 template <typename T, unsigned int dim>
 void
@@ -2848,41 +2768,6 @@ SFC_Tree<T,dim>:: locTreeBalancing(std::vector<TreeNode<T,dim>> &points,
 
   std::vector<TreeNode<T,dim>> newTree;
   locTreeConstruction(&(*tree.begin()), newTree, 1,
-                      0, (RankI) tree.size(),
-                      1, leafLevel,         //TODO is sLev 0 or 1?
-                      SFC_State<dim>::root(),
-                      TreeNode<T,dim>());
-
-  tree = newTree;
-}
-
-//
-// locTreeBalancingWithFilter()
-//
-template <typename T, unsigned int dim>
-void
-SFC_Tree<T,dim>:: locTreeBalancingWithFilter(
-                                 const ibm::DomainDecider &decider,
-                                 std::vector<TreeNode<T,dim>> &points,
-                                 std::vector<TreeNode<T,dim>> &tree,
-                                 RankI maxPtsPerRegion)
-{
-  const LevI leafLevel = m_uiMaxDepth;
-
-  locTreeConstructionWithFilter(
-                      decider,
-                      &(*points.begin()), tree, maxPtsPerRegion,
-                      0, (RankI) points.size(),
-                      1, leafLevel,         //TODO is sLev 0 or 1?
-                      SFC_State<dim>::root(),
-                      TreeNode<T,dim>());
-
-  propagateNeighbours(tree);
-
-  std::vector<TreeNode<T,dim>> newTree;
-  locTreeConstructionWithFilter(
-                      decider,
-                      &(*tree.begin()), newTree, 1,
                       0, (RankI) tree.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
                       SFC_State<dim>::root(),
@@ -4158,31 +4043,6 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   assert(is2to1Balanced(tree, comm));
 }
 
-
-
-
-
-
-
-//
-// getContainingBlocks() - Used for tagging points on the processor boundary.
-//
-template <typename T, unsigned int dim>
-void
-SFC_Tree<T,dim>:: getContainingBlocks(TreeNode<T,dim> *points,
-                                  RankI begin, RankI end,
-                                  const TreeNode<T,dim> *splitters,
-                                  int numSplitters,
-                                  std::vector<int> &outBlocks)
-{
-  int dummyNumPrevBlocks = 0;
-  getContainingBlocks(points,
-      begin, end,
-      splitters,
-      0, numSplitters,
-      1, SFC_State<dim>::root(),
-      dummyNumPrevBlocks, outBlocks.size(), outBlocks);
-}
 
 namespace util {
   void markProcNeighbour(int proc, int startSize, std::vector<int> &neighbourList)

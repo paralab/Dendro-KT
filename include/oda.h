@@ -447,12 +447,6 @@ class DA
                 return m_uiRankGlobal;
         }
 
-        /**@brief: get the max depth of the octree*/
-        inline unsigned int getMaxDepth() const { return m_uiMaxDepth; };
-       
-        /**@brief: get the dimensionality of the octree*/
-        inline unsigned int getDimension() const { return m_uiDim; };
-
         /**@brief: get pointer to the (ghosted) array of nodal coordinates. */
         inline const TreeNode<C,dim> * getTNCoords() const { return &(*m_tnCoords.cbegin()); }
 
@@ -601,83 +595,6 @@ class DA
         template <typename T>
         void vecTopvtu(T *local, const char *fPrefix, char **nodalVarNames = NULL, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1);
 
-        /**
-             * @brief returns a pointer to a dof index,
-             * @param [in] in: input vector pointer
-             * @param [in] dofInex: dof index which is the pointer is needed, should be less than dof, value the vector created.
-             * @param [in] isElemental: true if this is an elemental vector/ false otherwise
-             * @param [in] isGhosted: true if this is a ghosted vector
-             * @return pointer to dofIndex.
-             * */
-        template <typename T>
-        T *getVecPointerToDof(T *in, unsigned int dofInex, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
-
-        /**
-             * @brief copy vecotor to sorce to destination, assumes the same number of dof.
-             * @param [in/out] dest: destination pointer
-             * @param [in] source: source pointer
-             * @param [in] isElemental: true if this is an elemental vector/ false otherwise
-             * @param [in] isGhosted: true if this is a ghosted vector
-             * @param [in] dof: degrees of freedoms
-             * */
-
-        template <typename T>
-        void copyVectors(T *dest, const T *source, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
-
-        /**
-             * @brief more premitive copy, from source pointer to the dest pointer
-             * @param [in/out] dest: destination pointer
-             * @param [in] source: source pointer
-             * @param [in] isElemental: true if this is an elemental vector/ false otherwise
-             * @param [in] isGhosted: true if this is a ghosted vector
-             * */
-        template <typename T>
-        void copyVector(T *dest, const T *source, bool isElemental = false, bool isGhosted = false) const;
-
-
-
-        /**
-         * @brief: Performs remesh based on the DA_FLAGS::Refine, which specifies no change, refine or coarsen.
-         * @param[in] oldTree: pointer to the local partition of the tree that was used to construct the DA.
-         *                     (The tree was not stored with the DA in its entirety
-         *                      upon construction, so you must supply it again.)
-         * @param[in] flags: refinement flags.
-         * @param[in] sz: size of the array flags (needs to be size of the local elements)
-         * @param[in] grainSz: rougly the number of octants per core you need when you create the new da.
-         * @param[in] ld_tol: load imbalance tolerance.
-         * @param[in] sfK: splitter fix factor. better to be power of two. increase the value to 128 when running on > 64,000 cores
-         * @return: Specifies the new grid, with new DA. If not NULL, you are responsible to later delete it.
-         */
-        DA<dim>* remesh(const TreeNode<C,dim> * oldTree, const DA_FLAGS::Refine * flags, size_t sz,size_t grainSz=100,double ld_bal=0.3, unsigned int sfK=2) const;
-
-        /**
-         * @brief performs grid transfer operations after the remesh.
-         * @param[in] varIn: variable defined by oldDA
-         * @param[out] varOut: variable defined by newDA. interpolate varOut from varIn. (Note: varOut allocated inside the function, no need to allocate outside)
-         * @param[in] isElemental: true if it is an elemental vector
-         * @param[in] isGhosted: true if allocated ghost vector
-         * @param[in] dof: degrees of freedoms.
-         * */
-        template<typename T>
-        void intergridTransfer(const T* varIn, T* & varOut, const DA<dim>* newDA, bool isElemental=false, bool isGhosted=false, unsigned int dof=1);
-
-
-
-        /// /**
-        ///  * @brief computes the face neighbor points for additional computations for a specified direction.
-        ///  * @param [in] eleID: element ID
-        ///  * @param [in] in: inpute vector
-        ///  * @param [out] out: output vector values are in the order of the x,y,z size : 4*NodesPerElement
-        ///  * @param [out] coords: get the corresponding coordinates size: 4*NodesPerElement*m_uiDim;
-        ///  * @param [out] neighID: face neighbor octant IDs,
-        ///  * @param [in] face: face direction in {OCT_DIR_LEFT,OCT_IDR_RIGHT,OCT_DIR_DOWN, OCT_DIR_UP,OCT_DIR_BACK,OCT_DIR_FRONT}
-        ///  * @param [out] level: the level of the neighbour octant with respect to the current octant.
-        ///  * returns  the number of face neighbours 1/4 for 3D.
-        ///  * */
-        /// template<typename T>
-        /// int getFaceNeighborValues(unsigned int eleID, const T* in, T* out, T* coords, unsigned int * neighID, unsigned int face, NeighbourLevel & level,unsigned int dof) const;
-
-
 
         /**
          * @brief Finds the owner rank for each TreeNode, based on the front splitters.
@@ -712,42 +629,6 @@ class DA
         PetscErrorCode createMatrix(Mat &M, MatType mtype, unsigned int dof = 1) const;
 
         /**
-             * @brief convert nodal local vector with ghosted buffer regions.
-             * @param[in] in: input vector (should be nodal and non ghosted)
-             * @param[out] out: coverted nodal vector with ghost regions.
-             * @param[in] isAllocated: true if the out is allocated, false otherwise.
-             * @param[in] dof: degrees of freedoms
-             * */
-        PetscErrorCode petscNodalVecToGhostedNodal(const Vec &in, Vec &out, bool isAllocated = false, unsigned int dof = 1) const;
-
-        /**
-            * @brief convert ghosted nodal vector to local vector (without ghosting)
-            * @param[in] gVec: ghosted vector
-            * @param[out] local: local vector (assume an allocated vector)
-            * @param[in] isAllocated: true if the out is allocated, false otherwise.
-            * @param[in] dof: degrees of freedoms
-            * */
-
-        PetscErrorCode petscGhostedNodalToNodalVec(const Vec &gVec, Vec &local, bool isAllocated = false, unsigned int dof = 1) const;
-
-        /**
-             * @brief Initiate the ghost nodal value exchange
-             * @param[in] vec: vector in need to perform ghost exchange (Need be ghosted vector)
-             * @param[in] vecArry: pointer to from the VecGetArray()
-             * @param[in] dof: Degrees of freedoms
-             * */
-
-        void petscReadFromGhostBegin(PetscScalar *vecArry, unsigned int dof = 1) const;
-
-        /**
-             * @brief Sync the ghost element exchange
-             * @param[in] vec: vector in need to perform ghost exchange (Need be ghosted vector)
-             * @param[in] vecArry: pointer to from the VecGetArray()
-             * @param[in] dof: Degrees of freedoms
-             * */
-        void petscReadFromGhostEnd(PetscScalar *vecArry, unsigned int dof = 1) const;
-
-        /**
              * @brief initialize a variable vector to a function depends on spatial coords.
              * @param[in/out] local: allocated vector, initialized vector
              * @param[in] func: user specified function
@@ -758,19 +639,6 @@ class DA
              * */
         template <typename T>
         void petscSetVectorByFunction(Vec &local, std::function<void(const T *, T *)> func, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
-
-        /**
-             * @brief initialize a variable vector to a function depends on spatial coords.
-             * @param[in/out] local: allocated vector, initialized vector
-             * @param[in] value: user specified scalar values (size should be the  dof size)
-             * @param [in] isElemental: True if creating a elemental vector (cell data vector) false for a nodal vector
-             * @param [in] isGhosted: True will allocate ghost nodal values as well, false will only allocate memory for local nodes.
-             * @param [in] dof: degrees of freedoms
-             * Note: Initialize the ghost region as well.
-             *
-             * */
-        template <typename T>
-        void petscSetVectorByScalar(Vec &local, const T *value, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
 
         /**@brief write the vec to pvtu file
              * @param[in] local: variable vector

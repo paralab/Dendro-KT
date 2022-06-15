@@ -9,44 +9,6 @@
 namespace ot {
 
   // ==================== Begin: CellType ==================== //
- 
-  //
-  // getExteriorOrientHigh2Low()
-  //
-  template <unsigned int OuterDim>
-  std::array<CellType<OuterDim>, (1u<<OuterDim)-1>
-  CellType<OuterDim>::getExteriorOrientHigh2Low()
-  {
-    std::array<CellType, (1u<<OuterDim)-1> orientations;
-    CellType *dest = orientations.data();
-    for (int fdim = OuterDim - 1; fdim >= 0; fdim--)
-    {
-      CellType *gpIter = dest;
-      emitCombinations(0u, OuterDim, fdim, dest);
-      while (gpIter < dest)
-        (gpIter++)->set_dimFlag(fdim);
-    }
-    return orientations;
-  }
-
-  //
-  // getExteriorOrientLow2High()
-  //
-  template <unsigned int OuterDim>
-  std::array<CellType<OuterDim>, (1u<<OuterDim)-1>
-  CellType<OuterDim>::getExteriorOrientLow2High()
-  {
-    std::array<CellType, (1u<<OuterDim)-1> orientations;
-    CellType *dest = orientations.data();
-    for (int fdim = 0; fdim < OuterDim; fdim++)
-    {
-      CellType *gpIter = dest;
-      emitCombinations(0u, OuterDim, fdim, dest);
-      while (gpIter < dest)
-        (gpIter++)->set_dimFlag(fdim);
-    }
-    return orientations;
-  }
 
   //
   // emitCombinations()
@@ -126,19 +88,6 @@ namespace ot {
   }
 
 
-  /**@brief Infer the type (dimension and orientation) of cell this point is interior to, from coordinates and level. */
-  template <typename T, unsigned int dim>
-  CellType<dim> TNPoint<T,dim>::get_cellType() const
-  {
-    return get_cellType(TreeNode<T,dim>::m_uiLevel);
-  }
-
-  template <typename T, unsigned int dim>
-  CellType<dim> TNPoint<T,dim>::get_cellTypeOnParent() const
-  {
-    return get_cellType(TreeNode<T,dim>::m_uiLevel - 1);
-  }
-
   template <typename T, unsigned int dim>
   CellType<dim> TNPoint<T,dim>::get_cellType(LevI lev) const
   {
@@ -181,19 +130,6 @@ namespace ot {
     m_isCancellation = isCancellation;
   }
 
-
-
-  template <typename T, unsigned int dim>
-  bool TNPoint<T,dim>::isCrossing() const
-  {
-    using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
-    const unsigned int mask = (len << 1u) - 1u;
-    for (int d = 0; d < dim; d++)
-      if ((this->getX(d) & mask) == len)
-        return true;
-    return false;
-  }
 
   template <typename T, unsigned int dim>
   unsigned int TNPoint<T,dim>::get_lexNodeRank(const TreeNode<T,dim> &hostCell, unsigned int polyOrder) const
@@ -499,52 +435,6 @@ namespace ot {
 
 
   template <typename T, unsigned int dim>
-  void Element<T,dim>::appendKFaces(CellType<dim> kface,
-      std::vector<TreeNode<T,dim>> &nodeList, std::vector<CellType<dim>> &kkfaces) const
-  {
-    using TreeNode = TreeNode<T,dim>;
-    const unsigned int len = 1u << (m_uiMaxDepth - TreeNode::m_uiLevel);
-
-    unsigned int fdim = kface.get_dim_flag();
-    unsigned int orient = kface.get_orient_flag();
-
-    const unsigned int numNodes = intPow(3, fdim);
-
-    std::array<unsigned int, dim> nodeIndices;
-    nodeIndices.fill(0);
-    for (unsigned int node = 0; node < numNodes; node++)
-    {
-      unsigned char kkfaceDim = 0;
-      unsigned int  kkfaceOrient = 0u;
-      std::array<T,dim> nodeCoords = TreeNode::m_uiCoords;
-      int vd = 0;
-      for (int d = 0; d < dim; d++)
-      {
-        if (orient & (1u << d))
-        {
-          if (nodeIndices[vd] == 1)
-          {
-            kkfaceDim++;
-            kkfaceOrient |= (1u << d);
-          }
-          else if (nodeIndices[vd] == 2)
-            nodeCoords[d] += len;
-
-          vd++;
-        }
-      }
-      nodeList.push_back(TreeNode(nodeCoords, TreeNode::m_uiLevel));
-      kkfaces.push_back(CellType<dim>());
-      kkfaces.back().set_dimFlag(kkfaceDim);
-      kkfaces.back().set_orientFlag(kkfaceOrient);
-
-      incrementBaseB<unsigned int, dim>(nodeIndices, 3);
-    }
-  }
-
-
-
-  template <typename T, unsigned int dim>
   std::array<unsigned, dim> Element<T,dim>::hanging2ParentIndicesBijection(
       const std::array<unsigned, dim> &indices, unsigned polyOrder) const
   {
@@ -610,69 +500,10 @@ namespace ot {
   }
 
 
-  template <typename T, unsigned int dim>
-  bool Element<T,dim>::isIncident(const ot::TreeNode<T,dim> &pointCoords) const
-  {
-    const unsigned int elemSize = (1u << m_uiMaxDepth - this->getLevel());
-    unsigned int nbrId = 0;
-    for (int d = 0; d < dim; d++)
-      if (this->getX(d) == pointCoords.getX(d))
-        nbrId += (1u << d);
-      else if (this->getX(d) < pointCoords.getX(d)
-                            && pointCoords.getX(d) <= this->getX(d) + elemSize)
-        ;
-      else
-        return false;
-
-    return true;
-  }
-
-
   // ============================ End: Element ============================ //
 
 
   // ============================ Begin: SFC_NodeSort ============================ //
-
-  template <typename T, unsigned int dim>
-  GatherMap SFC_NodeSort<T,dim>::scatter2gather(const ScatterMap &sm, RankI localCount, MPI_Comm comm)
-  {
-    int nProc, rProc;
-    MPI_Comm_rank(comm, &rProc);
-    MPI_Comm_size(comm, &nProc);
-
-    std::vector<RankI> fullSendCounts(nProc);
-    auto scountIter = sm.m_sendCounts.cbegin();
-    auto sprocIter = sm.m_sendProc.cbegin();
-    while (scountIter < sm.m_sendCounts.cend())
-      fullSendCounts[*(sprocIter++)] = *(scountIter++);
-
-    // All to all to exchange counts. Receivers need to learn who they receive from.
-    std::vector<RankI> fullRecvCounts(nProc);
-    par::Mpi_Alltoall<RankI>(fullSendCounts.data(), fullRecvCounts.data(), 1, comm);
-
-    // Compact the receive counts into the GatherMap struct.
-    GatherMap gm;
-    RankI accum = 0;
-    for (int proc = 0; proc < nProc; proc++)
-    {
-      if (fullRecvCounts[proc] > 0)
-      {
-        gm.m_recvProc.push_back(proc);
-        gm.m_recvCounts.push_back(fullRecvCounts[proc]);
-        gm.m_recvOffsets.push_back(accum);
-        accum += fullRecvCounts[proc];
-      }
-      else if (proc == rProc)
-      {
-        gm.m_locOffset = accum;             // Allocate space for our local nodes.
-        accum += localCount;
-      }
-    }
-    gm.m_totalCount = accum;
-    gm.m_locCount = localCount;
-
-    return gm;
-  }
 
 
   template <typename T, unsigned int dim>
@@ -707,57 +538,6 @@ namespace ot {
       MPI_Wait(&requestRecv[rIdx], &status);
   }
 
- 
-  template <typename T, unsigned int dim>
-  template <typename da>
-  void SFC_NodeSort<T,dim>::ghostReverse(da *data, da *sendBuf, const ScatterMap &sm, const GatherMap &gm, MPI_Comm comm)
-  {
-    // In this function we do the reverse of ghostExchange().
-
-    // 'data' is the outVec from matvec().
-    // Assume that the unused positions in outVec were initialized to 0
-    // and are still 0. Otherwise we will send, receive, and accum garbage.
-
-    std::vector<MPI_Request> requestSend(gm.m_recvProc.size());
-    std::vector<MPI_Request> requestRecv(sm.m_sendProc.size());
-    MPI_Status status;
-
-    // 1. We have contributions to remote nodes.
-    //    They are already staged in the ghost layers.
-    //    Send back to owners via the 'gather map'.
-    for (int rIdx = 0; rIdx < gm.m_recvProc.size(); rIdx++)
-      par::Mpi_Isend(data + gm.m_recvOffsets[rIdx],
-          gm.m_recvCounts[rIdx],
-          gm.m_recvProc[rIdx], 0, comm, &requestSend[rIdx]);
-
-    for (int rIdx = 0; rIdx < gm.m_recvProc.size(); rIdx++)
-      par::Mpi_Irecv(data + gm.m_recvOffsets[rIdx],  // Recv.
-          gm.m_recvCounts[rIdx],
-          gm.m_recvProc[rIdx], 0, comm, &requestRecv[rIdx]);
-
-
-    // 2. Owners receive back contributions from non-owners.
-    //    Contributions are received into the send buffer space
-    //    via the counts/offsets of the 'scatter map'.
-    for (int sIdx = 0; sIdx < sm.m_sendProc.size(); sIdx++)
-      par::Mpi_Irecv(sendBuf+ sm.m_sendOffsets[sIdx],
-          sm.m_sendCounts[sIdx],
-          sm.m_sendProc[sIdx], 0, comm, &requestRecv[sIdx]);
-
-    // Wait for sends and recvs.
-    for (int rIdx = 0; rIdx < gm.m_recvProc.size(); rIdx++)      // Wait sends.
-      MPI_Wait(&requestSend[rIdx], &status);
-    for (int sIdx = 0; sIdx < sm.m_sendProc.size(); sIdx++)     // Wait recvs.
-      MPI_Wait(&requestRecv[sIdx], &status);
-
-
-    // 3. Owners locally accumulate the contributions from the send buffer space
-    //    into the proper node positions via the map of the 'scatter map'.
-    const RankI sendSize = sm.m_map.size();
-    const da * const mydata = data + gm.m_locOffset;
-    for (ot::RankI ii = 0; ii < sendSize; ii++)
-      mydata[sm.m_map[ii]] += sendBuf[ii];
-  }
 
   // ============================ End: SFC_NodeSort ============================ //
 

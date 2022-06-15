@@ -75,12 +75,6 @@ namespace ot {
                 m_uiSendBuf=malloc(bytes);
             }
 
-            /**@brief allocates recv buffer for ghost exchange*/
-            inline void allocateRecvBuffer(size_t bytes)
-            {
-                m_uiRecvBuf=malloc(bytes);
-            }
-
             /**@brief allocates send buffer for ghost exchange*/
             inline void deAllocateSendBuffer()
             {
@@ -88,17 +82,9 @@ namespace ot {
                 m_uiSendBuf=NULL;
             }
 
-            /**@brief allocates recv buffer for ghost exchange*/
-            inline void deAllocateRecvBuffer()
-            {
-                free(m_uiRecvBuf);
-                m_uiRecvBuf=NULL;
-            }
-
             inline size_t getBufferType() { return m_bufferType; }
 
             inline void* getSendBuffer() { return m_uiSendBuf;}
-            inline void* getRecvBuffer() { return m_uiRecvBuf;}
 
             inline void* getBuffer() const {return m_uiBuffer;}
 

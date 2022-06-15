@@ -800,38 +800,6 @@ namespace ot
 
     }
 
-    template <unsigned int dim>
-    template<typename T>
-    T* DA<dim>::getVecPointerToDof(T* in ,unsigned int dofInex, bool isElemental,bool isGhosted, unsigned int dof) const
-    {
-
-        if(!(m_uiIsActive))
-            return NULL;
-
-        size_t arrSz;
-
-        /// if(!isElemental)
-        /// {
-        ///     if(isGhosted) {
-        ///         arrSz = m_uiTotalNodalSz;
-        ///     }else{
-        ///         arrSz=m_uiLocalNodalSz;
-        ///     }
-
-
-        /// }else{
-
-        ///     if(isGhosted) {
-        ///         arrSz = m_uiTotalElementSz;
-        ///     }else{
-        ///         arrSz=m_uiLocalElementSz;
-        ///     }
-
-        /// }
-
-        return in + dofInex;
-    }
-
 
     template <unsigned int dim>
     template <typename T>
@@ -841,77 +809,6 @@ namespace ot
 
       throw std::logic_error("Not implemented!");
     }
-
-
-    template <unsigned int dim>
-    template<typename T>
-    void DA<dim>::copyVector(T* dest,const T* source,bool isElemental,bool isGhosted) const
-    {
-        if(!(m_uiIsActive))
-            return ;
-
-        size_t arrSz;
-
-        if(!isElemental)
-        {
-            if(isGhosted) {
-                arrSz = m_uiTotalNodalSz;
-            }else{
-                arrSz=m_uiLocalNodalSz;
-            }
-
-
-        }else{
-
-            if(isGhosted) {
-                throw std::logic_error("Ghosted elemental size not automatically computed.");
-                /// arrSz = m_uiTotalElementSz;
-            }else{
-                arrSz=m_uiLocalElementSz;
-            }
-
-        }
-
-
-        std::memcpy(dest,source,sizeof(T)*arrSz);
-
-    }
-
-    template <unsigned int dim>
-    template<typename T>
-    void DA<dim>::copyVectors(T* dest,const T* source,bool isElemental,bool isGhosted,unsigned int dof) const
-    {
-        if(!(m_uiIsActive))
-            return ;
-
-        size_t arrSz;
-
-        if(!isElemental)
-        {
-            if(isGhosted) {
-                arrSz = m_uiTotalNodalSz;
-            }else{
-                arrSz=m_uiLocalNodalSz;
-            }
-
-
-        }else{
-
-            if(isGhosted) {
-                throw std::logic_error("Ghosted elemental size not automatically computed.");
-                /// arrSz = m_uiTotalElementSz;
-            }else{
-                arrSz=m_uiLocalElementSz;
-            }
-
-        }
-
-
-        std::memcpy(dest,source,sizeof(T)*arrSz*dof);
-    }
-
-
-
 
 
 #ifdef BUILD_WITH_PETSC
@@ -929,20 +826,6 @@ namespace ot
 
         VecRestoreArray(local,&arry);
 
-
-    }
-
-    template <unsigned int dim>
-    template <typename T>
-    void DA<dim>::petscSetVectorByScalar(Vec& local,const T* value,bool isElemental, bool isGhosted, unsigned int dof) const
-    {
-
-        PetscScalar * arry=NULL;
-        VecGetArray(local,&arry);
-
-        setVectorByScalar(arry,value,isElemental,isGhosted,dof);
-
-        VecRestoreArray(local,&arry);
 
     }
 
