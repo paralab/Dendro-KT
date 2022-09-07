@@ -71,7 +71,7 @@ class DummySubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outpu
     using BaseT = ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>;
     using FrameT = ot::Frame<dim, ot::Inputs<double>, ot::Outputs<double>, ot::DefaultSummary, DummySubclass<dim>>;
 
-    DummySubclass() : BaseT(nullptr, 0) {}
+    DummySubclass() : BaseT(nullptr, 0, m_uiMaxDepth) {}
 
     void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
     {
@@ -147,7 +147,7 @@ class TopDownSubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<uns
   using FrameT = ot::Frame<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>;
   using BaseT = ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<unsigned int, dim>, double>, ot::Outputs<double>, ot::DefaultSummary, TopDownSubclass<dim>>;
   public:
-    TopDownSubclass() : BaseT(nullptr, 0) {}
+    TopDownSubclass() : BaseT(nullptr, 0, m_uiMaxDepth) {}
 
     void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
     {

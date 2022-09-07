@@ -1,7 +1,6 @@
 
 #include "parUtils.h"
 
-#include <petsc.h>
 
 #include <vector>
 #include <algorithm>

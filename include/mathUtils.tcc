@@ -263,20 +263,6 @@ constexpr T intCombination(T n, T k, T p, T q)
 }
 
 
-template <typename T>
-T intCombinationSum(T n, T k, T &combo)
-{
-  T accum = 0;
-  combo = 1;
-  for (T kk = 1; kk <= k; kk++)
-  {
-    accum += combo;
-    combo = combo * (n-kk+1) / kk;
-  }
-  return accum;
-}
-
-
 template <typename T, unsigned int L>
 void incrementBaseB(std::array<T,L> &digits, T B, unsigned int lstart)
 {
@@ -290,18 +276,4 @@ void incrementBaseB(std::array<T,L> &digits, T B, unsigned int lstart)
   while (digits[l] == 0 && (l++, l < L));
 }
 
-
-template <typename T, unsigned int L>
-void incrementFor(std::array<T,L> &digits,
-                  const std::array<T,L> &limits,
-                  unsigned int d)
-{
-  do
-  {
-    digits[d]++;
-    if (digits[d] == limits[d])
-      digits[d] = 0;
-  }
-  while (digits[d] == 0 && (d++, d < L));
-}
 

@@ -38,6 +38,7 @@ option(BUILD_WITH_PETSC " build dendro with PETSC " ON)
 option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" OFF)
 option(BUILD_EXAMPLES "build example programs" ON)
 option(USE_2TO1_GLOBAL_SORT "Use global sort instead of two-pass method for 2:1 balancing" OFF)
+option(ENABLE_DOCTEST_IN_RELEASE "Enable doctest tests even in a release build" OFF)
 
 set(KWAY 128 CACHE INT 128)
 set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
@@ -46,6 +47,10 @@ set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING
             "Choose the type of build, options are: Debug Release " FORCE)
+endif()
+
+if ((CMAKE_BUILD_TYPE STREQUAL "Release") AND (NOT ENABLE_DOCTEST_IN_RELEASE))
+    add_definitions(-DDOCTEST_CONFIG_DISABLE)
 endif()
 
 if (WITH_BLAS_LAPACK)
@@ -179,8 +184,10 @@ set(DENDRO_KT_INC include/dendro.h
                   include/p2p.tcc
                   include/lazy.hpp
                   include/passive_shared_ptr.hpp
+                  IO/zlib/inc/zlib.h
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
+                  IO/hexlist/json_hexlist.h
                   array/include/arraySlice.h
                   FEM/include/matvec.h
                   FEM/include/tensor.h
@@ -215,8 +222,10 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   src/pcoord.cpp
                   src/treeNode.cpp
                   src/dollar_stat.cpp
+                  IO/zlib/src/adler32.c
                   IO/vtk/src/oct2vtk.cpp
                   IO/vtk/src/checkPoint.cpp
+                  IO/hexlist/json_hexlist.cpp
                   src/oda.cpp
                   src/p2p.cpp
                   FEM/src/tensor.cpp
@@ -227,11 +236,11 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   FEM/src/tensor_special_unsigned.cpp
                   FEM/src/tensor_special_char.cpp
                   FEM/src/refel.cpp
-                  FEM/src/basis.cpp
-                  )
+                  FEM/src/basis.cpp)
 
 
 add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
+target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/dollar-master)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/include)
@@ -298,6 +307,11 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeVtu.cpp)
 add_executable(tstTreeVtu ${SRC_FILES})
 target_include_directories(tstTreeVtu PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(tstTreeVtu dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeJson.cpp)
+add_executable(tstTreeJson ${SRC_FILES})
+target_include_directories(tstTreeJson PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstTreeJson dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testHCurveTable.cpp)
 add_executable(tstHCurveTable ${SRC_FILES})
@@ -496,6 +510,11 @@ add_executable(tstMatAssembly ${SRC_FILES})
 set_property(TARGET tstMatAssembly PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
 target_include_directories(tstMatAssembly PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
 target_link_libraries(tstMatAssembly dendroKT ${MPI_LIBRARIES} m)
+
+add_subdirectory(test_doctests)
+
+
+add_subdirectory(utility)
 
 
 ## tsort_bench (./tsortBench)

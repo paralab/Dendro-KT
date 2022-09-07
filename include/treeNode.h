@@ -107,9 +107,6 @@ namespace ot {
       /** @brief stream operator to output treeNodes with std::cout */
       friend std::ostream & operator << <T,dim> (std::ostream & os,TreeNode<T,dim> const & node) ;
 
-      /**@breif return the tree dimension*/
-      unsigned int getDim() const;
-
       /**@brief returns the max depth*/
       unsigned int getMaxDepth() const;
 
@@ -118,9 +115,6 @@ namespace ot {
 
       /**@brief set the level of the octant*/
       void setLevel(unsigned int lev);
-
-      /**@brief return the flag set by setFlag function (flag sotored in the m_uiLevel)*/
-      unsigned int getFlag() const;
 
       /**@brief return the coordinates of the dth dimention*/
       T getX(int d) const;
@@ -164,22 +158,10 @@ namespace ot {
       /**@brief Returns the greatest depth at which the other node shares an ancestor.*/
       unsigned int getCommonAncestorDepth(const TreeNode &other) const;
 
-      /**@brief set the octant flag*/
-      int setFlag(unsigned int w);
-
-      /**@brief update the flag by taking bitwise-or of old value with w.*/
-      int orFlag(unsigned int w);
-
       /**
        @author Masado Ishii
         */
       std::array<char, MAX_LEVEL+1> getBase32Hex(unsigned int lev = 0) const;
-
-      /**
-        @author Rahul Sampath
-        @name Pseudo-Getters
-       */
-      T getParentX(int d) const;
 
       /**
         @return the parent of this octant

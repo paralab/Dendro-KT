@@ -165,15 +165,9 @@ namespace ot
 
       const ::ibm::DomainDecider & getDomainDecider() const;
 
-      const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)>
-        & getDomainDeciderTN_asCell() const;
-
-      const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)>
-        & getDomainDeciderTN_asPoint() const;
-
       // Tree accessors.
       const std::vector<TreeNode<T, dim>> & getTreePartFiltered(int stratum = 0) const;
-      size_t getOriginalTreePartSz(int stratum = 0) const;
+
       size_t getFilteredTreePartSz(int stratum = 0) const;
       TreeNode<T, dim> getTreePartFront(int stratum = 0) const;
       TreeNode<T, dim> getTreePartBack(int stratum = 0) const;
@@ -339,10 +333,6 @@ namespace ot
         return m_domainDecider(physCoords, 0.0);
       }
 
-    private:
-      void generateGridHierarchyUp_tooClevertoVerify(bool isFixedNumStrata,
-                                                     unsigned int lev,
-                                                     double loadFlexibility);
   };
 
 
@@ -613,26 +603,6 @@ namespace ot
     return m_domainDecider;
   }
 
-  //
-  // getDomainDeciderTN_asCell()
-  //
-  template <typename T, unsigned int dim>
-  const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> &
-      DistTree<T, dim>::getDomainDeciderTN_asCell() const
-  {
-    return m_domainDeciderTN_asCell;
-  }
-
-  //
-  // getDomainDeciderTN_asPoint()
-  //
-  template <typename T, unsigned int dim>
-  const std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodePoint)> &
-      DistTree<T, dim>::getDomainDeciderTN_asPoint() const
-  {
-    return m_domainDeciderTN_asPoint;
-  }
-
 
   //
   // getTreePartFiltered()
@@ -642,16 +612,6 @@ namespace ot
       DistTree<T, dim>::getTreePartFiltered(int stratum) const
   {
     return m_gridStrata[stratum];
-  }
-
-
-  //
-  // getOriginalTreePartSz()
-  //
-  template <typename T, unsigned int dim>
-  size_t DistTree<T, dim>::getOriginalTreePartSz(int stratum) const
-  {
-    return m_originalTreePartSz[stratum];
   }
 
 

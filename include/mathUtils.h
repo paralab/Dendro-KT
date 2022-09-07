@@ -215,14 +215,6 @@ constexpr T intFactorial(T f, T A = 1);
 template <typename T>
 constexpr T intCombination(T n, T k, T p = 1, T q = 1);
 
-/**
- @brief Prefix sum of binomial coefficients "n choose k'" up to k'==k-1. (Exclusive prefix sum).
- @author Masado Ishii
- @note Assumes that 0 <= k <= n.
- */
-template <typename T>
-T intCombinationSum(T n, T k, T &combo);
-
 
 /**
  @brief Increments an array of numbers as if they are digits in a base B number.
@@ -232,16 +224,6 @@ T intCombinationSum(T n, T k, T &combo);
  */
 template <typename T, unsigned int L>
 void incrementBaseB(std::array<T,L> &digits, T B, unsigned int lstart = 0);
-
-/**
- * @brief Increment a multi-index in a nested for loop.
- * @note This version allows different limits in each axis.
- */
-template <typename T, unsigned int L>
-void incrementFor(std::array<T,L> &digits,
-                  const std::array<T,L> &limits,
-                  unsigned int d = 0);
-
 
 
 #include "mathUtils.tcc"

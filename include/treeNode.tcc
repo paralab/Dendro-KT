@@ -90,11 +90,6 @@ std::ostream& operator<<(std::ostream& os, TreeNode<T,dim> const& other) {
 // =============== Getters and Setters ============ //
 
 template <typename T, unsigned int dim>
-inline unsigned int TreeNode<T,dim>::getDim() const {
-    return dim;
-}
-
-template <typename T, unsigned int dim>
 inline unsigned int TreeNode<T,dim>::getMaxDepth() const {
     return m_uiMaxDepth;
 }
@@ -108,11 +103,6 @@ inline unsigned int TreeNode<T,dim>::getLevel() const {
 template <typename T, unsigned int dim>
 inline void TreeNode<T,dim>::setLevel(unsigned int lev) {
   m_uiLevel = (lev & MAX_LEVEL);
-}
-
-template <typename T, unsigned int dim>
-inline unsigned int TreeNode<T,dim>::getFlag() const {
-    return m_uiLevel;
 }
 
 template <typename T, unsigned int dim>
@@ -219,18 +209,6 @@ inline int TreeNode<T,dim>::getAnchor(std::array<T,dim> &xyz) const {
 }
 
 template <typename T, unsigned int dim>
-inline int TreeNode<T,dim>::setFlag(unsigned int w) {
-    m_uiLevel = w;
-    return 1;
-}
-
-template <typename T, unsigned int dim>
-inline int TreeNode<T,dim>::orFlag(unsigned int w) {
-    m_uiLevel = (m_uiLevel | w);
-    return 1;
-}
-
-template <typename T, unsigned int dim>
 inline std::array<char, MAX_LEVEL+1> TreeNode<T,dim>::getBase32Hex(unsigned int lev) const
 {
   if (!lev)
@@ -253,14 +231,6 @@ inline std::array<char, MAX_LEVEL+1> TreeNode<T,dim>::getBase32Hex(unsigned int 
 // ================= End Getters and Setters =================== //
 
 // ================= Begin Pseudo-getters ====================== //
-
-template <typename T, unsigned int dim>
-inline T TreeNode<T,dim>::getParentX(int d) const {
-#if __DEBUG_TN__
-  assert(0 <= d && d < dim);
-#endif
-    return getParent().getX(d);
-}
 
 
 template <typename T, unsigned int dim>

@@ -2195,6 +2195,7 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefine(
     std::vector<int> &&delta_level)
 {
   DOLLAR("locRefine()");
+  assert(tree.size() == delta_level.size());
   const size_t old_sz = tree.size();
   size_t new_sz = 0;
   for (size_t i = 0; i < old_sz; ++i)
@@ -2217,6 +2218,35 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefine(
       TreeNode<T, dim>(),
       SFC_State<dim>::root(),
       new_tree);
+
+  // Verify with differnt algorithm.
+  const auto brute_refined_unsorted = [](
+      const std::vector<TreeNode<T, dim>> &octs,
+      const std::vector<int> &new_levels)
+  {
+    const auto add_descendants = [](
+        std::vector<TreeNode<T, dim>> &out, TreeNode<T, dim> oct, int new_level,
+        auto &&recurse) -> void
+    {
+      assert(new_level >= oct.getLevel());
+      if (new_level == oct.getLevel())
+        out.push_back(oct);
+      else
+        for (int c = 0; c < nchild(dim); ++c)
+          recurse(out, oct.getChildMorton(c), new_level, recurse);
+    };
+
+    std::vector<TreeNode<T, dim>> output;
+    for (size_t i = 0; i < octs.size(); ++i)
+      add_descendants(output, octs[i], new_levels[i], add_descendants);
+    return output;
+  };
+  const auto sorted = [](std::vector<TreeNode<T, dim>> &&octs)
+  {
+    SFC_Tree<T, dim>::locTreeSort(octs);
+    return octs;
+  };
+  assert(new_tree == sorted(brute_refined_unsorted(tree, new_level)));
 
   return new_tree;
 }
@@ -2246,42 +2276,6 @@ std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locCoarsen(
   Segment<const int> segLevels(new_level.data(), 0, old_sz);
 
   locCoarsen_rec<T, dim>(
-      segDomain,
-      segLevels,
-      TreeNode<T, dim>(),
-      SFC_State<dim>::root(),
-      new_tree);
-
-  return new_tree;
-}
-
-
-// locRefineOrCoarsen()
-//
-// Assumes tree is sorted.
-template <typename T, unsigned int dim>
-std::vector<TreeNode<T, dim>> SFC_Tree<T, dim>::locRefineOrCoarsen(
-    const std::vector<TreeNode<T, dim>> &tree,
-    std::vector<int> &&delta_level)
-{
-  const size_t old_sz = tree.size();
-  size_t new_sz = 0;
-  for (size_t i = 0; i < old_sz; ++i)
-  {
-    new_sz += delta_level[i] > 0 ? (1u << (dim * delta_level[i])) : 1;
-    delta_level[i] += tree[i].getLevel();
-    if (delta_level[i] < 0)
-      delta_level[i] = 0;
-    assert(delta_level[i] <= m_uiMaxDepth);
-  }
-  const std::vector<int> &new_level = delta_level;
-  std::vector<TreeNode<T, dim>> new_tree;
-  new_tree.reserve(new_sz);
-
-  Segment<const TreeNode<T, dim>> segDomain(tree.data(), 0, old_sz);
-  Segment<const int> segLevels(new_level.data(), 0, old_sz);
-
-  locMatchResolution_rec<T, dim>(
       segDomain,
       segLevels,
       TreeNode<T, dim>(),
@@ -2436,50 +2430,6 @@ int locMatchResolution_rec(
   /// assert(not domain_in(subtree));
 }
 
-
-template <typename T, unsigned int dim>
-std::vector<TreeNode<T, dim>>
-SFC_Tree<T, dim>::locRemesh( const std::vector<TreeNode<T, dim>> &inTree,
-                           const std::vector<OCT_FLAGS::Refine> &refnFlags )
-{
-  // TODO need to finally make a seperate minimal balancing tree routine
-  // that remembers the level of the seeds.
-  // For now, this hack should work because we remove duplicates.
-  // With a proper level-respecting treeBalancing() routine, don't need to
-  // make all siblings of all treeNodes for OCT_NO_CHANGE and OCT_COARSEN.
-  constexpr ChildI NumChildren = 1u << dim;
-  std::vector<TreeNode<T, dim>> outTree;
-  std::vector<TreeNode<T, dim>> seed;
-  for (size_t i = 0; i < inTree.size(); ++i)
-  {
-    switch(refnFlags[i])
-    {
-      case OCT_FLAGS::OCT_NO_CHANGE:
-        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
-          seed.push_back(inTree[i].getParent().getChildMorton(child_m));
-        break;
-
-      case OCT_FLAGS::OCT_COARSEN:
-        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
-          seed.push_back(inTree[i].getParent().getParent().getChildMorton(child_m));
-        break;
-
-      case OCT_FLAGS::OCT_REFINE:
-        for (ChildI child_m = 0; child_m < NumChildren; ++child_m)
-          seed.push_back(inTree[i].getChildMorton(child_m));
-        break;
-
-      default:
-        throw std::invalid_argument("Unknown OCT_FLAGS::Refine flag.");
-    }
-  }
-
-  SFC_Tree<T, dim>::locTreeSort(seed);
-  SFC_Tree<T, dim>::locRemoveDuplicates(seed);
-  SFC_Tree<T, dim>::locTreeBalancing(seed, outTree, 1);
-
-  return outTree;
-}
 
 template <typename T, unsigned int dim>
 void
@@ -2826,41 +2776,6 @@ SFC_Tree<T,dim>:: locTreeBalancing(std::vector<TreeNode<T,dim>> &points,
   tree = newTree;
 }
 
-//
-// locTreeBalancingWithFilter()
-//
-template <typename T, unsigned int dim>
-void
-SFC_Tree<T,dim>:: locTreeBalancingWithFilter(
-                                 const ibm::DomainDecider &decider,
-                                 std::vector<TreeNode<T,dim>> &points,
-                                 std::vector<TreeNode<T,dim>> &tree,
-                                 RankI maxPtsPerRegion)
-{
-  const LevI leafLevel = m_uiMaxDepth;
-
-  locTreeConstructionWithFilter(
-                      decider,
-                      &(*points.begin()), tree, maxPtsPerRegion,
-                      0, (RankI) points.size(),
-                      1, leafLevel,         //TODO is sLev 0 or 1?
-                      SFC_State<dim>::root(),
-                      TreeNode<T,dim>());
-
-  propagateNeighbours(tree);
-
-  std::vector<TreeNode<T,dim>> newTree;
-  locTreeConstructionWithFilter(
-                      decider,
-                      &(*tree.begin()), newTree, 1,
-                      0, (RankI) tree.size(),
-                      1, leafLevel,         //TODO is sLev 0 or 1?
-                      SFC_State<dim>::root(),
-                      TreeNode<T,dim>());
-
-  tree = newTree;
-}
-
 
 //
 // distTreeBalancing()
@@ -2898,8 +2813,7 @@ SFC_Tree<T,dim>:: distMinimalBalancedGlobalSort(
     MPI_Comm comm)
 {
   DOLLAR("distMinimalBalanced()");
-  assert(isLocallySorted(tree));
-  assert(isPartitioned(tree, comm));
+  DENDRO_KT_ASSERT_SORTED_UNIQ(tree, comm);
 
   const std::vector<TreeNode<T, dim>> original = tree;
 
@@ -3891,6 +3805,7 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   // }
 
   DOLLAR("distMinimalBalanced()");
+  DENDRO_KT_ASSERT_SORTED_UNIQ(tree, comm);
 
   using Oct = TreeNode<T, dim>;
   using OctList = std::vector<Oct>;
@@ -4124,33 +4039,10 @@ void SFC_Tree<T, dim>::distMinimalBalanced(
   removeEqual(tree, unstableOwned);
   appendVec(tree, unstablePlus);
   locTreeSort(tree);
+
+  assert(is2to1Balanced(tree, comm));
 }
 
-
-
-
-
-
-
-//
-// getContainingBlocks() - Used for tagging points on the processor boundary.
-//
-template <typename T, unsigned int dim>
-void
-SFC_Tree<T,dim>:: getContainingBlocks(TreeNode<T,dim> *points,
-                                  RankI begin, RankI end,
-                                  const TreeNode<T,dim> *splitters,
-                                  int numSplitters,
-                                  std::vector<int> &outBlocks)
-{
-  int dummyNumPrevBlocks = 0;
-  getContainingBlocks(points,
-      begin, end,
-      splitters,
-      0, numSplitters,
-      1, SFC_State<dim>::root(),
-      dummyNumPrevBlocks, outBlocks.size(), outBlocks);
-}
 
 namespace util {
   void markProcNeighbour(int proc, int startSize, std::vector<int> &neighbourList)
@@ -4572,10 +4464,8 @@ bool is2to1Balanced(const std::vector<TreeNode<T, dim>> &tree_, MPI_Comm comm)
   // we can't force an ancestor onto every rank that begins with a descendant).
 
   // Distribute keys by the tree partition.
-  std::vector<int> keyDest = SFC_Tree<T, dim>::treeNode2PartitionRank(
-      keys,
-      SFC_Tree<T, dim>::allgatherSplitters(
-          tree.size() > 0, tree.front(), comm) );
+  auto && splitters = SFC_Tree<T, dim>::allgatherSplitters(tree.size() > 0, tree.front(), comm);
+  std::vector<int> keyDest = SFC_Tree<T, dim>::treeNode2PartitionRank( keys, splitters );
   keys = par::sendAll(keys, keyDest, comm);
   locSortUniq(keys);
 
@@ -4700,6 +4590,66 @@ template bool isPartitioned(std::vector<TreeNode<unsigned, 2u>> octants, MPI_Com
 template bool isPartitioned(std::vector<TreeNode<unsigned, 3u>> octants, MPI_Comm comm);
 template bool isPartitioned(std::vector<TreeNode<unsigned, 4u>> octants, MPI_Comm comm);
 
+
+
+template <typename T, unsigned int dim>
+bool noLocalConsecutiveDups(const std::vector<TreeNode<T, dim>> &octants)
+{
+  return std::adjacent_find(octants.begin(), octants.end()) == octants.end();
+}
+
+template bool noLocalConsecutiveDups(const std::vector<TreeNode<unsigned, 2u>> &octants);
+template bool noLocalConsecutiveDups(const std::vector<TreeNode<unsigned, 3u>> &octants);
+template bool noLocalConsecutiveDups(const std::vector<TreeNode<unsigned, 4u>> &octants);
+
+
+template <typename T, unsigned int dim>
+bool noRemoteEdgeDups(const std::vector<TreeNode<T, dim>> &octants, MPI_Comm comm)
+{
+  int comm_size;
+  MPI_Comm_size(comm, &comm_size);
+
+  TreeNode<T, dim> edges[2] = {{}, {}};
+  if (octants.size() > 0)
+  {
+    edges[0] = octants.front();
+    edges[1] = octants.back();
+  }
+  int local_edges = octants.size() > 0 ? 2 : 0;
+  int global_edges = 0;
+  int scan_edges = 0;
+  par::Mpi_Allreduce(&local_edges, &global_edges, 1, MPI_SUM, comm);
+  par::Mpi_Scan(&local_edges, &scan_edges, 1, MPI_SUM, comm);
+  scan_edges -= local_edges;
+
+  std::vector<int> count_edges(comm_size, 0);
+  std::vector<int> displ_edges(comm_size, 0);
+  std::vector<TreeNode<T, dim>> gathered(global_edges);
+
+  par::Mpi_Allgather(&local_edges, &(*count_edges.begin()), 1, comm);
+  par::Mpi_Allgather(&scan_edges, &(*displ_edges.begin()), 1, comm);
+  par::Mpi_Allgatherv(edges, local_edges,
+      &(*gathered.begin()), &(*count_edges.begin()), &(*displ_edges.begin()), comm);
+
+  assert(gathered.size() % 2 == 0);
+
+  if (gathered.size() > 0)
+  {
+    // form pairs of [n].back() : [n+1].front()
+    assert(gathered.size() >= 2);
+    gathered.pop_back();
+    gathered.erase(gathered.begin());
+  }
+
+  for (size_t i = 0; i < gathered.size(); i += 2)
+    if (gathered[i] == gathered[i + 1])
+      return false;
+  return true;
+}
+
+template bool noRemoteEdgeDups(const std::vector<TreeNode<unsigned, 2u>> &octants, MPI_Comm comm);
+template bool noRemoteEdgeDups(const std::vector<TreeNode<unsigned, 3u>> &octants, MPI_Comm comm);
+template bool noRemoteEdgeDups(const std::vector<TreeNode<unsigned, 4u>> &octants, MPI_Comm comm);
 
 
 template <typename T, unsigned dim>

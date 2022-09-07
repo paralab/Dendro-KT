@@ -135,28 +135,6 @@ namespace ot
     }
 
 
-
-
-    template <typename C, unsigned dim>
-    void globallySortNodes(std::vector<TNPoint<C, dim>> &nodesInOut,
-                           double sfc_tol,
-                           MPI_Comm comm)
-    {
-      DOLLAR("globallySortNodes()");
-      // distTreePartition only works on TreeNode inside the unit cube, not TNPoint.
-      // Create a key for each tnpoint.
-      std::vector<TreeNode<C, dim>> keys;
-      for (const auto &pt : nodesInOut)
-      {
-        const TreeNode<C, dim> key(clampCoords<C, dim>(pt.getX(), m_uiMaxDepth), m_uiMaxDepth);
-        keys.push_back(key);
-      }
-
-      distTreePartition_kway(comm, keys, nodesInOut, sfc_tol);
-      SFC_Tree<C, dim>::locTreeSort(keys, nodesInOut);
-    }
-
-
     //
     // getNodeElementOwnership()
     //
@@ -227,9 +205,6 @@ namespace ot
 
       return ghostedOwners;
     }
-
-    template <typename ...Args>
-    void noFprintf(Args... args) { }
 
     template <typename C, unsigned dim>
     void sortUniqXPreferCoarser(std::vector<TNPoint<C, dim>> &points,
@@ -1108,122 +1083,6 @@ namespace ot
 
 
 
-    template <unsigned int dim>
-    ot::DA<dim>* DA<dim>::remesh(const ot::TreeNode<C,dim> * oldTree,
-                                 const DA_FLAGS::Refine * flags,
-                                 size_t sz,
-                                 size_t grainSz,
-                                 double ld_bal,
-                                 unsigned int sfK) const
-    {
-        const size_t localElementBegin = 0;
-        const size_t localElementEnd= sz;
-        bool isRemesh=false;
-        bool isRemesh_g;
-        MPI_Comm commGlobal = m_uiGlobalComm;
-
-        const unsigned int NUM_CHILDREN = 1u << dim;
-
-        std::vector<unsigned int> octflags;
-        octflags.resize(sz,OCT_NO_CHANGE);
-
-        const unsigned int levelDiff = log2(m_uiElementOrder);
-
-        if(sz > 0)
-        {
-          const ot::TreeNode<C,dim>* allElements = oldTree;
-          //1. check to see if we need a remesh.
-          for(size_t i=0;i<sz;i++)
-          {
-            // We will enforce that all leaf siblings are on the same rank.
-            //
-            // 1. TODO need to enforce, while generating flags[], that
-            //    1a. the root element is not marked for coarsening;
-            //    1b. no elements shalower than m_uiMaxDepth-levelDiff are marked for splitting.
-            //
-            // 2. TODO How can we suppress coarsening of an element whose
-            //    siblings are not actually present, but were previously refined?
-            //
-            size_t ele=i+localElementBegin;
-            if(flags[i]==DA_FLAGS::Refine::DA_REFINE) {
-              if((allElements[ele].getLevel()+levelDiff+1)>=m_uiMaxDepth)
-              {
-                octflags[i]=OCT_NO_CHANGE;
-              }
-              else
-              {
-                octflags[i]=OCT_SPLIT;
-                isRemesh=true;
-              }
-            }
-            else if(flags[i]==DA_FLAGS::Refine::DA_COARSEN)
-            {
-              if(((i+NUM_CHILDREN-1)<sz)  && (allElements[ele].getParent() == allElements[ele+NUM_CHILDREN-1].getParent()) && (allElements[ele].getLevel()>0))
-              {
-                for(unsigned int child=0;child<NUM_CHILDREN;child++)
-                  octflags[i+child]=OCT_COARSE;
-
-                isRemesh= true;
-                i+=(NUM_CHILDREN-1);
-              }
-            }
-            else
-            {
-              octflags[i]=OCT_NO_CHANGE;
-            }
-          }
-        }
-
-
-        MPI_Allreduce(&isRemesh,&isRemesh_g,1,MPI_CXX_BOOL,MPI_LOR,commGlobal);
-        // return null da since no need to remesh
-        if(!isRemesh_g)
-            return NULL;
-
-        // Build (unbalanced) tree from oldTree, obeying OCT_SPLIT or OCT_COARSE.
-        std::vector<ot::TreeNode<C,dim>> newOctants;
-
-        for (size_t octIdx = 0; octIdx < sz; octIdx++)
-        {
-          switch (octflags[octIdx])
-          {
-            case OCT_SPLIT:
-              for (unsigned int c = 0; c < NUM_CHILDREN; c++)
-                newOctants.push_back(oldTree[octIdx].getChildMorton(c));
-              break;
-            case OCT_COARSE:
-              newOctants.push_back(oldTree[octIdx].getParent());
-              octIdx += NUM_CHILDREN - 1;
-              break;
-            case OCT_NO_CHANGE:
-              newOctants.push_back(oldTree[octIdx]);
-              break;
-          }
-        }
-
-
-
-
-
-
-        //TODO  Fill in implementation of ReMesh here.
-        /// m_uiMesh->setOctreeRefineFlags(&(*(octflags.begin())),octflags.size());
-        /// ot::Mesh* newMesh=m_uiMesh->ReMesh(grainSz,ld_bal,sfK);
-
-        /// ot::DA<dim>* newDA= new DA(newMesh);
-
-        // TODO consider how we will need to overlap elements for the
-        // intergrid transfer.
-
-        ot::DA<dim>* newDA = new DA();  //TODO
-
-        return newDA;
-
-    }
-
-
-
-
 
 
 
@@ -1324,80 +1183,6 @@ namespace ot
 
 
         return 0;
-    }
-
-
-
-    template <unsigned int dim>
-    PetscErrorCode DA<dim>::petscNodalVecToGhostedNodal(const Vec& in,Vec& out,bool isAllocated,unsigned int dof) const
-    {
-        if(!(m_uiIsActive))
-            return 0 ;
-
-        unsigned int status=0;
-        if(!isAllocated)
-            status=petscCreateVector(out,false,true,dof);
-
-        const PetscScalar * inArry=NULL;
-        PetscScalar * outArry=NULL;
-
-        VecGetArrayRead(in,&inArry);
-        VecGetArray(out,&outArry);
-
-        std::copy(inArry, inArry + dof*m_uiLocalNodalSz, outArry + dof*m_uiLocalNodeBegin);
-
-        VecRestoreArrayRead(in,&inArry);
-        VecRestoreArray(out,&outArry);
-
-        return status;
-    }
-
-
-    template <unsigned int dim>
-    PetscErrorCode DA<dim>::petscGhostedNodalToNodalVec(const Vec& gVec,Vec& local,bool isAllocated,unsigned int dof) const
-    {
-        if(!(m_uiIsActive))
-            return 0;
-
-        unsigned int status=0;
-        if(!isAllocated)
-            status=petscCreateVector(local,false,false,dof);
-
-        const PetscScalar * gVecArry=NULL;
-        PetscScalar * localArry=NULL;
-
-        VecGetArrayRead(gVec,&gVecArry);
-        VecGetArray(local,&localArry);
-
-        std::copy(gVecArry + dof*m_uiLocalNodeBegin, gVecArry + dof*m_uiLocalNodeEnd, localArry);
-
-        VecRestoreArrayRead(gVec,&gVecArry);
-        VecRestoreArray(local,&localArry);
-
-        return status;
-    }
-
-
-    template <unsigned int dim>
-    void DA<dim>::petscReadFromGhostBegin(PetscScalar* vecArry, unsigned int dof) const
-    {
-        if(!m_uiIsActive)
-            return;
-
-        readFromGhostBegin(vecArry,dof);
-
-        return;
-    }
-
-    template <unsigned int dim>
-    void DA<dim>::petscReadFromGhostEnd(PetscScalar* vecArry, unsigned int dof) const
-    {
-        if(!m_uiIsActive)
-            return;
-
-        readFromGhostEnd(vecArry,dof);
-
-        return;
     }
 
 

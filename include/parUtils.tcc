@@ -834,8 +834,8 @@ namespace par {
       const int *destinations, const int ndest,
       std::vector<int> &sources,
       MPI_Comm comm,
-      MPI_Request * synch_p2p,     // array of length ndest
-      MPI_Request * synch_global,
+      NbxSynch synch_p2p,     // array of length ndest
+      NbxSynch synch_global,
       bool sort_sources)
   {
     std::vector<int> dummy_recvbuf;
@@ -849,8 +849,8 @@ namespace par {
       const int *destinations, const int *send_sizes, const int ndest,
       std::vector<int> &sources, std::vector<int> &recv_sizes,
       MPI_Comm comm,
-      MPI_Request * synch_p2p,     // array of length ndest
-      MPI_Request * synch_global,
+      NbxSynch synch_p2p,     // array of length ndest
+      NbxSynch synch_global,
       bool sort_sources)
   {
     const int count = 1;
@@ -870,7 +870,7 @@ namespace par {
   {
     MPI_Request final_barrier;
     int err = Mpi_NBX(destinations, ndest, sendbuf, count, sources, recvbuf, comm,
-        nullptr, &final_barrier,
+        NbxSynch::disable(), NbxSynch::enable(&final_barrier),
         sort_sources);
     MPI_Wait(&final_barrier, MPI_STATUS_IGNORE);
     return err;
@@ -882,8 +882,8 @@ namespace par {
       const T *sendbuf, const int count,
       std::vector<int> &sources, std::vector<T> &recvbuf,
       MPI_Comm comm,
-      MPI_Request * synch_p2p,     // array of length ndest
-      MPI_Request * synch_global,
+      NbxSynch synch_p2p,     // array of length ndest
+      NbxSynch synch_global,
       bool sort_sources)
   {
     /** (Hoefler et al., 2010)
@@ -911,7 +911,11 @@ namespace par {
     //       barr act=true;
 
     int err = MPI_SUCCESS;
-#define ABORT_ERR(mpi_call) if ((err = (mpi_call)) != MPI_SUCCESS) { return err; }
+#define ABORT_ERR(mpi_call) if ((err = (mpi_call)) != MPI_SUCCESS) { assert(false); return err; }
+
+    int comm_size, comm_rank;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
 
     const int nbx_tag = 1;
     const int synch_tag = 2;
@@ -968,13 +972,21 @@ namespace par {
       }
     }
 
+    const int local_nbr[2] = {ndest, static_cast<int>(sources.size())};
+    const auto consistent_srcs = [comm](const int local[2]) -> bool {
+      int global[2] = {-1, 1};
+      Mpi_Allreduce(local, global, 2, MPI_SUM, comm);
+      return global[0] == global[1];
+    };
+    assert(consistent_srcs(local_nbr));
+
     // Need extra synch to avoid race condition due to MPI_ANY_SOURCE:
     // Maybe the ibarrier first completes on process, A, which exits the loop
     // and sends some data, and then another process, B, receives that data
     // within the ibarrier loop.
 
     std::vector<MPI_Request> send_ack_req(sources.size(), MPI_REQUEST_NULL);
-    if (synch_p2p != nullptr)
+    if (synch_p2p.enabled)
     {
       // Send ACK to sources, so they know that we know we are done.
       for (int src_idx = 0, nsrc = sources.size(); src_idx < nsrc; ++src_idx)
@@ -982,17 +994,17 @@ namespace par {
               synch_tag, comm, &send_ack_req[src_idx]) );
 
       // The requests to receive ACK are returned for the caller to complete,
-      // e.g., MPI_Waitall(ndest, synch_p2p, MPI_STATUSES_IGNORE)
+      // e.g., MPI_Waitall(ndest, synch_p2p.ptr, MPI_STATUSES_IGNORE)
       for (int dest_idx = 0; dest_idx < ndest; ++dest_idx)
         ABORT_ERR( MPI_Irecv(nullptr, 0, MPI_INT, destinations[dest_idx],
-              synch_tag, comm, &synch_p2p[dest_idx]) );
+              synch_tag, comm, &synch_p2p.ptr[dest_idx]) );
 
       // Note that synch_tag != nbx_tag. Otherwise, original race comes here.
     }
 
-    if (synch_global != nullptr)
+    if (synch_global.enabled)
     {
-      ABORT_ERR( MPI_Ibarrier(comm, synch_global) );
+      ABORT_ERR( MPI_Ibarrier(comm, synch_global.ptr) );
     }
 
     if (sort_sources)
@@ -1054,8 +1066,17 @@ namespace par {
 
       // future: Instead of sendAll, index destinations within neighborhood.
 
-      int comm_rank;
+      int comm_size, comm_rank;
+      MPI_Comm_size(comm, &comm_size);
       MPI_Comm_rank(comm, &comm_rank);
+
+      // Validate input
+      assert(sdata.size() == sdest.size());
+      for (size_t i = 0; i < sdest.size(); ++i)
+      {
+        assert(0 <= sdest[i]);
+        assert(sdest[i] < comm_size);
+      }
 
       const auto to_set = [](std::vector<int> v) { return std::set<int>{v.begin(), v.end()}; };
       const auto to_vector = [](std::set<int> s) { return std::vector<int>{s.begin(), s.end()}; };
@@ -1080,8 +1101,8 @@ namespace par {
       MPI_Request nbx_synch_global = MPI_REQUEST_NULL;
       Mpi_NBX_sizes(destinations.data(), send_sizes.data(), ndest,
           sources, recv_sizes, comm,
-          nbx_synch_p2p.data(),
-          &nbx_synch_global);
+          NbxSynch::enable(nbx_synch_p2p.data()),
+          NbxSynch::enable(&nbx_synch_global));
       const int nsrc = sources.size();
 
       const auto make_offsets = [](const std::vector<int> &sizes) {
