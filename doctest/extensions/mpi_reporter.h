@@ -1,10 +1,12 @@
 #pragma once
 
 // #include <doctest/doctest.h>
+
+#ifndef DOCTEST_CONFIG_DISABLE
+
 #include <fstream>
 #include <string>
 #include "mpi.h"
-
 
 #include <vector>
 #include <mutex>
@@ -266,3 +268,5 @@ REGISTER_REPORTER("MpiFileReporter", 1, MpiFileReporter);
 
 } // anonymous
 } // doctest
+
+#endif// DOCTEST_CONFIG_DISABLE
