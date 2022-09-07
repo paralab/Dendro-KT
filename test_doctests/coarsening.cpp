@@ -143,7 +143,8 @@ MPI_TEST_CASE("hexlist coarsen uniprocess", 1)
       octlist_answer = load_and_sort<DIM>(filename_answer, unit_level, MPI_COMM_SELF);
     OctList octlist_coarsened = gather<DIM>(octlist(dtree_coarsened), comm);
     INFO("Output in ", filename_attempt);
-    WARN(octlist_coarsened == octlist_answer);
+    WARN_MESSAGE(octlist_coarsened == octlist_answer,
+        "This could just mean that 2:1-balancing is more conservative than needed.");
     gather_and_dump<DIM>(octlist(dtree_coarsened), filename_attempt, unit_level, comm);
 
     _DestroyHcurve();
