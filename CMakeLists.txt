@@ -38,6 +38,7 @@ option(BUILD_WITH_PETSC " build dendro with PETSC " ON)
 option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" OFF)
 option(BUILD_EXAMPLES "build example programs" ON)
 option(USE_2TO1_GLOBAL_SORT "Use global sort instead of two-pass method for 2:1 balancing" OFF)
+option(ENABLE_DOCTEST_IN_RELEASE "Enable doctest tests even in a release build" OFF)
 
 set(KWAY 128 CACHE INT 128)
 set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
@@ -46,6 +47,10 @@ set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING
             "Choose the type of build, options are: Debug Release " FORCE)
+endif()
+
+if ((CMAKE_BUILD_TYPE STREQUAL "Release") AND (NOT ENABLE_DOCTEST_IN_RELEASE))
+    add_definitions(-DDOCTEST_CONFIG_DISABLE)
 endif()
 
 if (WITH_BLAS_LAPACK)
