@@ -1158,6 +1158,10 @@ struct OctreeAdler32
   OctreeAdler32 operator+(const OctreeAdler32 &that) const {
     return {adler32_combine(code, that.code, that.len), len + that.len};
   }
+
+  bool operator==(const OctreeAdler32 &that) const {
+    return code == that.code && len == that.len;
+  }
 };
 
 }//end namespace ot
