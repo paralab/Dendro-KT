@@ -18,7 +18,9 @@ To compile the most recent code (develop branch), execute these commands
 
 ```
 git clone https://github.com/paralab/Dendro-KT.git
+cd Dendro-KT
 git checkout develop
+mkdir build
 cd build
 cmake ..
 make all
