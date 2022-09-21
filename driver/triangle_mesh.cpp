@@ -25,6 +25,12 @@ struct Point3f
   }
 };
 
+Vec3f operator-(Point3f a, Point3f b)
+{
+  return {{a[0] - b[0],  a[1] - b[1],  a[2] - b[2]}};
+}
+
+
 struct Point3u
 {
   uint32_t data[3] = {};
@@ -240,7 +246,7 @@ void stl_trimesh_set_tri(stl_trimesh &trimesh, int i, stl_tri tri)
   trimesh.triangles[i] = tri;
 }
 
-stl_tri sti_trimesh_get_tri(const stl_trimesh &trimesh, int i)
+stl_tri stl_trimesh_get_tri(const stl_trimesh &trimesh, int i)
 {
   return trimesh.triangles[i];
 }
@@ -349,6 +355,14 @@ Octree octree_create_base(void)
 }
 
 
+// ----------------------------------------------------------------------------
+// possible Dendro-KT interface
+// ----------------------------------------------------------------------------
+
+// bool is_intercepted(Bounds box, int level, const Data *data, size_t begin, size_t end);
+// bool is_interior(Bounds box, int level, const Data *data, size_t begin, size_t end, Point3d point);
+// bool do_subdivide(Bounds box, int level, const Data *data, size_t begin, size_t end);
+
 
 // ----------------------------------------------------------------------------
 // octree to stl
@@ -417,14 +431,486 @@ stl_trimesh octree_to_trimesh(const Octree &octree, const Frame frame)
 
 
 
+// ----------------------------------------------------------------------------
+// Triangle intersector
+// ----------------------------------------------------------------------------
+
+struct Triangle
+{
+  Point3f vertex[3] = {};
+};
+
+std::vector<Triangle> stl_extract_triangles(const stl_trimesh &trimesh)
+{
+  const size_t n_triangles = trimesh.frontmatter.n_triangles;
+
+  std::vector<Triangle> triangles;
+  triangles.reserve(n_triangles);
+  for (size_t i = 0; i < n_triangles; ++i)
+  {
+    stl_tri tri = stl_trimesh_get_tri(trimesh, i);
+    triangles.push_back(Triangle{tri.vertex[0], tri.vertex[1], tri.vertex[2]});
+  }
+  return triangles;
+}
+
+bool is_intercepted(Bounds box, int level, const Triangle *data, size_t begin, size_t end)
+{
+  //TODO
+  return true;
+}
+
+bool intercepts(Triangle tri, ot::TreeNode<uint32_t, DIM> octant)
+{
+  // TODO
+  return true;
+}
+
+bool is_interior(const Triangle *begin, const Triangle *end, Point3f point)
+{
+  //TODO
+  return true;
+}
+
+bool is_interior(const Triangle *begin, const Triangle *end, std::array<uint32_t, DIM> coord, Frame frame)
+{
+  const Point3u centroid_fixed = {{coord[0], coord[1], coord[2]}};
+  const Point3f centroid = frame_point_local_to_global( point_fixed_to_float(
+        centroid_fixed, max_depth()), frame);
+  return is_interior(begin, end, centroid);
+}
+
+bool do_refine_base(ot::TreeNode<uint32_t, DIM> octant, const Triangle *data, size_t begin, size_t end)
+{
+  return octant.getLevel() < 2;
+  /// return begin + 10 <= end;
+}
+
+bool do_refine_sub(Bounds box, int level, const Triangle *data, size_t begin, size_t end)
+{
+  //TODO
+  return level < 4;
+}
+
+//
+// Recursive refinement
+//
+
+class FrontStackIterator;
+class BackStackIterator;
+
+template <typename T>
+class FrontStack
+{
+  public:
+    FrontStack() = default;
+    FrontStack(std::vector<T> &&array);
+    ~FrontStack() = default;
+
+    size_t size() const;
+    size_t capacity() const;
+    void resize(size_t size);
+    void reserve(size_t capacity);
+
+    template <typename InputIt>
+    void insert_front(InputIt first, InputIt last);
+    void push_front(T value);
+    void pop_front(size_t count = 1);
+    const T & peek_front() const;
+
+    using Iterator = FrontStackIterator;
+    Iterator begin() const;
+    Iterator end() const;
+    const T & operator[](Iterator it) const;
+    T & operator[](Iterator it);
+
+  private:
+    std::vector<T> m_array;
+    size_t m_size = 0;
+};
+
+template <typename T>
+class BackStack
+{
+  public:
+    BackStack() = default;
+    BackStack(std::vector<T> &&array);
+    ~BackStack() = default;
+
+    size_t size() const;
+    size_t capacity() const;
+    void resize(size_t size);
+    void reserve(size_t capacity);
+
+    template <typename InputIt>
+    void insert_back(InputIt first, InputIt last);
+    void push_back(T value);
+    void pop_back(size_t count = 1);
+    const T & peek_back() const;
+
+    using Iterator = BackStackIterator;
+    Iterator begin() const;
+    Iterator end() const;
+    const T & operator[](Iterator it) const;
+    T & operator[](Iterator it);
+
+    std::vector<T> to_vector() &&;
+
+  private:
+    std::vector<T> m_array;
+};
+
+class FrontStackIterator
+{
+  public:
+    FrontStackIterator operator+(size_t delta) const  { return {to_end - delta}; }
+    FrontStackIterator operator-(size_t delta) const  { return {to_end + delta}; }
+    size_t operator-(FrontStackIterator y) const      { return y.to_end - to_end; }
+  private:
+    template <typename T> friend class FrontStack;
+    FrontStackIterator(size_t distance_to_end) : to_end(distance_to_end) {}
+    size_t to_end = 0;
+};
+
+class BackStackIterator
+{
+  public:
+    BackStackIterator operator+(size_t delta) const { return {idx + delta}; }
+    BackStackIterator operator-(size_t delta) const { return {idx - delta}; }
+    size_t operator-(BackStackIterator y) const     { return idx - y.idx; }
+  private:
+    template <typename T> friend class BackStack;
+    BackStackIterator(size_t idx) : idx(idx) {}
+    size_t idx = 0;
+};
+
+
+//
+// FrontStack member functions
+//
+
+// This implementation only works for types that are default-constructible
+template <typename T>
+FrontStack<T>::FrontStack(std::vector<T> &&array) : m_array(std::move(array)), m_size(m_array.size())
+{
+}
+
+template <typename T>
+size_t FrontStack<T>::size() const
+{
+  return m_size;
+}
+
+template <typename T>
+size_t FrontStack<T>::capacity() const
+{
+  return m_array.size();
+}
+
+template <typename T>
+void FrontStack<T>::resize(size_t size)
+{
+  reserve(size);
+  m_size = size;
+}
+
+template <typename T>
+void FrontStack<T>::reserve(size_t capacity)
+{
+  if (capacity > this->capacity())
+  {
+    // Invariant: end of data coincides with end of internal vector.
+    size_t end = m_array.size();
+    size_t begin = end - m_size;
+    m_array.reserve(capacity);
+    m_array.resize(m_array.capacity());
+    std::move_backward(m_array.begin() + begin, m_array.begin() + end, m_array.end());
+  }
+}
+
+template <typename T>
+FrontStackIterator FrontStack<T>::begin() const
+{
+  return {m_size};
+}
+
+template <typename T>
+FrontStackIterator FrontStack<T>::end() const
+{
+  return {0};
+}
+
+template <typename T>
+const T &FrontStack<T>::operator[](FrontStackIterator it) const
+{
+  return *(m_array.end() - it.to_end);
+}
+
+template <typename T>
+T &FrontStack<T>::operator[](FrontStackIterator it)
+{
+  return *(m_array.end() - it.to_end);
+}
+
+template <typename T>
+template <typename InputIt>
+void FrontStack<T>::insert_front(InputIt first, InputIt last)
+{
+  this->resize(this->size() + (last - first));
+  std::copy(first, last, &(*this)[this->begin()]);
+}
+
+template <typename T>
+void FrontStack<T>::push_front(T value)
+{
+  this->resize(this->size() + 1);
+  (*this)[this->begin()] = value;
+}
+
+template <typename T>
+void FrontStack<T>::pop_front(size_t count)
+{
+  this->resize(this->size() - count);
+}
+
+template <typename T>
+const T &FrontStack<T>::peek_front() const
+{
+  return (*this)[this->begin()];
+}
+
+
+
+//
+// BackStack member functions
+//
+
+
+template <typename T>
+BackStack<T>::BackStack(std::vector<T> &&array) : m_array(std::move(array))
+{
+}
+
+template <typename T>
+size_t BackStack<T>::size() const
+{
+  return m_array.size();
+}
+
+template <typename T>
+size_t BackStack<T>::capacity() const
+{
+  return m_array.capacity();
+}
+
+template <typename T>
+void BackStack<T>::resize(size_t size)
+{
+  m_array.resize(size);
+}
+
+template <typename T>
+void BackStack<T>::reserve(size_t capacity)
+{
+  m_array.reserve(capacity);
+}
+
+template <typename T>
+template <typename InputIt>
+void BackStack<T>::insert_back(InputIt first, InputIt last)
+{
+  m_array.insert(m_array.end(), first, last);
+}
+
+template <typename T>
+void BackStack<T>::push_back(T value)
+{
+  m_array.push_back(std::move(value));
+}
+
+template <typename T>
+void BackStack<T>::pop_back(size_t count)
+{
+  m_array.resize(m_array.size() - count);
+}
+
+template <typename T>
+const T &BackStack<T>::peek_back() const
+{
+  return m_array.back();
+}
+
+template <typename T>
+BackStackIterator BackStack<T>::begin() const
+{
+  return {0};
+}
+
+template <typename T>
+BackStackIterator BackStack<T>::end() const
+{
+  return {this->size()};
+}
+
+template <typename T>
+const T &BackStack<T>::operator[](BackStackIterator it) const
+{
+  return m_array[it.idx];
+}
+
+template <typename T>
+T &BackStack<T>::operator[](BackStackIterator it)
+{
+  return m_array[it.idx];
+}
+
+template <typename T>
+std::vector<T> BackStack<T>::to_vector() &&
+{
+  return std::move(m_array);
+}
+
+
+void triangle_tree_sub(
+    const Triangle *begin,
+    const Triangle *end,
+    std::vector<ot::TreeNode<uint32_t, DIM>> &sub_tier,
+    ot::TreeNode<uint32_t, DIM> octant,
+    ot::SFC_State<DIM> sfc)
+{
+  //TODO
+}
+
+
+void triangle_tree(
+    FrontStack<Triangle> &input,
+    std::array<FrontStackIterator, 2> range,
+    BackStack<Triangle> &output,
+    std::vector<ot::TreeNode<uint32_t, DIM>> &base_tier,
+    std::vector<ot::TreeNode<uint32_t, DIM>> &sub_tier,
+    Frame frame,
+    ot::TreeNode<uint32_t, DIM> octant,
+    ot::SFC_State<DIM> sfc)
+{
+  //           ______     ______
+  // BackStack |_____ <-- _____|  FrontStack
+  //
+
+  // input: front segment in a FrontStack
+  // pre: replace front segment with some subsets (may grow/shrink the segment)
+  //   optimization: if in-order, don't copy
+  // recurse: on each disjoint subset
+  // leaf: transfer segment to BackStack
+  // post: remove any slack from shrinking
+
+  using namespace ot;
+  constexpr int dim = DIM;
+  constexpr int nbuckets = nchild(dim);  // just children, no parent
+  using Buckets = std::array<size_t, nbuckets + 1>;
+  Buckets sfc_buckets = {};
+  const size_t range_size = range[1] - range[0];
+
+  // future: Can determine if already sorted using min and max for each child.
+  // In permuted order, if always max[prev] < min[next], then sorted.
+
+  // Use output as a buffer at nonleafs or as the destination at leafs.
+  const size_t output_pre_size = output.size();
+  const BackStackIterator begin_it = output.end();
+  output.insert_back(&input[range[0]], &input[range[1]]);
+  input.pop_front(range_size);  // input is transfered
+  const BackStackIterator end_it = output.end();
+  const Triangle *begin = &output[begin_it],  *end = &output[end_it];
+
+  // Leaf of base, switch to sub tier
+  if (not do_refine_base(octant, &input[range[0]], 0, range[1] - range[0]))
+  {
+    base_tier.push_back(octant);
+    return triangle_tree_sub(begin, end, sub_tier, octant, sfc);
+  }
+
+  // Only intercepted elements need to assign subsets to children.
+  bool retain = true;
+  if (range_size > 0)
+  {
+    // Count and permute offsets (inclusive prefix sums)
+    std::array<size_t, nbuckets> offsets = {};
+    for (const Triangle *tri = begin; tri != end; ++tri)
+      for (int i = 0; i < nchild(dim); ++i)
+        offsets[i] += bool(intercepts(*tri, octant.getChildMorton(i)));
+    for (sfc::SubIndex s(1); s < nchild(dim); ++s)
+      offsets[sfc.child_num(s)] += offsets[sfc.child_num(s.minus(1))];
+    const size_t inflated_size = offsets[sfc.child_num(sfc::SubIndex(nchild(dim) - 1))];
+
+    // To skip void children, perform pointwise in/out test at parent centroid.
+    const std::array<uint32_t, dim> centroid_coord = octant.range().centroid().coords();
+    retain = is_interior(begin, end, centroid_coord, frame);
+
+    // Re-push (inflated) disjoint subsets to input.
+    input.resize(input.size() + inflated_size);
+    Triangle *inflated_tris = &input[input.begin()];
+    for (const Triangle *tri = end; tri-- != begin; )  // backward
+      for (int i = 0; i < nchild(dim); ++i)
+        if (intercepts(*tri, octant.getChildMorton(i)))
+          inflated_tris[--offsets[i]] = *tri;
+
+    // Clear the part of the output used as a buffer.
+    output.resize(output_pre_size);
+
+    for (sfc::SubIndex s(0); s < nchild(dim); ++s)    // Permute the buckets.
+      sfc_buckets[s] = offsets[sfc.child_num(s)];
+    sfc_buckets[nbuckets] = inflated_size;
+  }
+
+  // Recurse
+  const FrontStackIterator parent_begin = input.begin();
+  for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+  {
+    const size_t begin = sfc_buckets[s], end = sfc_buckets[s.plus(1)];
+    const bool intercepted = begin < end;
+    TreeNode<uint32_t, dim> child_octant = octant.getChildMorton(sfc.child_num(s));
+    child_octant.setIsOnTreeBdry(intercepted);
+
+    if (intercepted or retain)
+      triangle_tree(input, {parent_begin + begin, parent_begin + end}, output, base_tier, sub_tier,
+          frame, child_octant, sfc.subcurve(s));
+  }
+}
+
+std::tuple<
+  std::vector<Triangle>,
+  std::vector<ot::TreeNode<uint32_t, DIM>>,
+  std::vector<ot::TreeNode<uint32_t, DIM>> >
+refine(std::vector<Triangle> input, Frame frame)
+{
+  FrontStack<Triangle> input_stack(std::move(input));
+  BackStack<Triangle> output_stack;
+
+  std::vector<ot::TreeNode<uint32_t, DIM>> base_tier;
+  std::vector<ot::TreeNode<uint32_t, DIM>> sub_tier;
+
+  triangle_tree(
+      input_stack, {input_stack.begin(), input_stack.end()}, output_stack,
+      base_tier, sub_tier, frame, {}, ot::SFC_State<DIM>::root());
+
+  std::vector<Triangle> output = std::move(output_stack).to_vector();
+
+  return {output, base_tier, sub_tier};
+}
+
+
+
+
 // ============================================================================
 // main()
 // ============================================================================
 
 #include <iostream>
+#include <fstream>
 
 int main(int argc, char * argv[])
 {
+  _InitializeHcurve(DIM);
+
   // Input/output binary STL file format
   stl_trimesh trimesh = stl_trimesh_create_from_file(std::cin);
 
@@ -439,15 +925,26 @@ int main(int argc, char * argv[])
 
   Octree octree = octree_create_base();
 
-  auto octree_trimesh = octree_to_trimesh(octree, frame);
+  std::vector<Triangle> output,  input = stl_extract_triangles(trimesh);
+  std::cerr << "after extracting, input.size()==" << input.size() << "\n";
+  std::vector<ot::TreeNode<uint32_t, DIM>> base_tier, sub_tier;
+  std::tie(output, base_tier, sub_tier) = refine(input, frame);
+
+  Octree octree_refined = {base_tier};
+
+  auto octree_trimesh = octree_to_trimesh(octree_refined, frame);
   Bounds octree_bounds = stl_trimesh_bounds(octree_trimesh);
-  std::cerr << "number of triangles == " << octree_trimesh.frontmatter.n_triangles << "\n";
   std::cerr << "Octree bounds == " << octree_bounds << "\n";
-  stl_trimesh_to_file(std::cout, octree_trimesh);
+  std::cerr << "Octree triangles == " << octree_trimesh.frontmatter.n_triangles << "\n";
+  std::cerr << "Octree octants == " << octree_refined.tree_nodes.size() << "\n";
+  std::cerr << "Octree final data size == " << output.size() << "\n";
+  /// stl_trimesh_to_file(std::cout, octree_trimesh);
   stl_trimesh_destroy(octree_trimesh);
 
   /// stl_trimesh_to_file(std::cout, trimesh);
   stl_trimesh_destroy(trimesh);
+
+  _DestroyHcurve();
 
   return 0;
 }
