@@ -516,6 +516,8 @@ add_subdirectory(test_doctests)
 
 add_subdirectory(utility)
 
+add_subdirectory(driver)
+
 
 ## tsort_bench (./tsortBench)
 ## -----------
