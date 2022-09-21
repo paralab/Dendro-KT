@@ -104,6 +104,7 @@ namespace periodic
       inline const PCoord<T, dim> & max() const;
       inline const CoordTransfer min(int d) const;
       inline const CoordTransfer max(int d) const;
+      inline PCoord<T, dim> centroid() const;
       inline T side() const;
 
       inline bool openContains(int axis, const CoordTransfer &coord) const;
@@ -315,6 +316,17 @@ namespace periodic
   const typename PCoord<T, dim>::CoordTransfer PRange<T, dim>::max(int d) const
   {
     return max().coord(d);
+  }
+
+  // PRange::centroid()
+  template <typename T, int dim>
+  PCoord<T, dim> PRange<T, dim>::centroid() const
+  {
+    PCoord<T, dim> centroid = min();
+    const T s = side();
+    for (int d = 0; d < dim; ++d)
+      centroid.coord(d, centroid.coord(d) + s / 2);
+    return centroid;
   }
 
   // PRange::side()
