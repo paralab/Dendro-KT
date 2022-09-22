@@ -25,6 +25,16 @@ struct Point3f
   }
 };
 
+bool operator==(Point3f a, Point3f b)
+{
+  return a[0] == b[0] and a[1] == b[1] and a[2] == b[2];
+};
+
+bool operator!=(Point3f a, Point3f b)
+{
+  return not operator==(a, b);
+};
+
 Vec3f operator-(Point3f a, Point3f b)
 {
   return {{a[0] - b[0],  a[1] - b[1],  a[2] - b[2]}};
@@ -100,6 +110,11 @@ void range_include_point(Range &range, float point)
     range.max = point;
 }
 
+bool range_contains_point(const Range range, const float point)
+{
+  return range.min <= point and point <= range.max;
+}
+
 float range_midpoint(const Range &range)
 {
   return 0.5f * (range.min + range.max);
@@ -131,6 +146,13 @@ void bounds_include_point(Bounds &bounds, const Point3f point)
     range_include_point(bounds.ranges[d], point[d]);
 }
 
+bool bounds_contains_point(const Bounds bounds, const Point3f point)
+{
+  return range_contains_point(bounds.ranges[0], point[0]) and
+         range_contains_point(bounds.ranges[1], point[1]) and
+         range_contains_point(bounds.ranges[2], point[2]);
+}
+
 Bounds bounds_cube(Bounds bounds)
 {
   float max_length = range_length(bounds.ranges[0]);
@@ -141,7 +163,8 @@ Bounds bounds_cube(Bounds bounds)
       max_length = length;
   }
   for (int d = 0; d < 3; ++d)
-    bounds.ranges[d] = range_set_length(bounds.ranges[d], max_length);
+    /// bounds.ranges[d] = range_set_length(bounds.ranges[d], max_length);
+    range_include_point(bounds.ranges[d], bounds.ranges[d].min + max_length);
   return bounds;
 }
 
@@ -307,6 +330,16 @@ Point3f frame_point_local_to_global(Point3f point, const Frame &frame)
   return point;
 }
 
+Bounds frame_bounds_local_to_global(Bounds bounds, const Frame &frame)
+{
+  for (int d = 0; d < 3; ++d)
+  {
+    bounds.ranges[d].min = (bounds.ranges[d].min - 0.5f) * frame.twice_unit[d] + frame.origin.data[d];
+    bounds.ranges[d].max = (bounds.ranges[d].max - 0.5f) * frame.twice_unit[d] + frame.origin.data[d];
+  }
+  return bounds;
+}
+
 Point3u point_float_to_fixed(Point3f point, const int max_depth)
 {
   const auto int_scale = 1u << max_depth;
@@ -354,6 +387,29 @@ Octree octree_create_base(void)
   return Octree{{ot::TreeNode<uint32_t, DIM>()}};
 }
 
+Point3u tree_coord_to_fixed(periodic::PCoord<uint32_t, DIM> coord)
+{
+  return {{coord.coord(0), coord.coord(1), coord.coord(2)}};
+}
+
+Point3f tree_coord_to_local(periodic::PCoord<uint32_t, DIM> coord)
+{
+  return point_fixed_to_float(tree_coord_to_fixed(coord), max_depth());
+}
+
+Bounds tree_node_to_local_bounds(ot::TreeNode<uint32_t, DIM> octant)
+{
+  Bounds bounds;
+  Point3u corner = tree_coord_to_fixed(octant.range().min());
+  bounds_include_point(bounds, point_fixed_to_float(corner, max_depth()));
+  for (int d = 0; d < 3; ++d)
+    corner.data[d] += octant.range().side();
+  bounds_include_point(bounds, point_fixed_to_float(corner, max_depth()));
+  return bounds;
+}
+
+
+
 
 // ----------------------------------------------------------------------------
 // possible Dendro-KT interface
@@ -370,7 +426,7 @@ Octree octree_create_base(void)
 
 #include <array>
 
-stl_trimesh octree_to_trimesh(const Octree &octree, const Frame frame)
+stl_trimesh octree_to_trimesh(const Octree &octree, const Frame frame, bool wireframe_mode)
 {
   const auto n_octants = octree.tree_nodes.size();
   const auto n_faces = n_octants * 6;
@@ -379,6 +435,10 @@ stl_trimesh octree_to_trimesh(const Octree &octree, const Frame frame)
   stl_trimesh trimesh = stl_trimesh_create(stl_frontmatter_create(n_triangles));
 
   int triangle_idx = 0;
+  const auto emit = [&trimesh, &triangle_idx](const stl_tri &tri) {
+    stl_trimesh_set_tri(trimesh, triangle_idx++, tri);
+  };
+
   for (const ot::TreeNode<uint32_t, DIM> &tn : octree.tree_nodes)
   {
     // Get octant properties.
@@ -407,23 +467,43 @@ stl_trimesh octree_to_trimesh(const Octree &octree, const Frame frame)
       return tri;
     };
 
-    // Emit triangles (with right-hand-rule) over octant surface.
-
-    // Touching vertex 0
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({0, 1, 5}, 2));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({0, 5, 4}, 2));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({0, 4, 6}, 0));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({0, 6, 2}, 0));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({0, 2, 3}, 4));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({0, 3, 1}, 4));
-
-    // Touching vertex 7
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({5, 1, 7}, 1));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({4, 5, 7}, 5));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({6, 4, 7}, 5));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({2, 6, 7}, 3));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({3, 2, 7}, 3));
-    stl_trimesh_set_tri(trimesh, triangle_idx++, make_tri({1, 3, 7}, 1));
+    if (wireframe_mode)
+    {
+      // Emit degenerate triangles for all edges.
+      // -X to +X
+      emit(make_tri({0,0,1}, 0));
+      emit(make_tri({2,2,3}, 0));
+      emit(make_tri({4,4,5}, 0));
+      emit(make_tri({6,6,7}, 0));
+      // -Y to +Y
+      emit(make_tri({0,0,2}, 1));
+      emit(make_tri({1,1,3}, 1));
+      emit(make_tri({4,4,6}, 1));
+      emit(make_tri({5,5,7}, 1));
+      // -Z to +Z
+      emit(make_tri({0,0,4}, 2));
+      emit(make_tri({1,1,5}, 2));
+      emit(make_tri({2,2,6}, 2));
+      emit(make_tri({3,3,7}, 2));
+    }
+    else
+    {
+      // Emit triangles (with right-hand-rule) over octant surface.
+      // Touching vertex 0
+      emit(make_tri({0, 1, 5}, 2));
+      emit(make_tri({0, 5, 4}, 2));
+      emit(make_tri({0, 4, 6}, 0));
+      emit(make_tri({0, 6, 2}, 0));
+      emit(make_tri({0, 2, 3}, 4));
+      emit(make_tri({0, 3, 1}, 4));
+      // Touching vertex 7
+      emit(make_tri({5, 1, 7}, 1));
+      emit(make_tri({4, 5, 7}, 5));
+      emit(make_tri({6, 4, 7}, 5));
+      emit(make_tri({2, 6, 7}, 3));
+      emit(make_tri({3, 2, 7}, 3));
+      emit(make_tri({1, 3, 7}, 1));
+    }
   }
 
   return trimesh;
@@ -454,22 +534,18 @@ std::vector<Triangle> stl_extract_triangles(const stl_trimesh &trimesh)
   return triangles;
 }
 
-bool is_intercepted(Bounds box, int level, const Triangle *data, size_t begin, size_t end)
-{
-  //TODO
-  return true;
-}
-
-bool intercepts(Triangle tri, ot::TreeNode<uint32_t, DIM> octant)
+bool intercepts(Triangle tri, Bounds bounds)
 {
   // TODO
-  return true;
+  return bounds_contains_point(bounds, tri.vertex[0]) or
+         bounds_contains_point(bounds, tri.vertex[1]) or
+         bounds_contains_point(bounds, tri.vertex[2]);
 }
 
 bool is_interior(const Triangle *begin, const Triangle *end, Point3f point)
 {
   //TODO
-  return true;
+  return false;
 }
 
 bool is_interior(const Triangle *begin, const Triangle *end, std::array<uint32_t, DIM> coord, Frame frame)
@@ -480,10 +556,52 @@ bool is_interior(const Triangle *begin, const Triangle *end, std::array<uint32_t
   return is_interior(begin, end, centroid);
 }
 
-bool do_refine_base(ot::TreeNode<uint32_t, DIM> octant, const Triangle *data, size_t begin, size_t end)
+template <typename T, int n>
+class count_distinct_small
 {
-  return octant.getLevel() < 2;
-  /// return begin + 10 <= end;
+  public:
+    // Returns up to n for exact cardinality or n+1 if greater than n.
+    int count() const {
+      return seen;
+    }
+    void observe(const T &value) {
+      if (seen <= n) {
+        int i = 0;
+        while (i < seen and values[i] != value)
+          ++i;
+        if (not (i < seen))
+        {
+          ++seen;
+          if (i < n)
+            values[i] = value;
+        }
+      }
+    }
+  private:
+    std::array<T, n> values;
+    int seen = 0;
+};
+
+bool do_refine_base(ot::TreeNode<uint32_t, DIM> octant, Bounds bounds,
+    const Triangle *data, size_t begin, size_t end)
+{
+  if (octant.getLevel() == max_depth())
+    return false;
+
+  const size_t n_tris = end - begin;
+  if (n_tris > 100 and octant.getLevel() < 10)
+    return true;
+
+  constexpr int vertex_threshold = 1;
+  count_distinct_small<Point3f, vertex_threshold> count_verts;
+  for (size_t i = begin; (i < end) & (count_verts.count() <= vertex_threshold); ++i)
+  {
+    Triangle tri = data[i];
+    for (int v = 0; v < 3; ++v)
+      if (bounds_contains_point(bounds, tri.vertex[v]))
+        count_verts.observe(tri.vertex[v]);
+  }
+  return count_verts.count() > vertex_threshold;
 }
 
 bool do_refine_sub(Bounds box, int level, const Triangle *data, size_t begin, size_t end)
@@ -822,7 +940,9 @@ void triangle_tree(
   const Triangle *begin = &output[begin_it],  *end = &output[end_it];
 
   // Leaf of base, switch to sub tier
-  if (not do_refine_base(octant, &input[range[0]], 0, range[1] - range[0]))
+  Bounds octant_bounds =
+      frame_bounds_local_to_global(tree_node_to_local_bounds(octant), frame);
+  if (not do_refine_base(octant, octant_bounds, &input[range[0]], 0, range[1] - range[0]))
   {
     base_tier.push_back(octant);
     return triangle_tree_sub(begin, end, sub_tier, octant, sfc);
@@ -832,11 +952,16 @@ void triangle_tree(
   bool retain = true;
   if (range_size > 0)
   {
+    Bounds child_bounds[8];
+    for (int i = 0; i < nchild(dim); ++i)
+      child_bounds[i] = frame_bounds_local_to_global(tree_node_to_local_bounds(
+            octant.getChildMorton(i)), frame);
+
     // Count and permute offsets (inclusive prefix sums)
     std::array<size_t, nbuckets> offsets = {};
     for (const Triangle *tri = begin; tri != end; ++tri)
       for (int i = 0; i < nchild(dim); ++i)
-        offsets[i] += bool(intercepts(*tri, octant.getChildMorton(i)));
+        offsets[i] += bool(intercepts(*tri, child_bounds[i]));
     for (sfc::SubIndex s(1); s < nchild(dim); ++s)
       offsets[sfc.child_num(s)] += offsets[sfc.child_num(s.minus(1))];
     const size_t inflated_size = offsets[sfc.child_num(sfc::SubIndex(nchild(dim) - 1))];
@@ -850,7 +975,7 @@ void triangle_tree(
     Triangle *inflated_tris = &input[input.begin()];
     for (const Triangle *tri = end; tri-- != begin; )  // backward
       for (int i = 0; i < nchild(dim); ++i)
-        if (intercepts(*tri, octant.getChildMorton(i)))
+        if (intercepts(*tri, child_bounds[i]))
           inflated_tris[--offsets[i]] = *tri;
 
     // Clear the part of the output used as a buffer.
@@ -932,13 +1057,14 @@ int main(int argc, char * argv[])
 
   Octree octree_refined = {base_tier};
 
-  auto octree_trimesh = octree_to_trimesh(octree_refined, frame);
+  const bool wireframe_mode = false;
+  auto octree_trimesh = octree_to_trimesh(octree_refined, frame, wireframe_mode);
   Bounds octree_bounds = stl_trimesh_bounds(octree_trimesh);
   std::cerr << "Octree bounds == " << octree_bounds << "\n";
   std::cerr << "Octree triangles == " << octree_trimesh.frontmatter.n_triangles << "\n";
   std::cerr << "Octree octants == " << octree_refined.tree_nodes.size() << "\n";
   std::cerr << "Octree final data size == " << output.size() << "\n";
-  /// stl_trimesh_to_file(std::cout, octree_trimesh);
+  stl_trimesh_to_file(std::cout, octree_trimesh);
   stl_trimesh_destroy(octree_trimesh);
 
   /// stl_trimesh_to_file(std::cout, trimesh);
