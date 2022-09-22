@@ -177,7 +177,7 @@ void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
   // TODO what is the return value supposed to represent?
 
   // 2. Upstream->downstream ghost exchange.
-  m_oda->template readFromGhostBegin<VECType>(inGhostedPtr, m_uiDof);
+  m_oda->template readFromGhostBegin<VECType>(inGhostedPtr, m_uiDof); //NOTE: readFromGhostBegin,  writeToGhostsBegin can we copy this in e very other example or we need to recreate this?
   m_oda->template readFromGhostEnd<VECType>(inGhostedPtr, m_uiDof);
 
   // 3. Local matvec().

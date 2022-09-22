@@ -1,8 +1,8 @@
 ## CMAKE for Dendro-KT
 cmake_minimum_required(VERSION 2.8)
+set(LAPACKE_LIB "/usr/local/Cellar/lapack/3.10.1_1/lib/liblapacke.dylib")
 project(Dendro-KT)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
-
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
 
@@ -712,12 +712,34 @@ if(BUILD_EXAMPLES)
     target_include_directories(exPoissonEq_amat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/include)
     target_link_libraries(exPoissonEq_amat dendroKT ${MPI_LIBRARIES} m)
 
+        ## Poisson equation with aMat.
+       set( SRC_FILES 
+       #NOTE: set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+       #NOTE: ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+       #NOTE: ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonGMG.h
+       #NOTE: ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+       #NOTE: ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/idx.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/aabb.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/gridWrapper.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/vector.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include/petscVector.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/ke_matrix.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/fe_vector.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonEq_kt_finch.cpp)
+add_executable(exPoissonEq_kt_finch ${SRC_FILES})
+set_property(TARGET exPoissonEq_kt_finch PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+target_include_directories(exPoissonEq_kt_finch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/experimental/include)
+target_include_directories(exPoissonEq_kt_finch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
+target_include_directories(exPoissonEq_kt_finch PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+target_include_directories(exPoissonEq_kt_finch PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/include)
+target_link_libraries(exPoissonEq_kt_finch dendroKT ${MPI_LIBRARIES} m)
     ## Several methods of coarsening on incomplete octrees (Poisson operator).
-    set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
-                  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+    set(SRC_FILES #NOTE:${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+                  #NOTE:${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
                   ### ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonGMG.h
-                  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
-                  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                  #NOTE:${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+                  #NOTE:${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/ke_matrix.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/external/aMat/examples/src/fe_vector.cpp
                   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/coarsening.cpp)
