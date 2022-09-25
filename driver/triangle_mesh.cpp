@@ -1,55 +1,125 @@
 
 // ----------------------------------------------------------------------------
+// Debugging
+// ----------------------------------------------------------------------------
+#include "external/suspect.h"
+
+
+// ----------------------------------------------------------------------------
 // Point
 // ----------------------------------------------------------------------------
 
 #include <stdint.h>
+#include <array>
 
-struct Vec3f
+template <typename T, int dim>
+struct Vec
 {
-  float data[3] = {};
+  std::array<T, dim> data = {};
 
-  constexpr float operator[](int d) const
-  {
-    return data[d];
-  }
+  constexpr bool operator==(const Vec &v) const { return data == v.data; }
+  constexpr bool operator!=(const Vec &v) const { return data != v.data; }
+  constexpr T operator[](int d) const { return data[d]; }
+  T &operator[](int d) { return data[d]; }
 };
 
-struct Point3f
+template <typename T, int dim>
+struct Point
 {
-  float data[3] = {};
+  std::array<T, dim> data = {};
 
-  constexpr float operator[](int d) const
-  {
-    return data[d];
-  }
+  constexpr T operator[](int d) const { return data[d]; }
+  constexpr bool operator==(const Point &p) const { return data == p.data; }
+  constexpr bool operator!=(const Point &p) const { return data != p.data; }
+  T &operator[](int d) { return data[d]; }
 };
 
-bool operator==(Point3f a, Point3f b)
+using Vec2f = Vec<float, 2>;
+using Vec3f = Vec<float, 3>;
+using Point2f = Point<float, 2>;
+using Point3f = Point<float, 3>;
+using Point3u = Point<uint32_t, 3>;
+
+#include <utility>
+
+template <typename Expression, typename Seq>
+struct ExprSeq {};
+template <typename Expression, int...seq>
+struct ExprSeq<Expression, std::integer_sequence<int, seq...>>
 {
-  return a[0] == b[0] and a[1] == b[1] and a[2] == b[2];
+  template <typename Type>
+  operator Type() const { return { expr(seq)... }; }
+  Expression expr;
 };
 
-bool operator!=(Point3f a, Point3f b)
+template <int dim, typename Expression>
+auto dim_pack(Expression expr)
 {
-  return not operator==(a, b);
-};
+  return ExprSeq<Expression, std::make_integer_sequence<int, dim>>{expr};
+}
 
-Vec3f operator-(Point3f a, Point3f b)
+template <typename T, int dim>
+Vec<T, dim> operator-(Point<T, dim> a, Point<T, dim> b)
 {
-  return {{a[0] - b[0],  a[1] - b[1],  a[2] - b[2]}};
+  return (Vec<T, dim>) dim_pack<dim>([&](int d){return (a[d] - b[d]);});
+}
+
+template <typename T, int dim>
+Vec<T, dim> operator-(Vec<T, dim> a, Vec<T, dim> b)
+{
+  return (Vec<T, dim>) dim_pack<dim>([&](int d){return (a[d] - b[d]);});
+}
+
+template <typename T, int dim>
+Vec<T, dim> operator+(Vec<T, dim> a, Vec<T, dim> b)
+{
+  return (Vec<T, dim>) dim_pack<dim>([&](int d){return (a[d] + b[d]);});
+}
+
+template <typename T, int dim>
+Point<T, dim> operator+(Point<T, dim> a, Vec<T, dim> delta)
+{
+  return (Point<T, dim>) dim_pack<dim>([&](int d){return a[d] + delta[d];});
+}
+
+template <typename T, int dim>
+Vec<T, dim> operator*(Vec<T, dim> v, T scale)
+{
+  return (Vec<T, dim>) dim_pack<dim>([&](int d){return v[d] * scale;});
 }
 
 
-struct Point3u
+template <typename T, int dim>
+Point<T, dim-1> project_to_hyperplane(Point<T, dim> p, int axis)
 {
-  uint32_t data[3] = {};
+  return (Point<T, dim-1>) dim_pack<dim-1>([&](int d){return p[d + (d >= axis)];});
+}
 
-  constexpr uint32_t operator[](int d) const
-  {
-    return data[d];
-  }
-};
+
+template <typename T, int dim>
+T dot(Vec<T, dim> a, Vec<T, dim> b)
+{
+  T sum = 0;
+  for (int d = 0; d < dim; ++d)
+    sum += a[d] * b[d];
+  return sum;
+}
+
+template <typename T>
+Vec<T, 2> perp(Vec<T, 2> a)
+{
+  return {-a[1], a[0]};
+}
+
+template <typename T>
+Vec<T, 3> cross(Vec<T, 3> a, Vec<T, 3> b)
+{
+  return { a[1]*b[2]-b[1]*a[2],
+          -a[0]*b[2]+b[0]*a[2],
+           a[0]*b[1]-b[0]*a[1] };
+}
+
+
 
 
 #include <ostream>
@@ -115,6 +185,11 @@ bool range_contains_point(const Range range, const float point)
   return range.min <= point and point <= range.max;
 }
 
+bool range_disjoint(const Range a, const Range b)
+{
+  return a.max < b.min or b.max < a.min;
+}
+
 float range_midpoint(const Range &range)
 {
   return 0.5f * (range.min + range.max);
@@ -151,6 +226,14 @@ bool bounds_contains_point(const Bounds bounds, const Point3f point)
   return range_contains_point(bounds.ranges[0], point[0]) and
          range_contains_point(bounds.ranges[1], point[1]) and
          range_contains_point(bounds.ranges[2], point[2]);
+}
+
+bool bounds_disjoint(const Bounds a, const Bounds b)
+{
+  for (int d = 0; d < 3; ++d)
+    if (range_disjoint(a.ranges[d], b.ranges[d]))
+      return true;
+  return false;
 }
 
 Bounds bounds_cube(Bounds bounds)
@@ -515,10 +598,24 @@ stl_trimesh octree_to_trimesh(const Octree &octree, const Frame frame, bool wire
 // Triangle intersector
 // ----------------------------------------------------------------------------
 
+struct Triangle2D
+{
+  Point2f vertex[3] = {};
+};
+
 struct Triangle
 {
   Point3f vertex[3] = {};
 };
+
+Triangle2D project_to_hyperplane(Triangle tri, int axis)
+{
+  return {{project_to_hyperplane(tri.vertex[0], axis),
+           project_to_hyperplane(tri.vertex[1], axis),
+           project_to_hyperplane(tri.vertex[2], axis)}};
+}
+
+
 
 std::vector<Triangle> stl_extract_triangles(const stl_trimesh &trimesh)
 {
@@ -534,12 +631,118 @@ std::vector<Triangle> stl_extract_triangles(const stl_trimesh &trimesh)
   return triangles;
 }
 
+
+struct LogTriIntercept;
+
+
+bool point_in_triangle(Point2f p, const Triangle2D &tri)
+{
+  Point2f mid[3];
+  Vec2f eperp[3];
+
+  struct VE { int edge_v0; int edge_v1; int vertex; };
+  for (VE ve : { VE{0, 1, 2},  VE{1, 2, 0},  VE{2, 0, 1} })
+  {
+    Vec2f edge = tri.vertex[ve.edge_v1] - tri.vertex[ve.edge_v0];
+
+    // Midpoint and perpendicular vector of triangle side opposite each vertex
+    mid[ve.vertex] = tri.vertex[ve.edge_v0] + (edge * 0.5f);
+    eperp[ve.vertex] = perp(edge);
+
+    // If the query point is not in the same half-space as the opposite vertex,
+    // it is not in the triangle.
+    const float dot_vert = dot(tri.vertex[ve.vertex] - mid[ve.vertex], eperp[ve.vertex]);
+    const float dot_p = dot(p - mid[ve.vertex], eperp[ve.vertex]);
+    if (dot_vert * dot_p < 0.0f)
+      return false;
+  }
+  return true;
+}
+
+
 bool intercepts(Triangle tri, Bounds bounds)
 {
-  // TODO
-  return bounds_contains_point(bounds, tri.vertex[0]) or
-         bounds_contains_point(bounds, tri.vertex[1]) or
-         bounds_contains_point(bounds, tri.vertex[2]);
+  SUSPECT_STATIC_COUNTER(int, enter_test, LogTriIntercept);
+
+  Bounds tri_bounds;
+  bounds_include_point(tri_bounds, tri.vertex[0]);
+  bounds_include_point(tri_bounds, tri.vertex[1]);
+  bounds_include_point(tri_bounds, tri.vertex[2]);
+  if (bounds_disjoint(tri_bounds, bounds))
+    return false;
+
+  SUSPECT_STATIC_COUNTER(int, bounds_overlap, LogTriIntercept);
+
+  const bool contains_vertex = bounds_contains_point(bounds, tri.vertex[0]) or
+                               bounds_contains_point(bounds, tri.vertex[1]) or
+                               bounds_contains_point(bounds, tri.vertex[2]);
+  if (contains_vertex)
+    return true;
+  else
+  {
+    SUSPECT_STATIC_COUNTER(int, no_vertex, LogTriIntercept);
+
+    // Otherwise, triangle intercepts bounds iff both
+    //   - not all vertices on the same side of the triangle plane, and
+    //   - the intersection of the plane and an edge of the cube is in the triangle
+
+    const Vec3f e01 = tri.vertex[1] - tri.vertex[0];
+    const Vec3f e02 = tri.vertex[2] - tri.vertex[0];
+    const Vec3f tri_out_perp = cross(e01, e02);
+
+    const auto box_vert = [&bounds](uint32_t i) -> Point3f { return
+        { (i & 1u)? bounds.ranges[0].min : bounds.ranges[0].max,
+          (i & 2u)? bounds.ranges[1].min : bounds.ranges[1].max,
+          (i & 4u)? bounds.ranges[2].min : bounds.ranges[2].max }; };
+
+    // Compute on which side of the triangle plane is each vertex of the box.
+    bool has_outside = false;
+    bool has_inside = false;
+    bool has_boundary = false;
+    bool outside[8] = {};
+    bool boundary[8] = {};
+    for (int i = 0; i < 8; ++i)
+    {
+      const float sign = dot(box_vert(i) - tri.vertex[0], tri_out_perp);
+      if (sign < 0)
+        has_inside = true;
+      if (sign > 0)
+      {
+        has_outside = true;
+        outside[i] = true;
+      }
+      if (sign == 0)
+      {
+        has_boundary = true;
+        boundary[i] = true;
+      }
+    }
+    if (has_outside + has_inside + has_boundary < 2)
+      return false;
+    SUSPECT_STATIC_COUNTER(int, plane_cuts_corner, LogTriIntercept);
+
+    const auto same_sign = [&outside, &boundary](int i, int j) {
+      return outside[i] == outside[j] and boundary[i] == boundary[j];
+    };
+
+    struct E { int axis; int src; int dst; };
+    for (E e : { E{2, 0,4}, E{2, 1,5}, E{2, 2,6}, E{2, 3,7},
+                 E{1, 0,2}, E{1, 1,3}, E{1, 4,6}, E{1, 5,7},
+                 E{0, 0,1}, E{0, 2,3}, E{0, 4,5}, E{0, 6,7} })
+    {
+      if (not same_sign(e.src, e.dst) and
+          point_in_triangle(
+              project_to_hyperplane(box_vert(e.src), e.axis),
+              project_to_hyperplane(tri, e.axis)))
+        return true;
+    }
+
+    SUSPECT_STATIC_COUNTER(int, not_cuts_edge, LogTriIntercept);
+    return false;
+  }
+
+
+
 }
 
 bool is_interior(const Triangle *begin, const Triangle *end, Point3f point)
@@ -1037,7 +1240,14 @@ int main(int argc, char * argv[])
   _InitializeHcurve(DIM);
 
   // Input/output binary STL file format
-  stl_trimesh trimesh = stl_trimesh_create_from_file(std::cin);
+  std::ifstream input_file;
+  if (argc > 1)
+  {
+    std::cerr << "Opening as stl file: " << argv[1] << "\n";
+    input_file.open(argv[1]);
+  }
+  stl_trimesh trimesh = stl_trimesh_create_from_file(argc > 1 ? input_file : std::cin);
+  input_file.close();
 
   Bounds bounds = stl_trimesh_bounds(trimesh);
   std::cerr << "Triangle bounds == " << bounds << "\n";
@@ -1061,11 +1271,22 @@ int main(int argc, char * argv[])
   auto octree_trimesh = octree_to_trimesh(octree_refined, frame, wireframe_mode);
   Bounds octree_bounds = stl_trimesh_bounds(octree_trimesh);
   std::cerr << "Octree bounds == " << octree_bounds << "\n";
-  std::cerr << "Octree triangles == " << octree_trimesh.frontmatter.n_triangles << "\n";
   std::cerr << "Octree octants == " << octree_refined.tree_nodes.size() << "\n";
+  std::cerr << "Octree triangles == " << octree_trimesh.frontmatter.n_triangles << "\n";
   std::cerr << "Octree final data size == " << output.size() << "\n";
   stl_trimesh_to_file(std::cout, octree_trimesh);
   stl_trimesh_destroy(octree_trimesh);
+
+  std::cerr << "\n";
+  std::cerr << "_____________________________________________________\n";
+  std::cerr << "Counters:\n";
+  const auto logging = spct::tagged<LogTriIntercept>();
+  const int total = logging.ref(0, total);
+  for (int i = 0; i < logging.number_of_references(); ++i)
+  {
+    fprintf(stderr, "%20s: %10d (%.0f%%)\n",
+        logging.name(i).c_str(), logging.ref(i, int{}), 100.0 * logging.ref(i, int{}) / total);
+  }
 
   /// stl_trimesh_to_file(std::cout, trimesh);
   stl_trimesh_destroy(trimesh);
