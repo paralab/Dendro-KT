@@ -635,29 +635,43 @@ std::vector<Triangle> stl_extract_triangles(const stl_trimesh &trimesh)
 struct LogTriIntercept;
 
 
-bool point_in_triangle(Point2f p, const Triangle2D &tri)
+struct PointInTriangle
 {
   Point2f mid[3];
   Vec2f eperp[3];
+  float dot_vert[3];
 
-  struct VE { int edge_v0; int edge_v1; int vertex; };
-  for (VE ve : { VE{0, 1, 2},  VE{1, 2, 0},  VE{2, 0, 1} })
+  PointInTriangle(Triangle2D tri)
   {
-    Vec2f edge = tri.vertex[ve.edge_v1] - tri.vertex[ve.edge_v0];
+    struct VE { int edge_v0; int edge_v1; int vertex; };
+    for (VE ve : { VE{0, 1, 2},  VE{1, 2, 0},  VE{2, 0, 1} })
+    {
+      Vec2f edge = tri.vertex[ve.edge_v1] - tri.vertex[ve.edge_v0];
 
-    // Midpoint and perpendicular vector of triangle side opposite each vertex
-    mid[ve.vertex] = tri.vertex[ve.edge_v0] + (edge * 0.5f);
-    eperp[ve.vertex] = perp(edge);
+      // Midpoint and perpendicular vector of triangle side opposite each vertex
+      mid[ve.vertex] = tri.vertex[ve.edge_v0] + (edge * 0.5f);
+      eperp[ve.vertex] = perp(edge);
 
+      // If the query point is not in the same half-space as the opposite vertex,
+      // it is not in the triangle.
+      dot_vert[ve.vertex] = dot(tri.vertex[ve.vertex] - mid[ve.vertex], eperp[ve.vertex]);
+    }
+  }
+
+  bool test_point(Point2f p) const
+  {
     // If the query point is not in the same half-space as the opposite vertex,
     // it is not in the triangle.
-    const float dot_vert = dot(tri.vertex[ve.vertex] - mid[ve.vertex], eperp[ve.vertex]);
-    const float dot_p = dot(p - mid[ve.vertex], eperp[ve.vertex]);
-    if (dot_vert * dot_p < 0.0f)
-      return false;
+    for (int v = 0; v < 3; ++v)
+    {
+      const float dot_p = dot(p - mid[v], eperp[v]);
+      if (dot_p < 0.0f and dot_vert[v] >= 0.0f or
+          dot_p > 0.0f and dot_vert[v] <= 0.0f)
+        return false;
+    }
+    return true;
   }
-  return true;
-}
+};
 
 
 bool intercepts(Triangle tri, Bounds bounds)
@@ -682,9 +696,8 @@ bool intercepts(Triangle tri, Bounds bounds)
   {
     SUSPECT_STATIC_COUNTER(int, no_vertex, LogTriIntercept);
 
-    // Otherwise, triangle intercepts bounds iff both
-    //   - not all vertices on the same side of the triangle plane, and
-    //   - the intersection of the plane and an edge of the cube is in the triangle
+    // Otherwise, triangle intercepts bounds iff there is an edge of the cube
+    //   that intersects the triangle plane in the region of the triangle
 
     const Vec3f e01 = tri.vertex[1] - tri.vertex[0];
     const Vec3f e02 = tri.vertex[2] - tri.vertex[0];
@@ -696,45 +709,48 @@ bool intercepts(Triangle tri, Bounds bounds)
           (i & 4u)? bounds.ranges[2].min : bounds.ranges[2].max }; };
 
     // Compute on which side of the triangle plane is each vertex of the box.
-    bool has_outside = false;
-    bool has_inside = false;
-    bool has_boundary = false;
-    bool outside[8] = {};
-    bool boundary[8] = {};
+    enum TestHalfSpace : char { inside = 0, boundary = 1, outside = 2 };
+    TestHalfSpace box_vert_test[8];
     for (int i = 0; i < 8; ++i)
     {
       const float sign = dot(box_vert(i) - tri.vertex[0], tri_out_perp);
-      if (sign < 0)
-        has_inside = true;
-      if (sign > 0)
-      {
-        has_outside = true;
-        outside[i] = true;
-      }
-      if (sign == 0)
-      {
-        has_boundary = true;
-        boundary[i] = true;
-      }
+                                        //(inside)   //boundary    //outside
+      box_vert_test[i] = static_cast<TestHalfSpace>((sign >= 0) + (sign > 0));
     }
-    if (has_outside + has_inside + has_boundary < 2)
-      return false;
-    SUSPECT_STATIC_COUNTER(int, plane_cuts_corner, LogTriIntercept);
 
-    const auto same_sign = [&outside, &boundary](int i, int j) {
-      return outside[i] == outside[j] and boundary[i] == boundary[j];
+    const auto same_sign = [&box_vert_test](int i, int j) {
+      return box_vert_test[i] == box_vert_test[j];
     };
 
-    struct E { int axis; int src; int dst; };
-    for (E e : { E{2, 0,4}, E{2, 1,5}, E{2, 2,6}, E{2, 3,7},
-                 E{1, 0,2}, E{1, 1,3}, E{1, 4,6}, E{1, 5,7},
-                 E{0, 0,1}, E{0, 2,3}, E{0, 4,5}, E{0, 6,7} })
-    {
-      if (not same_sign(e.src, e.dst) and
-          point_in_triangle(
-              project_to_hyperplane(box_vert(e.src), e.axis),
-              project_to_hyperplane(tri, e.axis)))
-        return true;
+    {const int axis = 0;
+      const PointInTriangle triangle_region = {project_to_hyperplane(tri, axis)};
+      for (int src : {0, 2, 4, 6})
+      {
+        const int dst = src + (1<<axis);
+        if (not same_sign(src, dst) & triangle_region.test_point(
+              project_to_hyperplane(box_vert(src), axis)))
+          return true;
+      }
+    }
+    {const int axis = 1;
+      const PointInTriangle triangle_region = {project_to_hyperplane(tri, axis)};
+      for (int src : {0, 1, 4, 5})
+      {
+        const int dst = src + (1<<axis);
+        if (not same_sign(src, dst) & triangle_region.test_point(
+              project_to_hyperplane(box_vert(src), axis)))
+          return true;
+      }
+    }
+    {const int axis = 2;
+      const PointInTriangle triangle_region = {project_to_hyperplane(tri, axis)};
+      for (int src : {0, 1, 2, 3})
+      {
+        const int dst = src + (1<<axis);
+        if (not same_sign(src, dst) & triangle_region.test_point(
+              project_to_hyperplane(box_vert(src), axis)))
+          return true;
+      }
     }
 
     SUSPECT_STATIC_COUNTER(int, not_cuts_edge, LogTriIntercept);
