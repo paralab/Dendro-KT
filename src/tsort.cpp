@@ -1008,17 +1008,19 @@ template <typename T, unsigned int dim, typename...X>
 void distTreePartition_kway_impl(
     MPI_Comm comm,
     std::vector<TreeNode<T, dim>> &octants,
-    std::vector<X> & ...xs,
+    std::vector<X> & ...xs,    // xs are the values. if some xs are present, then there might be values corresponding to keys which need to be split
     const double sfc_tol,
-    TreeNode<T, dim> root,
+    TreeNode<T, dim> root,     // root of the entire octree. currently its the entire octree but in future, it might be a finer subtree where the complete data resides
     SFC_State<int(dim)> sfc)
 {
+  // Splitting a communicator is expensive. If it has not been called before, then it calls mpi_comm_split
+  // but if it has been called before, then it retains the previous comm split.
   const par::KwayComms &kway = par::KwayComms::attach_once(comm);
 
   int comm_size, comm_rank;
-  MPI_Comm_size(comm, &comm_size);
+  MPI_Comm_size(comm, &comm_size); // Total number of processors
   MPI_Comm_rank(comm, &comm_rank);
-  int nblocks = kway.blockmap(0).nblocks();
+  int nblocks = kway.blockmap(0).nblocks(); // Total number of groups for processors
 
   const MPI_Comm comm_in = comm;
   const int comm_size_in = comm_size;
@@ -1028,6 +1030,7 @@ void distTreePartition_kway_impl(
   const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(KWAY);
   assert(kway_roundup > 0);
 
+  // looks at all the octants and finds the coarsest level for any octant.
   const int local_coarsest_level = (octants.size() == 0 ? m_uiMaxDepth :
       std::min_element(octants.begin(), octants.end(),
         [](const TreeNode<T, dim> &a, const TreeNode<T, dim> &b) {
@@ -1042,6 +1045,9 @@ void distTreePartition_kway_impl(
   parent_buckets.reserve(kway_roundup * nchild(dim));
   child_buckets.reserve(kway_roundup * nchild(dim));
 
+  // Abstraction to make it easier to label the messages we are sending and receiving
+  // we may have multiple rounds of sending information. For any communication we 
+  // will be receiving size first. allocate buffer of total size and then receive the payload.
   using par::P2PPartners;
   using par::P2PScalar;
   using par::P2PMeta;
@@ -1090,6 +1096,7 @@ void distTreePartition_kway_impl(
     if (Ng == 0)
       break;
 
+    // creates one bucket over entire local dataset
     parent_buckets.reset(octants.size(), root, sfc);
     child_buckets.reset();
 
