@@ -508,10 +508,34 @@ SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,
   locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
 }
 
+template<typename T, unsigned int dim>
+void
+SFC_Tree<T,dim>:: distTreeSortWeighted(std::vector<TreeNode<T,dim>> &points,
+                          double loadFlexibility,
+                          MPI_Comm comm)
+{
+  DOLLAR("distTreeSortWeighted()");
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  distTreePartitionWeighted(points, 0, loadFlexibility, comm);
+  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
+}
+
 
 
 template <typename T, unsigned int dim, typename...X>
 void distTreePartition_kway_impl(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> & ...xs, //values
+    const double sfc_tol = 0.3,
+    TreeNode<T, dim> root = TreeNode<T, dim>(),
+    SFC_State<int(dim)> sfc = SFC_State<int(dim)>::root());
+
+template <typename T, unsigned int dim, typename...X>
+void distTreePartitionWeighted_kway_impl(
     MPI_Comm comm,
     std::vector<TreeNode<T, dim>> &octants,  //keys
     std::vector<X> & ...xs, //values
@@ -552,6 +576,38 @@ void distTreePartition_kway(
   distTreePartition_kway_impl<T, dim, X, Y>(comm, octants, xs, ys, sfc_tol);
 }
 
+template <typename T, unsigned int dim>
+void distTreePartitionWeighted_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    const double sfc_tol)
+{
+  DOLLAR("distTreePartitionWeighted_kway.keys");
+  distTreePartitionWeighted_kway_impl<T, dim>(comm, octants, sfc_tol);
+}
+
+template <typename T, unsigned int dim, typename X>
+void distTreePartitionWeighted_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    const double sfc_tol)
+{
+  DOLLAR("distTreePartitionWeighted_kway.values1");
+  distTreePartitionWeighted_kway_impl<T, dim, X>(comm, octants, xs, sfc_tol);
+}
+
+template <typename T, unsigned int dim, typename X, typename Y>
+void distTreePartitionWeighted_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    std::vector<Y> &ys,                      //values
+    const double sfc_tol)
+{
+  DOLLAR("distTreePartitionWeighted_kway.values2");
+  distTreePartitionWeighted_kway_impl<T, dim, X, Y>(comm, octants, xs, ys, sfc_tol);
+}
 
 template void distTreePartition_kway( MPI_Comm,
     std::vector<TreeNode<unsigned, 2u>> &,  //keys
@@ -592,7 +648,44 @@ template void distTreePartition_kway( MPI_Comm,
     std::vector<TreeNode<unsigned, 4u>> &,  //values
     const double);
 
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 2u>> &,  //keys
+    const double);
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 3u>> &,  //keys
+    const double);
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 4u>> &,  //keys
+    const double);
 
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 2u>> &,  //keys
+    std::vector<TNPoint<unsigned, 2u>> &,   //values
+    const double);
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 3u>> &,  //keys
+    std::vector<TNPoint<unsigned, 3u>> &,   //values
+    const double);
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 4u>> &,  //keys
+    std::vector<TNPoint<unsigned, 4u>> &,   //values
+    const double);
+
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 2u>> &,  //keys
+    std::vector<TNPoint<unsigned, 2u>> &,   //values
+    std::vector<TreeNode<unsigned, 2u>> &,  //values
+    const double);
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 3u>> &,  //keys
+    std::vector<TNPoint<unsigned, 3u>> &,   //values
+    std::vector<TreeNode<unsigned, 3u>> &,  //values
+    const double);
+template void distTreePartitionWeighted_kway( MPI_Comm,
+    std::vector<TreeNode<unsigned, 4u>> &,  //keys
+    std::vector<TNPoint<unsigned, 4u>> &,   //values
+    std::vector<TreeNode<unsigned, 4u>> &,  //values
+    const double);
 
 template <int nbuckets>
 using Buckets = std::array<size_t, nbuckets + 1>;
@@ -825,6 +918,7 @@ class DistPartPlot
 
 #define DEBUG_BUCKET_ARRAY 0
 
+// it is one bucket
 template <typename T, int dim>
 struct BucketRef
 {
@@ -845,6 +939,8 @@ struct BucketRef
   bool marked_split() const { return split; }
 };
 
+// struct of arrays 
+// array of buckets
 template <typename T, int dim>
 struct BucketArray
 {
@@ -1370,6 +1466,391 @@ void distTreePartition_kway_impl(
   }
 }
 
+template <typename T, unsigned int dim, typename...X>
+void distTreePartitionWeighted_kway_impl(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants, // keys could be in any order. 
+    std::vector<X> & ...xs, // if some xs are present, then there might be values corresponding to keys which need to be split
+    const double sfc_tol,
+    TreeNode<T, dim> root, // root of the entire octree. currently its the entire octree but in future, it might be a finer subtree where the complete data resides
+    SFC_State<int(dim)> sfc)
+{
+  // splitting a communicator is expensive. If it has not been called before, then it calls mpi comm split
+  // but if it has been called before, then it retains the previous comm split.
+  const par::KwayComms &kway = par::KwayComms::attach_once(comm);
+
+  //std::cout << "Hello Weighted Partition";
+  int comm_size, comm_rank;
+  MPI_Comm_size(comm, &comm_size); // number of processors
+  MPI_Comm_rank(comm, &comm_rank);
+  int nblocks = kway.blockmap(0).nblocks(); // number of groups of processes
+
+  const MPI_Comm comm_in = comm;
+  const int comm_size_in = comm_size;
+  const int comm_rank_in = comm_rank;
+
+  using LLU = long long unsigned;
+
+  // must try different values for k groups. kway_roundup is used for inital bucket splitting.
+  const size_t kway_roundup = binOp::next_power_of_pow_2_dim<dim>(KWAY); // can be configured with cmake.
+  assert(kway_roundup > 0);
+
+  // looks at all the octants and finds the coarsest level for any octant.
+  const int local_coarsest_level = (octants.size() == 0 ? m_uiMaxDepth :
+      std::min_element(octants.begin(), octants.end(),
+        [](const TreeNode<T, dim> &a, const TreeNode<T, dim> &b) {
+          return a.getLevel() < b.getLevel();
+        })->getLevel());
+  int global_coarsest_level;
+  {DOLLAR("mpi_min.global_coarsest_level");
+    global_coarsest_level = par::mpi_min(local_coarsest_level, comm_in);
+  }
+
+  // reasonable starting point. just an optimization. may exceed past this reservation. not crucial
+  BucketArray<T, int(dim)> parent_buckets,  child_buckets;
+  parent_buckets.reserve(kway_roundup * nchild(dim));
+  child_buckets.reserve(kway_roundup * nchild(dim));
+
+  // abstraction to make it easier to label the messages we are sending and receiving
+  // we may have multiple rounds of sending information. good for memory allocation before
+  // receiving any data into buffers. 
+  // might be receivng different number of items. will be receiving size first. allocate buffer of
+  // total size and then receive the payload.
+  using par::P2PPartners;
+  using par::P2PScalar;
+  using par::P2PMeta;
+  P2PPartners p2p_partners;  p2p_partners.reserve(KWAY, 2 * KWAY);
+  P2PScalar<> p2p_sizes;     p2p_sizes.reserve(KWAY, 2 * KWAY);
+  P2PMeta p2p_meta;          p2p_meta.reserve(KWAY, 2 * KWAY, 1 + sizeof...(xs));
+
+
+  // Bucket split calls the lambda and performs counting. Assumes data might be in any order
+  // b.local_begin and end are indices into v array. b.octant is the root of the subtree containing 
+  // all points between b.begin and b.end.
+  const auto bucket_split = [](
+      std::vector<TreeNode<T, dim>> &v,
+      std::vector<X> &...w,
+      BucketRef<T, int(dim)> b)
+  {
+    Buckets<1+nchild(dim)> buckets = bucket_sfc<T, dim, X...>(
+        &(*v.begin()),
+        (&(*w.begin()))...,
+        b.local_begin,
+        b.local_end,
+        b.octant.getLevel() + 1,
+        b.sfc);
+    //future: use locate instead of bucketing if octants is already sorted.
+
+    return buckets;
+  };
+
+  // Splitters. used in lambda commit
+  std::vector<size_t> local_block;
+  local_block.reserve(KWAY + 1);
+
+  std::string plot_prefix = "partition/kway";
+
+  // each round divides by k Look at hyksort paper. 
+  // Every round is computing the distribution of splitters. 
+  for (int round = 0; round < kway.levels(); ++round)
+  {
+    comm = kway.comm(round);
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+    par::KwayBlocks blockmap = kway.blockmap(round);
+    nblocks = blockmap.nblocks();
+
+    const std::string round_suffix = ".round=" + std::to_string(round);
+
+    LLU Ng;
+    LLU const Nl = octants.size();
+    {DOLLAR("allreduce.Ng" + round_suffix);
+      par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm); // will need to do a similar allreduce to find the total weight
+    }
+    if (Ng == 0)
+      break;
+
+    // creates one bucket over entire local dataset
+    parent_buckets.reset(octants.size(), root, sfc);
+    child_buckets.reset();
+
+    // Initial buckets.
+    int depth = 0;
+    {DOLLAR("initial.buckets" + round_suffix);
+      for (; depth + root.getLevel() < global_coarsest_level and (1 << (depth*dim)) < nblocks; ++depth)
+      {
+        child_buckets.reset();
+        for (BucketRef<T, int(dim)> b : parent_buckets)
+        {
+          const size_t split_sz = nchild(dim) + 1;
+          Buckets<split_sz> split = bucket_split(octants, xs..., b);
+          child_buckets.push_children(b, split);
+        }
+        std::swap(child_buckets, parent_buckets);
+      }
+    }
+    const int initial_depth = depth;
+
+    /// DistPartPlot plot(Ng, nblocks, m_uiMaxDepth - initial_depth, plot_prefix, comm);
+
+    // Allreduce parents to get global begins of parents.
+    // golbal start and end of.
+    {DOLLAR("allreduce.parent_buckets" + round_suffix);
+      parent_buckets.all_reduce(comm);
+    }
+    /// parent_buckets.plot(plot);
+
+    // Naive: Each block weighted equally. (Despite having +/-1 processes).
+    // Relative: Blocks weighted by #proc, abs_tol = Ng / nblocks * rel_tol.
+    // Absolute: Blocks weighted by #proc, abs_tol = Ng / comm_size * rel_tol.
+    // ----
+    // Relative strategy cannot guarantee exact tolerances of final partition,
+    // unlike absolute strategy. However, absolute strategy requires equal
+    // number of Allreduce on each stage. Relative should be dominated by
+    // the final stage, where the precision is highest. Quick calculation:
+    // If #rounds_per_stage ~ O(Ng/abs_tol), [denote p=comm_size, r=relative_tol]
+    //   Relative #rounds ~ O(1/r * p)  Absolute #rounds ~ O(1/r * p log_K(p))
+    // With p=10^6 and K=128, the difference would be a factor of 2.8x.
+    // In theory the same tradeoff can be made by adjusting tol in absolute.
+    // Hopefully #rounds is much less, else we are in trouble either way.
+
+    // Block -> task -> global item
+
+    /// const auto kway_map = par::KwayBlocks(comm_size, nblocks);
+
+    // Mapping of tasks within blocks is defined by blockmap.
+
+    // Mapping of splitters within array, induces mapping within buckets.
+    const auto ideal =    [=](int blk) { assert(blk <= nblocks);
+      return blockmap.block_to_task(blk) * Ng / comm_size;
+    };
+    const auto ideal_sz = [=](int blk) { assert(blk <= nblocks);
+      return ideal(blk + 1) - ideal(blk);
+    };
+    const auto next_blk = [=](LLU item) { assert(item <= Ng);
+      const int next_task = (item * comm_size + Ng - 1) / Ng;
+      return blockmap.task_to_next_block(next_task);
+    };
+
+    // "Relative" strategy: Relative tolerance applying to block, not task.
+    /// const LLU min_tol =  Ng                / nblocks * sfc_tol;
+    /// const LLU max_tol = (Ng + nblocks - 1) / nblocks * sfc_tol;
+
+    // "Absolute" strategy: Relative tolerance applying to task, not block.
+    // Give the user what they ask for and allow them to adjust the tradeoff.
+    const LLU min_tol =  Ng                  / comm_size * sfc_tol;
+    const LLU max_tol = (Ng + comm_size - 1) / comm_size * sfc_tol;
+
+    const auto too_wide = [=](LLU begin, LLU end) -> bool {
+      const bool wider_than_margins = end - begin > 2 * min_tol + 1;
+      const LLU margin_left = begin + min_tol < end ? begin + min_tol + 1 : end;
+      const LLU margin_right = end >= min_tol ? end - min_tol : 0;
+      const int far_blk_begin = next_blk(margin_left);
+      const int far_blk_end = next_blk(margin_right);
+      return wider_than_margins and far_blk_begin < far_blk_end;
+    };
+
+    const int self_blk = blockmap.task_to_block(comm_rank);
+    const int self_blk_id = blockmap.task_to_block_id(comm_rank);
+
+    const auto dest_blk_id =  [=](int blk) {
+      return self_blk_id % blockmap.block_tasks(blk);//future: more balanced
+    };
+    const auto src_blk_id =   [=](int blk, int src) {
+      return src == 0 ? self_blk_id : blockmap.block_tasks(self_blk);
+    };
+    const auto srcs_per_blk = [=](int blk) {
+      if (self_blk_id == blockmap.block_tasks(blk)) return 0;
+      if (self_blk_id == 0 and blockmap.block_tasks(blk) > blockmap.block_tasks(self_blk)) return 2;
+      else return 1;
+    };
+
+    // Splitters
+    local_block.clear();
+    local_block.resize(nblocks + 1, -1);
+    local_block[nblocks] = octants.size();
+
+    const auto local_block_sz = [&](int blk) {
+      assert(blk < nblocks);
+      return local_block[blk+1] - local_block[blk];
+    };
+
+    // commit()
+    const auto commit = [&](int blk, const BucketRef<T, int(dim)> b) {
+        assert(blk < nblocks);
+        assert(b.global_begin <= ideal(blk) and ideal(blk) <= b.global_end);
+        const LLU dist_begin = ideal(blk) - b.global_begin;
+        const LLU dist_end = b.global_end - ideal(blk);
+        local_block[blk] = (dist_begin <= dist_end ? b.local_begin : b.local_end);
+    };
+
+    // Keep splitting buckets to tolerance or until max depth reached.
+    {DOLLAR("keep.splitting" + round_suffix);
+      for (; parent_buckets.size() > 0 and depth + root.getLevel() < m_uiMaxDepth; ++depth)
+      {
+        child_buckets.reset();
+
+        // If all splitters acceptable or there are none, commit. Else, split.
+        {DOLLAR("commit.and.split" + round_suffix);
+          for (BucketRef<T, int(dim)> b : parent_buckets)
+          {
+            if (not too_wide(b.global_begin, b.global_end))
+            {
+              const int begin = next_blk(b.global_begin);
+              const int end = next_blk(b.global_end);
+              for (int blk = begin; blk < end; ++blk)
+                commit(blk, b);
+            }
+            else
+            {
+              b.mark_split();
+              const size_t split_sz = nchild(dim) + 1;
+              Buckets<split_sz> split = bucket_split(octants, xs..., b);
+              child_buckets.push_children(b, split);
+            }
+          }
+        }
+
+        // Allreduce children to get global begins of children, update parents.
+        {DOLLAR("allreduce.child_buckets" + round_suffix);
+          child_buckets.all_reduce(comm);
+        }
+        {DOLLAR("update_ancestors" + round_suffix);
+          parent_buckets.update_ancestors(child_buckets);
+        }
+        /// child_buckets.plot(plot);
+
+        // Commit any splitters that are not inheritted by children.
+        size_t cb = 0;
+        {DOLLAR("commit.ancestors" + round_suffix);
+          for (BucketRef<T, int(dim)> b : parent_buckets)
+            if (b.marked_split())
+            {
+              const int parent_begin = next_blk(b.global_begin);
+              const int child_begin = next_blk(child_buckets.ref(cb).global_begin);
+              for (int blk = parent_begin; blk < child_begin; ++blk)
+                commit(blk, b);
+              cb += nchild(dim);
+            }
+        }
+
+        std::swap(parent_buckets, child_buckets);
+      }
+    }
+
+    // If ran out of levels, commit any remaining splitters.
+    {DOLLAR("commit.remainder" + round_suffix);
+      for (const BucketRef<T, int(dim)> b : parent_buckets)
+      {
+        const int begin = next_blk(b.global_begin);
+        const int end = next_blk(b.global_end);
+        for (int blk = begin; blk < end; ++blk)
+          commit(blk, b);
+      }
+    }
+
+    // Validate splitters.
+    assert((std::find(local_block.begin(), local_block.end(), -1) == local_block.end()));
+    assert(std::is_sorted(local_block.begin(), local_block.end()));
+
+
+    // Exchange data to match block boundaries.
+    {DOLLAR("Exchange" + round_suffix);
+
+      int total_srcs = 0;
+      {DOLLAR("total_srcs" + round_suffix);
+        for (int blk = 0; blk < nblocks; ++blk)
+          if (blk != self_blk)
+            total_srcs += srcs_per_blk(blk);
+      }
+
+      assert(par::mpi_sum(total_srcs, comm) == comm_size * (nblocks - 1));
+
+      {DOLLAR("p2p.reset" + round_suffix);
+        p2p_partners.reset(nblocks - 1, total_srcs, comm);
+        p2p_sizes.reset(&p2p_partners);
+        p2p_meta.reset(&p2p_partners);
+      }
+
+      {DOLLAR("send+schedule_send" + round_suffix);
+        for (int blk = 0, dst_idx = 0; blk < nblocks; ++blk)
+          if (blk != self_blk)
+          {
+            p2p_partners.dest(dst_idx, blockmap.blk_id_to_task(blk, dest_blk_id(blk)));
+            p2p_sizes.send(dst_idx, local_block_sz(blk));
+            p2p_meta.schedule_send(dst_idx, local_block_sz(blk), local_block[blk]);
+            dst_idx++;
+          }
+      }
+
+      {DOLLAR("self_size+recv+recv_size" + round_suffix);
+        for (int blk = 0, src_idx = 0; blk < nblocks; ++blk)
+          if (blk == self_blk)
+            p2p_meta.self_size(src_idx, local_block[self_blk+1] - local_block[self_blk]);
+          else
+            for (int s = 0; s < srcs_per_blk(blk); ++s)
+            {
+              p2p_partners.src(src_idx, blockmap.blk_id_to_task(blk, src_blk_id(blk, s)));
+              p2p_meta.recv_size(src_idx,  p2p_sizes.recv(src_idx));
+              src_idx++;
+            }
+      }
+
+      p2p_meta.tally_recvs();
+
+
+      // For variadic templates, reuse pack argument vector.
+      // Make more space at the end, send from beginning, receive to end.
+      // Copy to self block place in receiving segment.
+
+      const size_t old_sz = Nl;
+      const size_t receiving = p2p_meta.recv_total();
+      const size_t copy_to = p2p_meta.self_offset();
+      const size_t copying = local_block[self_blk+1] - local_block[self_blk];
+      const size_t new_sz = receiving + copying;
+      assert(par::mpi_sum(LLU(new_sz), comm) == Ng);
+
+      {DOLLAR("resize.octants" + round_suffix);
+        octants.resize(old_sz + new_sz);
+      }
+      {DOLLAR("send.octants" + round_suffix);
+        p2p_meta.send(&octants[0]);
+      }
+      {DOLLAR("resize.xs" + round_suffix);
+        DENDRO_FOR_PACK(xs.resize(old_sz + new_sz));
+      }
+      {DOLLAR("send.xs" + round_suffix);
+        DENDRO_FOR_PACK(p2p_meta.send(&xs[0]));
+      }
+
+      // Copy local segment to self block position.
+      {DOLLAR("self.copy" + round_suffix);
+        std::copy_n(&octants[local_block[self_blk]], copying, &octants[old_sz + copy_to]);
+        DENDRO_FOR_PACK(std::copy_n(&xs[local_block[self_blk]], copying, &xs[old_sz + copy_to]));
+      }
+
+      // Receive remote segments into end segment.
+      {DOLLAR("recv.octants" + round_suffix);
+        p2p_meta.recv(&octants[old_sz]);
+      }
+      {DOLLAR("recv.xs" + round_suffix);
+        DENDRO_FOR_PACK(p2p_meta.recv(&xs[old_sz]));
+      }
+
+      {DOLLAR("wait_all" + round_suffix);
+        p2p_sizes.wait_all();
+        p2p_meta.wait_all();
+      }
+      // Do not move the send buffer until finished sending!
+      {DOLLAR("erase" + round_suffix);
+        octants.erase(octants.begin(), octants.begin() + old_sz);
+        DENDRO_FOR_PACK(xs.erase(xs.begin(), xs.begin() + old_sz));
+      }
+    }
+
+    plot_prefix += "_" + std::to_string(self_blk);
+  }
+}
 
 template<typename T, unsigned int dim>
 void
@@ -1379,6 +1860,16 @@ SFC_Tree<T,dim>:: distTreePartition(std::vector<TreeNode<T,dim>> &points,
                           MPI_Comm comm)
 {
   distTreePartition(points, loadFlexibility, comm);
+}
+
+template<typename T, unsigned int dim>
+void
+SFC_Tree<T,dim>:: distTreePartitionWeighted(std::vector<TreeNode<T,dim>> &points,
+                          unsigned int,
+                          double loadFlexibility,
+                          MPI_Comm comm)
+{
+  distTreePartitionWeighted(points, loadFlexibility, comm);
 }
 
 template<typename T, unsigned int dim>
@@ -1395,6 +1886,22 @@ SFC_Tree<T,dim>:: distTreePartition(std::vector<TreeNode<T,dim>> &points,
     return;
 
   distTreePartition_kway(comm, points, loadFlexibility);
+}
+
+template<typename T, unsigned int dim>
+void
+SFC_Tree<T,dim>:: distTreePartitionWeighted(std::vector<TreeNode<T,dim>> &points,
+                          double loadFlexibility,
+                          MPI_Comm comm)
+{
+  int nProc, rProc;
+  MPI_Comm_rank(comm, &rProc);
+  MPI_Comm_size(comm, &nProc);
+
+  if (nProc == 1)
+    return;
+
+  distTreePartitionWeighted_kway(comm, points, loadFlexibility);
 }
 
 //

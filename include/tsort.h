@@ -277,6 +277,27 @@ void distTreePartition_kway(
     std::vector<Y> &ys,                      //values
     const double sfc_tol = 0.3);
 
+template <typename T, unsigned int dim>
+void distTreePartitionWeighted_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    const double sfc_tol = 0.3);
+
+template <typename T, unsigned int dim, typename X>
+void distTreePartitionWeighted_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    const double sfc_tol = 0.3);
+
+template <typename T, unsigned int dim, typename X, typename Y>
+void distTreePartitionWeighted_kway(
+    MPI_Comm comm,
+    std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<X> &xs,                      //values
+    std::vector<Y> &ys,                      //values
+    const double sfc_tol = 0.3);
+
 
 template <typename T, unsigned int dim>
 struct SFC_Tree
@@ -539,7 +560,16 @@ struct SFC_Tree
                            double loadFlexibility,
                            MPI_Comm comm);
 
+  static void distTreeSortWeighted(std::vector<TreeNode<T,dim>> &points,
+                           double loadFlexibility,
+                           MPI_Comm comm);
+
   static void distTreePartition(std::vector<TreeNode<T,dim>> &points,
+                           unsigned int,  // backwards compatibility
+                           double loadFlexibility,
+                           MPI_Comm comm);
+
+  static void distTreePartitionWeighted(std::vector<TreeNode<T,dim>> &points,
                            unsigned int,  // backwards compatibility
                            double loadFlexibility,
                            MPI_Comm comm);
@@ -548,6 +578,9 @@ struct SFC_Tree
                            double loadFlexibility,
                            MPI_Comm comm);
 
+  static void distTreePartitionWeighted(std::vector<TreeNode<T,dim>> &points,
+                           double loadFlexibility,
+                           MPI_Comm comm);
   /**
    * @brief Broadcast the first TreeNode from every processor so we have global access to the splitter list.
    */
