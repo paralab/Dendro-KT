@@ -859,7 +859,7 @@ bool do_refine_base(ot::TreeNode<uint32_t, DIM> octant, Bounds bounds,
 bool do_refine_sub(Bounds box, int level, const Triangle *data, size_t begin, size_t end)
 {
   //TODO
-  return level < 4;
+  return level < 8;
 }
 
 //
@@ -1145,10 +1145,46 @@ void triangle_tree_sub(
     const Triangle *begin,
     const Triangle *end,
     std::vector<ot::TreeNode<uint32_t, DIM>> &sub_tier,
+    Frame frame,
     ot::TreeNode<uint32_t, DIM> octant,
     ot::SFC_State<DIM> sfc)
 {
-  //TODO
+  using namespace ot;
+  constexpr int dim = DIM;
+
+  const Bounds octant_bounds =
+      frame_bounds_local_to_global(tree_node_to_local_bounds(octant), frame);
+
+  if (not do_refine_sub(octant_bounds, octant.getLevel(), begin, 0, end-begin))
+  {
+    sub_tier.push_back(octant);
+    return;
+  }
+
+  Bounds child_bounds[8];
+  for (int i = 0; i < nchild(dim); ++i)
+    child_bounds[i] = frame_bounds_local_to_global(tree_node_to_local_bounds(
+          octant.getChildMorton(i)), frame);
+
+  bool child_intercepted[8] = {};
+  for (const Triangle *tri = begin; tri != end; ++tri)
+    for (int i = 0; i < nchild(dim); ++i)
+      child_intercepted[i] |= bool(intercepts(*tri, child_bounds[i]));
+
+  // To skip void children, perform pointwise in/out test at parent centroid.
+  const std::array<uint32_t, dim> centroid_coord = octant.range().centroid().coords();
+  const bool retain = is_interior(begin, end, centroid_coord, frame);
+
+  // Recurse on all non-void children.
+  for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+  {
+    const bool intercepted = child_intercepted[sfc.child_num(s)];
+    TreeNode<uint32_t, dim> child_octant = octant.getChildMorton(sfc.child_num(s));
+    child_octant.setIsOnTreeBdry(intercepted);
+
+    if (intercepted or retain)
+      triangle_tree_sub(begin, end, sub_tier, frame, child_octant, sfc.subcurve(s));
+  }
 }
 
 
@@ -1192,12 +1228,12 @@ void triangle_tree(
   const Triangle *begin = &output[begin_it],  *end = &output[end_it];
 
   // Leaf of base, switch to sub tier
-  Bounds octant_bounds =
+  const Bounds octant_bounds =
       frame_bounds_local_to_global(tree_node_to_local_bounds(octant), frame);
   if (not do_refine_base(octant, octant_bounds, &input[range[0]], 0, range[1] - range[0]))
   {
     base_tier.push_back(octant);
-    return triangle_tree_sub(begin, end, sub_tier, octant, sfc);
+    return triangle_tree_sub(begin, end, sub_tier, frame, octant, sfc);
   }
 
   // Only intercepted elements need to assign subsets to children.
@@ -1265,9 +1301,12 @@ refine(std::vector<Triangle> input, Frame frame)
   std::vector<ot::TreeNode<uint32_t, DIM>> base_tier;
   std::vector<ot::TreeNode<uint32_t, DIM>> sub_tier;
 
+  ot::TreeNode<uint32_t, DIM> octree_root = {};
+  octree_root.setIsOnTreeBdry(true);
+
   triangle_tree(
       input_stack, {input_stack.begin(), input_stack.end()}, output_stack,
-      base_tier, sub_tier, frame, {}, ot::SFC_State<DIM>::root());
+      base_tier, sub_tier, frame, octree_root, ot::SFC_State<DIM>::root());
 
   std::vector<Triangle> output = std::move(output_stack).to_vector();
 
@@ -1314,7 +1353,8 @@ int main(int argc, char * argv[])
   std::vector<ot::TreeNode<uint32_t, DIM>> base_tier, sub_tier;
   std::tie(output, base_tier, sub_tier) = refine(input, frame);
 
-  Octree octree_refined = {base_tier};
+  /// Octree octree_refined = {base_tier};
+  Octree octree_refined = {sub_tier};
 
   const bool wireframe_mode = false;
   auto octree_trimesh = octree_to_trimesh(octree_refined, frame, wireframe_mode);
