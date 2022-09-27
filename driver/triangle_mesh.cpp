@@ -763,7 +763,40 @@ bool intercepts(Triangle tri, Bounds bounds)
 
 bool is_interior(const Triangle *begin, const Triangle *end, Point3f point)
 {
+  // This can assume the point is the centroid of a box, and
+  // the triangle list includes all triangles intercepting the box.
+
+  // Idea: Nearest triangle can decide what side the point is on.
+  // If an edge or a vertex is nearest (rather than interior of a triangle),
+  // then the angle of approach is in a narrow enough range to test.
+  // In particular, the query is on the "pointy" side, which
+  // could be infinitesimally rounded into an interpolating
+  // arc or spherioidal patch.
+
+  // Remember nearest triangle, edge, and vertex.
+  // If an edge or vertex is nearest, just need a second triangle
+  // sharing that element and see if it is "behind" or "in front"
+  // of the first triangle with that edge or vertex.
+
+  // Outward normal of a triangle follows the right-hand rule around vertices.
+
   //TODO
+
+  // triangle: distance, normal
+  // edge: distance=inf, endpoints, first triangle normal, pending in/out
+  // vertex: distance=inf, location, first triangle normal, pending in/out
+
+  // for each triangle:
+  //   project query point
+  //   if inside, update triangle distance and normal
+  //   update edges and vertices:
+  //     if prev nearest is same element: classify in/out
+  //     otherwise, if new nearest: initialize
+
+  // if triangle distance is closest, use normal to classify query
+  // if edge distance is closest, return in/out
+  // if vertex distance is closest, return in/out
+
   return false;
 }
 
