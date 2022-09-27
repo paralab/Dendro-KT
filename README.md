@@ -25,3 +25,13 @@ cd build
 cmake ..
 make all
 ```
+The current CMakeLists.txt has default settings assuming PETSc is installed in the user's $HOME directory.
+Please make sure to use appropriate CMake flags or change the top level CMakeLists.txt if PETSc is 
+installed in a different directory.
+
+If both g++ and clang are installed, make sure to check which version is picked by CMake by checking 
+CMake logs and CMakeCache.txt file.
+
+If using GNUPlot for plotting/debugging, make sure to install all the required GNUPlot packages.
+Specifically check the log files which will contain errors related to
+any missing packages. 
