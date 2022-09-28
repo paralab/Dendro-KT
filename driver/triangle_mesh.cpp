@@ -632,6 +632,58 @@ std::vector<Triangle> stl_extract_triangles(const stl_trimesh &trimesh)
 }
 
 
+
+bool point_lex_less(Point3f a, Point3f b)
+{
+  for (int i = 0; i < 3; ++i)
+    if (a[i] < b[i])
+      return true;
+    else if (a[i] > b[i])
+      return false;
+  return false;
+};
+
+struct Segment
+{
+  Point3f vertex[2] = {};
+};
+
+bool operator==(const Segment &a, const Segment &b)
+{
+  return a.vertex[0] == b.vertex[0] and a.vertex[1] == b.vertex[1];
+}
+
+bool operator<(const Segment &a, const Segment &b)
+{
+  // lexicographic
+  return point_lex_less(a.vertex[0], b.vertex[0]) or a.vertex[0] == b.vertex[0] and point_lex_less(a.vertex[1], b.vertex[1]);
+}
+
+Segment redirect_segment(Point3f a, Point3f b)
+{
+  if (point_lex_less(b, a))
+    std::swap(a, b);
+
+  return Segment{{a, b}};
+}
+
+
+bool is_manifold(const std::vector<Triangle> &tris)
+{
+  std::map<Segment, int> edges;
+  for (Triangle tri : tris)
+  {
+    ++edges[redirect_segment(tri.vertex[0], tri.vertex[1])];
+    ++edges[redirect_segment(tri.vertex[1], tri.vertex[2])];
+    ++edges[redirect_segment(tri.vertex[2], tri.vertex[0])];
+  }
+  for (const auto &edge_count : edges)
+    if (edge_count.second != 2)
+      return false;
+  return true;
+}
+
+
 struct LogTriIntercept;
 
 
@@ -1350,6 +1402,8 @@ int main(int argc, char * argv[])
 
   std::vector<Triangle> output,  input = stl_extract_triangles(trimesh);
   std::cerr << "after extracting, input.size()==" << input.size() << "\n";
+  const bool manifold = is_manifold(input);
+  std::cerr << "is " << (manifold ? "" : "NOT") << " manifold\n";
   std::vector<ot::TreeNode<uint32_t, DIM>> base_tier, sub_tier;
   std::tie(output, base_tier, sub_tier) = refine(input, frame);
 
