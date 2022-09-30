@@ -1366,6 +1366,134 @@ refine(std::vector<Triangle> input, Frame frame)
 }
 
 
+// ----------------------------------------------------------------------------
+// Connected components (of the void octants)
+// ----------------------------------------------------------------------------
+
+// Disjoint set forest with
+//  - path halving
+//  - union by rank
+//  - overlaid parent and rank
+//
+// Keys must be in range 0 to number_of_items - 1 < 2^31
+class UnionFind
+{
+  public:
+    using Key = int32_t;  //signed
+    UnionFind(size_t n_items) : n_sets(n_items), par_rank(n_items, -1) {}
+
+    Key find(Key x) const;
+    void merge(Key a, Key b);
+    size_t count_sets() const { return n_sets; }
+
+    void roots(Key *roots, size_t *counts) const;
+    void partition(const Key *roots, Key *keys) const;
+
+  private:
+    size_t n_sets;
+    mutable std::vector<Key> par_rank;
+
+    bool is_root(Key k, Key value) const { return value < 0; }
+    Key parent(Key k, Key value) const { return is_root(k, value) ? k : value; }
+    static bool taller(Key rank_a, Key rank_b) { return rank_a < rank_b; }  // negative
+    static Key increment(Key rank) { return rank - 1; }  // negative
+    std::pair<Key, Key> find_rank(Key x) const;
+};
+
+std::pair<UnionFind::Key, UnionFind::Key> UnionFind::find_rank(Key x_) const
+{
+  Key x = x_;
+  Key p = par_rank[x];
+  while (not is_root(x, p))
+  {
+    Key g = par_rank[p];
+    par_rank[x] = parent(p, g);
+    x = p;
+    p = g;
+  }
+  return {x, p};
+}
+
+UnionFind::Key UnionFind::find(Key x) const
+{
+  return find_rank(x).first;
+}
+
+void UnionFind::merge(Key a, Key b)
+{
+  Key rank_a, rank_b;
+  std::tie(a, rank_a) = find_rank(a);
+  std::tie(b, rank_b) = find_rank(b);
+
+  if (a != b)
+    --n_sets;
+  else
+    return;
+
+  if (taller(rank_a, rank_b))
+    par_rank[b] = a;
+  else if (taller(rank_b, rank_a))
+    par_rank[a] = b;
+  else
+  {
+    // Equal ranks. Bias root toward smaller indices.
+    const Key min = (a <= b ? a : b);
+    const Key max = (a <= b ? b : a);
+    par_rank[max] = min;
+    par_rank[min] = increment(rank_a);
+  }
+}
+
+void UnionFind::roots(Key *roots, size_t *counts) const
+{
+  const size_t n_sets = this->n_sets;
+  const size_t n_items = par_rank.size();
+
+  size_t captured = 0;
+
+  const auto count_new_root = [&](Key r) {
+    for (size_t c = 0; c < captured; ++c)
+      if (r == roots[c])
+      {
+        ++counts[c];
+        return false;
+      }
+    return true;
+  };
+
+  for (size_t i = 0; i < n_items; ++i)
+  {
+    const Key r = find(i);
+    if (count_new_root(r))
+    {
+      roots[captured] = r;
+      counts[captured] = 1;
+      ++captured;
+    }
+  }
+}
+
+#include <algorithm>
+
+void UnionFind::partition(const Key *roots, Key *keys) const
+{
+  // future: linear algorithm? this one is O(n_items * n_sets)
+
+  const size_t n_sets = this->n_sets;
+  size_t n_items = par_rank.size();
+
+  std::iota(keys, keys + n_items, 0);
+
+  for (size_t r = 0; r < n_sets; ++r)
+  {
+    const Key root = roots[r];
+    const auto same_set = [&](Key k) { return this->find(k) == root; };
+    Key * begin_next = std::stable_partition(keys, keys + n_items, same_set);
+    n_items -= (begin_next - keys);
+    keys = begin_next;
+  }
+}
+
 
 
 // ============================================================================
