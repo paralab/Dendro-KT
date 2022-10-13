@@ -120,6 +120,42 @@ SFC_State<dim> SFC_State<dim>::subcurve(sfc::SubIndex i) const
 }
 
 
+template <typename T, int dim>
+struct SFC_Region
+{
+  TreeNode<T, dim> octant = {};
+  SFC_State<dim> sfc = SFC_State<dim>::root();
+
+  constexpr SFC_Region subdivide(sfc::SubIndex i) const
+  {
+    const sfc::ChildNum cn = sfc.child_num(i);
+    return { octant.getChildMorton(cn), sfc.child_curve(cn) };  //c++14
+  }
+
+  constexpr sfc::SubIndex locate_segment(const TreeNode<T, dim> &tn) const
+  {
+    assert(octant.isAncestorInclusive(tn));
+    const auto cn = sfc::ChildNum(tn.getMortonIndex(octant.getLevel() + 1));
+    return sfc.child_rank(cn);
+  }
+};
+
+template <typename T, int dim>
+std::pair<int, SFC_Region<T, dim>> sfc_compare(
+    TreeNode<T, dim> x, const TreeNode<T, dim> &y, SFC_Region<T, dim> r)
+{
+  const int anc_level = x.getCommonAncestorDepth(y);
+  while (r.octant.getLevel() != anc_level)
+    r = r.subdivide(r.locate_segment(x));
+
+  const int cmp = (x == y) ? 0 : (r.octant == x) ? -1 : (r.octant == y) ? 1 :
+    r.locate_segment(x) < r.locate_segment(y) ? -1 : 1;
+
+  return {cmp, r};
+}
+
+
+
 
 template <typename X>
 struct Segment
