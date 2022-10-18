@@ -156,6 +156,11 @@ class DA
         MPI_Comm comm,
         double sfc_tol);
 
+    /**@brief: Pointer to the DistTree used in construction. */
+    const DistTree<C, dim> * dist_tree() const {
+      assert(not m_dist_tree_lifetime.expired());
+      return m_dist_tree;
+    }
 
 
   private:
@@ -269,11 +274,6 @@ class DA
 
     mutable Lazy<std::vector<int>> m_elements_per_node;  // ghosted, note petsc wants local
 
-    /**@brief: Pointer to the DistTree used in construction. */
-    const DistTree<C, dim> * dist_tree() const {
-      assert(not m_dist_tree_lifetime.expired());
-      return m_dist_tree;
-    }
     const DistTree<C, dim> *m_dist_tree;
     typename DistTree<C, dim>::LivePtr m_dist_tree_lifetime;
 

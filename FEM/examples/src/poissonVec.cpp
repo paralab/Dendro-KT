@@ -87,12 +87,7 @@ void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsign
 template <unsigned int dim>
 bool PoissonVec<dim>::preComputeVec(const VECType* in,VECType* out, double scale)
 {
-    // apply boundary conditions.
-    std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
-
-    for(unsigned int i=0;i<bdyIndex.size();i++)
-        out[bdyIndex[i]]=0.0;
+    // Don't change f.
 
     return true;
 }

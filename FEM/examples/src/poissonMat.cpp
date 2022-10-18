@@ -355,14 +355,19 @@ void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, co
 template <unsigned int dim>
 bool PoissonMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 {
-    // apply boundary conditions.
+  if (this->zero_boundary())
+  {
+    // apply boundary conditions.  Assume that A u^bdry has been subtracted from rhs
     std::vector<size_t> bdyIndex;
     m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
+  }
+  // The property zero_boundary() should be false until the application sets it.
+  // The zero replacement must be avoided when first computing A u^bdry.
 
-    return true;
+  return true;
 }
 
 template <unsigned int dim>

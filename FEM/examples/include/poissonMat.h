@@ -28,6 +28,8 @@ namespace PoissonEq
 
         static constexpr unsigned int m_uiDim = dim;
 
+        bool m_zero_boundary = false;
+
         void getImPtrs(const double * fromPtrs[], double * toPtrs[], const double *in, double *out) const
         {
           fromPtrs[0] = in;
@@ -43,6 +45,9 @@ namespace PoissonEq
         /**@brief: constructor. Matrix-free matrix depends on spatial structure represented by ODA.*/
         PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
 
+        PoissonMat(PoissonMat &&) = default;
+        PoissonMat & operator=(PoissonMat &&) = default;
+
         /**@brief default destructor*/
         ~PoissonMat();
 
@@ -52,6 +57,9 @@ namespace PoissonEq
         void elementalSetDiag(VECType *out, unsigned int ndofs, const double *coords, double scale = 1.0);
 
         void getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, bool isElementBoundary);
+
+        bool zero_boundary() const { return m_zero_boundary; }
+        void zero_boundary(bool enable) { m_zero_boundary = enable; }
 
         /**@brief things need to be performed before matvec (i.e. coords transform)*/
         bool preMatVec(const VECType* in,VECType* out,double scale=1.0);

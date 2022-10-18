@@ -932,10 +932,10 @@ namespace ot
     DA<dim>::~DA()
     {
       m_uiMPIContexts.clear();
-      if (m_uiActiveComm != MPI_COMM_NULL and m_uiActiveComm != MPI_COMM_WORLD)
+      if (m_uiActiveComm != MPI_COMM_NULL and m_uiActiveComm != MPI_COMM_WORLD
+          and m_uiActiveComm != m_uiGlobalComm)
         MPI_Comm_free(&m_uiActiveComm);
-      if (m_uiGlobalComm != MPI_COMM_NULL and m_uiGlobalComm != MPI_COMM_WORLD)
-        MPI_Comm_free(&m_uiGlobalComm);
+      // DA does not own the global comm it is constructed with.
     }
 
 

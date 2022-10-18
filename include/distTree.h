@@ -90,7 +90,7 @@ namespace ot
           double sfc_tol);
 
       ~DistTree(){
-        /// MPI_Comm_free(&m_comm);
+        // DistTree does not own the global comm it is constructed with.
       }
       /** distRemeshSubdomain
        *  @brief: Uses DistTree filter function to carve out subdomain from remeshed tree.
