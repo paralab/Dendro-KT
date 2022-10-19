@@ -25,7 +25,7 @@
  * @return l2 norm between two vectors.
  * */
 template <typename T>
-T normL2(T * vec1,T* vec2, unsigned int n,MPI_Comm comm);
+T normL2(const T * vec1,const T* vec2, unsigned int n,MPI_Comm comm);
 
 /**
  * @brief computes the l2 norm between two vectors.
@@ -36,7 +36,7 @@ T normL2(T * vec1,T* vec2, unsigned int n,MPI_Comm comm);
  * @return l1 norm between two vectors.
  * */
 template <typename T>
-T normLInfty(T *vec1, T *vec2, unsigned int n, MPI_Comm comm);
+T normLInfty(const T *vec1, const T *vec2, unsigned int n, MPI_Comm comm);
 
 
 /**
@@ -47,7 +47,7 @@ T normLInfty(T *vec1, T *vec2, unsigned int n, MPI_Comm comm);
  * @return l1 norm between two vectors.
  * */
 template <typename T>
-T normLInfty(T *vec1, T *vec2, unsigned int n);
+T normLInfty(const T *vec1, const T *vec2, unsigned int n);
 
 
 
@@ -59,7 +59,7 @@ T normLInfty(T *vec1, T *vec2, unsigned int n);
  * @return l2 norm of vec.
  * */
 template <typename T>
-T normL2(T * vec,unsigned int n, MPI_Comm comm);
+T normL2(const T * vec,unsigned int n, MPI_Comm comm);
 
 
 /**
@@ -70,7 +70,7 @@ T normL2(T * vec,unsigned int n, MPI_Comm comm);
  * @return l2 norm between two vectors.
  * */
 template <typename T>
-T normL2(T * vec1,T* vec2, unsigned int n);
+T normL2(const T * vec1,const T* vec2, unsigned int n);
 
 /**
  * @brief computes the l2 norm of a vector.
@@ -79,7 +79,7 @@ T normL2(T * vec1,T* vec2, unsigned int n);
  * @return l2 norm of vec.
  * */
 template <typename T>
-T normL2(T * vec,unsigned int n);
+T normL2(const T * vec,unsigned int n);
 
 
 /**
@@ -89,7 +89,7 @@ T normL2(T * vec,unsigned int n);
  * @return l2 norm of vec.
  * */
 template <typename T>
-T normLInfty(T * vec,unsigned int n);
+T normLInfty(const T * vec,unsigned int n);
 
 
 /**
@@ -100,7 +100,7 @@ T normLInfty(T * vec,unsigned int n);
  * @return l2 norm of vec.
  * */
 template <typename T>
-T normLInfty(T * vec,unsigned int n,MPI_Comm comm);
+T normLInfty(const T * vec,unsigned int n,MPI_Comm comm);
 
 /**
  * @brief computes the min of a vector.
@@ -109,7 +109,7 @@ T normLInfty(T * vec,unsigned int n,MPI_Comm comm);
  * @return min of vec.
  * */
 template <typename T>
-T vecMin(T * vec,unsigned int n);
+T vecMin(const T * vec,unsigned int n);
 
 
 /**
@@ -119,7 +119,7 @@ T vecMin(T * vec,unsigned int n);
  * @return max of vec.
  * */
 template <typename T>
-T vecMax(T * vec,unsigned int n);
+T vecMax(const T * vec,unsigned int n);
 
 
 /**
@@ -129,7 +129,7 @@ T vecMax(T * vec,unsigned int n);
  * @return min of vec.
  * */
 template <typename T>
-T vecMin(T * vec,unsigned int n,MPI_Comm comm);
+T vecMin(const T * vec,unsigned int n,MPI_Comm comm);
 
 
 /**
@@ -139,7 +139,7 @@ T vecMin(T * vec,unsigned int n,MPI_Comm comm);
  * @return max of vec.
  * */
 template <typename T>
-T vecMax(T * vec,unsigned int n,MPI_Comm comm);
+T vecMax(const T * vec,unsigned int n,MPI_Comm comm);
 
 /**@brief : performs the dot product of any two given vectors
  * @param[in] v1: input vector 1
@@ -181,7 +181,7 @@ void mul(const T alpha, const T* v, const unsigned int n, T* out);
  * @param[out] out: out=v1+v2
  * */
 template <typename T>
-T add(const T* v1, const T*v2,const unsigned int n, T* out);
+void add(const T* v1, const T*v2,const unsigned int n, T* out);
 
 /**
 * @brief : substract two vectors.
@@ -190,8 +190,9 @@ T add(const T* v1, const T*v2,const unsigned int n, T* out);
 * @param[in] n: size of the vector ( dof of vector)
 * @param[out] out: out=v1+v2
                           * */
+// Aliasing is fine
 template <typename T>
-T subt(const T* v1, const T*v2,const unsigned int n, T* out);
+void subt(const T* v1, const T*v2,const unsigned int n, T* out);
 
 /**
  @brief Compile-time computation of integer (A*pow(b,p)).

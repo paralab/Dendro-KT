@@ -7,7 +7,7 @@
 
 
 template <typename T>
-T normLInfty(T *vec1, T *vec2, unsigned int n)
+T normLInfty(const T *vec1, const T *vec2, unsigned int n)
 {
     assert(n>0);
     if((std::isnan(vec1[0])) ||(std::isnan(vec2[0]))) return NAN;
@@ -30,7 +30,7 @@ T normLInfty(T *vec1, T *vec2, unsigned int n)
 
 
 template <typename T>
-T normL2(T * vec1,T* vec2, unsigned int n)
+T normL2(const T * vec1,const T* vec2, unsigned int n)
 {
 
     T l2=0.0;
@@ -48,7 +48,7 @@ T normL2(T * vec1,T* vec2, unsigned int n)
 }
 
 template <typename T>
-T normL2(T * vec,unsigned int n)
+T normL2(const T * vec,unsigned int n)
 {
     T l2=0;
     for(unsigned int i=0;i<n;i++)
@@ -66,7 +66,7 @@ T normL2(T * vec,unsigned int n)
 }
 
 template <typename T>
-T normLInfty(T * vec,unsigned int n)
+T normLInfty(const T * vec,unsigned int n)
 {
     if((std::isnan(vec[0]))) return NAN;
     T linf=fabs(vec[0]);
@@ -84,7 +84,7 @@ T normLInfty(T * vec,unsigned int n)
 
 
 template <typename T>
-T vecMin(T * vec,unsigned int n)
+T vecMin(const T * vec,unsigned int n)
 {
     if((std::isnan(vec[0]))) return NAN;
     T min=fabs(vec[0]);
@@ -101,7 +101,7 @@ T vecMin(T * vec,unsigned int n)
 
 
 template <typename T>
-T vecMax(T * vec,unsigned int n)
+T vecMax(const T * vec,unsigned int n)
 {
     if((std::isnan(vec[0]))) return NAN;
     T max=fabs(vec[0]);
@@ -117,18 +117,18 @@ T vecMax(T * vec,unsigned int n)
 }
 
 template <typename T>
-T normLInfty(T * vec,unsigned int n,MPI_Comm comm)
+T normLInfty(const T * vec,unsigned int n,MPI_Comm comm)
 {
     T linf=normLInfty(vec,n);
     T linf_g=0;
 
-    par::Mpi_Reduce(&linf,&linf_g,1,MPI_MAX,0,comm);
+    par::Mpi_Allreduce(&linf,&linf_g,1,MPI_MAX,comm);
     return linf_g;
 }
 
 
 template <typename T>
-T normL2(T * vec1,T* vec2, unsigned int n,MPI_Comm comm)
+T normL2(const T * vec1,const T* vec2, unsigned int n,MPI_Comm comm)
 {
 
     int rank,npes;
@@ -139,14 +139,14 @@ T normL2(T * vec1,T* vec2, unsigned int n,MPI_Comm comm)
     l2=l2*l2;
 
     T l2_sum=0;
-    par::Mpi_Reduce(&l2,&l2_sum,1,MPI_SUM,0,comm);
+    par::Mpi_Allreduce(&l2,&l2_sum,1,MPI_SUM,comm);
 
     return sqrt(l2_sum);
 
 }
 
 template <typename T>
-T normLInfty(T *vec1, T *vec2, unsigned int n, MPI_Comm comm)
+T normLInfty(const T *vec1, const T *vec2, unsigned int n, MPI_Comm comm)
 {
     int rank,npes;
     MPI_Comm_rank(comm, &rank);
@@ -156,20 +156,20 @@ T normLInfty(T *vec1, T *vec2, unsigned int n, MPI_Comm comm)
 
     T l1=normLInfty(vec1,vec2,n);
     T l1_max=0;
-    par::Mpi_Reduce(&l1,&l1_max,1,MPI_MAX,0,comm);
+    par::Mpi_Allreduce(&l1,&l1_max,1,MPI_MAX,comm);
 
     return (l1_max);
 }
 
 
 template <typename T>
-T normL2(T * vec,unsigned int n,MPI_Comm comm)
+T normL2(const T * vec,unsigned int n,MPI_Comm comm)
 {
     T l2=normL2(vec,n);
     l2=l2*l2;
 
     T l2_sum=0;
-    par::Mpi_Reduce(&l2,&l2_sum,1,MPI_SUM,0,comm);
+    par::Mpi_Allreduce(&l2,&l2_sum,1,MPI_SUM,comm);
 
     return sqrt(l2_sum);
 
@@ -178,11 +178,11 @@ T normL2(T * vec,unsigned int n,MPI_Comm comm)
 
 
 template <typename T>
-T vecMin(T * vec,unsigned int n,MPI_Comm comm)
+T vecMin(const T * vec,unsigned int n,MPI_Comm comm)
 {
    T min=vecMin(vec,n);
    T min_g=0;
-   par::Mpi_Reduce(&min,&min_g,1,MPI_MIN,0,comm);
+   par::Mpi_Allreduce(&min,&min_g,1,MPI_MIN,comm);
 
    return min_g;
 
@@ -191,11 +191,11 @@ T vecMin(T * vec,unsigned int n,MPI_Comm comm)
 
 
 template <typename T>
-T vecMax(T * vec,unsigned int n,MPI_Comm comm)
+T vecMax(const T * vec,unsigned int n,MPI_Comm comm)
 {
     T max=vecMax(vec,n);
     T max_g=0;
-    par::Mpi_Reduce(&max,&max_g,1,MPI_MAX,0,comm);
+    par::Mpi_Allreduce(&max,&max_g,1,MPI_MAX,comm);
 
     return max_g;
 }
@@ -216,7 +216,7 @@ T dot(const T* v1, const T*v2,const unsigned int n,MPI_Comm comm)
 {
     T ans=dot(v1,v2,n);
     T ans_g;
-    par::Mpi_Reduce(&ans,&ans_g,1,MPI_SUM,0,comm);
+    par::Mpi_Allreduce(&ans,&ans_g,1,MPI_SUM,comm);
     return ans_g;
 }
 
@@ -229,14 +229,15 @@ void mul(const T alpha, const T* v, const unsigned int n, T* out)
 }
 
 template <typename T>
-T add(const T* v1, const T*v2,const unsigned int n, T* out)
+void add(const T* v1, const T*v2,const unsigned int n, T* out)
 {
     for(unsigned int i=0;i<n;i++)
         out[i]=v1[i]+v2[i];
 }
 
+// Aliasing is fine
 template <typename T>
-T subt(const T* v1, const T*v2,const unsigned int n, T* out)
+void subt(const T* v1, const T*v2,const unsigned int n, T* out)
 {
     for(unsigned int i=0;i<n;i++)
         out[i]=v1[i]-v2[i];
