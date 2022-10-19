@@ -631,6 +631,18 @@ if(BUILD_EXAMPLES)
   target_include_directories(doctest_poisson PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
   target_link_libraries(doctest_poisson dendroKT ${MPI_LIBRARIES} m)
 
+  ## GMG as preconditioner to solve Poisson (doctest test cases).
+  set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/doctest_gmg_poisson.cpp)
+  # future: use a petsc_main.cpp to have PetscInitialize()
+  add_executable(doctest_gmg_poisson ${SRC_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/test_doctests/main.cpp)
+  set_property(TARGET doctest_gmg_poisson PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+  target_include_directories(doctest_gmg_poisson PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+  target_link_libraries(doctest_gmg_poisson dendroKT ${MPI_LIBRARIES} m)
+
 
 
 endif(BUILD_EXAMPLES)
