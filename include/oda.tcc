@@ -376,6 +376,13 @@ namespace ot
 
     template <unsigned int dim>
     template<typename T>
+    void DA<dim>::nodalVecToGhostedNodal(const T* in, T*&& out,unsigned int dof) const
+    {
+      return this->nodalVecToGhostedNodal(in, out, true, dof);
+    }
+
+    template <unsigned int dim>
+    template<typename T>
     void DA<dim>::ghostedNodalToNodalVec(const T* gVec,T*& local,bool isAllocated,unsigned int dof) const
     {
         if(!(m_uiIsActive))
@@ -387,6 +394,12 @@ namespace ot
         // Assumes layout [abc][abc][...], so just need single shift.
         const T* srcStart = gVec + dof*m_uiLocalNodeBegin;
         std::copy(srcStart, srcStart + dof*m_uiLocalNodalSz, local);
+    }
+    template <unsigned int dim>
+    template<typename T>
+    void DA<dim>::ghostedNodalToNodalVec(const T* gVec,T*&& local,unsigned int dof) const
+    {
+      return this->ghostedNodalToNodalVec(gVec, local, true, dof);
     }
 
     template <unsigned int dim>
