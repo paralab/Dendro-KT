@@ -156,12 +156,6 @@ class DA
         MPI_Comm comm,
         double sfc_tol);
 
-    /**@brief: Pointer to the DistTree used in construction. */
-    const DistTree<C, dim> * dist_tree() const {
-      assert(not m_dist_tree_lifetime.expired());
-      return m_dist_tree;
-    }
-
 
   private:
 
@@ -271,6 +265,10 @@ class DA
 
     /**@brief: for each (ghosted) node, the global element id of owning element. */
     std::vector<DendroIntL> m_ghostedNodeOwnerElements;
+
+    /**@brief: Input stratum of grid hierarchy for multigrid.
+     * Only needed due to DistTree interface. */
+    int m_stratum;
 
     mutable Lazy<std::vector<int>> m_elements_per_node;  // ghosted, note petsc wants local
 
@@ -469,6 +467,16 @@ class DA
         inline const std::vector<size_t> & getBoundaryNodeIndices() const { return m_uiBdyNodeIds; }
 
         inline const std::vector<int> & elements_per_node() const;  // ghosted, note petsc wants local
+
+        /**@brief: Pointer to the DistTree used in construction. */
+        const DistTree<C, dim> * dist_tree() const
+        {
+          assert(not m_dist_tree_lifetime.expired());
+          return m_dist_tree;
+        }
+
+        /**@brief: Stratum (in grid hierarchy) used in construction. */
+        inline int stratum() const { return m_stratum; }
 
         /**
           * @brief Creates a ODA vector

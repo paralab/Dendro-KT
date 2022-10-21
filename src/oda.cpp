@@ -265,6 +265,8 @@ namespace ot
       if (not allActive)
         MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
 
+      m_stratum = stratum;
+
       m_dist_tree = &distTree;
       m_dist_tree_lifetime = distTree.live_ptr();
 

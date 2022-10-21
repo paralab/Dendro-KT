@@ -40,7 +40,8 @@ protected:
          * @brief constructs an FEM stiffness matrix class.
          * @param[in] da: octree DA
          * */
-        feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
+         // future: remove the octlist parameter
+        feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *, unsigned int dof=1);
 
         feMatrix(feMatrix &&other);
 
@@ -217,8 +218,8 @@ protected:
 };
 
 template <typename LeafT, unsigned int dim>
-feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof)
-  : feMat<dim>(da, octList)
+feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *, unsigned int dof)
+  : feMat<dim>(da)
 {
     m_uiDof=dof;
     const unsigned int nPe=feMat<dim>::m_uiOctDA->getNumNodesPerElement();
@@ -302,7 +303,7 @@ void feMatrix<LeafT,dim>::matVec(const VECType *in, VECType *out, double scale)
   bench::t_matvec.start();
 #endif
   fem::matvec(inGhostedPtr, outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),
-      &(*this->m_octList->cbegin()), this->m_octList->size(),
+      &(*this->octList()->cbegin()), this->octList()->size(),
       *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
       eleOp, scale, m_oda->getReferenceElement());
   //TODO I think refel won't always be provided by oda.
@@ -436,8 +437,8 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
                                                    padLevel,
                                                    odaCoords,
                                                    &(*ghostedGlobalNodeId.cbegin()),
-                                                   &(*this->m_octList->cbegin()),
-                                                   this->m_octList->size(),
+                                                   &(*this->octList()->cbegin()),
+                                                   this->octList()->size(),
                                                    *m_oda.getTreePartFront(),
                                                    *m_oda.getTreePartBack());
 

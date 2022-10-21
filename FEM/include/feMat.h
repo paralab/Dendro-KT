@@ -24,8 +24,6 @@ protected:
     /**@brief: pointer to OCT DA*/
     const ot::DA<dim>* m_uiOctDA;
 
-    const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList;
-
     /// /**@brief: type of the DA*/  //TODO
     /// ot::DAType m_uiDaType;
 
@@ -46,9 +44,8 @@ public:
       * @par[in] daType: type of the DA
       * @note Does not own da.
     **/
-    feMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList)
-      : m_uiOctDA(da),
-        m_octList(octList)
+    feMat(const ot::DA<dim>* da)
+      : m_uiOctDA(da)
     {
       std::array<double, dim> lo, hi;
       std::fill(lo.begin(), lo.end(), -1);
@@ -57,7 +54,7 @@ public:
     }
 
     feMat(feMat &&other)
-      : feMat(m_uiOctDA, m_octList)
+      : feMat(m_uiOctDA)
     { }
 
     /**@brief deconstructor*/
@@ -70,7 +67,9 @@ public:
     const ot::DA<dim> * da() const { return m_uiOctDA; }
 
     // octList()
-    const std::vector<ot::TreeNode<unsigned int, dim>> * octList() const { return m_octList; }
+    const std::vector<ot::TreeNode<unsigned int, dim>> * octList() const {
+      return & da()->dist_tree()->getTreePartFiltered(da()->stratum());
+    }
 
     /**@brief Computes the LHS of the weak formulation, normally the stifness matrix times a given vector.
      * @param [in] in input vector u
