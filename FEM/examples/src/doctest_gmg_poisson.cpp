@@ -14,6 +14,7 @@
 #include <FEM/include/refel.h>
 #include <FEM/examples/include/poissonMat.h>
 #include <FEM/examples/include/poissonVec.h>
+#include <FEM/include/intergridTransfer.h>
 
 #include <vector>
 #include <functional>
@@ -24,7 +25,8 @@
 // ✔ Define VectorPool member functions
 // ✔ Define smoother (start with Jacobi smoother)
 // ✔ Define restriction (adapt from gmgMat)
-// _ Define prolongation (follow restriction, adapt from gmgMat)
+// ✔ Define prolongation (follow restriction, adapt from gmgMat)
+// ✔ Add doctest that restriction and prolongation match
 // _ Finish vcycle() definition
 // _ Refactor MatVec to wrap a new MatVecGhosted, which can be called in the solver
 // _ future: 4th kind Chebyshev smoother
@@ -227,18 +229,171 @@ void restrict_fine_to_coarse(
       *coarse_da.primary,
       coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
       ndofs);
+  coarse_da.primary->readFromGhostBegin(coarse_vec_ghosted, ndofs);
+  coarse_da.primary->readFromGhostEnd(coarse_vec_ghosted, ndofs);
 
   vector_pool.checkin(std::move(leafBuffer));
   vector_pool.checkin(std::move(coarse_surr_ghosted));
 }
 
+
 // prolongate_coarse_to_fine()
-    /// VectorPool &vector_pool)
+template <int dim>
+void prolongate_coarse_to_fine(
+    DA_Pair<dim> coarse_da, const VECType *coarse_vec_ghosted,
+    DA_Pair<dim> fine_da, VECType *fine_vec_ghosted,
+    int ndofs,
+    VectorPool<VECType> &vector_pool)
+{
+  const unsigned int nPe = fine_da.primary->getNumNodesPerElement();
+
+  std::vector<VECType> coarse_surr_ghosted = vector_pool.checkout(
+      coarse_da.surrogate->getTotalNodalSz() * ndofs);
+
+  std::vector<VECType> leafBuffer = vector_pool.checkout(ndofs * nPe);
+  leafBuffer.assign(leafBuffer.size(), 42);
+
+
+  // Shift in the coarse grid from primary to surrogate.
+  ot::distShiftNodes(
+      *coarse_da.primary,
+      coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
+      *coarse_da.surrogate,
+      coarse_surr_ghosted.data() + coarse_da.surrogate->getLocalNodeBegin() * ndofs,
+      ndofs);
+  coarse_da.surrogate->readFromGhostBegin(coarse_surr_ghosted.data(), ndofs);
+  coarse_da.surrogate->readFromGhostEnd(coarse_surr_ghosted.data(), ndofs);
+
+  // Surrogate is coarse grid partitioned by fine
+  // Interpolate from the coarse surrogate grid to fine primary.
+
+  using TN = ot::TreeNode<uint, dim>;
+
+  fem::MeshFreeInputContext<VECType, TN>
+      inctx{ coarse_surr_ghosted.data(),
+             coarse_da.surrogate->getTNCoords(),
+             (unsigned) coarse_da.surrogate->getTotalNodalSz(),
+             coarse_da.surrogate->dist_tree()->getTreePartFiltered(coarse_da.surrogate->stratum()).data(),
+             coarse_da.surrogate->dist_tree()->getTreePartFiltered(coarse_da.surrogate->stratum()).size(),
+             *coarse_da.surrogate->getTreePartFront(),
+             *coarse_da.surrogate->getTreePartBack() };
+
+  fem::MeshFreeOutputContext<VECType, TN>
+      outctx{fine_vec_ghosted,
+             fine_da.primary->getTNCoords(),
+             (unsigned) fine_da.primary->getTotalNodalSz(),
+             fine_da.primary->dist_tree()->getTreePartFiltered(fine_da.primary->stratum()).data(),
+             fine_da.primary->dist_tree()->getTreePartFiltered(fine_da.primary->stratum()).size(),
+             *fine_da.primary->getTreePartFront(),
+             *fine_da.primary->getTreePartBack() };
+
+  const RefElement * refel = fine_da.primary->getReferenceElement();
+
+  std::vector<char> outDirty(fine_da.primary->getTotalNodalSz(), 0);
+  fem::locIntergridTransfer(inctx, outctx, ndofs, refel, &(*outDirty.begin()));
+  // The outDirty array is needed when wrwiteToGhosts useAccumulation==false (hack).
+  fine_da.primary->template writeToGhostsBegin<VECType>(fine_vec_ghosted, ndofs, &(*outDirty.cbegin()));
+  fine_da.primary->template writeToGhostsEnd<VECType>(fine_vec_ghosted, ndofs, false, &(*outDirty.cbegin()));
+
+  fine_da.primary->readFromGhostBegin(fine_vec_ghosted, ndofs);
+  fine_da.primary->readFromGhostEnd(fine_vec_ghosted, ndofs);
+
+  vector_pool.checkin(std::move(leafBuffer));
+  vector_pool.checkin(std::move(coarse_surr_ghosted));
+}
 
 
 // -----------------------------
 // Main test cases
 // -----------------------------
+
+MPI_TEST_CASE("(R r_fine, u_coarse) == (r_fine, P u_coarse) on uniform grid", 2)
+{
+  MPI_Comm comm = test_comm;
+  DendroScopeBegin();
+  constexpr int dim = 2;
+  _InitializeHcurve(dim);
+  int rank, npes;
+  MPI_Comm_rank(comm, &rank);
+  MPI_Comm_size(comm, &npes);
+  using Oct = Oct<dim>;
+  const double partition_tolerance = 0.1;
+  const int polynomial_degree = 1;
+
+  // Mesh (uniform grid)
+  const int refinement_level = 4;
+  ot::DistTree<uint, dim> trees = ot::DistTree<uint, dim>::
+      constructSubdomainDistTree(refinement_level, comm, partition_tolerance);
+  const int n_grids = 2;
+  ot::DistTree<uint, dim> surrogate_trees;
+  surrogate_trees = trees.generateGridHierarchyUp(true, n_grids, partition_tolerance);
+  DA_Pair<dim> das[2];
+  for (int g = 0; g < n_grids; ++g)
+    das[g] = {
+      new ot::DA<dim>(trees, g, comm, polynomial_degree, size_t{}, partition_tolerance),
+      new ot::DA<dim>(surrogate_trees, g, comm, polynomial_degree, size_t{}, partition_tolerance)
+    };
+
+  // Vectors
+  const int single_dof = 1;
+  std::vector<double> r_fine, u_fine, r_coarse, u_coarse;
+  das[0].primary->createVector(r_fine, false, true, single_dof);
+  das[0].primary->createVector(u_fine, false, true, single_dof);
+  das[1].primary->createVector(r_coarse, false, true, single_dof);
+  das[1].primary->createVector(u_coarse, false, true, single_dof);
+  VectorPool<double> vector_pool;
+
+  // Initialize vectors
+  u_fine.assign(u_fine.size(), 0);
+  r_coarse.assign(r_coarse.size(), 0);
+  auto random = [gen = std::mt19937_64(), dist = std::uniform_int_distribution<>(1, 25)]() mutable {
+    return dist(gen);
+  };
+  for (double & ri : r_fine)
+    ri = random();
+  for (double & ui : u_coarse)
+    ui = random();
+  das[0].primary->readFromGhostBegin(r_fine.data(), single_dof);
+  das[0].primary->readFromGhostEnd(r_fine.data(), single_dof);
+  das[1].primary->readFromGhostBegin(u_coarse.data(), single_dof);
+  das[1].primary->readFromGhostEnd(u_coarse.data(), single_dof);
+
+  // restriction (fine-to-coarse) (on ghosted vectors)
+  restrict_fine_to_coarse(
+      das[0], r_fine.data(),
+      das[1], r_coarse.data(),
+      single_dof, vector_pool);
+
+  // prolongation (coarse-to-fine) (on ghosted vectors)
+  prolongate_coarse_to_fine(
+      das[1], u_coarse.data(),
+      das[0], u_fine.data(),
+      single_dof, vector_pool);
+
+  const double Rr_dot_u = dot(
+      r_coarse.data() + das[1].primary->getLocalNodeBegin() * single_dof,
+      u_coarse.data() + das[1].primary->getLocalNodeBegin() * single_dof,
+      das[1].primary->getLocalNodalSz() * single_dof,
+      comm);
+
+  const double r_dot_Pu = dot(
+      r_fine.data() + das[0].primary->getLocalNodeBegin() * single_dof,
+      u_fine.data() + das[0].primary->getLocalNodeBegin() * single_dof,
+      das[0].primary->getLocalNodalSz() * single_dof,
+      comm);
+
+  delete das[0].primary;
+  delete das[0].surrogate;
+  delete das[1].primary;
+  delete das[1].surrogate;
+
+  /// if (rank == 0)
+  ///   fprintf(stderr, "Rr_dot_u==%f, r_dot_Pu==%f\n", Rr_dot_u, r_dot_Pu);
+  MPI_CHECK(0, Rr_dot_u == r_dot_Pu);
+
+  _DestroyHcurve();
+  DendroScopeEnd();
+}
 
 MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, should converge to exact solution", 5)
 {
@@ -399,10 +554,12 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   }
   std::vector<std::vector<double>> u_ghosted(n_grids);
   std::vector<std::vector<double>> r_ghosted(n_grids);
+  std::vector<std::vector<double>> e_ghosted(n_grids);
   for (int g = 0; g < n_grids; ++g)
   {
     u_ghosted[g].resize(das[g].primary->getTotalNodalSz() * single_dof);
     r_ghosted[g].resize(das[g].primary->getTotalNodalSz() * single_dof);
+    e_ghosted[g].resize(das[g].primary->getTotalNodalSz() * single_dof);
   }
 
   std::vector<PoissonMat *> mats(n_grids, nullptr);
@@ -464,6 +621,10 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
 
     const double damp = 2.0/3.0;
 
+    // reset initial guess for coarser grids to 0.
+    for (int height = 1; height < n_grids; ++height)
+      u_ghosted[height].assign(u_ghosted[height].size(), 0);
+
     for (int height = 0; height < n_grids - 1; ++height)
     {
       // pre-smoothing (on ghosted vectors)
@@ -481,6 +642,20 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     for (int height = n_grids - 1; height > 0; --height)
     {
       // prolongation (coarse-to-fine) (on ghosted vectors)
+      prolongate_coarse_to_fine(
+          das[height], u_ghosted[height].data(),
+          das[height-1], e_ghosted[height-1].data(),
+          single_dof, vector_pool);
+
+      // Accumulate into u[h-1] and r[h-1]
+      for (size_t i = 0; i < das[height-1].primary->getTotalNodalSz() * single_dof; ++i)
+        u_ghosted[height-1][i] += e_ghosted[height-1][i];
+      //future: matVecGhosted directly on fresh ghosted data
+      mats[height-1]->matVec(
+          e_ghosted[height-1].data() + das[height-1].primary->getLocalNodeBegin() * single_dof,
+          e_ghosted[height-1].data() + das[height-1].primary->getLocalNodeBegin() * single_dof);
+      for (size_t i = 0; i < das[height-1].primary->getTotalNodalSz() * single_dof; ++i)
+        r_ghosted[height-1][i] -= e_ghosted[height-1][i];
 
       // post-smoothing (on ghosted vectors)
       jacobi(mats[height-1], u_ghosted[height-1].data(), r_ghosted[height-1].data(), damp, a_diag_ghosted[height-1].data());
