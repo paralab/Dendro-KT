@@ -135,107 +135,7 @@ void restrict_fine_to_coarse(
     DA_Pair<dim> fine_da, const VECType *fine_vec_ghosted,
     DA_Pair<dim> coarse_da, VECType *coarse_vec_ghosted,
     int ndofs,
-    VectorPool<VECType> &vector_pool)
-{
-  const unsigned int nPe = fine_da.primary->getNumNodesPerElement();
-
-  std::vector<VECType> coarse_surr_ghosted = vector_pool.checkout(
-      coarse_da.surrogate->getTotalNodalSz() * ndofs);
-
-  std::vector<VECType> leafBuffer = vector_pool.checkout(ndofs * nPe);
-  leafBuffer.assign(leafBuffer.size(), 42);
-
-  // Surrogate is coarse grid partitioned by fine
-  // Interpolate^T from the fine primary grid to coarse surrogate.
-
-  // readFromGhost*(fine_vec_ghosted) must precede restrict_fine_to_coarse().
-
-  // Fine ghosted elemental owners.
-  using OwnershipT = DendroIntL;
-  const OwnershipT * ownersGhostedPtr = fine_da.primary->getNodeOwnerElements();
-
-  if (fine_da.primary->getLocalNodalSz() > 0)
-  {
-    // Index fine grid elements as we loop.
-    OwnershipT globElementId = fine_da.primary->getGlobalElementBegin();
-
-    unsigned eleOrder = fine_da.primary->getElementOrder();
-
-    // Fine and coarse element-to-node loops.
-    ot::MatvecBaseIn<dim, OwnershipT>
-        loopOwners = matvec_base_in(fine_da.primary, ndofs, ownersGhostedPtr, 0);
-    ot::MatvecBaseIn<dim, VECType>
-        loopFine = matvec_base_in(fine_da.primary, ndofs, fine_vec_ghosted, 0);
-    ot::MatvecBaseOut<dim, VECType, true>
-        loopCoarse = matvec_base_out_accumulate<VECType>(coarse_da.surrogate, ndofs, 1);
-
-    // Traverse fine and coarse grids simultaneously.
-    while (!loopFine.isFinished())
-    {
-      // Depth controlled by fine.
-      if (loopFine.isPre() && loopFine.subtreeInfo().isLeaf())
-      {
-        const VECType * fineLeafIn = loopFine.subtreeInfo().readNodeValsIn();
-        const OwnershipT * fineOwners = loopOwners.subtreeInfo().readNodeValsIn();
-        for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
-        {
-          if (loopFine.subtreeInfo().readNodeNonhangingIn()[nIdx])
-          {
-            // Only transfer a node to parent from the owning element.
-            if (fineOwners[nIdx] == globElementId)
-            {
-              for (int dof = 0; dof < ndofs; ++dof)
-                leafBuffer[ndofs * nIdx + dof] = fineLeafIn[ndofs * nIdx + dof];
-            }
-            else
-            {
-              for (int dof = 0; dof < ndofs; ++dof)
-                leafBuffer[ndofs * nIdx + dof] = 0;
-            }
-          }
-          else
-          {
-            for (int dof = 0; dof < ndofs; ++dof)
-              leafBuffer[ndofs * nIdx + dof] = 0.0f;
-          }
-        }
-
-        loopCoarse.subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
-
-        loopFine.next();
-        loopCoarse.next();
-        loopOwners.next();
-
-        globElementId++;
-      }
-      else
-      {
-        loopFine.step();
-        loopCoarse.step();
-        loopOwners.step();
-      }
-    }
-    const size_t writtenSz = loopCoarse.finalize(coarse_surr_ghosted.data());
-  }
-
-  // Coarse ghost write.
-  coarse_da.surrogate->writeToGhostsBegin(coarse_surr_ghosted.data(), ndofs);
-  coarse_da.surrogate->writeToGhostsEnd(coarse_surr_ghosted.data(), ndofs);
-
-  // Shift in the coarse grid from surrogate to primary.
-  ot::distShiftNodes(
-      *coarse_da.surrogate,
-      coarse_surr_ghosted.data() + coarse_da.surrogate->getLocalNodeBegin() * ndofs,
-      *coarse_da.primary,
-      coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
-      ndofs);
-  coarse_da.primary->readFromGhostBegin(coarse_vec_ghosted, ndofs);
-  coarse_da.primary->readFromGhostEnd(coarse_vec_ghosted, ndofs);
-
-  vector_pool.checkin(std::move(leafBuffer));
-  vector_pool.checkin(std::move(coarse_surr_ghosted));
-}
-
+    VectorPool<VECType> &vector_pool);
 
 // prolongate_coarse_to_fine()
 template <int dim>
@@ -243,70 +143,15 @@ void prolongate_coarse_to_fine(
     DA_Pair<dim> coarse_da, const VECType *coarse_vec_ghosted,
     DA_Pair<dim> fine_da, VECType *fine_vec_ghosted,
     int ndofs,
-    VectorPool<VECType> &vector_pool)
-{
-  const unsigned int nPe = fine_da.primary->getNumNodesPerElement();
+    VectorPool<VECType> &vector_pool);
 
-  std::vector<VECType> coarse_surr_ghosted = vector_pool.checkout(
-      coarse_da.surrogate->getTotalNodalSz() * ndofs);
-
-  std::vector<VECType> leafBuffer = vector_pool.checkout(ndofs * nPe);
-  leafBuffer.assign(leafBuffer.size(), 42);
-
-
-  // Shift in the coarse grid from primary to surrogate.
-  ot::distShiftNodes(
-      *coarse_da.primary,
-      coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
-      *coarse_da.surrogate,
-      coarse_surr_ghosted.data() + coarse_da.surrogate->getLocalNodeBegin() * ndofs,
-      ndofs);
-  coarse_da.surrogate->readFromGhostBegin(coarse_surr_ghosted.data(), ndofs);
-  coarse_da.surrogate->readFromGhostEnd(coarse_surr_ghosted.data(), ndofs);
-
-  // Surrogate is coarse grid partitioned by fine
-  // Interpolate from the coarse surrogate grid to fine primary.
-
-  using TN = ot::TreeNode<uint, dim>;
-
-  fem::MeshFreeInputContext<VECType, TN>
-      inctx{ coarse_surr_ghosted.data(),
-             coarse_da.surrogate->getTNCoords(),
-             (unsigned) coarse_da.surrogate->getTotalNodalSz(),
-             coarse_da.surrogate->dist_tree()->getTreePartFiltered(coarse_da.surrogate->stratum()).data(),
-             coarse_da.surrogate->dist_tree()->getTreePartFiltered(coarse_da.surrogate->stratum()).size(),
-             *coarse_da.surrogate->getTreePartFront(),
-             *coarse_da.surrogate->getTreePartBack() };
-
-  fem::MeshFreeOutputContext<VECType, TN>
-      outctx{fine_vec_ghosted,
-             fine_da.primary->getTNCoords(),
-             (unsigned) fine_da.primary->getTotalNodalSz(),
-             fine_da.primary->dist_tree()->getTreePartFiltered(fine_da.primary->stratum()).data(),
-             fine_da.primary->dist_tree()->getTreePartFiltered(fine_da.primary->stratum()).size(),
-             *fine_da.primary->getTreePartFront(),
-             *fine_da.primary->getTreePartBack() };
-
-  const RefElement * refel = fine_da.primary->getReferenceElement();
-
-  std::vector<char> outDirty(fine_da.primary->getTotalNodalSz(), 0);
-  fem::locIntergridTransfer(inctx, outctx, ndofs, refel, &(*outDirty.begin()));
-  // The outDirty array is needed when wrwiteToGhosts useAccumulation==false (hack).
-  fine_da.primary->template writeToGhostsBegin<VECType>(fine_vec_ghosted, ndofs, &(*outDirty.cbegin()));
-  fine_da.primary->template writeToGhostsEnd<VECType>(fine_vec_ghosted, ndofs, false, &(*outDirty.cbegin()));
-
-  fine_da.primary->readFromGhostBegin(fine_vec_ghosted, ndofs);
-  fine_da.primary->readFromGhostEnd(fine_vec_ghosted, ndofs);
-
-  vector_pool.checkin(std::move(leafBuffer));
-  vector_pool.checkin(std::move(coarse_surr_ghosted));
-}
 
 
 // -----------------------------
 // Main test cases
 // -----------------------------
 
+// ========================================================================== //
 MPI_TEST_CASE("(R r_fine, u_coarse) == (r_fine, P u_coarse) on uniform grid", 2)
 {
   MPI_Comm comm = test_comm;
@@ -395,6 +240,7 @@ MPI_TEST_CASE("(R r_fine, u_coarse) == (r_fine, P u_coarse) on uniform grid", 2)
   DendroScopeEnd();
 }
 
+// ========================================================================== //
 MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, should converge to exact solution", 5)
 {
   MPI_Comm comm = test_comm;
@@ -735,7 +581,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   _DestroyHcurve();
   DendroScopeEnd();
 }
-// ==============================================================
+// ========================================================================== //
 
 
 template <unsigned int dim, typename NodeT>
@@ -860,5 +706,181 @@ ot::MatvecBaseOut<dim, X, true> matvec_base_out_accumulate(
       *da->getTreePartFront(),
       *da->getTreePartBack());
 }
+
+
+// restrict_fine_to_coarse()
+template <int dim>
+void restrict_fine_to_coarse(
+    DA_Pair<dim> fine_da, const VECType *fine_vec_ghosted,
+    DA_Pair<dim> coarse_da, VECType *coarse_vec_ghosted,
+    int ndofs,
+    VectorPool<VECType> &vector_pool)
+{
+  const unsigned int nPe = fine_da.primary->getNumNodesPerElement();
+
+  std::vector<VECType> coarse_surr_ghosted = vector_pool.checkout(
+      coarse_da.surrogate->getTotalNodalSz() * ndofs);
+
+  std::vector<VECType> leafBuffer = vector_pool.checkout(ndofs * nPe);
+  leafBuffer.assign(leafBuffer.size(), 42);
+
+  // Surrogate is coarse grid partitioned by fine
+  // Interpolate^T from the fine primary grid to coarse surrogate.
+
+  // readFromGhost*(fine_vec_ghosted) must precede restrict_fine_to_coarse().
+
+  // Fine ghosted elemental owners.
+  using OwnershipT = DendroIntL;
+  const OwnershipT * ownersGhostedPtr = fine_da.primary->getNodeOwnerElements();
+
+  if (fine_da.primary->getLocalNodalSz() > 0)
+  {
+    // Index fine grid elements as we loop.
+    OwnershipT globElementId = fine_da.primary->getGlobalElementBegin();
+
+    unsigned eleOrder = fine_da.primary->getElementOrder();
+
+    // Fine and coarse element-to-node loops.
+    ot::MatvecBaseIn<dim, OwnershipT>
+        loopOwners = matvec_base_in(fine_da.primary, ndofs, ownersGhostedPtr, 0);
+    ot::MatvecBaseIn<dim, VECType>
+        loopFine = matvec_base_in(fine_da.primary, ndofs, fine_vec_ghosted, 0);
+    ot::MatvecBaseOut<dim, VECType, true>
+        loopCoarse = matvec_base_out_accumulate<VECType>(coarse_da.surrogate, ndofs, 1);
+
+    // Traverse fine and coarse grids simultaneously.
+    while (!loopFine.isFinished())
+    {
+      // Depth controlled by fine.
+      if (loopFine.isPre() && loopFine.subtreeInfo().isLeaf())
+      {
+        const VECType * fineLeafIn = loopFine.subtreeInfo().readNodeValsIn();
+        const OwnershipT * fineOwners = loopOwners.subtreeInfo().readNodeValsIn();
+        for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+        {
+          if (loopFine.subtreeInfo().readNodeNonhangingIn()[nIdx])
+          {
+            // Only transfer a node to parent from the owning element.
+            if (fineOwners[nIdx] == globElementId)
+            {
+              for (int dof = 0; dof < ndofs; ++dof)
+                leafBuffer[ndofs * nIdx + dof] = fineLeafIn[ndofs * nIdx + dof];
+            }
+            else
+            {
+              for (int dof = 0; dof < ndofs; ++dof)
+                leafBuffer[ndofs * nIdx + dof] = 0;
+            }
+          }
+          else
+          {
+            for (int dof = 0; dof < ndofs; ++dof)
+              leafBuffer[ndofs * nIdx + dof] = 0.0f;
+          }
+        }
+
+        loopCoarse.subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
+
+        loopFine.next();
+        loopCoarse.next();
+        loopOwners.next();
+
+        globElementId++;
+      }
+      else
+      {
+        loopFine.step();
+        loopCoarse.step();
+        loopOwners.step();
+      }
+    }
+    const size_t writtenSz = loopCoarse.finalize(coarse_surr_ghosted.data());
+  }
+
+  // Coarse ghost write.
+  coarse_da.surrogate->writeToGhostsBegin(coarse_surr_ghosted.data(), ndofs);
+  coarse_da.surrogate->writeToGhostsEnd(coarse_surr_ghosted.data(), ndofs);
+
+  // Shift in the coarse grid from surrogate to primary.
+  ot::distShiftNodes(
+      *coarse_da.surrogate,
+      coarse_surr_ghosted.data() + coarse_da.surrogate->getLocalNodeBegin() * ndofs,
+      *coarse_da.primary,
+      coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
+      ndofs);
+  coarse_da.primary->readFromGhostBegin(coarse_vec_ghosted, ndofs);
+  coarse_da.primary->readFromGhostEnd(coarse_vec_ghosted, ndofs);
+
+  vector_pool.checkin(std::move(leafBuffer));
+  vector_pool.checkin(std::move(coarse_surr_ghosted));
+}
+
+
+// prolongate_coarse_to_fine()
+template <int dim>
+void prolongate_coarse_to_fine(
+    DA_Pair<dim> coarse_da, const VECType *coarse_vec_ghosted,
+    DA_Pair<dim> fine_da, VECType *fine_vec_ghosted,
+    int ndofs,
+    VectorPool<VECType> &vector_pool)
+{
+  const unsigned int nPe = fine_da.primary->getNumNodesPerElement();
+
+  std::vector<VECType> coarse_surr_ghosted = vector_pool.checkout(
+      coarse_da.surrogate->getTotalNodalSz() * ndofs);
+
+  std::vector<VECType> leafBuffer = vector_pool.checkout(ndofs * nPe);
+  leafBuffer.assign(leafBuffer.size(), 42);
+
+
+  // Shift in the coarse grid from primary to surrogate.
+  ot::distShiftNodes(
+      *coarse_da.primary,
+      coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
+      *coarse_da.surrogate,
+      coarse_surr_ghosted.data() + coarse_da.surrogate->getLocalNodeBegin() * ndofs,
+      ndofs);
+  coarse_da.surrogate->readFromGhostBegin(coarse_surr_ghosted.data(), ndofs);
+  coarse_da.surrogate->readFromGhostEnd(coarse_surr_ghosted.data(), ndofs);
+
+  // Surrogate is coarse grid partitioned by fine
+  // Interpolate from the coarse surrogate grid to fine primary.
+
+  using TN = ot::TreeNode<uint, dim>;
+
+  fem::MeshFreeInputContext<VECType, TN>
+      inctx{ coarse_surr_ghosted.data(),
+             coarse_da.surrogate->getTNCoords(),
+             (unsigned) coarse_da.surrogate->getTotalNodalSz(),
+             coarse_da.surrogate->dist_tree()->getTreePartFiltered(coarse_da.surrogate->stratum()).data(),
+             coarse_da.surrogate->dist_tree()->getTreePartFiltered(coarse_da.surrogate->stratum()).size(),
+             *coarse_da.surrogate->getTreePartFront(),
+             *coarse_da.surrogate->getTreePartBack() };
+
+  fem::MeshFreeOutputContext<VECType, TN>
+      outctx{fine_vec_ghosted,
+             fine_da.primary->getTNCoords(),
+             (unsigned) fine_da.primary->getTotalNodalSz(),
+             fine_da.primary->dist_tree()->getTreePartFiltered(fine_da.primary->stratum()).data(),
+             fine_da.primary->dist_tree()->getTreePartFiltered(fine_da.primary->stratum()).size(),
+             *fine_da.primary->getTreePartFront(),
+             *fine_da.primary->getTreePartBack() };
+
+  const RefElement * refel = fine_da.primary->getReferenceElement();
+
+  std::vector<char> outDirty(fine_da.primary->getTotalNodalSz(), 0);
+  fem::locIntergridTransfer(inctx, outctx, ndofs, refel, &(*outDirty.begin()));
+  // The outDirty array is needed when wrwiteToGhosts useAccumulation==false (hack).
+  fine_da.primary->template writeToGhostsBegin<VECType>(fine_vec_ghosted, ndofs, &(*outDirty.cbegin()));
+  fine_da.primary->template writeToGhostsEnd<VECType>(fine_vec_ghosted, ndofs, false, &(*outDirty.cbegin()));
+
+  fine_da.primary->readFromGhostBegin(fine_vec_ghosted, ndofs);
+  fine_da.primary->readFromGhostEnd(fine_vec_ghosted, ndofs);
+
+  vector_pool.checkin(std::move(leafBuffer));
+  vector_pool.checkin(std::move(coarse_surr_ghosted));
+}
+
+
 
 
