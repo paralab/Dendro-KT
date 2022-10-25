@@ -119,7 +119,7 @@ namespace basis {
                 if(i!=j)
                     ji[i*(N+1)+j]=0;
                 else
-                    ji[i*(N+1)+j]=(-0.5*(alpha*alpha-beta*beta)/(h1[j]+2))/h1[j];
+                    ji[i*(N+1)+j]=(-0.5*(alpha*alpha-beta*beta)/(h1[j]+2))/(h1[j] + (h1[j] == 0));
             }
 
         for(unsigned int j=0;j<N;j++)
