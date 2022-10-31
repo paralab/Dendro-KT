@@ -3140,15 +3140,7 @@ void appendNeighbours_rec(
       uniq_children[c] = true;
 
   const auto incident = [&](const Oct &oct0, const Oct &oct1) -> bool {
-    const auto range0 = oct0.range(),  range1 = oct1.range();
-    int count_edge = 0,  count_overlaps = 0;
-    for (int d = 0; d < dim; ++d)
-      count_edge += (range0.min(d) == range1.max(d) or
-                     range1.min(d) == range0.max(d));
-    for (int d = 0; d < dim; ++d)
-      count_overlaps += (range0.closedContains(d, range1.min(d)) or
-                         range1.closedContains(d, range0.min(d)));
-    return (count_overlaps == dim) and (count_edge >= 1);
+    return border(oct0.range(), oct1.range());
   };
 
   // key: exclusively incident child number, or nchild(dim)

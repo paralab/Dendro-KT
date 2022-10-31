@@ -118,8 +118,16 @@ namespace periodic
 
       inline bool closedContains(const PCoord<T, dim> &pcoord) const;
   };
-
 }
+
+template <typename T, int dim>
+constexpr bool open_overlap(const periodic::PRange<T, dim> &A, const periodic::PRange<T, dim> &B);
+
+template <typename T, int dim>
+constexpr bool closed_overlap(const periodic::PRange<T, dim> &A, const periodic::PRange<T, dim> &B);
+
+template <typename T, int dim>
+constexpr bool border(const periodic::PRange<T, dim> &A, const periodic::PRange<T, dim> &B);
 
 
 namespace periodic
@@ -400,8 +408,36 @@ namespace periodic
       allContains &= this->closedContains(d, pcoord.coord(d));
     return allContains;
   }
-
-
 }
+
+
+template <typename T, int dim>
+constexpr bool open_overlap(const periodic::PRange<T, dim> &A, const periodic::PRange<T, dim> &B)
+{
+  bool overlap = true;
+  for (int d = 0; d < dim; ++d)
+    overlap &= (A.halfClosedContains(d, B.min(d)) or B.halfClosedContains(d, A.min(d)));
+  return A.side() > 0 and B.side() > 0 and overlap;
+}
+
+template <typename T, int dim>
+constexpr bool closed_overlap(const periodic::PRange<T, dim> &A, const periodic::PRange<T, dim> &B)
+{
+  bool overlap = true;
+  for (int d = 0; d < dim; ++d)
+    overlap &= (A.closedContains(d, B.min(d)) or B.closedContains(d, A.min(d)));
+  return overlap;
+}
+
+template <typename T, int dim>
+constexpr bool border(const periodic::PRange<T, dim> &A, const periodic::PRange<T, dim> &B)
+{
+  bool edge = false;
+  for (int d = 0; d < dim; ++d)
+    edge |= (A.min(d) == B.max(d) or B.min(d) == A.max(d));
+  return closed_overlap(A, B) and edge;
+}
+
+
 
 #endif//DENDRO_KT_PCOORD_H
