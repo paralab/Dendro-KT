@@ -34,3 +34,7 @@ target_link_libraries(doctest_partition_unweighted dendroKT ${MPI_LIBRARIES} m)
 add_executable(doctest_binary_search binary_search.cpp main.cpp)
 target_include_directories(doctest_binary_search PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_binary_search dendroKT ${MPI_LIBRARIES} m)
+
+add_executable(doctest_interval_proximity interval_proximity.cpp main.cpp)
+target_include_directories(doctest_interval_proximity PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_interval_proximity dendroKT ${MPI_LIBRARIES} m)
