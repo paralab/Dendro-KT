@@ -17,6 +17,7 @@
 
 #include <vector>
 #include <functional>
+#include <algorithm>
 
 // -----------------------------------------------------------------------------
 // TODO
@@ -91,12 +92,48 @@ MPI_TEST_CASE("Special quadratic elements give expected # of nodes, "
   const double partition_tolerance = 0.1;
   const int polynomial_degree = 1;
 
-  // Mesh (uniform grid)
+  // Mesh (initially uniform grid)
   const int refinement_level = 3;
   ot::DistTree<uint, dim> tree = ot::DistTree<uint, dim>::
       constructSubdomainDistTree(refinement_level, comm, partition_tolerance);
 
-  // TODO perform h-refinement of octants touching intercepted octants
+  // Refine tree
+  {
+    std::vector<int> refine(tree.getTreePartFiltered().size(), 0);
+    REQUIRE(npes == 1); // if not, need ghost-enabled alternative to get next-outermost shell
+
+    std::vector<ot::TreeNode<uint, dim>> boundary, boundary_neighbor;
+    std::copy_if(tree.getTreePartFiltered().begin(),
+                 tree.getTreePartFiltered().end(),
+                 std::back_inserter(boundary),
+                 [](const auto &oct) -> bool { return oct.getIsOnTreeBdry(); });
+    for (const auto &oct : boundary)
+      oct.appendAllNeighbours(boundary_neighbor);
+    ot::SFC_Tree<uint, dim>::locTreeSort(boundary_neighbor);
+    boundary_neighbor.erase(
+        std::unique(boundary_neighbor.begin(), boundary_neighbor.end()),
+        boundary_neighbor.end());
+
+    // Find all cells that are same-level neighbors of boundary cells,
+    // but exclude those that are simultaneously boundary cells.
+    // This only works because all cells have initially the same level
+    // (and don't have to worry about ghost cells if running uniprocess).
+    size_t j = 0;
+    for (size_t i = 0; i < tree.getTreePartFiltered().size(); ++i)
+    {
+      if (tree.getTreePartFiltered()[i] == boundary_neighbor[j])
+      {
+        ++j;
+        if (not tree.getTreePartFiltered()[i].getIsOnTreeBdry())
+          refine[i] = 1;
+      }
+    }
+
+    // Replace tree with refined tree
+    ot::DistTree<uint, dim> tmp_tree;
+    std::swap(tree, tmp_tree);
+    tmp_tree.distRefine(tmp_tree, std::move(refine), tree, partition_tolerance);
+  }
 
   // Indicate p-refinement on boundary
   ot::SpecialElements special;  // member `quadratic` is a vector<size_t>
