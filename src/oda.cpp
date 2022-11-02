@@ -175,6 +175,8 @@ namespace ot
           (octList.size() ? octList.back() : dummyOctant<dim>())
           );
 
+      //TODO mixed degree loop (use nPe_quadratic if is quadratic element)
+
       std::vector<OwnershipT> leafBuffer(nPe, 0);
       std::vector<DirtyT> leafDirty(nPe, 0);
       while (!elementLoop.isFinished())
@@ -276,6 +278,7 @@ namespace ot
       m_dist_tree = &distTree;
       m_dist_tree_lifetime = distTree.live_ptr();
 
+      m_uiElementOrder = order;  // make sure getElementOrder() is ready
       m_special_elements = std::move(special_);
       // sort and unique-ify
       [](std::vector<size_t> &v) -> void {
@@ -373,13 +376,25 @@ namespace ot
           exteriorNodeElements.reserve(inElements * exteriorNpe);
           cancelNodeElements.reserve(inElements * cancelNpe);
           {DOLLAR("emit.separate");
-          for (const TreeNode<C, dim> &elem : inTreeFiltered)
+          for (size_t i = 0; i < inElements; ++i)
           {
+              const TreeNode<C, dim> &elem = inTreeFiltered[i];
+
               size_t countNewNodes1 = exteriorNodeList.size();
               size_t countNewNodes2 = cancelNodeList.size();
 
-              Element<C, dim>(elem).appendExteriorNodes(order, exteriorNodeList, distTree.getDomainDecider());
-              Element<C, dim>(elem).appendCancellationNodes(order, cancelNodeList);
+              if (this->getElementOrder(i) == order)
+              {
+                Element<C, dim>(elem).appendExteriorNodes(order, exteriorNodeList, distTree.getDomainDecider());
+                Element<C, dim>(elem).appendCancellationNodes(order, cancelNodeList);
+              }
+              else
+              {
+                // special quadratic nodes
+                Element<C, dim>(elem).appendExteriorNodes(this->getElementOrder(i), exteriorNodeList, distTree.getDomainDecider());
+                // assume user has specified a resolution pattern
+                // that avoids hanging nodes on this element
+              }
 
               countNewNodes1 = exteriorNodeList.size() - countNewNodes1;
               countNewNodes2 = cancelNodeList.size() - countNewNodes2;
@@ -467,6 +482,8 @@ namespace ot
                   parentNode.setIsCancellation(false);
                   convertedNodes.push_back(parentNode);
                   convertedElems.push_back(elems[ii]);
+                  // Note that if there are hanging nodes involving quadratic elements,
+                  // this section will be erroneous.
                 }
               }
             }
@@ -641,7 +658,7 @@ namespace ot
             const TreeNode<C, dim> elemKey = inTreeFiltered[elemIntI];
 
             interiorNodeList.clear();
-            ot::Element<C,dim>(elemKey).appendInteriorNodes(order, interiorNodeList);
+            ot::Element<C,dim>(elemKey).appendInteriorNodes(this->getElementOrder(elemIntI), interiorNodeList);
             for (const auto &pt : interiorNodeList)  // convert from TNPoint to TreeNode
               myTNCoords.push_back(pt);
             elemIntI++;
