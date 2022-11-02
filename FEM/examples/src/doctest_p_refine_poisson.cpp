@@ -78,13 +78,18 @@ MPI_TEST_CASE("Regular DA construction on uniform grid still works", 1)
 }
 
 
+template <unsigned dim>
+std::vector<ot::TreeNode<uint, dim>> special_refine_uniform(
+    std::vector<ot::TreeNode<uint, dim>> octants,
+    MPI_Comm comm);
+
 MPI_TEST_CASE("Special quadratic elements give expected # of nodes, "
-              "assuming outer p-refinement and inner h-refinement", 1)
+              "assuming outer p-refinement and inner h-refinement", 5)
 {
   MPI_Comm comm = test_comm;
 
   DendroScopeBegin();
-  constexpr int dim = 2;
+  constexpr int dim = 3;
   _InitializeHcurve(dim);
   int rank, npes;
   MPI_Comm_rank(comm, &rank);
@@ -94,45 +99,19 @@ MPI_TEST_CASE("Special quadratic elements give expected # of nodes, "
 
   // Mesh (initially uniform grid)
   const int refinement_level = 3;
-  ot::DistTree<uint, dim> tree = ot::DistTree<uint, dim>::
-      constructSubdomainDistTree(refinement_level, comm, partition_tolerance);
+  ot::DistTree<uint, dim> tree;
+  if (rank == 0)
+   tree = ot::DistTree<uint, dim>::
+      constructSubdomainDistTree(refinement_level, MPI_COMM_SELF, partition_tolerance);
 
   // Refine tree
   {
-    std::vector<int> refine(tree.getTreePartFiltered().size(), 0);
-    REQUIRE(npes == 1); // if not, need ghost-enabled alternative to get next-outermost shell
-
-    std::vector<ot::TreeNode<uint, dim>> boundary, boundary_neighbor;
-    std::copy_if(tree.getTreePartFiltered().begin(),
-                 tree.getTreePartFiltered().end(),
-                 std::back_inserter(boundary),
-                 [](const auto &oct) -> bool { return oct.getIsOnTreeBdry(); });
-    for (const auto &oct : boundary)
-      oct.appendAllNeighbours(boundary_neighbor);
-    ot::SFC_Tree<uint, dim>::locTreeSort(boundary_neighbor);
-    boundary_neighbor.erase(
-        std::unique(boundary_neighbor.begin(), boundary_neighbor.end()),
-        boundary_neighbor.end());
-
-    // Find all cells that are same-level neighbors of boundary cells,
-    // but exclude those that are simultaneously boundary cells.
-    // This only works because all cells have initially the same level
-    // (and don't have to worry about ghost cells if running uniprocess).
-    size_t j = 0;
-    for (size_t i = 0; i < tree.getTreePartFiltered().size(); ++i)
-    {
-      if (tree.getTreePartFiltered()[i] == boundary_neighbor[j])
-      {
-        ++j;
-        if (not tree.getTreePartFiltered()[i].getIsOnTreeBdry())
-          refine[i] = 1;
-      }
-    }
+    std::vector<ot::TreeNode<uint, dim>> octants = tree.getTreePartFiltered();
+    octants = special_refine_uniform(octants, comm);
+    ot::SFC_Tree<uint, dim>::distTreeSort(octants, partition_tolerance, comm);
 
     // Replace tree with refined tree
-    ot::DistTree<uint, dim> tmp_tree;
-    std::swap(tree, tmp_tree);
-    tmp_tree.distRefine(tmp_tree, std::move(refine), tree, partition_tolerance);
+    tree = ot::DistTree<uint, dim>(octants, comm);
   }
 
   // Indicate p-refinement on boundary
@@ -142,19 +121,20 @@ MPI_TEST_CASE("Special quadratic elements give expected # of nodes, "
       special.quadratic.push_back(i);
   const long long unsigned expected_q2_elements
     = pow(1 << refinement_level, dim) - pow((1 << refinement_level) - 2, dim);
-  REQUIRE(special.quadratic.size() == expected_q2_elements);
+  REQUIRE(par::mpi_sum(special.quadratic.size(), comm) == expected_q2_elements);
 
   // User could have appended indices of special elements in any order.
   // Repetitions also ok. The DA constructor will sort and remove duplicates.
   // Simulate user putting in random order and the first one duplicated:
-  special.quadratic.push_back(special.quadratic[0]);
+  if (special.quadratic.size() > 0)
+    special.quadratic.push_back(special.quadratic[0]);
   std::shuffle(special.quadratic.begin(), special.quadratic.end(), std::mt19937_64{42});
 
   // To construct the node set, the quadratic elements must be known.
   ot::DA<dim> da(tree,
       std::move(special),
       comm, polynomial_degree, int{}, partition_tolerance);
-  CHECK(da.special_elements().quadratic.size() == expected_q2_elements);
+  CHECK(par::mpi_sum(da.special_elements().quadratic.size(), comm) == expected_q2_elements);
   for (size_t i = 0; i < tree.getTreePartFiltered().size(); ++i)
     CHECK(da.getElementOrder(i) == (tree.getTreePartFiltered()[i].getIsOnTreeBdry() ? 2 : 1));
 
@@ -369,6 +349,63 @@ std::ostream & print(const ot::DA<dim> &da,
   MPI_Barrier(MPI_COMM_WORLD);
   return return_out;
 }
+
+
+template <unsigned dim>
+std::vector<ot::TreeNode<uint, dim>> special_refine_uniform(
+    std::vector<ot::TreeNode<uint, dim>> octants,
+    MPI_Comm comm)
+{
+  // this refiner is specific to the uniform grid input,
+  // assuming the grid is small enough to be processed on rank 0.
+
+  int rank;
+  MPI_Comm_rank(comm, &rank);
+  REQUIRE((rank == 0 or octants.size() == 0));
+
+  if (rank != 0)
+    return octants;
+
+  std::vector<int> refine(octants.size(), 0);  // default is no refinement
+
+  std::vector<ot::TreeNode<uint, dim>> boundary, boundary_neighbor;
+  std::copy_if(octants.begin(),
+               octants.end(),
+               std::back_inserter(boundary),
+               [](const auto &oct) -> bool { return oct.getIsOnTreeBdry(); });
+  for (const auto &oct : boundary)
+    oct.appendAllNeighbours(boundary_neighbor);
+  ot::SFC_Tree<uint, dim>::locTreeSort(boundary_neighbor);
+  boundary_neighbor.erase(
+      std::unique(boundary_neighbor.begin(), boundary_neighbor.end()),
+      boundary_neighbor.end());
+
+  // Find all cells that are same-level neighbors of boundary cells,
+  // but exclude those that are simultaneously boundary cells.
+  // This only works because all cells have initially the same level
+  // (and don't have to worry about ghost cells if running uniprocess).
+  size_t j = 0;
+  for (size_t i = 0; i < octants.size(); ++i)
+  {
+    if (octants[i] == boundary_neighbor[j])
+    {
+      ++j;
+      if (not octants[i].getIsOnTreeBdry())
+        refine[i] = 1;  // refine +1 level
+    }
+  }
+
+  // Abuse DistTree to use the distRefine() interface
+  ot::DistTree<uint, dim> output;
+  ot::DistTree<uint, dim>::distRefine(
+      ot::DistTree<uint, dim>(octants, MPI_COMM_SELF),
+      std::move(refine),
+      output,
+      0.3);
+  return output.getTreePartFiltered();
+}
+
+
 
 
 template <unsigned dim>
