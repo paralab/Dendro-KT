@@ -94,7 +94,7 @@ namespace ot
     DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : m_refel{dim, order}
     {
-      constructStratum(inDistTree, stratum, comm, order, grainSz, sfc_tol);
+      constructStratum(inDistTree, stratum, SpecialElements{}, comm, order, grainSz, sfc_tol);
     }
 
     /**@brief: Constructor for the DA data structures
@@ -110,6 +110,14 @@ namespace ot
     DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : DA(inDistTree, 0, comm, order, grainSz, sfc_tol)
     { }
+
+    // special elements can be quadratic
+    template <unsigned int dim>
+    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, SpecialElements special, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+        : m_refel{dim, order}
+    {
+      constructStratum(inDistTree, 0, std::move(special), comm, order, grainSz, sfc_tol);
+    }
 
     // Construct multiple DA for multigrid.
     template <unsigned int dim>
@@ -131,7 +139,7 @@ namespace ot
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     void DA<dim>::construct(const ot::DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
-      constructStratum(distTree, 0, comm, order, grainSz, sfc_tol);
+      constructStratum(distTree, 0, SpecialElements{}, comm, order, grainSz, sfc_tol);
     }
 
 
@@ -246,7 +254,7 @@ namespace ot
      */
     template <unsigned int dim>
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-    void DA<dim>::constructStratum(const ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::constructStratum(const ot::DistTree<C, dim> &distTree, int stratum, SpecialElements special_, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
     {
       DOLLAR("DA::constructStratum()");
       // TODO remove grainSz parameter from ODA, which must respect the tree!
@@ -267,6 +275,9 @@ namespace ot
 
       m_dist_tree = &distTree;
       m_dist_tree_lifetime = distTree.live_ptr();
+
+      m_special_elements = std::move(special_);
+      std::sort(m_special_elements.quadratic.begin(), m_special_elements.quadratic.end());
 
       TreeNode<C, dim> treePartFront;
       TreeNode<C, dim> treePartBack;

@@ -136,6 +136,12 @@ template <unsigned int dim, typename DofT>
 void distShiftNodes(const DA<dim> &srcDA, const DofT *srcLocal, const DA<dim> &destDA, DofT *destLocal, unsigned int ndofs = 1);
 
 
+struct SpecialElements
+{
+  std::vector<size_t> quadratic;
+};
+
+
 template <unsigned int dim>
 class DA
 {
@@ -160,6 +166,10 @@ class DA
     const DistTree<C, dim> * dist_tree() const {
       assert(not m_dist_tree_lifetime.expired());
       return m_dist_tree;
+    }
+
+    const SpecialElements & special_elements() const {
+      return m_special_elements;
     }
 
 
@@ -284,6 +294,7 @@ class DA
     //      so that mutligrid only needs one refel.
     RefElement m_refel;
 
+    SpecialElements m_special_elements;
 
   private:
 
@@ -320,6 +331,13 @@ class DA
          */
         DA(const DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
+        /**
+         * @brief Construct DA with quadratic nodes on select elements.
+         *  It is recommended to initialize `special` by std::move()-ing
+         *  from a temporary local variable.
+         */
+        DA(const DistTree<C,dim> &inDistTree, SpecialElements special, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
+
         // Construct multiple DA for multigrid.
         static void multiLevelDA(std::vector<DA> &outDAPerStratum, const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
@@ -352,7 +370,7 @@ class DA
          * @brief does the work for the constructors.
          */
         /// void construct(const TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
-        void constructStratum(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
+        void constructStratum(const DistTree<C, dim> &distTree, int stratum, SpecialElements special, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
         void construct(const DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
         /** @brief The latter part of construct() if already have ownedNodes. */
