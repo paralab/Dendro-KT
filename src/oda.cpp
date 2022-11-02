@@ -158,6 +158,7 @@ namespace ot
       using OwnershipT = DendroIntL;
       using DirtyT = char;
 
+      const DA<dim> *da = &ghostExchange;//future: add as a parameter
       OwnershipT globElementId = globElementBegin;  // enumerate elements in loop.
 
       const unsigned int nPe = intPow(eleOrder+1, dim);
@@ -179,10 +180,17 @@ namespace ot
 
       std::vector<OwnershipT> leafBuffer(nPe, 0);
       std::vector<DirtyT> leafDirty(nPe, 0);
+      size_t element_idx = 0;
       while (!elementLoop.isFinished())
       {
         if (elementLoop.isPre() && elementLoop.subtreeInfo().isLeaf())
         {
+          const int full_nodes = intPow(da->getElementOrder(element_idx) + 1, dim);
+          const int num_nonhanging = elementLoop.subtreeInfo().getNumNonhangingNodes();
+          const bool special_quadratic_element = da->getElementOrder(element_idx) != da->getElementOrder();
+          assert(element_idx < da->getLocalElementSz());
+          assert(not special_quadratic_element or num_nonhanging == full_nodes);
+
           for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
             if (elementLoop.subtreeInfo().readNodeNonhangingIn()[nIdx])
             {
@@ -198,10 +206,12 @@ namespace ot
           elementLoop.subtreeInfo().overwriteNodeValsOut(leafBuffer.data(), leafDirty.data());
           elementLoop.next();
           globElementId++;
+          element_idx++;
         }
         else
           elementLoop.step();
       }
+      assert(element_idx == da->getLocalElementSz());  // if not, then leafs buggy
 
       std::vector<OwnershipT> ghostedOwners(ghostedNodeList.size(), 0);
       std::vector<DirtyT> ghostedDirty(ghostedNodeList.size(), 0);
