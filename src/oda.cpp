@@ -277,7 +277,12 @@ namespace ot
       m_dist_tree_lifetime = distTree.live_ptr();
 
       m_special_elements = std::move(special_);
-      std::sort(m_special_elements.quadratic.begin(), m_special_elements.quadratic.end());
+      // sort and unique-ify
+      [](std::vector<size_t> &v) -> void {
+        std::sort(v.begin(), v.end());
+        v.erase(std::unique(v.begin(), v.end()), v.end());
+      }(m_special_elements.quadratic);
+
 
       TreeNode<C, dim> treePartFront;
       TreeNode<C, dim> treePartBack;

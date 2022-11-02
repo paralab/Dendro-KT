@@ -99,18 +99,27 @@ MPI_TEST_CASE("Special quadratic elements give expected # of nodes, "
   // TODO perform h-refinement of octants touching intercepted octants
 
   // Indicate p-refinement on boundary
-  ot::SpecialElements special;
+  ot::SpecialElements special;  // member `quadratic` is a vector<size_t>
   for (size_t i = 0; i < tree.getTreePartFiltered().size(); ++i)
     if (tree.getTreePartFiltered()[i].getIsOnTreeBdry())
       special.quadratic.push_back(i);
   const long long unsigned expected_q2_elements
     = pow(1 << refinement_level, dim) - pow((1 << refinement_level) - 2, dim);
-  CHECK(special.quadratic.size() == expected_q2_elements);
+  REQUIRE(special.quadratic.size() == expected_q2_elements);
+
+  // User could have appended indices of special elements in any order.
+  // Repetitions also ok. The DA constructor will sort and remove duplicates.
+  // Simulate user putting in random order and the first one duplicated:
+  special.quadratic.push_back(special.quadratic[0]);
+  std::shuffle(special.quadratic.begin(), special.quadratic.end(), std::mt19937_64{42});
 
   // To construct the node set, the quadratic elements must be known.
   ot::DA<dim> da(tree,
       std::move(special),
       comm, polynomial_degree, int{}, partition_tolerance);
+  CHECK(da.special_elements().quadratic.size() == expected_q2_elements);
+  for (size_t i = 0; i < tree.getTreePartFiltered().size(); ++i)
+    CHECK(da.getElementOrder(i) == (tree.getTreePartFiltered()[i].getIsOnTreeBdry() ? 2 : 1));
 
   // Check number of nodes.
   MPI_CHECK(0, da.getGlobalNodeSz() > (pow((1 << refinement_level) + 1, dim)));

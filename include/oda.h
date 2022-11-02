@@ -334,7 +334,7 @@ class DA
         /**
          * @brief Construct DA with quadratic nodes on select elements.
          *  It is recommended to initialize `special` by std::move()-ing
-         *  from a temporary local variable.
+         *  from a temporary local variable. Note that DA may sort the vectors.
          */
         DA(const DistTree<C,dim> &inDistTree, SpecialElements special, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
@@ -429,8 +429,19 @@ class DA
         /**@brief get number of nodes per element*/
         inline unsigned int getNumNodesPerElement() const { return m_uiNpE; }
 
-        /**@brief get element order*/
+        /**@brief get default element order*/
         inline unsigned int getElementOrder() const { return m_uiElementOrder; }
+
+        /**@brief get element order of a specific element, considering that some may be quadratic.
+         *   The index i is the process-local element index (i-th octant in local partition)
+         */
+        inline unsigned int getElementOrder(size_t i) const {
+          const bool is_quadratic
+            = m_special_elements.quadratic.size() > 0 and
+              std::binary_search(m_special_elements.quadratic.begin(),
+                                 m_special_elements.quadratic.end(), i);
+          return is_quadratic ? 2 : this->getElementOrder();
+        }
 
         /**@brief: returns the global MPI communicator*/
         inline MPI_Comm getGlobalComm() const { return m_uiGlobalComm; }
