@@ -12,6 +12,7 @@
 #include <include/dendro.h>
 #include <include/octUtils.h>
 #include <FEM/include/refel.h>
+#include <FEM/include/matvec.h>
 #include <FEM/examples/include/poissonMat.h>
 #include <FEM/examples/include/poissonVec.h>
 
@@ -22,12 +23,12 @@
 // -----------------------------------------------------------------------------
 // TODO
 // ✔ Basic test to count the nodes from special quadratic on a uniform grid
-// _ Extend cancellation-node methodology with a check for weird hanging
-// _ Generate quadratic primary shared nodes
-// _ Generate quadratic primary interior nodes
-// _ Generate quadratic cancellation nodes?
-// _ Check assumptions in _constructInner() about polynomial degree
-// _ Check assumptions in getNodeElementOwnership() about polynomial degree
+// ✔ Generate quadratic primary shared nodes
+// ✔ Generate quadratic primary interior nodes
+// ✔ Check assumptions in _constructInner() about polynomial degree
+// ✔ Check assumptions in getNodeElementOwnership() about polynomial degree
+// ✔ Test dummy matvec
+// _ future: Extend cancellation-node methodology with a check for weird hanging?
 // _ future: new element-based DA construction with nodes literally anywhere...
 // -----------------------------------------------------------------------------
 
@@ -45,11 +46,17 @@ std::ostream & print(const ot::DA<dim> &da,
                      const std::vector<NodeT> &local_vec,
                      std::ostream & out = std::cerr);
 
+template <unsigned dim>
+std::vector<ot::TreeNode<uint, dim>> special_refine_uniform(
+    std::vector<ot::TreeNode<uint, dim>> octants,
+    MPI_Comm comm);
 
 template <unsigned dim>
 LLU count_explicit_hanging_nodes(const ot::DA<dim> &da);
 
 
+
+// ........
 MPI_TEST_CASE("Regular DA construction on uniform grid still works", 1)
 {
   MPI_Comm comm = test_comm;
@@ -78,11 +85,7 @@ MPI_TEST_CASE("Regular DA construction on uniform grid still works", 1)
 }
 
 
-template <unsigned dim>
-std::vector<ot::TreeNode<uint, dim>> special_refine_uniform(
-    std::vector<ot::TreeNode<uint, dim>> octants,
-    MPI_Comm comm);
-
+// ........
 MPI_TEST_CASE("Special quadratic elements give expected # of nodes, "
               "assuming outer p-refinement and inner h-refinement", 5)
 {
@@ -161,8 +164,109 @@ MPI_TEST_CASE("Special quadratic elements give expected # of nodes, "
 }
 
 
+template <unsigned dim>
+ot::DistTree<uint, dim> h_refined_uniform_tree(int refinement_level, MPI_Comm comm, double partition_tolerance);
+
+template <unsigned dim>
+ot::SpecialElements p_refined_boundary_elements(const ot::DistTree<uint, dim> &tree);
+
+// ........
+MPI_TEST_CASE("Dummy matvec works with special quadratic elements", 1)
+{
+  MPI_Comm comm = test_comm;
+  DendroScopeBegin();
+  constexpr int dim = 2;
+  _InitializeHcurve(dim);
+  int rank, npes;
+  MPI_Comm_rank(comm, &rank);
+  MPI_Comm_size(comm, &npes);
+  const int refinement_level = 3;
+  const int polynomial_degree = 1;
+  const double partition_tolerance = 0.1;
+
+  // Mesh (initially uniform grid, inner neighbors of boundary get h-refined)
+  // Indicate p-refinement on boundary
+  // To construct the node set, the quadratic elements must be known.
+  ot::DistTree<uint, dim> tree = h_refined_uniform_tree<dim>(refinement_level, comm, partition_tolerance);
+  ot::SpecialElements special = p_refined_boundary_elements(tree);
+  ot::DA<dim> da(tree, std::move(special), comm, polynomial_degree, int{}, partition_tolerance);
+
+  // Before proceeding, verify number of quadratic elements and total number of nodes.
+  const long long unsigned expected_q2_elements
+    = pow(1 << refinement_level, dim) - pow((1 << refinement_level) - 2, dim);
+  REQUIRE(par::mpi_sum(da.special_elements().quadratic.size(), comm) == expected_q2_elements);
+  for (size_t i = 0; i < tree.getTreePartFiltered().size(); ++i)
+    REQUIRE(da.getElementOrder(i) == (tree.getTreePartFiltered()[i].getIsOnTreeBdry() ? 2 : 1));
+  const long long unsigned expected_nodes =
+      pow(2*(1 << refinement_level) + 1, dim) // all quadratic
+      - pow(2*((1 << refinement_level)-4) + 1, dim) // under 2nd layer not quadratic
+      + pow(((1 << refinement_level)-4) + 1, dim); // under 2nd layer is linear
+  if (rank == 0)
+  {
+    REQUIRE(da.getGlobalNodeSz() == expected_nodes);
+  }
+
+  // Dummy elemental MatVec
+  size_t element_idx = 0;  // reset at begining of the matvec
+  const auto elemental_mvec = [&](
+      const double *in, double *out,
+      unsigned int ndofs,
+      const double *coords,
+      double scale, bool isElementBoundary)
+  {
+    const int eleOrder = da.getElementOrder(element_idx);
+    const int element_npe = intPow(eleOrder + 1, dim);
+
+    std::array<int, dim> lex_idx = {};
+    for (int i = 0; i < element_npe; ++i)
+    {
+      int face_dimension = dim;
+      for (int d = 0; d < dim; ++d)
+        if (lex_idx[d] == 0 or lex_idx[d] == eleOrder)
+          --face_dimension;
+      int uniform_sharers = (1 << (dim - face_dimension));
+
+      out[i] = in[i] / uniform_sharers;
+
+      incrementBaseB<int, dim>(lex_idx, eleOrder + 1);
+    }
+    ++element_idx;
+  };
+
+  std::vector<double> u_vec(da.getTotalNodalSz(), 1);
+  std::vector<double> v_vec(da.getTotalNodalSz(), 0);
+  fem::matvec(u_vec.data(), v_vec.data(), 1,
+      da.getTNCoords(), da.getTotalNodalSz(),
+      tree.getTreePartFiltered().data(),
+      tree.getTreePartFiltered().size(),
+      ot::dummyOctant<dim>(), ot::dummyOctant<dim>(),
+      fem::EleOpT<double>(elemental_mvec),
+      1.0, da.getReferenceElement(),
+      &da);
+  //TODO ghost exchange
+
+  /// ot::printNodes(da.getTNCoords(), da.getTNCoords() + da.getTotalNodalSz(),
+  ///     v_vec.data(), 2, std::cerr);
+
+  //future: local nodes after ghost write
+  const LLU num_nonzero = std::count_if(v_vec.begin(), v_vec.end(), [](auto x){return x != 0;});
+  const LLU num_gt_zero = std::count_if(v_vec.begin(), v_vec.end(), [](auto x){return x > 0;});
+  const LLU num_geq_one = std::count_if(v_vec.begin(), v_vec.end(), [](auto x){return x >= 1;});
+  CHECK(num_nonzero == da.getTotalNodalSz());
+  CHECK(num_gt_zero == da.getTotalNodalSz());
+  CHECK(num_geq_one == da.getTotalNodalSz() - da.getBoundaryNodeIndices().size());
+
+  const LLU num_of_ones = std::count(v_vec.begin(), v_vec.end(), 1.0);
+  //future: some formula
+
+  _DestroyHcurve();
+  DendroScopeEnd();
+}
+
+
 //future: solve a PDE
 //-------------------
+/// // ........
 /// MPI_TEST_CASE("Poisson problem on a uniformly refined cube with p-refinement on boundaries (5 processes), should converge to exact solution", 5)
 /// {
 ///   MPI_Comm comm = test_comm;
@@ -412,6 +516,45 @@ std::vector<ot::TreeNode<uint, dim>> special_refine_uniform(
 }
 
 
+template <unsigned dim>
+ot::DistTree<uint, dim> h_refined_uniform_tree(
+    int refinement_level, MPI_Comm comm, double partition_tolerance)
+{
+  int rank;
+  MPI_Comm_rank(comm, &rank);
+
+  // Initially uniform grid
+  ot::DistTree<uint, dim> tree;
+  if (rank == 0)
+   tree = ot::DistTree<uint, dim>::
+      constructSubdomainDistTree(refinement_level, MPI_COMM_SELF, partition_tolerance);
+
+  // Refine tree
+  {
+    std::vector<ot::TreeNode<uint, dim>> octants = tree.getTreePartFiltered();
+    octants = special_refine_uniform(octants, comm);
+    ot::SFC_Tree<uint, dim>::distTreeSort(octants, partition_tolerance, comm);
+
+    // Replace tree with refined tree
+    tree = ot::DistTree<uint, dim>(octants, comm);
+  }
+
+  return tree;
+}
+
+
+template <unsigned dim>
+ot::SpecialElements p_refined_boundary_elements(const ot::DistTree<uint, dim> &tree)
+{
+  ot::SpecialElements special;  // member `quadratic` is a vector<size_t>
+  for (size_t i = 0; i < tree.getTreePartFiltered().size(); ++i)
+    if (tree.getTreePartFiltered()[i].getIsOnTreeBdry())
+      special.quadratic.push_back(i);
+  return special;
+}
+
+
+
 
 
 template <unsigned dim>
@@ -435,3 +578,10 @@ LLU count_explicit_hanging_nodes(const ot::DA<dim> &da)
   throw std::logic_error("count_explicit_hanging_nodes() is not implemented");
   return -1;
 }
+
+
+
+
+
+
+

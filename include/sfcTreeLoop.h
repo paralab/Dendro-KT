@@ -498,7 +498,6 @@ namespace ot
         assert (m_stack.size() > 0);
         return m_stack.back().m_sfc;
       }
-
   };
 
 

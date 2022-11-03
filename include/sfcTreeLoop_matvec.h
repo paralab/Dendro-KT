@@ -267,6 +267,30 @@ namespace ot
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
+      // parent_eleOrder(): For special quadratic elements
+      unsigned parent_eleOrder() const
+      {
+        return this->da() ? this->da()->getElementOrder(this->element_idx()) : this->m_eleOrder;
+      }
+
+      // parent_npe(): For special quadratic elements
+      unsigned parent_npe() const
+      {
+        return intPow(parent_eleOrder() + 1, dim);
+      }
+
+      // child_eleOrder(): For special quadratic elements
+      unsigned child_eleOrder(int sfc_child) const
+      {
+        return this->da() ? this->da()->getElementOrder(this->child_element_idx(sfc_child)) : this->m_eleOrder;
+      }
+
+      // child_npe(): For special quadratic elements
+      unsigned child_npe(int sfc_child) const
+      {
+        return intPow(child_eleOrder(sfc_child) + 1, dim);
+      }
+
       void fillAccessNodeCoordsFlat();
 
       int m_warningCounter = 0;
@@ -277,7 +301,7 @@ namespace ot
               "Warning: If MatvecBase::fillLeafNodeBdry() is not updated "
               "to match sfcTreeLoop_matvec_io.h, then it is probably inaccurate.\n");
 
-        ::ot::fillLeafNodeBdry<MatvecBase, dim>(BaseT::getCurrentFrame(), m_eleOrder, m_parentNodeBdry, m_leafNodeBdry);
+        ::ot::fillLeafNodeBdry<MatvecBase, dim>(BaseT::getCurrentFrame(), this->parent_eleOrder(), m_parentNodeBdry, m_leafNodeBdry);
       }
 
       unsigned int m_ndofs;
@@ -389,11 +413,11 @@ namespace ot
     rootFrame.mySummaryHandle.m_initializedOut = false;
 
     // Non-stack leaf buffer and parent-of-leaf buffer.
-    const unsigned npe = intPow(m_eleOrder+1, dim);
-    m_leafNodeCoords.resize(npe, TreeNode<unsigned int, dim>());
-    m_leafNodeVals.resize(ndofs * npe, 0);
-    m_parentNodeVals.resize(ndofs * npe, 0);
-    m_parentNodeBdry.resize(npe, 0);
+    const unsigned max_npe = intPow<unsigned>(std::max(m_eleOrder, 2u) + 1, dim);
+    m_leafNodeCoords.resize(max_npe, TreeNode<unsigned int, dim>());
+    m_leafNodeVals.resize(ndofs * max_npe, 0);
+    m_parentNodeVals.resize(ndofs * max_npe, 0);
+    m_parentNodeBdry.resize(max_npe, 0);
   }
 
 
@@ -466,6 +490,7 @@ namespace ot
 #endif
 
     const unsigned npe = intPow(m_eleOrder+1, dim);
+    const unsigned max_npe = intPow<unsigned>(std::max(m_eleOrder, 2u) + 1, dim);
     const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
 
     std::array<size_t, NumChildren> childNodeCounts;
@@ -644,8 +669,8 @@ namespace ot
         const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
                 childSubtreesSFC[child_sfc],
                 myNodes[nIdx],
-                m_eleOrder );
-        assert(nodeRank < npe);
+                this->child_eleOrder(child_sfc) );
+        assert(nodeRank < max_npe);
 
         // Node coordinates.
         /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
@@ -709,6 +734,7 @@ namespace ot
 #endif
 
     const unsigned npe = intPow(m_eleOrder+1, dim);
+    const unsigned max_npe = intPow<unsigned>(std::max(m_eleOrder, 2u) + 1, dim);
     const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
     const NodeT zero = 0;
 
@@ -776,8 +802,8 @@ namespace ot
           const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
                   childSubtreesSFC[child_sfc],
                   myNodes[nIdx],
-                  m_eleOrder );
-          assert(nodeRank < npe);
+                  this->child_eleOrder(child_sfc) );
+          assert(nodeRank < max_npe);
 
           // Nodal values.
           for (int dof = 0; dof < m_ndofs; dof++)
@@ -912,7 +938,7 @@ namespace ot
     ::ot::fillAccessNodeCoordsFlat(!isLeafOrLower(),
                              BaseT::getCurrentFrame().template getMyInputHandle<0>(),
                              BaseT::getCurrentSubtree(),
-                             m_eleOrder,
+                             this->parent_eleOrder(),
                              m_accessNodeCoordsFlat);
   }
 

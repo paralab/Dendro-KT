@@ -237,6 +237,30 @@ namespace ot
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
+      // parent_eleOrder(): For special quadratic elements
+      unsigned parent_eleOrder() const
+      {
+        return this->da() ? this->da()->getElementOrder(this->element_idx()) : this->m_eleOrder;
+      }
+
+      // parent_npe(): For special quadratic elements
+      unsigned parent_npe() const
+      {
+        return intPow(parent_eleOrder() + 1, dim);
+      }
+
+      // child_eleOrder(): For special quadratic elements
+      unsigned child_eleOrder(int sfc_child) const
+      {
+        return this->da() ? this->da()->getElementOrder(this->child_element_idx(sfc_child)) : this->m_eleOrder;
+      }
+
+      // child_npe(): For special quadratic elements
+      unsigned child_npe(int sfc_child) const
+      {
+        return intPow(child_eleOrder(sfc_child) + 1, dim);
+      }
+
       static MatvecBaseSummary<dim> generate_node_summary(  // This ought to be the standard since no values needed.
           const TreeNode<unsigned int, dim> *begin,
           const TreeNode<unsigned int, dim> *end);
@@ -419,6 +443,30 @@ namespace ot
       void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren) {}
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
+
+      // parent_eleOrder(): For special quadratic elements
+      unsigned parent_eleOrder() const
+      {
+        return this->da() ? this->da()->getElementOrder(this->element_idx()) : this->m_eleOrder;
+      }
+
+      // parent_npe(): For special quadratic elements
+      unsigned parent_npe() const
+      {
+        return intPow(parent_eleOrder() + 1, dim);
+      }
+
+      // child_eleOrder(): For special quadratic elements
+      unsigned child_eleOrder(int sfc_child) const
+      {
+        return this->da() ? this->da()->getElementOrder(this->child_element_idx(sfc_child)) : this->m_eleOrder;
+      }
+
+      // child_npe(): For special quadratic elements
+      unsigned child_npe(int sfc_child) const
+      {
+        return intPow(child_eleOrder(sfc_child) + 1, dim);
+      }
 
       static MatvecBaseSummary<dim> generate_node_summary(
           const TreeNode<unsigned int, dim> *begin,
@@ -642,6 +690,18 @@ namespace ot
       void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
+
+      // parent_eleOrder(): For special quadratic elements
+      unsigned parent_eleOrder() const
+      {
+        return this->da() ? this->da()->getElementOrder(this->element_idx()) : this->m_eleOrder;
+      }
+
+      // parent_npe(): For special quadratic elements
+      unsigned parent_npe() const
+      {
+        return intPow(parent_eleOrder() + 1, dim);
+      }
 
       // child_eleOrder(): For special quadratic elements
       unsigned child_eleOrder(int sfc_child) const
