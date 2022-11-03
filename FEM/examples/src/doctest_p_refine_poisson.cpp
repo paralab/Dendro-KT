@@ -146,6 +146,12 @@ MPI_TEST_CASE("Special quadratic elements give expected # of nodes, "
       + pow(((1 << refinement_level)-4) + 1, dim); // under 2nd layer is linear
   MPI_CHECK(0, da.getGlobalNodeSz() == expected_nodes);
 
+  // Check ownership ids are not -1 (make sure every node is written to at least once)
+  const DendroIntL * ghosted_node_owners = da.getNodeOwnerElements();
+  const size_t n_ghosted_nodes = da.getTotalNodalSz();
+  for (size_t i = 0; i < n_ghosted_nodes; ++i)
+    CHECK(ghosted_node_owners[i] != -1);
+
   // Check no quadratic hanging nodes.
   /// const LLU explicit_hanging_nodes = count_explicit_hanging_nodes(da);
   /// CHECK(explicit_hanging_nodes == 0);

@@ -72,6 +72,8 @@
 #include "binUtils.h"
 #include "templateUtils.h"
 
+#include "oda.h"  // for special quadratic
+
 #include "meshLoop.h"
 
 /// #include "refel.h"
@@ -227,6 +229,7 @@ namespace ot
       SummaryType m_rootSummary;
       const TreeNode<C, dim> * m_treePartPtr;
       std::array<RankI, (1u<<dim)+1> m_rootTreeSplitters;
+      const ot::DA<dim> * m_da = nullptr;
 
       std::vector<FrameT> m_stack;
 
@@ -241,6 +244,11 @@ namespace ot
       {
         return static_cast<ConcreteType &>(*this);
       }
+
+      // Must supply DA for special quadratic elements to behave properly
+      const ot::DA<dim> * da() const { return m_da; }
+      void da(const ot::DA<dim> * da) { m_da = da; }
+      //next: count the number of elements, using the oct list
 
       // reset()
       void reset()
@@ -342,6 +350,19 @@ namespace ot
       {
         assert (m_stack.size() > 0);
         return m_stack.back().m_currentSubtree;
+      }
+
+      RankI element_idx() const
+      {
+        assert(m_stack.size() > 0);
+        return m_stack.back().element_idx();
+      }
+
+
+      RankI child_element_idx(int sfc_index) const
+      {
+        assert(m_stack.size() > 0);
+        return m_stack.back().child_element_idx(sfc_index);
       }
 
 
@@ -654,6 +675,18 @@ namespace ot
         }
 
         return extantFlag;
+      }
+
+      // element_idx()
+      RankI element_idx() const
+      {
+        return m_parentFrame ? m_parentFrame->m_treeSplitters[m_sfcChildNum] : 0;
+      }
+
+      // child_element_idx()
+      RankI child_element_idx(int sfc_index) const
+      {
+        return m_treeSplitters[sfc_index];
       }
 
     public:

@@ -175,11 +175,12 @@ namespace ot
           (octList.size() ? octList.front() : dummyOctant<dim>()),
           (octList.size() ? octList.back() : dummyOctant<dim>())
           );
+          elementLoop.da(da);
 
-      //TODO mixed degree loop (use nPe_quadratic if is quadratic element)
-
-      std::vector<OwnershipT> leafBuffer(nPe, 0);
-      std::vector<DirtyT> leafDirty(nPe, 0);
+      const int max_npe = std::max(int(da->getNumNodesPerElement()),
+                                   intPow(2 + 1, dim));
+      std::vector<OwnershipT> leafBuffer(max_npe, 0);
+      std::vector<DirtyT> leafDirty(max_npe, 0);
       size_t element_idx = 0;
       while (!elementLoop.isFinished())
       {
@@ -189,9 +190,10 @@ namespace ot
           const int num_nonhanging = elementLoop.subtreeInfo().getNumNonhangingNodes();
           const bool special_quadratic_element = da->getElementOrder(element_idx) != da->getElementOrder();
           assert(element_idx < da->getLocalElementSz());
+          assert(special_quadratic_element or num_nonhanging <= nPe);
           assert(not special_quadratic_element or num_nonhanging == full_nodes);
 
-          for (size_t nIdx = 0; nIdx < nPe; ++nIdx)
+          for (size_t nIdx = 0; nIdx < full_nodes; ++nIdx)
             if (elementLoop.subtreeInfo().readNodeNonhangingIn()[nIdx])
             {
               leafBuffer[nIdx] = globElementId;
@@ -213,7 +215,7 @@ namespace ot
       }
       assert(element_idx == da->getLocalElementSz());  // if not, then leafs buggy
 
-      std::vector<OwnershipT> ghostedOwners(ghostedNodeList.size(), 0);
+      std::vector<OwnershipT> ghostedOwners(ghostedNodeList.size(), OwnershipT(-1));
       std::vector<DirtyT> ghostedDirty(ghostedNodeList.size(), 0);
 
       const size_t writtenSz = elementLoop.finalize(ghostedOwners.data(), ghostedDirty.data());

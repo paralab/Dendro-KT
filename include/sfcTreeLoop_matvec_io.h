@@ -643,6 +643,19 @@ namespace ot
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
+      // child_eleOrder(): For special quadratic elements
+      unsigned child_eleOrder(int sfc_child) const
+      {
+        return this->da() ? this->da()->getElementOrder(this->child_element_idx(sfc_child)) : this->m_eleOrder;
+      }
+
+      // child_npe(): For special quadratic elements
+      unsigned child_npe(int sfc_child) const
+      {
+        return intPow(child_eleOrder(sfc_child) + 1, dim);
+      }
+
+
       static MatvecBaseSummary<dim> generate_node_summary(
           const TreeNode<unsigned int, dim> *begin,
           const TreeNode<unsigned int, dim> *end)
@@ -1803,8 +1816,8 @@ namespace ot
           const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
                   childSubtreesSFC[child_sfc],
                   myNodes[nIdx],
-                  m_eleOrder );
-          assert(nodeRank < npe);
+                  child_eleOrder(child_sfc) );
+          assert(nodeRank < child_npe(child_sfc));
 
           if (childOutIsDirty[nodeRank])
           {
@@ -1845,6 +1858,8 @@ namespace ot
     //
     if (thereAreHangingNodes || (m_visitEmpty && !childrenHaveNodes))
     {
+      // This section does not handle special quadratic elements.
+
       NodeT * parentNodeVals;
 
       const bool parentNonleaf = parSubtree.getLevel() < parentFrame.mySummaryHandle.m_subtreeFinestLevel;
