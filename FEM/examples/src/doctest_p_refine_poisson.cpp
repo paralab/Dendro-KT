@@ -54,6 +54,11 @@ std::vector<ot::TreeNode<uint, dim>> special_refine_uniform(
 template <unsigned dim>
 LLU count_explicit_hanging_nodes(const ot::DA<dim> &da);
 
+template <typename F>
+void mpi_in_turn(MPI_Comm comm, F&& f);  // bucket brigade; but not guaranteed
+
+template <typename F>
+void mpi_in_turn_reverse(MPI_Comm comm, F&& f);
 
 
 // ........
@@ -171,7 +176,7 @@ template <unsigned dim>
 ot::SpecialElements p_refined_boundary_elements(const ot::DistTree<uint, dim> &tree);
 
 // ........
-MPI_TEST_CASE("Dummy matvec works with special quadratic elements", 1)
+MPI_TEST_CASE("Dummy matvec works with special quadratic elements", 3)
 {
   MPI_Comm comm = test_comm;
   DendroScopeBegin();
@@ -243,21 +248,33 @@ MPI_TEST_CASE("Dummy matvec works with special quadratic elements", 1)
       fem::EleOpT<double>(elemental_mvec),
       1.0, da.getReferenceElement(),
       &da);
-  //TODO ghost exchange
+  da.writeToGhostsBegin(v_vec.data());
+  da.writeToGhostsEnd(v_vec.data());
 
-  /// ot::printNodes(da.getTNCoords(), da.getTNCoords() + da.getTotalNodalSz(),
-  ///     v_vec.data(), 2, std::cerr);
+  //debug
+  /// mpi_in_turn_reverse(comm, [&] {
+  ///   std::cerr << "\n--------------------------------------------------------\n";
+  ///   ot::printNodes(da.getTNCoords() + da.getLocalNodeBegin(),
+  ///       da.getTNCoords() + da.getLocalNodeBegin() + da.getLocalNodalSz(),
+  ///       v_vec.data() + da.getLocalNodeBegin(), 2, std::cerr);
+  ///   std::cerr << "--------------------------------------------------------\n\n";
+  /// });
 
-  //future: local nodes after ghost write
-  const LLU num_nonzero = std::count_if(v_vec.begin(), v_vec.end(), [](auto x){return x != 0;});
-  const LLU num_gt_zero = std::count_if(v_vec.begin(), v_vec.end(), [](auto x){return x > 0;});
-  const LLU num_geq_one = std::count_if(v_vec.begin(), v_vec.end(), [](auto x){return x >= 1;});
-  CHECK(num_nonzero == da.getTotalNodalSz());
-  CHECK(num_gt_zero == da.getTotalNodalSz());
-  CHECK(num_geq_one == da.getTotalNodalSz() - da.getBoundaryNodeIndices().size());
+  const double *v_local_begin = &v_vec[da.getLocalNodeBegin()];
+  const double *v_local_end = &v_vec[da.getLocalNodeBegin() + da.getLocalNodalSz()];
+  const LLU n_global_nodes = da.getGlobalNodeSz();
+  const LLU n_boundary_nodes = par::mpi_sum(da.getBoundaryNodeIndices().size(), comm);
+  const LLU num_nonzero = std::count_if(v_local_begin, v_local_end, [](auto x){return x != 0;});
+  const LLU num_gt_zero = std::count_if(v_local_begin, v_local_end, [](auto x){return x > 0;});
+  const LLU num_geq_one = std::count_if(v_local_begin, v_local_end, [](auto x){return x >= 1;});
+  CHECK(par::mpi_sum(num_nonzero, comm) == da.getGlobalNodeSz());
+  CHECK(par::mpi_sum(num_gt_zero, comm) == da.getGlobalNodeSz());
+  CHECK(par::mpi_sum(num_geq_one, comm) == (da.getGlobalNodeSz() - n_boundary_nodes));
 
-  const LLU num_of_ones = std::count(v_vec.begin(), v_vec.end(), 1.0);
-  //future: some formula
+  const LLU num_of_ones = std::count(v_local_begin, v_local_end, 1.0);
+  const LLU expected_hanging = pow((1 << refinement_level) - 3, dim) - pow((1 << refinement_level) - 5, dim);
+  const LLU expected_ones = n_global_nodes - expected_hanging - n_boundary_nodes;
+  CHECK(par::mpi_sum(num_of_ones, comm) == expected_ones);
 
   _DestroyHcurve();
   DendroScopeEnd();
@@ -581,6 +598,29 @@ LLU count_explicit_hanging_nodes(const ot::DA<dim> &da)
 
 
 
+template <typename F>
+void mpi_in_turn(MPI_Comm comm, F&& f)
+{
+  const int comm_size = par::mpi_comm_size(comm);
+  const int comm_rank = par::mpi_comm_rank(comm);
+  const int prev_rank = comm_rank > 0 ? comm_rank - 1 : MPI_PROC_NULL;
+  const int next_rank = comm_rank + 1 < comm_size ? comm_rank + 1 : MPI_PROC_NULL;
+  MPI_Recv(nullptr, 0, MPI_INT, prev_rank, 0, comm, MPI_STATUS_IGNORE);
+  f();
+  MPI_Send(nullptr, 0, MPI_INT, next_rank, 0, comm);
+}
+
+template <typename F>
+void mpi_in_turn_reverse(MPI_Comm comm, F&& f)
+{
+  const int comm_size = par::mpi_comm_size(comm);
+  const int comm_rank = par::mpi_comm_rank(comm);
+  const int prev_rank = comm_rank + 1 < comm_size ? comm_rank + 1 : MPI_PROC_NULL;
+  const int next_rank = comm_rank > 0 ? comm_rank - 1 : MPI_PROC_NULL;
+  MPI_Recv(nullptr, 0, MPI_INT, prev_rank, 0, comm, MPI_STATUS_IGNORE);
+  f();
+  MPI_Send(nullptr, 0, MPI_INT, next_rank, 0, comm);
+}
 
 
 
