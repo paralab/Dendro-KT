@@ -176,11 +176,11 @@ template <unsigned dim>
 ot::SpecialElements p_refined_boundary_elements(const ot::DistTree<uint, dim> &tree);
 
 // ........
-MPI_TEST_CASE("Dummy matvec works with special quadratic elements", 3)
+MPI_TEST_CASE("Dummy matvec works with special quadratic elements", 5)
 {
   MPI_Comm comm = test_comm;
   DendroScopeBegin();
-  constexpr int dim = 2;
+  constexpr int dim = 3;
   _InitializeHcurve(dim);
   int rank, npes;
   MPI_Comm_rank(comm, &rank);
@@ -266,12 +266,13 @@ MPI_TEST_CASE("Dummy matvec works with special quadratic elements", 3)
   const LLU n_boundary_nodes = par::mpi_sum(da.getBoundaryNodeIndices().size(), comm);
   const LLU num_nonzero = std::count_if(v_local_begin, v_local_end, [](auto x){return x != 0;});
   const LLU num_gt_zero = std::count_if(v_local_begin, v_local_end, [](auto x){return x > 0;});
-  const LLU num_geq_one = std::count_if(v_local_begin, v_local_end, [](auto x){return x >= 1;});
+  const LLU num_geq_one = std::count_if(v_local_begin, v_local_end, [](auto x){return x >= 1 - 1e-6;});
   CHECK(par::mpi_sum(num_nonzero, comm) == da.getGlobalNodeSz());
   CHECK(par::mpi_sum(num_gt_zero, comm) == da.getGlobalNodeSz());
   CHECK(par::mpi_sum(num_geq_one, comm) == (da.getGlobalNodeSz() - n_boundary_nodes));
 
-  const LLU num_of_ones = std::count(v_local_begin, v_local_end, 1.0);
+  const LLU num_of_ones = std::count_if(v_local_begin, v_local_end,
+      [](auto x){return 1.0-1e-6 <= x && x <= 1.0+1e-6;});
   const LLU expected_hanging = pow((1 << refinement_level) - 3, dim) - pow((1 << refinement_level) - 5, dim);
   const LLU expected_ones = n_global_nodes - expected_hanging - n_boundary_nodes;
   CHECK(par::mpi_sum(num_of_ones, comm) == expected_ones);
