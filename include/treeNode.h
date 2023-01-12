@@ -91,7 +91,7 @@ namespace ot {
         */
       TreeNode (const std::array<T,dim> coords, unsigned int level);
 
-      TreeNode (const std::array<T,dim> coords, unsigned int level);
+      // TreeNode (const std::array<T,dim> coords, unsigned int level);
 
       /**@brief Copy constructor */
       TreeNode (const TreeNode & other) = default;

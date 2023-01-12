@@ -38,13 +38,13 @@ namespace ot {
       m_coords = periodic::PCoord<T, dim>(coords);
     } //end function
 
-    template<typename T, unsigned int dim>
-    TreeNode<T,dim>::TreeNode(const std::array<T,dim> coords, unsigned int level )
-    {
-      m_uiLevel = level;
-      m_isOnTreeBdry = false;
-      m_coords = periodic::PCoord<T, dim>(coords);
-    }
+    // template<typename T, unsigned int dim>
+    // TreeNode<T,dim>::TreeNode(const std::array<T,dim> coords, unsigned int level )
+    // {
+    //   m_uiLevel = level;
+    //   m_isOnTreeBdry = false;
+    //   m_coords = periodic::PCoord<T, dim>(coords);
+    // }
 
 
     // TreeNode protected constructor
