@@ -21,7 +21,7 @@
 
 #include <vector>
 #include <set>
-
+#include <iostream>
 
 namespace ot
 {
@@ -524,7 +524,6 @@ SFC_Tree<T,dim>:: distTreeSortWeighted(std::vector<TreeNode<T,dim>> &points,
 }
 
 
-
 template <typename T, unsigned int dim, typename...X>
 void distTreePartition_kway_impl(
     MPI_Comm comm,
@@ -705,8 +704,10 @@ inline Buckets<nchild(dim)+1> bucket_sfc_keys(
         return (oct.getLevel() >= child_level) + oct.getMortonIndex(child_level);
     };  // Easy to compute bucket, will permute counts later.
 
-    for (size_t i = begin; i < end; ++i)         // Count.
+    for (size_t i = begin; i < end; ++i) {
+      // std::cout << pre_bucket( xs[i] ) << "\n";       // Count.
       ++buckets[pre_bucket(xs[i])];
+    }
 
     // Permuted prefix sum.
     buckets[1 + sfc.child_num(sfc::SubIndex(0))] += buckets[0];
@@ -725,6 +726,15 @@ inline Buckets<nchild(dim)+1> bucket_sfc_keys(
       sfc_buckets[1 + s] = begin + buckets[1 + sfc.child_num(s)];
     sfc_buckets[0] = begin;
     sfc_buckets[nbuckets] = end;
+
+    // std::cout << begin << "\t" << end << "\n";
+    // for( auto& val: sfc_buckets ) {
+    //   std::cout << val << "\n";
+    // }
+    // std::cout << "buckets" << "\t" << buckets.size() << "\n";
+    // for( auto& val: buckets ) {
+    //   std::cout << val << "\n";
+    // }
   }
   return sfc_buckets;
 }
@@ -734,6 +744,7 @@ template <typename T, unsigned int dim, typename...Y>
 inline Buckets<nchild(dim)+1> bucket_sfc(
     TreeNode<T, dim> *xs, Y* ...ys, size_t begin, size_t end, int child_level, const SFC_State<int(dim)> sfc)
 {
+  // std::cout << sizeof...(Y) << "\n";
   if (sizeof...(Y) == 0)
     return bucket_sfc_keys(xs, begin, end, child_level, sfc);
 
@@ -1134,6 +1145,8 @@ void distTreePartition_kway_impl(
     global_coarsest_level = par::mpi_min(local_coarsest_level, comm_in);
   }
 
+  // std::cout << m_uiMaxDepth << "\n";
+
   BucketArray<T, int(dim)> parent_buckets,  child_buckets;
   parent_buckets.reserve(kway_roundup * nchild(dim));
   child_buckets.reserve(kway_roundup * nchild(dim));
@@ -1158,6 +1171,7 @@ void distTreePartition_kway_impl(
         b.octant.getLevel() + 1,
         b.sfc);
     //future: use locate instead of bucketing if octants is already sorted.
+    //future: use locate instead of bucketing if octants is already sorted.
 
     return buckets;
   };
@@ -1167,6 +1181,8 @@ void distTreePartition_kway_impl(
   local_block.reserve(KWAY + 1);
 
   std::string plot_prefix = "partition/kway";
+
+  // std::cout << kway.levels() << "\n";
 
   for (int round = 0; round < kway.levels(); ++round)
   {
@@ -1212,6 +1228,27 @@ void distTreePartition_kway_impl(
     {DOLLAR("allreduce.parent_buckets" + round_suffix);
       parent_buckets.all_reduce(comm);
     }
+
+    // for( auto& val: parent_buckets.m_global_begin ) {
+
+    //   if( comm_rank == 0 ) {
+    //     std::cout << "0" << "\t" << val << "\n";
+    //   }
+
+    //   if( comm_rank == 1 ) {
+    //     std::cout << "1" << "\t" << val << "\n";
+    //   }
+
+    //   if( comm_rank == 2 ) {
+    //     std::cout << "2" << "\t" << val << "\n";
+    //   }
+
+    //   if( comm_rank == 3 ) {
+    //     std::cout << "3" << "\t" << val << "\n";
+    //   }
+
+    // }
+
     /// parent_buckets.plot(plot);
 
     // Naive: Each block weighted equally. (Despite having +/-1 processes).
@@ -1567,7 +1604,18 @@ void distTreePartitionWeighted_kway_impl(
     {DOLLAR("allreduce.Ng" + round_suffix);
       par::Mpi_Allreduce(&Nl, &Ng, 1, MPI_SUM, comm); // will need to do a similar allreduce to find the total weight
     }
-    if (Ng == 0)
+
+    LLU Wl, Wg;
+
+    for( auto& octant: octants ) {
+
+      Wl += octant.getWeight();
+
+    }
+
+    par::Mpi_Allreduce(&Wl, &Wg, 1, MPI_SUM, comm); 
+
+    if (Ng == 0 || Wg == 0)
       break;
 
     // creates one bucket over entire local dataset
@@ -1641,6 +1689,9 @@ void distTreePartitionWeighted_kway_impl(
     const LLU min_tol =  Ng                  / comm_size * sfc_tol;
     const LLU max_tol = (Ng + comm_size - 1) / comm_size * sfc_tol;
 
+    const LLU min_tolw =  Wg                  / comm_size * sfc_tol;
+    const LLU max_tolw = (Wg + comm_size - 1) / comm_size * sfc_tol;
+
     const auto too_wide = [=](LLU begin, LLU end) -> bool {
       const bool wider_than_margins = end - begin > 2 * min_tol + 1;
       const LLU margin_left = begin + min_tol < end ? begin + min_tol + 1 : end;
@@ -1648,6 +1699,24 @@ void distTreePartitionWeighted_kway_impl(
       const int far_blk_begin = next_blk(margin_left);
       const int far_blk_end = next_blk(margin_right);
       return wider_than_margins and far_blk_begin < far_blk_end;
+    };
+
+    const auto too_wide_weight = [=](std::vector<TreeNode<T, dim>>& v, BucketRef<T, int(dim)>& b ) -> bool {
+
+      int weightInRange;
+
+      for( int i = b.local_begin; i < b.local_end; i++ ) {
+
+        weightInRange += v[i].getWeight();
+
+      }
+
+      const bool wider_than_margins = weightInRange > 2 * min_tolw + 1;
+      // const LLU margin_left = begin + min_tol < end ? begin + min_tol + 1 : end;
+      // const LLU margin_right = end >= min_tol ? end - min_tol : 0;
+      // const int far_blk_begin = next_blk(margin_left);
+      // const int far_blk_end = next_blk(margin_right);
+      return wider_than_margins; // and far_blk_begin < far_blk_end;
     };
 
     const int self_blk = blockmap.task_to_block(comm_rank);
@@ -1694,7 +1763,7 @@ void distTreePartitionWeighted_kway_impl(
         {DOLLAR("commit.and.split" + round_suffix);
           for (BucketRef<T, int(dim)> b : parent_buckets)
           {
-            if (not too_wide(b.global_begin, b.global_end))
+            if (not too_wide_weight( octants, b ))
             {
               const int begin = next_blk(b.global_begin);
               const int end = next_blk(b.global_end);

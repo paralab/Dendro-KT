@@ -75,6 +75,49 @@ namespace ot
         return points;
     }
 
+    template <typename T, unsigned int dim, bool useRandom=true>
+    inline std::vector<TreeNode<T,dim>> getPtsWithWeight(unsigned int numPoints, unsigned int sLev = m_uiMaxDepth, unsigned int eLev = m_uiMaxDepth)
+    {
+        std::vector<TreeNode<T,dim>> points;
+        std::array<T,dim> uiCoords;
+
+        //const T maxCoord = (1u << MAX_LEVEL) - 1;
+        const T maxCoord = (1u << m_uiMaxDepth) - 1;
+        const T leafLevel = m_uiMaxDepth;
+
+        // Set up random number generator.
+        std::random_device rd;
+        std::mt19937_64 gen;
+        if (useRandom)
+          gen.seed(rd());    // 1. Use this for random/pseudorandom testing.
+        else
+          gen.seed(1331);    // 2. Use this for deterministic testing.
+
+        /// std::uniform_int_distribution<T> distCoord(0, maxCoord);
+        std::normal_distribution<double> distCoord((1u << m_uiMaxDepth) / 2, (1u << m_uiMaxDepth) / 25);
+        std::uniform_int_distribution<T> distLevel(sLev, eLev);
+
+        double coordClampLow = 0;
+        double coordClampHi = (1u << m_uiMaxDepth);
+        int weight;
+        // Add points sequentially.
+        for (int ii = 0; ii < numPoints; ii++)
+        {
+            for (T &u : uiCoords)
+            {
+                double dc = distCoord(gen);
+                dc = (dc < coordClampLow ? coordClampLow : dc > coordClampHi ? coordClampHi : dc);
+                u = (T) dc;
+            }
+            //TreeNode<T,dim> tn(uiCoords, leafLevel);
+            weight = rand()%1000;
+            TreeNode<T,dim> tn(uiCoords, distLevel(gen), weight);
+            points.push_back(tn);
+        }
+
+        return points;
+    }
+
     /**
      * @author Masado Ishii
      * @brief  Separate a list of TreeNodes into separate vectors by level.

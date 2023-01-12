@@ -39,11 +39,12 @@ namespace ot {
     } //end function
 
     template<typename T, unsigned int dim>
-    TreeNode<T,dim>::TreeNode(const std::array<T,dim> coords, unsigned int level )
+    TreeNode<T,dim>::TreeNode(const std::array<T,dim> coords, unsigned int level, unsigned int weight)
     {
       m_uiLevel = level;
       m_isOnTreeBdry = false;
       m_coords = periodic::PCoord<T, dim>(coords);
+      m_weight = weight;
     }
 
 
@@ -105,6 +106,11 @@ inline unsigned int TreeNode<T,dim>::getMaxDepth() const {
 template <typename T, unsigned int dim>
 inline unsigned int TreeNode<T,dim>::getLevel() const {
   return (m_uiLevel & MAX_LEVEL);
+}
+
+template <typename T, unsigned int dim>
+inline unsigned int TreeNode<T,dim>::getWeight() const {
+  return m_weight;
 }
 
 template <typename T, unsigned int dim>

@@ -62,6 +62,9 @@ namespace ot {
          * @note false unless previously set (or copied after setting) setIsOnTreeBdry(). */
         bool m_isOnTreeBdry;
 
+        // weight functionality
+        unsigned int m_weight;
+
         // m_isOnTreeBdry is just a tag.
         // Not computed automatically by TreeNode.
 
@@ -91,7 +94,7 @@ namespace ot {
         */
       TreeNode (const std::array<T,dim> coords, unsigned int level);
 
-      TreeNode (const std::array<T,dim> coords, unsigned int level);
+      TreeNode (const std::array<T,dim> coords, unsigned int level, unsigned int weight);
 
       /**@brief Copy constructor */
       TreeNode (const TreeNode & other) = default;
@@ -114,6 +117,9 @@ namespace ot {
 
       /**@brief return the level of the octant*/
       unsigned int getLevel() const;
+
+      /**@brief return the level of the octant*/
+      unsigned int getWeight() const;
 
       /**@brief set the level of the octant*/
       void setLevel(unsigned int lev);
@@ -232,7 +238,7 @@ template class ot::TreeNode<unsigned int, 3>;
 template class ot::TreeNode<unsigned int, 4>;
 */
 
-#include "treeNode.tcc"
+#include "treeNodeModified.tcc"
 
 
 namespace par {

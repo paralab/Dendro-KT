@@ -1,6 +1,7 @@
 
 #include "comm_hierarchy.h"
 #include "dollar.hpp"
+#include <iostream>
 
 namespace par
 {
@@ -16,13 +17,17 @@ namespace par
     MPI_Comm_rank(comm, &comm_rank);
     m_comm_rank = comm_rank;
     int nblocks = std::min(comm_size, kway);
+    // std::cout << nblocks << "\n";
     KwayBlocks blockmap(comm_size, nblocks);
 
     m_comms.push_back(comm);
     m_children.push_back(blockmap);
 
+    // std::cout << blockmap.task_to_block(comm_rank) << "\n";
+
     while (nblocks > 1 and comm_size > kway)
     {
+
       MPI_Comm new_comm;
       MPI_Comm_split(
           comm,
