@@ -183,6 +183,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/p2p.h
                   include/p2p.tcc
                   include/lazy.hpp
+                  include/octree_to_graph.hpp
                   include/passive_shared_ptr.hpp
                   IO/zlib/inc/zlib.h
                   IO/vtk/include/oct2vtk.h
@@ -483,6 +484,12 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/dist_partition.cpp
 add_executable(tstOctreeDistPartition ${SRC_FILES})
 target_include_directories(tstOctreeDistPartition PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/octree)
 target_link_libraries(tstOctreeDistPartition dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/to_graph.cpp
+              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/multisphere.h)
+add_executable(tstOctreeToGraph ${SRC_FILES})
+target_include_directories(tstOctreeToGraph PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/octree)
+target_link_libraries(tstOctreeToGraph dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/par/nbx.cpp)
 add_executable(tstParNbx ${SRC_FILES})
