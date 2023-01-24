@@ -34,7 +34,8 @@ namespace fem
       const ot::DistTree<unsigned, dim> &surrogate_dtree,
       const ot::DA<dim> *surrogate_da,
       const ot::DA<dim> *coarse_da,
-      double *coarse_cell_dofs);
+      double *coarse_cell_dofs,
+      CellCoarsen cell_coarsening);  // CellCoarsen::Copy or CellCoarsen::Sum
 }
 
 
@@ -69,12 +70,13 @@ namespace fem
         cell_ndofs);
     }
 
-    local_inherit(
+    local_cell_transfer(
         surrogate_dtree.getTreePartFiltered(),
         surr_cell_dofs.data(),
         cell_ndofs,
         fine_dtree.getTreePartFiltered(),
-        fine_cell_dofs);
+        fine_cell_dofs,
+        CellCoarsen::Undefined);
   }
 
 
@@ -88,19 +90,21 @@ namespace fem
       const ot::DistTree<unsigned, dim> &surrogate_dtree,
       const ot::DA<dim> *surrogate_da,
       const ot::DA<dim> *coarse_da,
-      double *coarse_cell_dofs)
+      double *coarse_cell_dofs,
+      CellCoarsen cell_coarsening)
   {
     // Surrogate must be coarse partitioned by fine.
     assert(coarse_da->getGlobalElementSz() == surrogate_da->getGlobalElementSz());
 
     std::vector<double> surr_cell_dofs(surrogate_da->getLocalElementSz() * cell_ndofs, 0);
 
-    local_inherit(
+    local_cell_transfer(
         fine_dtree.getTreePartFiltered(),
         fine_cell_dofs,
         cell_ndofs,
         surrogate_dtree.getTreePartFiltered(),
-        surr_cell_dofs.data());
+        surr_cell_dofs.data(),
+        cell_coarsening);
 
     {DOLLAR("shift()");
     par::shift(

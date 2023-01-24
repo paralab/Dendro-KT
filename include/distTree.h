@@ -21,6 +21,26 @@
 
 namespace ot
 {
+
+  template <typename T, unsigned dim, typename Decider>
+  ::ibm::Partition decide_octant(const TreeNode<T, dim> oct, Decider &&decider)
+  {
+    double physCoords[dim];
+    double physSize;
+    treeNode2Physical(oct, physCoords, physSize);
+    return decider(physCoords, physSize);
+  }
+
+  template <typename T, unsigned dim, typename Decider>
+  ::ibm::Partition decide_oct_point(const TreeNode<T, dim> oct, Decider &&decider)
+  {
+    double physCoords[dim];
+    double physSize;
+    treeNode2Physical(oct, physCoords, physSize);
+    return decider(physCoords, 0.0);
+  }
+
+
   /**
    * @brief Intermediate container for filtering trees before creating the DA.
    *
@@ -323,20 +343,12 @@ namespace ot
       // If given a decider on phys coords, can still test treeNodes.
       ::ibm::Partition conversionDomainDeciderTN_asCell(const TreeNode<T, dim> &tn)
       {
-        double physCoords[dim];
-        double physSize;
-        treeNode2Physical(tn, physCoords, physSize);
-
-        return m_domainDecider(physCoords, physSize);
+        return decide_octant(tn, m_domainDecider);
       }
 
       ::ibm::Partition conversionDomainDeciderTN_asPoint(const TreeNode<T, dim> &tn)
       {
-        double physCoords[dim];
-        double physSize;
-        treeNode2Physical(tn, physCoords, physSize);
-
-        return m_domainDecider(physCoords, 0.0);
+        return decide_oct_point(tn, m_domainDecider);
       }
 
     private:

@@ -453,6 +453,7 @@ target_include_directories(tstOctreeRemesh PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CU
 target_link_libraries(tstOctreeRemesh dendroKT ${MPI_LIBRARIES} m)
 
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/intergrid/refine_many.cpp
+              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/subdomain_volume.hpp
               ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/multisphere.h)
 add_executable(tstIntergridRefineMany ${SRC_FILES})
 target_include_directories(tstIntergridRefineMany PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})

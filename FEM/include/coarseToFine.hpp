@@ -41,21 +41,28 @@ namespace fem
       const size_t to_nodes_sz,
       double * to_dofs);
 
+  // CellCoarsen::Undefined is ok as a default only if refining.
+  // Otherwise, need to specify what way to coarsen cells.
+  // Note: Previous version always used 'inherit' aka copy.
+  enum class CellCoarsen : int { Undefined, Copy, Sum };
+
   template <unsigned dim>
-  void local_inherit(
+  void local_cell_transfer(
           const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
           const std::vector<double> &from_total_cell_dofs,
           const int ndofs,
           const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
-          std::vector<double> &to_cell_dofs);
+          std::vector<double> &to_cell_dofs,
+          CellCoarsen cell_coarsening = CellCoarsen::Undefined);
 
   template <unsigned dim>
-  void local_inherit(
+  void local_cell_transfer(
           const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
           const double *from_total_cell_dofs,
           const int ndofs,
           const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
-          double *to_cell_dofs);
+          double *to_cell_dofs,
+          CellCoarsen cell_coarsening = CellCoarsen::Undefined);
 
 
   template <unsigned dim>
@@ -329,12 +336,13 @@ namespace fem
     /// quadTreeToGnuplot(from_total_cells, 8, "total.cells", comm);
 
     if (cell_dofs > 0)
-      local_inherit(
+      local_cell_transfer(
           from_total_cells,
           from_total_cell_dofs,
           cell_dofs,
           to_octlist,
-          to_cell_dofs);
+          to_cell_dofs,
+          CellCoarsen::Undefined);
 
     // Fine interpolate from combination of local and remote nodes.
     assert(from_da->getElementOrder() == 1);
@@ -496,61 +504,141 @@ namespace fem
 
   // ------------------
 
+  // return: True if subtree contained any leafs in from_oct, False otherwise.
   template <unsigned dim>
-  void local_inherit_rec(
+  bool local_cell_transfer_rec(
       ot::Segment<const ot::TreeNode<unsigned, dim>> &from_oct,
       ot::Segment<const ot::TreeNode<unsigned, dim>> &to_oct,
       const int ndofs,
       const double *from_dofs,
       double *to_dofs,
+      CellCoarsen cell_coarsening,
+      double * reduced_leafs,  // indexed by level, dofs fastest
       ot::TreeNode<unsigned, dim> subtree = ot::TreeNode<unsigned, dim>(),
-      ot::SFC_State<int(dim)> sfc = ot::SFC_State<int(dim)>::root())
+      ot::SFC_State<int(dim)> sfc = ot::SFC_State<int(dim)>::root(),
+      // remember ancestor information:
+      bool has_to_ancestor = false,
+      bool has_from_ancestor = false,
+      const double *from_ancestor_dofs = nullptr
+      )
   {
-    using Oct = ot::TreeNode<unsigned, dim>;
-    const auto overlaps = [](const Oct &a, const Oct &b) {
-      return a.isAncestorInclusive(b) or b.isAncestorInclusive(a);
-    };
-    const auto transfer = [&]() {
-      for (int dof = 0; dof < ndofs; ++dof)
-        to_dofs[to_oct.begin * ndofs + dof] = from_dofs[from_oct.begin * ndofs + dof];
-    };
+    const auto reduce =
+        cell_coarsening == CellCoarsen::Copy ? [](double x, double y) { return x; } //ReduceFirst
+      : cell_coarsening == CellCoarsen::Sum  ? [](double x, double y) { return x + y; } //ReduceSum
+      : [](double x, double y) { assert(!"Need to coarsen, but coarsening method undefined"); return -42.0; };
+        // note: auto is deduced to be a function pointer
+    const auto identity =
+        cell_coarsening == CellCoarsen::Copy ? 0.0
+      : cell_coarsening == CellCoarsen::Sum  ? 0.0
+      : 0.0;
 
-    // Find intersection{to_oct, subtree} and transfer if possible.
-    if (from_oct.nonempty() and overlaps(subtree, *from_oct))
+    // Preorder actions: Bookmark data at root of current subtree to use later.
+    // -----------------     After this, ancestor list absorbs current root.
+
+    // Bookmark 'to' data (could be duplicates, should scatter)
+    ot::Segment<const ot::TreeNode<unsigned, dim>> current_to_oct = to_oct;
+    while (to_oct.nonempty() and subtree == *to_oct)  // skip to descendants
     {
-      while (to_oct.nonempty() and subtree == *to_oct)
-      {
-        transfer();
-        ++to_oct;
-      }
-      if (to_oct.nonempty() and subtree.isAncestorInclusive(*to_oct))
+      has_to_ancestor = true;
+      ++to_oct;
+    }
+
+    // Bookmark 'from' data (if there are duplicates, pick the first)
+    bool has_from_current = false;
+    if (from_oct.nonempty() and subtree == *from_oct)
+    {
+      has_from_ancestor = true;
+      has_from_current = true;
+      from_ancestor_dofs = from_dofs + from_oct.begin * ndofs;
+      ++from_oct;
+    }
+    while (from_oct.nonempty() and subtree == *from_oct)  // skip to descendants
+    {
+      has_from_ancestor = true;
+      ++from_oct;
+    }
+
+    // Recursion or skip descendants
+    // -----------------------------
+    const bool has_to_descendants = (to_oct.nonempty() and subtree.isAncestor(*to_oct));
+    const bool has_from_descendants = (from_oct.nonempty() and subtree.isAncestor(*from_oct));
+    if ((has_to_ancestor or has_to_descendants) and
+        (has_from_ancestor or has_from_descendants))
+    {
+      // Clear leaf reduction in this level before reducing.
+      // Reductions only relevant if coarsening
+      if (has_to_ancestor)
+        if (has_from_descendants)
+          for (int dof = 0; dof < ndofs; ++dof)
+            reduced_leafs[subtree.getLevel() * ndofs + dof] = identity;
+        else if (has_from_current)  // no descendants to reduce
+          for (int dof = 0; dof < ndofs; ++dof)
+            reduced_leafs[subtree.getLevel() * ndofs + dof] = from_ancestor_dofs[dof];
+
+      if (has_to_descendants or has_from_descendants)
         for (ot::sfc::SubIndex c(0); c < ot::nchild(dim); ++c)
-          local_inherit_rec(
-              from_oct, to_oct, ndofs, from_dofs, to_dofs,
-              subtree.getChildMorton(sfc.child_num(c)),
-              sfc.subcurve(c));
+        {
+          const bool child_has_from =       // recurse
+              local_cell_transfer_rec(
+                  from_oct, to_oct, ndofs, from_dofs, to_dofs,
+                  cell_coarsening,
+                  reduced_leafs,
+                  subtree.getChildMorton(sfc.child_num(c)),
+                  sfc.subcurve(c),
+                  has_to_ancestor,
+                  has_from_ancestor,
+                  from_ancestor_dofs);
+
+          // Accumulate child result into parent.
+          // Reductions only relevant if coarsening.
+          if (has_to_ancestor and child_has_from)  //implies has_from_descendants
+            for (int dof = 0; dof < ndofs; ++dof)
+              reduced_leafs[subtree.getLevel() * ndofs + dof] =
+                  reduce(reduced_leafs[subtree.getLevel() * ndofs + dof],
+                         reduced_leafs[(subtree.getLevel() + 1) * ndofs + dof]);
+        }
+
+      // Postorder action: Transfer leaf reduction or finest 'from' ancestor
+      // -----------------
+      const double * result = has_from_descendants ?
+          reduced_leafs + subtree.getLevel() * ndofs
+        : from_ancestor_dofs;
+
+      while (current_to_oct.nonempty() and subtree == *current_to_oct)
+      {
+        for (int dof = 0; dof < ndofs; ++dof)
+          to_dofs[current_to_oct.begin * ndofs + dof] = result[dof];
+        ++current_to_oct;
+      }
+
     }
     else
-      while (to_oct.nonempty() and subtree.isAncestorInclusive(*to_oct))
+    {
+      // Skip descendants
+      while (to_oct.nonempty() and subtree.isAncestor(*to_oct))
         ++to_oct;
+      while (from_oct.nonempty() and subtree.isAncestor(*from_oct))
+        ++from_oct;
 
-    // Move on
-    while (from_oct.nonempty() and subtree.isAncestorInclusive(*from_oct))
-      ++from_oct;
+      // Postorder action: None
+    }
+
+    return (bool(has_from_current) | bool(has_from_descendants));
   }
 
   template <unsigned dim>
-  void local_inherit(
+  void local_cell_transfer(
           const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
           const std::vector<double> &from_cell_dofs,
           const int ndofs,
           const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
-          std::vector<double> &to_cell_dofs)
+          std::vector<double> &to_cell_dofs,
+          CellCoarsen cell_coarsening)
   {
     assert(from_cell_dofs.size() == from_octlist.size() * ndofs);
     assert(to_cell_dofs.size() == to_octlist.size() * ndofs);
 
-    local_inherit(
+    local_cell_transfer(
         from_octlist,
         from_cell_dofs.data(),
         ndofs,
@@ -559,19 +647,23 @@ namespace fem
   }
 
   template <unsigned dim>
-  void local_inherit(
+  void local_cell_transfer(
           const std::vector<ot::TreeNode<unsigned, dim>> &from_octlist,
           const double *from_cell_dofs,
           const int ndofs,
           const std::vector<ot::TreeNode<unsigned, dim>> &to_octlist,
-          double *to_cell_dofs)
+          double *to_cell_dofs,
+          CellCoarsen cell_coarsening)
   {
-    DOLLAR("local_inherit()");
+    DOLLAR("local_cell_transfer()");
     ot::Segment<const ot::TreeNode<unsigned, dim>> from_seg = segment_all(from_octlist);
     ot::Segment<const ot::TreeNode<unsigned, dim>> to_seg = segment_all(to_octlist);
 
-    local_inherit_rec(
-        from_seg, to_seg, ndofs, from_cell_dofs, to_cell_dofs);
+    std::vector<double> reduction_buffer(ndofs * (m_uiMaxDepth + 1));
+
+    local_cell_transfer_rec(
+        from_seg, to_seg, ndofs, from_cell_dofs, to_cell_dofs, cell_coarsening,
+        reduction_buffer.data());
 
     assert(from_seg.empty());
     assert(to_seg.empty());

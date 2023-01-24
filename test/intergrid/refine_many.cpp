@@ -13,6 +13,7 @@
 #include <petsc.h>
 
 #include "test/octree/multisphere.h"
+#include "test/octree/subdomain_volume.hpp"
 
 constexpr int DIM = 2;
 using uint = unsigned int;
@@ -65,7 +66,8 @@ void testOldIntergridCells(
     const ot::DA<DIM> *coarse_da,
     const int ndofs,
     const ot::DistTree<uint, DIM> &fine_dtree,
-    const ot::DA<DIM> *fine_da);
+    const ot::DA<DIM> *fine_da,
+    const int boundary_refinement_increase);
 
 
 //
@@ -157,7 +159,10 @@ int main(int argc, char * argv[])
       100.0 * cell_misses / (cell_ndofs ? fine_dtree.getTreePartFiltered().size() * cell_ndofs : 1),
       NRM);
 
-  print_dollars(comm);
+
+  testOldIntergridCells(coarse_dtree, coarse_da, ndofs, fine_dtree, fine_da, amount);
+
+  /// print_dollars(comm);
 
   _DestroyHcurve();
   DendroScopeEnd();
@@ -388,7 +393,8 @@ void testOldIntergridCells(
     const ot::DA<DIM> *coarse_da,
     const int ndofs,
     const ot::DistTree<uint, DIM> &fine_dtree,
-    const ot::DA<DIM> *fine_da)
+    const ot::DA<DIM> *fine_da,
+    const int boundary_refinement_increase)
 {
   // Surrogate octree: Coarse by fine
   OctList surrogateOctree = ot::SFC_Tree<uint, DIM>::getSurrogateGrid(
@@ -418,13 +424,77 @@ void testOldIntergridCells(
       fine_dtree, fine_da, fine_dofs.data());
   const size_t c2f_misses = check_cell_xpypl(fine_dtree, ndofs, fine_dofs);
 
-  // Fine to coarse
+  // Fine to coarse with copying
   std::fill(coarse_dofs.begin(), coarse_dofs.end(), 0.0f);
   fem::cell_transfer_coarsen(
       fine_dtree, fine_da, ndofs, fine_dofs.data(),
       surr_dtree, surr_da,
-      coarse_da, coarse_dofs.data());
-  const size_t f2c_misses = check_cell_xpypl(coarse_dtree, ndofs, coarse_dofs);
+      coarse_da, coarse_dofs.data(),
+      fem::CellCoarsen::Copy);
+  const size_t f2c_copy_misses = check_cell_xpypl(coarse_dtree, ndofs, coarse_dofs);
+
+  // Fine to coarse with summation (volume)
+  std::fill(coarse_dofs.begin(), coarse_dofs.end(), 0.0f);
+
+  std::fill(fine_dofs.begin(), fine_dofs.end(), 0.0f);
+  for (size_t i = 0; i < fine_dtree.getTreePartFiltered().size(); ++i)
+  {
+    const auto oct = fine_dtree.getTreePartFiltered()[i];
+    const double length = 1.0 / (1u << oct.getLevel());
+    const double volume = std::pow(length, DIM);
+    for (int dof = 0; dof < ndofs; ++dof)
+      fine_dofs[i * ndofs + dof] = volume;
+  }
+
+  fem::cell_transfer_coarsen(
+      fine_dtree, fine_da, ndofs, fine_dofs.data(),
+      surr_dtree, surr_da,
+      coarse_da, coarse_dofs.data(),
+      fem::CellCoarsen::Sum);
+
+  size_t f2c_sum_misses = 0;
+  for (size_t i = 0; i < coarse_dtree.getTreePartFiltered().size(); ++i)
+  {
+    const auto oct = coarse_dtree.getTreePartFiltered()[i];
+    const double length = 1.0 / (1u << oct.getLevel());
+    const double refined_length = length / (1u << boundary_refinement_increase);
+    const double volume = std::pow(length, DIM);
+    const double refined_volume = std::pow(refined_length, DIM);
+
+    int misses = 0;
+    if (not oct.getIsOnTreeBdry())
+      for (int dof = 0; dof < ndofs; ++dof)
+        misses += (coarse_dofs[i * ndofs + dof] != volume);
+    else
+    {
+      const auto count_separate = test::count_subdomain_octants<DIM>(
+          oct, oct.getLevel() + boundary_refinement_increase, coarse_dtree.getDomainDecider());
+      const long long unsigned count = count_separate.first + count_separate.second;
+      const double cut_volume = refined_volume * count;
+
+      for (int dof = 0; dof < ndofs; ++dof)
+        misses += (coarse_dofs[i * ndofs + dof] != cut_volume);
+    }
+
+    f2c_sum_misses += misses;
+  }
+
+
+  // Fine to coarse with copy and summation (empty input)
+  size_t f2c_empty_misses[3] = {};
+  for (auto coarsening : { fem::CellCoarsen::Copy, fem::CellCoarsen::Sum })
+  {
+    const auto empty_dtree = ot::DistTree<uint, DIM>();
+    const auto empty_da = ot::DA<DIM>();
+    std::fill(coarse_dofs.begin(), coarse_dofs.end(), 42.0f);
+    fem::cell_transfer_coarsen(
+        empty_dtree, &empty_da, ndofs, nullptr,
+        coarse_dtree, coarse_da,  // surrogate: empty fine tree has no partition
+        coarse_da, coarse_dofs.data(),
+        coarsening);
+    f2c_empty_misses[int(coarsening)] = std::count_if(
+        coarse_dofs.begin(), coarse_dofs.end(), [](auto x) -> bool { return x != 0.0; });
+  }
 
 
   MPI_Comm comm = MPI_COMM_WORLD;
@@ -433,10 +503,17 @@ void testOldIntergridCells(
   MPI_Comm_rank(comm, &comm_rank);
 
   printf("[%d] c2f cell misses: %s%lu/%lu%s \t"
-              "f2c cell misses: %s%lu/%lu%s\n",
+              "f2c copy misses: %s%lu/%lu%s \t"
+              "f2c sum misses: %s%lu/%lu%s \t"
+              "f2c empty misses (copy|sum): %s%lu/%lu%s | %s%lu/%lu%s\n\n",
       comm_rank,
       (c2f_misses == 0 ? GRN : RED), c2f_misses, fine_da->getLocalElementSz() * ndofs, NRM,
-      (f2c_misses == 0 ? GRN : RED), f2c_misses, fine_da->getLocalElementSz() * ndofs, NRM);
+      (f2c_copy_misses == 0 ? GRN : RED), f2c_copy_misses, coarse_da->getLocalElementSz() * ndofs, NRM,
+      (f2c_sum_misses == 0 ? GRN : RED), f2c_sum_misses, coarse_da->getLocalElementSz() * ndofs, NRM,
+      (f2c_empty_misses[int(fem::CellCoarsen::Copy)] == 0 ? GRN : RED),
+          f2c_empty_misses[int(fem::CellCoarsen::Copy)], coarse_da->getLocalElementSz() * ndofs, NRM,
+      (f2c_empty_misses[int(fem::CellCoarsen::Sum)] == 0 ? GRN : RED),
+          f2c_empty_misses[int(fem::CellCoarsen::Sum)], coarse_da->getLocalElementSz() * ndofs, NRM);
 
   delete surr_da;
 }
