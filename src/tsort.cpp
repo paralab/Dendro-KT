@@ -2028,6 +2028,8 @@ template <typename T, unsigned int dim>
 void SFC_Tree<T, dim>::distCoalesceSiblings(
     std::vector<TreeNode<T, dim>> &tree, MPI_Comm comm)
 {
+  //future: Option in distTreePartition to Allreduce partition height >= 1.
+
   DOLLAR("distCoalesceSiblings()");
   // Assume sorted. Identify predecessor/successor.
   // If last is sibling of successor first,
@@ -2633,9 +2635,21 @@ template <typename T, unsigned int dim>
 std::vector<int> getSendcounts(const std::vector<TreeNode<T, dim>> &items,
                                const std::vector<TreeNode<T, dim>> &frontSplitters)
 {
+  //future: Use a handful of searches. Not multiple passes (like below).
+
+  // Assume this is being used for partitioning a coarse surrogate grid.
+  // Assume that the coarse grid differs by no more than one level from fine.
+  // Assume fine sibling octants have been coalesced onto the same process.
+  // --> Then, in the case that an ancestor item overlaps a descendant splitter,
+  //     the ancestor should be moved onto the same process as the descendant.
+
+  // If the above assumptions do not hold, then the repartitioned items
+  // might not be globally sorted in the end, or otherwise interpret some
+  // splitters as if they were coarsened into their parents.
+
   DOLLAR("getSendcounts()");
   int numSplittersSeen = 0;
-  int ancCarry = 0;
+  int currentDestination = 0;
   std::vector<int> scounts(frontSplitters.size(), 0);
 
   MeshLoopInterface_Sorted<T, dim, true, true, false> itemLoop(items);
@@ -2647,34 +2661,42 @@ std::vector<int> getSendcounts(const std::vector<TreeNode<T, dim>> &items,
 
     if (splitterSubtree.isEmpty())
     {
-      scounts[numSplittersSeen-1] += itemSubtree.getTotalCount();
-      scounts[numSplittersSeen-1] += ancCarry;
-      ancCarry = 0;
-
-      itemLoop.next();
-      splitterLoop.next();
-    }
-    else if (itemSubtree.isEmpty() && ancCarry == 0)
-    {
-      numSplittersSeen += splitterSubtree.getTotalCount();
+      scounts[currentDestination] += itemSubtree.getTotalCount();
 
       itemLoop.next();
       splitterLoop.next();
     }
     else
     {
-      ancCarry += itemSubtree.getAncCount();
+      // Elevate the first splitter in this subtree to the level
+      // of the coarsest ancestor item overlapping that splitter.
+      if (itemSubtree.getAncCount() > 0)
+        currentDestination = numSplittersSeen;
 
       if (splitterSubtree.isLeaf())
       {
-        numSplittersSeen++;
+        ++numSplittersSeen;
+        currentDestination = numSplittersSeen - 1;
+        scounts[currentDestination] += itemSubtree.getTotalCount();
 
-        scounts[numSplittersSeen-1] += ancCarry;
-        ancCarry = 0;
+        itemLoop.next();
+        splitterLoop.next();
       }
+      else if (itemSubtree.isEmpty())
+      {
+        numSplittersSeen += splitterSubtree.getTotalCount();
+        currentDestination = numSplittersSeen - 1;
 
-      itemLoop.step();
-      splitterLoop.step();
+        itemLoop.next();
+        splitterLoop.next();
+      }
+      else
+      {
+        scounts[currentDestination] += itemSubtree.getAncCount();
+
+        itemLoop.step();
+        splitterLoop.step();
+      }
     }
   }
 

@@ -537,13 +537,18 @@ namespace fem
 
     // Bookmark 'to' data (could be duplicates, should scatter)
     ot::Segment<const ot::TreeNode<unsigned, dim>> current_to_oct = to_oct;
-    while (to_oct.nonempty() and subtree == *to_oct)  // skip to descendants
+    bool has_to_current = false;
+    if (to_oct.nonempty() and subtree == *to_oct)
     {
       has_to_ancestor = true;
+      has_to_current = true;
       ++to_oct;
     }
+    while (to_oct.nonempty() and subtree == *to_oct)  // skip to descendants
+      ++to_oct;
 
     // Bookmark 'from' data (if there are duplicates, pick the first)
+    ot::Segment<const ot::TreeNode<unsigned, dim>> current_from_oct = from_oct;
     bool has_from_current = false;
     if (from_oct.nonempty() and subtree == *from_oct)
     {
@@ -553,10 +558,8 @@ namespace fem
       ++from_oct;
     }
     while (from_oct.nonempty() and subtree == *from_oct)  // skip to descendants
-    {
-      has_from_ancestor = true;
       ++from_oct;
-    }
+
 
     // Recursion or skip descendants
     // -----------------------------
