@@ -229,10 +229,10 @@ class DA
     DendroIntL m_uiGlobalElementSz;
 
     /**@brief: Global mpi communicator */ 
-    MPI_Comm m_uiGlobalComm; 
+    MPI_Comm m_uiGlobalComm = MPI_COMM_NULL;
 
     /**@brief: active mpi communicator (subset of the) m_uiGlobalComm*/
-    MPI_Comm m_uiActiveComm;
+    MPI_Comm m_uiActiveComm = MPI_COMM_NULL;
     
     /**@brief: true if current DA is active, part of the active comm.*/
     bool m_uiIsActive;
