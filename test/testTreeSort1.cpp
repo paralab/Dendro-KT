@@ -37,10 +37,12 @@ void test_distTreeSort1(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
 
   _InitializeHcurve(dim);
 
-  std::vector<TreeNode> points = ot::getPts<T,dim>(numPoints);
+  auto itemPair = ot::getPtsWithWeight<T,dim>(numPoints);
+  std::vector<TreeNode> points = itemPair.first;
+  std::vector<double> weights = itemPair.second;
 
   // Sort!
-  ot::SFC_Tree<T,dim>::distTreeSort(points, 0.2, MPI_COMM_WORLD);
+  ot::SFC_Tree<T,dim>::distTreeSortWeighted(points, weights, 0.2, MPI_COMM_WORLD);
 //   std::cout << "abcdsef";
   ///ot::SFC_Tree<T,dim>::distTreeSort(points, 0.0, comm);
 

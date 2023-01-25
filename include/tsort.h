@@ -281,6 +281,7 @@ template <typename T, unsigned int dim>
 void distTreePartitionWeighted_kway(
     MPI_Comm comm,
     std::vector<TreeNode<T, dim>> &octants,  //keys
+    std::vector<double>& weights,
     const double sfc_tol = 0.3);
 
 template <typename T, unsigned int dim, typename X>
@@ -288,6 +289,7 @@ void distTreePartitionWeighted_kway(
     MPI_Comm comm,
     std::vector<TreeNode<T, dim>> &octants,  //keys
     std::vector<X> &xs,                      //values
+    std::vector<double>& weights,
     const double sfc_tol = 0.3);
 
 template <typename T, unsigned int dim, typename X, typename Y>
@@ -296,6 +298,7 @@ void distTreePartitionWeighted_kway(
     std::vector<TreeNode<T, dim>> &octants,  //keys
     std::vector<X> &xs,                      //values
     std::vector<Y> &ys,                      //values
+    std::vector<double>& weights,
     const double sfc_tol = 0.3);
 
 
@@ -561,6 +564,7 @@ struct SFC_Tree
                            MPI_Comm comm);
 
   static void distTreeSortWeighted(std::vector<TreeNode<T,dim>> &points,
+                           std::vector<double>& weights,
                            double loadFlexibility,
                            MPI_Comm comm);
 
@@ -570,6 +574,7 @@ struct SFC_Tree
                            MPI_Comm comm);
 
   static void distTreePartitionWeighted(std::vector<TreeNode<T,dim>> &points,
+                           std::vector<double>& weights,
                            unsigned int,  // backwards compatibility
                            double loadFlexibility,
                            MPI_Comm comm);
@@ -579,6 +584,7 @@ struct SFC_Tree
                            MPI_Comm comm);
 
   static void distTreePartitionWeighted(std::vector<TreeNode<T,dim>> &points,
+                           std::vector<double>& weights,
                            double loadFlexibility,
                            MPI_Comm comm);
   /**

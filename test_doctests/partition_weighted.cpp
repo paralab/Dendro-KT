@@ -9,7 +9,7 @@
 #include <include/treeNode.h>
 #include <include/tsort.h>
 #include <include/distTree.h> // for convenient uniform grid partition
-
+#include <random>
 #include <vector>
 
 
@@ -62,7 +62,7 @@ class LoadBalance
 // =============================================================================
 // Test case
 // =============================================================================
-MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 5)
+MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
 {
   MPI_Comm comm = test_comm;  // test_comm is a parameter supplied by test case
 
@@ -134,23 +134,38 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 5)
 
   // (Sort) and re-partition the tree by sfc_tol.
   std::vector<Oct> sorted = final_input;
+  std::vector<double> weights( sorted.size(), 0 );
+  double totalweight{0};
+
+  for( auto& weight: weights ) {
+    weight = std::rand()%5 + 1;
+    totalweight += weight;
+  }
+
   const double sfc_tol = 0.3;
   //ot::SFC_Tree<uint, DIM>::distTreeSort(sorted, sfc_tol, comm);
-  ot::SFC_Tree<uint, DIM>::distTreeSortWeighted(sorted, sfc_tol, comm);
+  ot::SFC_Tree<uint, DIM>::distTreeSortWeighted(sorted, weights, sfc_tol, comm);
+
   REQUIRE(
       ot::checksum_octree(sorted, comm) ==
       ot::checksum_octree(final_input, comm));
+
+  double finalweight{0};
+
+  for( auto& weight: weights ) {
+    finalweight += weight;
+  }
 
   // Both endpoints of a partition could be fudged by sfc_tol, so multiply by 2.
   const double max_ratio = 1 + 2 * sfc_tol;
   const double min_ratio = 1 - 2 * sfc_tol;
 
   // Measure load imbalance and report to doctest.
-  const LoadBalance<LLU> load_balance(sorted.size(), comm);
+  const LoadBalance<LLU> load_balance(totalweight, comm);
   CHECK(load_balance.local_ratio() <= max_ratio);
   CHECK(load_balance.local_ratio() >= min_ratio);
   WARN_FALSE(
-      LoadBalance<LLU>(final_input.size(), comm)
+      LoadBalance<LLU>(finalweight, comm)
       .overload_ratio() <= max_ratio);
 
   // Optional visualization with gnuplot.

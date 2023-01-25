@@ -76,9 +76,11 @@ namespace ot
     }
 
     template <typename T, unsigned int dim, bool useRandom=true>
-    inline std::vector<TreeNode<T,dim>> getPtsWithWeight(unsigned int numPoints, unsigned int sLev = m_uiMaxDepth, unsigned int eLev = m_uiMaxDepth)
+    inline std::pair< std::vector<TreeNode<T,dim>>, std::vector<double> > 
+                  getPtsWithWeight(unsigned int numPoints, unsigned int sLev = m_uiMaxDepth, unsigned int eLev = m_uiMaxDepth)
     {
         std::vector<TreeNode<T,dim>> points;
+        std::vector<double> weights;
         std::array<T,dim> uiCoords;
 
         //const T maxCoord = (1u << MAX_LEVEL) - 1;
@@ -99,7 +101,7 @@ namespace ot
 
         double coordClampLow = 0;
         double coordClampHi = (1u << m_uiMaxDepth);
-        int weight;
+        double weight;
         // Add points sequentially.
         for (int ii = 0; ii < numPoints; ii++)
         {
@@ -110,12 +112,14 @@ namespace ot
                 u = (T) dc;
             }
             //TreeNode<T,dim> tn(uiCoords, leafLevel);
-            weight = rand()%1000;
-            TreeNode<T,dim> tn(uiCoords, distLevel(gen), weight);
+            weight = rand()%5;
+            TreeNode<T,dim> tn(uiCoords, distLevel(gen));
+
             points.push_back(tn);
+            weights.push_back(weight);
         }
 
-        return points;
+        return std::make_pair( points, weights );
     }
 
     /**

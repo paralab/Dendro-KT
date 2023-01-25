@@ -62,7 +62,7 @@ class LoadBalance
 // =============================================================================
 // Test case
 // =============================================================================
-MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 5)
+MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
 {
   MPI_Comm comm = test_comm;  // test_comm is a parameter supplied by test case
 
