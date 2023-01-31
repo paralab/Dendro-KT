@@ -41,6 +41,7 @@ namespace type
 
     // Arithmetic
     StrongIndex & operator++() { ++m_i; return *this; }
+    StrongIndex & operator--() { --m_i; return *this; }
     StrongIndex & operator+=(const T d) { m_i += d; return *this; }
 
     // Avoid ambiguity in expressions like  si + 1.
