@@ -2,7 +2,7 @@
 // Created by masado on 9/08/22.
 //
 
-#include <doctest/extensions/doctest_mpi.h>  // include doctest before dendro
+#include <doctest/extensions/doctest_mpi.h> // include doctest before dendro
 
 #include "test/octree/multisphere.h"
 
@@ -12,7 +12,6 @@
 
 #include <vector>
 
-
 // -----------------------------
 // Typedefs
 // -----------------------------
@@ -21,7 +20,6 @@ using LLU = long long unsigned;
 
 template <int dim>
 using Oct = ot::TreeNode<uint, dim>;
-
 
 // -----------------------------
 // Helper classes
@@ -35,36 +33,36 @@ struct SfcTableScope
 template <typename T>
 class LoadBalance
 {
-  private:
-    T m_local_load;
-    T m_global_min;
-    T m_global_sum;
-    T m_global_max;
-    int m_comm_size;
-    int m_comm_rank;
-  public:
-    LoadBalance(T local_load, MPI_Comm comm) : m_local_load(local_load)
-    {
-      MPI_Comm_size(comm, &m_comm_size);
-      MPI_Comm_rank(comm, &m_comm_rank);
-      par::Mpi_Allreduce(&local_load, &m_global_min, 1, MPI_MIN, comm);
-      par::Mpi_Allreduce(&local_load, &m_global_sum, 1, MPI_SUM, comm);
-      par::Mpi_Allreduce(&local_load, &m_global_max, 1, MPI_MAX, comm);
-    }
+private:
+  T m_local_load;
+  T m_global_min;
+  T m_global_sum;
+  T m_global_max;
+  int m_comm_size;
+  int m_comm_rank;
 
-    double ideal_load() const       { return double(m_global_sum) / m_comm_size; }
-    double overload_ratio() const   { return m_global_max / ideal_load(); }
-    double underload_ratio() const  { return m_global_min / ideal_load(); }
-    double local_ratio() const      { return m_local_load / ideal_load(); }
+public:
+  LoadBalance(T local_load, MPI_Comm comm) : m_local_load(local_load)
+  {
+    MPI_Comm_size(comm, &m_comm_size);
+    MPI_Comm_rank(comm, &m_comm_rank);
+    par::Mpi_Allreduce(&local_load, &m_global_min, 1, MPI_MIN, comm);
+    par::Mpi_Allreduce(&local_load, &m_global_sum, 1, MPI_SUM, comm);
+    par::Mpi_Allreduce(&local_load, &m_global_max, 1, MPI_MAX, comm);
+  }
+
+  double ideal_load() const { return double(m_global_sum) / m_comm_size; }
+  double overload_ratio() const { return m_global_max / ideal_load(); }
+  double underload_ratio() const { return m_global_min / ideal_load(); }
+  double local_ratio() const { return m_local_load / ideal_load(); }
 };
-
 
 // =============================================================================
 // Test case
 // =============================================================================
 MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
 {
-  MPI_Comm comm = test_comm;  // test_comm is a parameter supplied by test case
+  MPI_Comm comm = test_comm; // test_comm is a parameter supplied by test case
 
   constexpr int DIM = 2;
   using Oct = Oct<DIM>;
@@ -94,7 +92,8 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
   SUBCASE("initially uniform at level 4, partition=uniform with sfc_tol=0.3")
   {
     final_input = ot::DistTree<uint, DIM>::constructSubdomainDistTree(
-        initial_level, comm, initial_sfc_tol).getTreePartFiltered();
+                      initial_level, comm, initial_sfc_tol)
+                      .getTreePartFiltered();
   }
 
   // Initial distributed tree, before refinement.
@@ -108,7 +107,8 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
 
     if (comm_rank == 0)
       final_input = ot::DistTree<uint, DIM>::constructSubdomainDistTree(
-        initial_level, MPI_COMM_SELF, initial_sfc_tol).getTreePartFiltered();
+                        initial_level, MPI_COMM_SELF, initial_sfc_tol)
+                        .getTreePartFiltered();
   }
 
   // Refine the tree until finest_level.
@@ -142,7 +142,7 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
   CHECK(load_balance.local_ratio() >= min_ratio);
   WARN_FALSE(
       LoadBalance<LLU>(final_input.size(), comm)
-      .overload_ratio() <= max_ratio);
+          .overload_ratio() <= max_ratio);
 
   // Optional visualization with gnuplot.
 #if 0
@@ -154,4 +154,3 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
   ++subcase_id_hack;
 #endif
 }
-

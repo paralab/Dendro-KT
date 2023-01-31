@@ -2,7 +2,7 @@
 // Created by masado on 9/08/22.
 //
 
-#include <doctest/extensions/doctest_mpi.h>  // include doctest before dendro
+#include <doctest/extensions/doctest_mpi.h> // include doctest before dendro
 
 #include "test/octree/multisphere.h"
 
@@ -12,7 +12,6 @@
 #include <random>
 #include <vector>
 
-
 // -----------------------------
 // Typedefs
 // -----------------------------
@@ -21,7 +20,6 @@ using LLU = long long unsigned;
 
 template <int dim>
 using Oct = ot::TreeNode<uint, dim>;
-
 
 // -----------------------------
 // Helper classes
@@ -35,36 +33,36 @@ struct SfcTableScope
 template <typename T>
 class LoadBalance
 {
-  private:
-    T m_local_load;
-    T m_global_min;
-    T m_global_sum;
-    T m_global_max;
-    int m_comm_size;
-    int m_comm_rank;
-  public:
-    LoadBalance(T local_load, MPI_Comm comm) : m_local_load(local_load)
-    {
-      MPI_Comm_size(comm, &m_comm_size);
-      MPI_Comm_rank(comm, &m_comm_rank);
-      par::Mpi_Allreduce(&local_load, &m_global_min, 1, MPI_MIN, comm);
-      par::Mpi_Allreduce(&local_load, &m_global_sum, 1, MPI_SUM, comm);
-      par::Mpi_Allreduce(&local_load, &m_global_max, 1, MPI_MAX, comm);
-    }
+private:
+  T m_local_load;
+  T m_global_min;
+  T m_global_sum;
+  T m_global_max;
+  int m_comm_size;
+  int m_comm_rank;
 
-    double ideal_load() const       { return double(m_global_sum) / m_comm_size; }
-    double overload_ratio() const   { return m_global_max / ideal_load(); }
-    double underload_ratio() const  { return m_global_min / ideal_load(); }
-    double local_ratio() const      { return m_local_load / ideal_load(); }
+public:
+  LoadBalance(T local_load, MPI_Comm comm) : m_local_load(local_load)
+  {
+    MPI_Comm_size(comm, &m_comm_size);
+    MPI_Comm_rank(comm, &m_comm_rank);
+    par::Mpi_Allreduce(&local_load, &m_global_min, 1, MPI_MIN, comm);
+    par::Mpi_Allreduce(&local_load, &m_global_sum, 1, MPI_SUM, comm);
+    par::Mpi_Allreduce(&local_load, &m_global_max, 1, MPI_MAX, comm);
+  }
+
+  double ideal_load() const { return double(m_global_sum) / m_comm_size; }
+  double overload_ratio() const { return m_global_max / ideal_load(); }
+  double underload_ratio() const { return m_global_min / ideal_load(); }
+  double local_ratio() const { return m_local_load / ideal_load(); }
 };
-
 
 // =============================================================================
 // Test case
 // =============================================================================
 MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
 {
-  MPI_Comm comm = test_comm;  // test_comm is a parameter supplied by test case
+  MPI_Comm comm = test_comm; // test_comm is a parameter supplied by test case
 
   constexpr int DIM = 2;
   using Oct = Oct<DIM>;
@@ -83,8 +81,6 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
     return sphereSet(coords.data(), size) == ibm::INTERCEPTED;
   };
 
-
-
   // Create an input tree over the unit cube using the above refinement pattern.
   // Two subcases have different initial partitions but same refinement pattern.
   const int finest_level = 8;
@@ -96,7 +92,8 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
   SUBCASE("initially uniform at level 4, partition=uniform with sfc_tol=0.3")
   {
     final_input = ot::DistTree<uint, DIM>::constructSubdomainDistTree(
-        initial_level, comm, initial_sfc_tol).getTreePartFiltered();
+                      initial_level, comm, initial_sfc_tol)
+                      .getTreePartFiltered();
   }
 
   // Initial distributed tree, before refinement.
@@ -110,13 +107,8 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
 
     if (comm_rank == 0)
       final_input = ot::DistTree<uint, DIM>::constructSubdomainDistTree(
-        initial_level, MPI_COMM_SELF, initial_sfc_tol).getTreePartFiltered();
-
-    // if(comm_rank == 0) {
-    //   for( int i = 0; i < 8; i++ )
-    //     std::cout << int(rotations[i]) << std::endl;
-    // }
-
+                        initial_level, MPI_COMM_SELF, initial_sfc_tol)
+                        .getTreePartFiltered();
   }
 
   // Refine the tree until finest_level.
@@ -134,16 +126,17 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
 
   // (Sort) and re-partition the tree by sfc_tol.
   std::vector<Oct> sorted = final_input;
-  std::vector<double> weights( sorted.size(), 0 );
+  std::vector<double> weights(sorted.size(), 0);
   double totalweight{0};
 
-  for( auto& weight: weights ) {
-    weight = std::rand()%5 + 1;
+  for (auto &weight : weights)
+  {
+    weight = std::rand() % 5 + 1;
     totalweight += weight;
   }
 
   const double sfc_tol = 0.3;
-  //ot::SFC_Tree<uint, DIM>::distTreeSort(sorted, sfc_tol, comm);
+  // ot::SFC_Tree<uint, DIM>::distTreeSort(sorted, sfc_tol, comm);
   ot::SFC_Tree<uint, DIM>::distTreeSortWeighted(sorted, weights, sfc_tol, comm);
 
   REQUIRE(
@@ -152,7 +145,8 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
 
   double finalweight{0};
 
-  for( auto& weight: weights ) {
+  for (auto &weight : weights)
+  {
     finalweight += weight;
   }
 
@@ -161,21 +155,20 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
   const double min_ratio = 1 - 2 * sfc_tol;
 
   // Measure load imbalance and report to doctest.
-  const LoadBalance<LLU> load_balance(totalweight, comm);
+  const LoadBalance<LLU> load_balance(finalweight, comm);
   CHECK(load_balance.local_ratio() <= max_ratio);
   CHECK(load_balance.local_ratio() >= min_ratio);
   WARN_FALSE(
-      LoadBalance<LLU>(finalweight, comm)
-      .overload_ratio() <= max_ratio);
+      LoadBalance<LLU>(totalweight, comm)
+          .overload_ratio() <= max_ratio);
 
   // Optional visualization with gnuplot.
 #if 1
   static int subcase_id_hack = 0;
   ot::quadTreeToGnuplot(final_input, finest_level,
-      "_output/case_" + std::to_string(subcase_id_hack) + "_input", comm);
+                        "_output_weighted/case_" + std::to_string(subcase_id_hack) + "_input", comm);
   ot::quadTreeToGnuplot(sorted, finest_level,
-      "_output/case_" + std::to_string(subcase_id_hack) + "_sorted", comm);
+                        "_output_weighted/case_" + std::to_string(subcase_id_hack) + "_sorted", comm);
   ++subcase_id_hack;
 #endif
 }
-

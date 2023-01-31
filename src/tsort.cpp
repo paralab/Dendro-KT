@@ -723,7 +723,6 @@ inline Buckets<nchild(dim)+1> bucket_sfc_keys(
     };  // Easy to compute bucket, will permute counts later.
 
     for (size_t i = begin; i < end; ++i) {
-      //std::cout << pre_bucket( xs[i] ) << "\n";       // Count.
       ++buckets[pre_bucket(xs[i])];
     }
 
@@ -744,20 +743,6 @@ inline Buckets<nchild(dim)+1> bucket_sfc_keys(
       sfc_buckets[1 + s] = begin + buckets[1 + sfc.child_num(s)];
     sfc_buckets[0] = begin;
     sfc_buckets[nbuckets] = end;
-
-    // std::cout << begin << "\t" << end << "\n";
-    // for( auto& val: sfc_buckets ) {
-    //   std::cout << val << "\t";
-    // }
-    // std::cout << "\n";
-    // std::cout << "buckets" << "\t" << buckets.size() << "\n";
-    // for( auto& val: buckets ) {
-    //   std::cout << val << "\n";
-    // }
-    // for( auto& val: sfc_buckets ) {
-    //   std::cout << val << "\t";
-    // }
-    // std::cout << "\n";
   }
   return sfc_buckets;
 }
@@ -782,14 +767,9 @@ inline std::pair< Buckets<nchild(dim)+1>, BucketWeights<nchild(dim)+1> > bucket_
     int minval{INT_MAX};
 
     for (size_t i = begin; i < end; ++i) {
-      // maxval = std::max( maxval, pre_bucket( xs[i] ) );
-      // minval = std::min( minval,  pre_bucket( xs[i] ) );
-      // std::cout << pre_bucket( xs[i] ) << "\n";       // Count.
       ++buckets[pre_bucket(xs[i])];
       bucket_weights[pre_bucket(xs[i])] += weights[i];
     }
-
-    // std::cout << maxval << "\t" << minval << "\n";
 
     // Permuted prefix sum.
     buckets[1 + sfc.child_num(sfc::SubIndex(0))] += buckets[0];
@@ -798,17 +778,6 @@ inline std::pair< Buckets<nchild(dim)+1>, BucketWeights<nchild(dim)+1> > bucket_
       buckets[1 + sfc.child_num(s)] += buckets[1 + sfc.child_num(s.minus(1))];
       bucket_weights[1 + sfc.child_num(s)] += bucket_weights[1 + sfc.child_num(s.minus(1))];
     }
-
-    // for( auto& val: buckets ) {
-    //   std::cout << val << "\t";
-    // }
-    // std::cout << "\n";
-
-    std::cout << "buckets0" << "\t";
-    for( auto& val: buckets ) {
-      std::cout << val << "\t";
-    }
-    std::cout << "\n";
 
     static std::vector<X> copies;
     copies.resize(end - begin);
@@ -844,23 +813,6 @@ inline std::pair< Buckets<nchild(dim)+1>, BucketWeights<nchild(dim)+1> > bucket_
     sfc_buckets[nbuckets] = end;
     sfc_bucket_weights[0] = weight_begin;
     sfc_bucket_weights[nbuckets] = weight_end;
-
-    // std::cout << end  << "\n";
-    // int rank{0};
-    // MPI_Comm_rank();
-
-    
-    // std::cout << "buckets" << "\t" << buckets.size() << "\n";
-    // std::cout << "sfc_buckets" << "\t";
-    // for( auto& val: sfc_buckets ) {
-    //   std::cout << val << "\t";
-    // }
-    // std::cout << "\n";
-    std::cout << "buckets1" << "\t";
-    for( auto& val: buckets ) {
-      std::cout << val << "\t";
-    }
-    std::cout << "\n";
   }
   return std::make_pair( sfc_buckets, sfc_bucket_weights );
 }
@@ -870,7 +822,6 @@ template <typename T, unsigned int dim, typename...Y>
 inline Buckets<nchild(dim)+1> bucket_sfc(
     TreeNode<T, dim> *xs, Y* ...ys, size_t begin, size_t end, int child_level, const SFC_State<int(dim)> sfc)
 {
-  // std::cout << sizeof...(Y) << "\n";
   if (sizeof...(Y) == 0)
     return bucket_sfc_keys(xs, begin, end, child_level, sfc);
 
@@ -923,7 +874,6 @@ inline std::pair< Buckets<nchild(dim)+1>, BucketWeights<nchild(dim)+1> > bucket_
     TreeNode<T, dim> *xs, Y* ...ys, double* weights, size_t begin, size_t end,
      double weight_begin, double weight_end, int child_level, const SFC_State<int(dim)> sfc)
 {
-  // std::cout << sizeof...(Y) << "\n";
   if (sizeof...(Y) == 0)
     return bucket_sfc_keys_weighted(xs, weights, begin, end, weight_begin, weight_end, child_level, sfc);
 
@@ -1311,7 +1261,6 @@ struct BucketArray
       m_local_end.push_back(children[1+s+1]);
       m_local_weight_begin.push_back(childWeights[1+s]);  // assume ancestors front
       m_local_weight_end.push_back(childWeights[1+s+1]);
-      // std::cout << children[1 + s] << "\t" << children[1 + s + 1] << "\t" << childWeights[1 + s] << "\t" << childWeights[1 + s + 1] << "\n";
       m_global_begin.push_back(0);
       m_global_end.push_back(0);
       m_global_weight_begin.push_back(0);
@@ -1328,18 +1277,6 @@ struct BucketArray
 
   void all_reduce(MPI_Comm comm)
   {
-
-    // int rank{0};
-    // MPI_Comm_rank( comm, &rank );
-
-    // if( rank == 0 ) {
-
-    //   for( auto& val: m_local_begin ) {
-    //     std::cout << val << "\n" << std::flush;
-    //   }
-
-    // }
-
     par::Mpi_Allreduce(&(*m_local_begin.begin()), &(*m_global_begin.begin()), size(), MPI_SUM, comm);
     par::Mpi_Allreduce(&(*m_local_end.begin()), &(*m_global_end.begin()), size(), MPI_SUM, comm);
 #if DEBUG_BUCKET_ARRAY
@@ -1351,19 +1288,6 @@ struct BucketArray
 
   void all_reduce_weighted(MPI_Comm comm)
   {
-    // std::cout << m_local_begin.size() << "\n" << m_global_begin.size() << "\n" << size() << "\n" << std::flush;
-
-    // int rank{0};
-    // MPI_Comm_rank( comm, &rank );
-
-    // if( rank == 0 ) {
-
-    //   for( auto& val: m_local_begin ) {
-    //     std::cout << val << "\n" << std::flush;
-    //   }
-
-    // }
-
     par::Mpi_Allreduce(&(*m_local_begin.begin()), &(*m_global_begin.begin()), size(), MPI_SUM, comm);
     par::Mpi_Allreduce(&(*m_local_end.begin()), &(*m_global_end.begin()), size(), MPI_SUM, comm);
     par::Mpi_Allreduce(&(*m_local_weight_begin.begin()), &(*m_global_weight_begin.begin()), size(), MPI_SUM, comm);
@@ -1466,8 +1390,6 @@ void distTreePartition_kway_impl(
   {DOLLAR("mpi_min.global_coarsest_level");
     global_coarsest_level = par::mpi_min(local_coarsest_level, comm_in);
   }
-
-  // std::cout << m_uiMaxDepth << "\n";
 
   BucketArray<T, int(dim)> parent_buckets,  child_buckets;
   parent_buckets.reserve(kway_roundup * nchild(dim));
@@ -2001,16 +1923,6 @@ void distTreePartitionWeighted_kway_impl(
           Buckets<split_sz> octant_split = bucketPair.first;
           BucketWeights<split_sz> weight_split = bucketPair.second;
 
-          // if( comm_rank == 0 ) {
-          //   for( auto& item: octant_split ) {
-          //     std::cout << item << "\t";
-          //   }
-          //   std::cout << comm_rank << "\n";
-          // }
-
-          // MPI_Finalize();
-          // exit(1);
-
           child_buckets.push_children_weighted(b, octant_split, weight_split);
         }
         std::swap(child_buckets, parent_buckets);
@@ -2056,8 +1968,6 @@ void distTreePartitionWeighted_kway_impl(
       return ideal(blk + 1, WNg) - ideal(blk, WNg);
     };
     const auto next_blk = [=](double item, double WNg) { assert(item <= WNg);
-      // std::cout << item << "\n";
-
       const int next_task = floor( (item * comm_size + WNg - 1) / WNg );
 
       return blockmap.task_to_next_block(next_task);
@@ -2129,21 +2039,8 @@ void distTreePartitionWeighted_kway_impl(
 
     const auto commit_weighted = [&](int blk, const BucketRef<T, int(dim)> b) {
         assert(blk < nblocks);
-
-        std::string wbegin = std::to_string( b.global_weight_begin );
-        std::string idl = std::to_string( ideal(blk, Wg) );
-        std::string wend = std::to_string( b.global_weight_end );
-
-        std::string final = wbegin + "  " + idl + "  " + wend + "\n";
-
         assert(  b.global_weight_begin <= ideal(blk, Wg) and ideal(blk, Wg) <= b.global_weight_end);
-
-        if( !( b.global_weight_begin <= ideal(blk, Wg) and ideal(blk, Wg) <= b.global_weight_end ) ) {
-
-          std::cerr << final;
-
-        }
-
+        
         const double dist_begin = ideal(blk, Wg) - b.global_weight_begin;
         const double dist_end = b.global_weight_end - ideal(blk, Wg);
         local_block[blk] = (dist_begin <= dist_end ? b.local_begin : b.local_end);
@@ -2163,8 +2060,6 @@ void distTreePartitionWeighted_kway_impl(
             {
               const int begin = next_blk(b.global_weight_begin, Wg);
               const int end = next_blk(b.global_weight_end, Wg);
-              // if( comm_rank == 0 )
-              // std::cout << b.global_weight_begin << "\t" << b.global_weight_end << "\t" << Wg << "\t" << begin << "\t" << end << "\n";
               for (int blk = begin; blk < end; ++blk)
                 commit_weighted(blk, b);
             }
@@ -2198,7 +2093,6 @@ void distTreePartitionWeighted_kway_impl(
             {
               const int parent_begin = next_blk(b.global_weight_begin, Wg);
               const int child_begin = next_blk(child_buckets.ref(cb).global_weight_begin, Wg);
-              // std::cout << b.global_weight_begin << "\t" << b.global_weight_end << "\t" << Wg << "\t" << parent_begin << "\t" << child_begin << "\n";
               for (int blk = parent_begin; blk < child_begin; ++blk)
                 commit_weighted(blk, b);
               cb += nchild(dim);
@@ -2215,21 +2109,12 @@ void distTreePartitionWeighted_kway_impl(
       {
         const int begin = next_blk(b.global_weight_begin, Wg);
         const int end = next_blk(b.global_weight_end, Wg);
-        // std::cout << b.global_weight_begin << "\t" << b.global_weight_end << "\t" << Wg << "\t" << begin << "\t" << end << "\n";
         for (int blk = begin; blk < end; ++blk)
           commit_weighted(blk, b);
       }
     }
 
     // Validate splitters.
-
-    // for( auto& item: local_block ) {
-
-    //   std::cout << item << "\t";
-
-    // }
-
-    // std::cout << comm_rank << "\n";
 
     assert((std::find(local_block.begin(), local_block.end(), -1) == local_block.end()));
     assert(std::is_sorted(local_block.begin(), local_block.end()));
