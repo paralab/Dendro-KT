@@ -8,6 +8,7 @@
 #include "include/octUtils.h"
 #include "include/tnUtils.h"
 #include "include/treeNode.h"
+#include "IO/vtk/include/oct2vtk.h"
 
 #include "include/octree_to_graph.hpp"
 
@@ -63,6 +64,20 @@ int main(int argc, char * argv[])
   const graph::ElementGraph e2e = ot::octree_to_graph<DIM>(distTree, comm, graph::SelfLoop::Remove);
 
   std::cout << e2e;
+
+  if (argc > 2)
+  {
+    if (commRank == 0)
+      fprintf(stderr, "Writing octree VTU file to \"%s.pvtu\" ... ", argv[2]);
+
+    io::vtk::oct2vtu(distTree.getTreePartFiltered().data(),
+                     distTree.getTreePartFiltered().size(),
+                     argv[2],
+                     comm);
+
+    if (commRank == 0)
+      fprintf(stderr, "Done writing.\n");
+  }
 
   _DestroyHcurve();
   DendroScopeEnd();
