@@ -60,7 +60,7 @@ public:
 // =============================================================================
 // Test case
 // =============================================================================
-MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
+MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 64)
 {
   MPI_Comm comm = test_comm; // test_comm is a parameter supplied by test case
 
@@ -99,9 +99,6 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
   // Initial distributed tree, before refinement.
   SUBCASE("initially uniform at level 4, partition=gathered to process 0")
   {
-    const int initial_level = 4;
-    const double initial_sfc_tol = 0.3;
-
     int comm_rank;
     MPI_Comm_rank(comm, &comm_rank);
 
@@ -124,18 +121,35 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
         final_input.push_back(oct);
   }
 
+  const auto random_weight = [](const Oct &oct) {
+      return 0.1 + powf(oct.getLevel() * (0.5 + (std::rand() % 100)/100.0) - 5, 4);
+  };
+
+  const auto level_squared = [](const Oct &oct) {
+    return oct.getLevel() * oct.getLevel();
+  };
+
+  const auto level_by_100 = [](const Oct &oct) {
+    return 2 * oct.getLevel() / 100.0;
+  };
+
+  /// const auto weight_function = random_weight;
+  const auto weight_function = level_squared;  // deterministic from octant
+  /// const auto weight_function = level_by_100;  // all weights below 1.0
+
   // (Sort) and re-partition the tree by sfc_tol.
   std::vector<Oct> sorted = final_input;
-  std::vector<double> weights(sorted.size(), 0);
+  std::vector<double> weights;
   double totalweight{0};
 
-  for (auto &weight : weights)
+  for (auto &oct : sorted)
   {
-    weight = std::rand() % 5 + 1;
+    const double weight = weight_function(oct);
+    weights.push_back(weight);
     totalweight += weight;
   }
 
-  const double sfc_tol = 0.3;
+  const double sfc_tol = 0.01;
   // ot::SFC_Tree<uint, DIM>::distTreeSort(sorted, sfc_tol, comm);
   ot::SFC_Tree<uint, DIM>::distTreeSortWeighted(sorted, weights, sfc_tol, comm);
 
@@ -143,8 +157,25 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
       ot::checksum_octree(sorted, comm) ==
       ot::checksum_octree(final_input, comm));
 
-  double finalweight{0};
+  REQUIRE(ot::isLocallySorted(sorted));
+  REQUIRE(ot::isPartitioned(sorted, comm));
+  REQUIRE(ot::noLocalConsecutiveDups(sorted));
+  REQUIRE(ot::noRemoteEdgeDups(sorted, comm));
 
+  REQUIRE(sorted.size() == weights.size());
+
+  // Check that weights followed octants through the distributed sort.
+  // This is critical when multiple k-way stages have been executed.
+  if (not std::is_same<
+      decltype(weight_function), decltype(random_weight)>::value)
+  {
+    bool correct_octant_weights = true;
+    for (size_t i = 0; i < sorted.size(); ++i)
+      correct_octant_weights &= (weights[i] == weight_function(sorted[i]));
+    CHECK(correct_octant_weights);
+  }
+
+  double finalweight{0};
   for (auto &weight : weights)
   {
     finalweight += weight;
@@ -155,11 +186,18 @@ MPI_TEST_CASE("load balance 2D sphere-refine 5 process", 3)
   const double min_ratio = 1 - 2 * sfc_tol;
 
   // Measure load imbalance and report to doctest.
-  const LoadBalance<LLU> load_balance(finalweight, comm);
+  const LoadBalance<double> load_balance(finalweight, comm);
   CHECK(load_balance.local_ratio() <= max_ratio);
   CHECK(load_balance.local_ratio() >= min_ratio);
+
+  // The test is stronger if the initial mesh was imbalanced.
   WARN_FALSE(
-      LoadBalance<LLU>(totalweight, comm)
+      LoadBalance<double>(totalweight, comm)
+          .overload_ratio() <= max_ratio);
+
+  // The test is stronger if the final mesh differs from unit-weight case.
+  WARN_FALSE(
+      LoadBalance<LLU>(sorted.size(), comm)
           .overload_ratio() <= max_ratio);
 
   // Optional visualization with gnuplot.
