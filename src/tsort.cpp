@@ -505,7 +505,7 @@ SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,
   MPI_Comm_size(comm, &nProc);
 
   distTreePartition(points, 0, loadFlexibility, comm);
-  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
+  locTreeSort(points);
 }
 
 template<typename T, unsigned int dim>
@@ -521,8 +521,7 @@ SFC_Tree<T,dim>:: distTreeSortWeighted(std::vector<TreeNode<T,dim>> &points,
   MPI_Comm_size(comm, &nProc);
 
   distTreePartitionWeighted(points, weights, 0, loadFlexibility, comm);
-
-  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
+  locTreeSort(points, weights);
 }
 
 
