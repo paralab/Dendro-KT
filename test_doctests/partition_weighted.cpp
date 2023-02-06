@@ -57,6 +57,15 @@ public:
   double local_ratio() const { return m_local_load / ideal_load(); }
 };
 
+#define DOCTEST_VALUE_PARAMETERIZED_DATA(weight_function, isRandom, final_input, data_container) \
+  static size_t _doctest_subcase_idx = 0;                                                        \
+  std::for_each(data_container.begin(), data_container.end(), [&](const auto &in) {           \
+        DOCTEST_SUBCASE((std::string(#data_container "[") +                                     \
+                        std::to_string(_doctest_subcase_idx++) + "]").c_str()) { weight_function = std::get<0>(in);  \
+                          isRandom = std::get<1>(in); \
+                          final_input = std::get<2>(in);  } });          \
+  _doctest_subcase_idx = 0
+
 // =============================================================================
 // Test case
 // =============================================================================
@@ -88,25 +97,55 @@ MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 64)
   const double initial_sfc_tol = 0.3;
   std::vector<Oct> prev_input, final_input;
 
-  // Initial distributed tree, before refinement.
-  SUBCASE("initially uniform at level 4, partition=uniform with sfc_tol=0.3")
+  const auto random_weight = [](const Oct &oct)
   {
-    final_input = ot::DistTree<uint, DIM>::constructSubdomainDistTree(
-                      initial_level, comm, initial_sfc_tol)
-                      .getTreePartFiltered();
-  }
+    return 0.1 + powf(oct.getLevel() * (0.5 + (std::rand() % 100) / 100.0) - 5, 4);
+  };
 
-  // Initial distributed tree, before refinement.
-  SUBCASE("initially uniform at level 4, partition=gathered to process 0")
+  const auto level_squared = [](const Oct &oct)
   {
-    int comm_rank;
-    MPI_Comm_rank(comm, &comm_rank);
+    return oct.getLevel() * oct.getLevel();
+  };
 
-    if (comm_rank == 0)
-      final_input = ot::DistTree<uint, DIM>::constructSubdomainDistTree(
-                        initial_level, MPI_COMM_SELF, initial_sfc_tol)
-                        .getTreePartFiltered();
-  }
+  const auto level_by_100 = [](const Oct &oct)
+  {
+    return 2 * oct.getLevel() / 100.0;
+  };
+
+  const auto x_coordinate_based_weight = [](const Oct &oct)
+  {
+    return oct.getX(0);
+  };
+
+  std::function<double(const Oct &oct)> weight_function = level_squared; // deterministic from octant by default
+
+  bool isRandom = false;
+
+  int comm_rank;
+  MPI_Comm_rank(comm, &comm_rank);
+
+  std::vector<Oct> final_input1, final_input2;
+
+  // initially uniform at level 4, partition=uniform with sfc_tol=0.3
+  final_input1 = ot::DistTree<uint, DIM>::constructSubdomainDistTree(initial_level, comm, initial_sfc_tol).getTreePartFiltered();
+
+  // initially uniform at level 4, partition=gathered to process 0
+  if (comm_rank == 0)
+    final_input2 = ot::DistTree<uint, DIM>::constructSubdomainDistTree(
+                       initial_level, MPI_COMM_SELF, initial_sfc_tol)
+                       .getTreePartFiltered();
+
+  std::vector<std::tuple<std::function<double(const Oct &oct)>, bool, std::vector<Oct>>> weightDistributions{
+      std::make_tuple(random_weight, true, final_input1),
+      std::make_tuple(level_by_100, false, final_input1),
+      std::make_tuple(level_squared, false, final_input1),
+      std::make_tuple(x_coordinate_based_weight, false, final_input1),
+      std::make_tuple(level_squared, false, final_input2),
+      std::make_tuple(random_weight, true, final_input2),
+      std::make_tuple(level_by_100, false, final_input2),
+  };
+
+  DOCTEST_VALUE_PARAMETERIZED_DATA(weight_function, isRandom, final_input, weightDistributions);
 
   // Refine the tree until finest_level.
   for (int level = 0; level < finest_level; ++level)
@@ -120,22 +159,6 @@ MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 64)
       else
         final_input.push_back(oct);
   }
-
-  const auto random_weight = [](const Oct &oct) {
-      return 0.1 + powf(oct.getLevel() * (0.5 + (std::rand() % 100)/100.0) - 5, 4);
-  };
-
-  const auto level_squared = [](const Oct &oct) {
-    return oct.getLevel() * oct.getLevel();
-  };
-
-  const auto level_by_100 = [](const Oct &oct) {
-    return 2 * oct.getLevel() / 100.0;
-  };
-
-  /// const auto weight_function = random_weight;
-  const auto weight_function = level_squared;  // deterministic from octant
-  /// const auto weight_function = level_by_100;  // all weights below 1.0
 
   // (Sort) and re-partition the tree by sfc_tol.
   std::vector<Oct> sorted = final_input;
@@ -166,8 +189,7 @@ MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 64)
 
   // Check that weights followed octants through the distributed sort.
   // This is critical when multiple k-way stages have been executed.
-  if (not std::is_same<
-      decltype(weight_function), decltype(random_weight)>::value)
+  if (not isRandom)
   {
     bool correct_octant_weights = true;
     for (size_t i = 0; i < sorted.size(); ++i)
