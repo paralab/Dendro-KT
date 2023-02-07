@@ -12,8 +12,50 @@
 #include "sfcTreeLoop_matvec_io.h"
 #include "refel.h"
 
+#include "oda.h"
+
 #include<iostream>
 #include<functional>
+
+namespace fem
+{
+  // MeshFreeInputContext
+  template <typename DofT, typename TN>
+  struct MeshFreeInputContext;
+
+  // MeshFreeOutputContext
+  template <typename DofT, typename TN>
+  struct MeshFreeOutputContext;
+
+  // mesh_free_input_context()
+  template <typename DofT, unsigned dim>
+  MeshFreeInputContext<DofT, ot::TreeNode<unsigned, dim>>
+    mesh_free_input_context(
+        const DofT *input,
+        const ot::DA<dim> *input_da,
+        const ot::DistTree<unsigned, dim> &input_dtree);
+
+  // mesh_free_output_context()
+  template <typename DofT, unsigned dim>
+  MeshFreeOutputContext<DofT, ot::TreeNode<unsigned, dim>>
+    mesh_free_output_context(
+        DofT *output,
+        const ot::DA<dim> *output_da,
+        const ot::DistTree<unsigned, dim> &output_dtree);
+
+
+  /**
+   * locIntergridTransfer()
+   */
+  template <typename DofT, typename TN>
+  void locIntergridTransfer(MeshFreeInputContext<DofT, TN> in,
+                         MeshFreeOutputContext<DofT, TN> out,
+                         unsigned int ndofs,
+                         const RefElement *refElement,
+                         char * isDirtyOut = nullptr);
+
+}
+
 
 namespace fem
 {
@@ -30,6 +72,25 @@ namespace fem
     const TN &partBack;
   };
 
+  // mesh_free_input_context()
+  template <typename DofT, unsigned dim>
+  MeshFreeInputContext<DofT, ot::TreeNode<unsigned, dim>>
+    mesh_free_input_context(
+        const DofT *input,
+        const ot::DA<dim> *da,
+        const ot::DistTree<unsigned, dim> &input_dtree)
+  {
+    const std::vector<ot::TreeNode<unsigned, dim>> &octlist =
+        input_dtree.getTreePartFiltered();
+    return {
+        input,
+        da->getTNCoords(), da->getTotalNodalSz(),
+        octlist.data(), octlist.size(),
+        *da->getTreePartFront(), *da->getTreePartBack()
+    };
+  }
+
+
   // MeshFreeOutputContext
   template <typename DofT, typename TN>
   struct MeshFreeOutputContext
@@ -43,6 +104,28 @@ namespace fem
     const TN &partBack;
   };
 
+  // mesh_free_output_context()
+  template <typename DofT, unsigned dim>
+  MeshFreeOutputContext<DofT, ot::TreeNode<unsigned, dim>>
+    mesh_free_output_context(
+        DofT *output,
+        const ot::DA<dim> *da,
+        const ot::DistTree<unsigned, dim> &output_dtree)
+  {
+    const std::vector<ot::TreeNode<unsigned, dim>> &octlist =
+        output_dtree.getTreePartFiltered();
+    return {
+        output,
+        da->getTNCoords(), da->getTotalNodalSz(),
+        octlist.data(), octlist.size(),
+        *da->getTreePartFront(), *da->getTreePartBack()
+    };
+  }
+
+
+
+
+
 
   /**
    * locIntergridTransfer()
@@ -51,10 +134,8 @@ namespace fem
   void locIntergridTransfer(MeshFreeInputContext<DofT, TN> in,
                          MeshFreeOutputContext<DofT, TN> out,
                          unsigned int ndofs,
-                         /// EleOpT<DofT> eleOp,
-                         /// double scale,
                          const RefElement *refElement,
-                         char * isDirtyOut = nullptr)
+                         char * isDirtyOut)
   {
 #warning "locIntergridTransfer() needs to give refElement to MatvecBaseIn/Out"
     DOLLAR("locIntergridTransfer()");

@@ -544,6 +544,9 @@ class DA
         template <typename T>
         void nodalVecToGhostedNodal(const T *in, T *&out, bool isAllocated = false, unsigned int dof = 1) const;
 
+        template <typename T>
+        void nodalVecToGhostedNodal(const T *in, T * const & out, unsigned int dof = 1) const; //if constant or temporary pointer then can't return a new pointer; assume already allocated.
+
         /**
              * @brief convert ghosted nodal vector to local vector (without ghosting)
              * @param[in] gVec: ghosted vector
@@ -554,6 +557,9 @@ class DA
 
         template <typename T>
         void ghostedNodalToNodalVec(const T *gVec, T *&local, bool isAllocated = false, unsigned int dof = 1) const;
+
+        template <typename T>
+        void ghostedNodalToNodalVec(const T *gVec, T * const & local, unsigned int dof = 1) const; //if constant or temporary pointer then can't return a new pointer; assume already allocated.
 
 
         // std::vector versions

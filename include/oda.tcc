@@ -376,6 +376,14 @@ namespace ot
 
     template <unsigned int dim>
     template<typename T>
+    void DA<dim>::nodalVecToGhostedNodal(const T* in, T* const & out,unsigned int dof) const
+    {
+      T *out_ptr = out;
+      return this->nodalVecToGhostedNodal(in, out_ptr, true, dof);
+    }
+
+    template <unsigned int dim>
+    template<typename T>
     void DA<dim>::ghostedNodalToNodalVec(const T* gVec,T*& local,bool isAllocated,unsigned int dof) const
     {
         if(!(m_uiIsActive))
@@ -388,6 +396,15 @@ namespace ot
         const T* srcStart = gVec + dof*m_uiLocalNodeBegin;
         std::copy(srcStart, srcStart + dof*m_uiLocalNodalSz, local);
     }
+
+    template <unsigned int dim>
+    template<typename T>
+    void DA<dim>::ghostedNodalToNodalVec(const T* gVec,T* const & local,unsigned int dof) const
+    {
+      T *local_ptr = local;
+      return this->ghostedNodalToNodalVec(gVec, local_ptr, true, dof);
+    }
+
 
     template <unsigned int dim>
     template<typename T>
