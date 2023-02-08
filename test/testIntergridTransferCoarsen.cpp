@@ -63,12 +63,13 @@ void intergrid_fine_to_coarse(
 {
   // fine -> intergrid surrogate -> shift coarse
 
-
   static std::vector<VECType> fineGhosted;
   static std::vector<VECType> surrGhosted;
   oldDA->template createVector(fineGhosted, false, true, ndof);
-  surrDA->template createVector<VECType>(surrGhosted, false, true, ndof);   // surr = surr
+  surrDA->template createVector<VECType>(surrGhosted, false, true, ndof);
   oldDA->nodalVecToGhostedNodal(input, fineGhosted.data(), ndof);
+  oldDA->readFromGhostBegin(fineGhosted.data(), ndof);
+  oldDA->readFromGhostEnd(fineGhosted.data(), ndof);
   std::fill(surrGhosted.begin(), surrGhosted.end(), 0);
 
   fem::MeshFreeInputContext<VECType, TREENODE>
@@ -87,8 +88,8 @@ void intergrid_fine_to_coarse(
   const RefElement *refel = newDA->getReferenceElement();
   fem::locIntergridTransfer(inctx, outctx, ndof, refel, &(*outDirty.begin()));
 
-  newDA->template writeToGhostsBegin<VECType>(surrGhosted.data(), ndof, &(*outDirty.cbegin()));
-  newDA->template writeToGhostsEnd<VECType>(surrGhosted.data(), ndof, false, &(*outDirty.cbegin()));
+  surrDA->template writeToGhostsBegin<VECType>(surrGhosted.data(), ndof, &(*outDirty.cbegin()));
+  surrDA->template writeToGhostsEnd<VECType>(surrGhosted.data(), ndof, false, &(*outDirty.cbegin()));
 
   ot::distShiftNodes(*surrDA, surrGhosted.data() + ndof * surrDA->getLocalNodeBegin(),
                      *newDA, output,
