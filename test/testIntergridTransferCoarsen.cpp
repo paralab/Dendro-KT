@@ -104,7 +104,7 @@ void checkIntergridTransfer(
         const ot::DistTree<unsigned int, DIM> &distTree,
         const unsigned int ndof)
 {
-    double *ghostedArray;
+    double *ghostedArray = nullptr;
     octDA->nodalVecToGhostedNodal(array,ghostedArray, false,ndof);
     octDA->readFromGhostBegin(ghostedArray,ndof);
     octDA->readFromGhostEnd(ghostedArray,ndof);
@@ -151,7 +151,8 @@ void checkIntergridTransfer(
         std::cout << RED << "TEST failed" << NRM << "\n";
       }
     }
-    delete [] ghostedArray;
+    if (ghostedArray)
+      delete [] ghostedArray;
     MPI_Barrier(MPI_COMM_WORLD);
 }
 
