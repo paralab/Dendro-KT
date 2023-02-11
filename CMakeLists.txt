@@ -40,7 +40,7 @@ option(BUILD_EXAMPLES "build example programs" ON)
 option(USE_2TO1_GLOBAL_SORT "Use global sort instead of two-pass method for 2:1 balancing" OFF)
 option(ENABLE_DOCTEST_IN_RELEASE "Enable doctest tests even in a release build" OFF)
 
-set(KWAY 128 CACHE INT 128)
+set(KWAY 32 CACHE INT 32)
 set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
 
 #set the build type to release by default.

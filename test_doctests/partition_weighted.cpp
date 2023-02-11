@@ -63,13 +63,13 @@ public:
         DOCTEST_SUBCASE((std::string(#data_container "[") +                                     \
                         std::to_string(_doctest_subcase_idx++) + "]").c_str()) { weight_function = std::get<0>(in);  \
                           isRandom = std::get<1>(in); \
-                          final_input = std::get<2>(in);  } });          \
+                          final_input = std::get<2>(in); } });          \
   _doctest_subcase_idx = 0
 
 // =============================================================================
 // Test case
 // =============================================================================
-MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 64)
+MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 129)
 {
   MPI_Comm comm = test_comm; // test_comm is a parameter supplied by test case
 
@@ -94,7 +94,7 @@ MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 64)
   // Two subcases have different initial partitions but same refinement pattern.
   const int finest_level = 8;
   const int initial_level = 4;
-  const double initial_sfc_tol = 0.3;
+  const double initial_sfc_tol = 0.1;
   std::vector<Oct> prev_input, final_input;
 
   const auto random_weight = [](const Oct &oct)
@@ -142,8 +142,7 @@ MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 64)
       std::make_tuple(x_coordinate_based_weight, false, final_input1),
       std::make_tuple(level_squared, false, final_input2),
       std::make_tuple(random_weight, true, final_input2),
-      std::make_tuple(level_by_100, false, final_input2),
-  };
+      std::make_tuple(level_by_100, false, final_input2)};
 
   DOCTEST_VALUE_PARAMETERIZED_DATA(weight_function, isRandom, final_input, weightDistributions);
 
