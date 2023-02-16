@@ -29,7 +29,7 @@
 #include "string.h"
 
 #ifndef KWAY
-#define KWAY 32
+#define KWAY 128
 #endif
 
 namespace par {

@@ -69,7 +69,7 @@ public:
 // =============================================================================
 // Test case
 // =============================================================================
-MPI_TEST_CASE("load balance 2D sphere-refine 64 process", 129)
+MPI_TEST_CASE("load balance 2D sphere-refine 64 process",34)
 {
   MPI_Comm comm = test_comm; // test_comm is a parameter supplied by test case
 
