@@ -26,3 +26,7 @@ add_executable(doctest_octree_adler32 octree_adler32.cpp main.cpp)
 add_dependencies(doctest_octree_adler32 copy_assets)
 target_include_directories(doctest_octree_adler32 PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_octree_adler32 dendroKT ${MPI_LIBRARIES} m)
+
+add_executable(doctest_cpp17 cpp17.cpp main.cpp)
+target_include_directories(doctest_cpp17 PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_cpp17 dendroKT ${MPI_LIBRARIES} m)

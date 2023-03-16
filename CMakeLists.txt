@@ -1,7 +1,7 @@
 ## CMAKE for Dendro-KT
 cmake_minimum_required(VERSION 2.8)
 project(Dendro-KT)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
