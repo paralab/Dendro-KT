@@ -11,6 +11,7 @@
 #include "sfcTreeLoop_matvec_io.h"
 
 #include <algorithm>
+#include <unordered_set>
 #include <set>
 
 #define OCT_NO_CHANGE 0u
@@ -106,6 +107,76 @@ namespace ot
       * @note If you have a custom domain decider function, use this overload.
      * */
 
+
+    template <unsigned int dim>
+    void elementalComputeVecForVertices( VECType *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
+    {
+
+      std::vector<int> posVals( ndofs, 2 );
+
+      for( int idx = 0; idx < numNodes; idx++ ) {
+
+        const unsigned int nodeRank =
+              TNPoint<unsigned int, dim>::get_lexNodeRank( leafOctant,
+                                                           nodeCoords[idx],
+                                                           eleOrder );
+
+          assert(nodeRank < npe);
+
+        if( vertexRanks.find( nodeRank ) != vertexRanks.end() ) {
+
+          std::copy_n( posVals, ndofs, &out[ndofs * nodeRank] );
+        
+        }
+
+      }
+
+    }
+
+    template <unsigned int dim>
+    void elementalComputeVecForMiddleNodes( const VECType* in, VECType *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
+    {
+      std::vector<int> posVals( ndofs, 2 );
+
+      int middleNodeRank;
+
+      if( dim == 2 )
+        middleNodeRank = 4;
+      else if( dim == 3 )
+        middleNodeRank = 13;
+
+      bool hasHangingNodes = false;
+
+      for( int idx = 0; idx < numNodes; idx++ ) {
+
+        const unsigned int nodeRank =
+              TNPoint<unsigned int, dim>::get_lexNodeRank( leafOctant,
+                                                           nodeCoords[idx],
+                                                           eleOrder );
+
+          assert(nodeRank < npe);
+
+        if( vertexRanks.find( nodeRank ) != vertexRanks.end() ) {
+
+          std::copy_n( &in[ndofs * nodeRank], ndofs, &out[ndofs * nodeRank] );
+        
+        }
+        else if( in[ ndofs * nodeRank ] > 0 ) {
+
+          hasHangingNodes = true;
+          out[ ndofs * nodeRank ] = INT_MIN;
+
+        }
+      }
+
+      if( hasHangingNodes ) {
+
+        std::copy_n( posVals, ndofs, &out[ndofs * middleNodeRank] );
+
+      }
+
+    }
+
     template <unsigned int dim>
     DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, int version) {
 
@@ -116,6 +187,20 @@ namespace ot
       else if( version == 1 ) {
 
         DA( inDistTree, comm, order, grainSz, sfc_tol);
+
+        std::vector<VECType> nodeVals;
+
+        fem::matvecForVertexNode(nodeVals.data(), m_uiDof, tnCoords, m_oda->getTotalNodalSz(), 
+        &(*this->m_octList->cbegin()), this->m_octList->size(),
+        *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
+        elementalComputeVecForVertices, scale, m_oda->getReferenceElement());
+
+        std::vector<VECType> updatedNodeVals;
+
+        fem::matvecForMiddleNode(nodeVals.data(), updatedNodeVals.data(), m_uiDof, tnCoords, m_oda->getTotalNodalSz(), 
+        &(*this->m_octList->cbegin()), this->m_octList->size(),
+        *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
+        elementalComputeVecForVertices, scale, m_oda->getReferenceElement());
 
       }
       else {

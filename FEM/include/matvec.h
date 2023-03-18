@@ -16,6 +16,7 @@
 #include "sfcTreeLoop_matvec.h"
 
 #include<iostream>
+#include<unordered_set>
 #include<functional>
 
 
@@ -38,6 +39,10 @@ namespace fem
 
   template <typename da>
   using EleOpTForVertices = std::function<void( da *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const unsigned int eleOrder )>;
+
+  template <typename da>
+  using EleOpTForMiddleNode = std::function<void( const da* in, da *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const unsigned int eleOrder )>;
+
 
     /**
      * @brief : mesh-free matvec
@@ -115,6 +120,30 @@ namespace fem
      
       std::vector<T> leafResult(ndofs*npe, 0);
 
+      std::unordered_set<int> vertexSet;
+      std::array<int, 2> vals{ 0, 2 };
+
+      if( dim == 3 ) {
+        for( auto& idx0: vals ) {
+          for( auto& idx1: vals ) {
+            for( auto& idx2: vals ) {
+
+              vertexSet.insert( idx2*1 + idx1*3 + idx0*9 );
+
+            }
+          }
+        } 
+      }
+      else if( dim == 2 ) {
+
+        for( auto& idx0: vals ) {
+          for( auto& idx1: vals ) {
+              vertexSet.insert( idx1*3 + idx0*1 );
+          }
+        }
+
+      }
+
       while (!treeloop.isFinished())
       {
         if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf())
@@ -126,12 +155,14 @@ namespace fem
 
           const TreeNode<unsigned int, dim>* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
 
+          const int numNodes = treeloop.subtreeInfo().getNumNodesIn();
+
           const TreeNode<unsigned int, dim>& currTree = treeloop.subtreeInfo().getCurrentSubtree();
 
           // BaseT::getCurrentFrame().template getMyInputHandle<0>(),
           //                    BaseT::getCurrentSubtree(),
 
-          eleOp(&(*leafResult.begin()), ndofs, currTree, nodeCoords, eleOrder);
+          eleOp(&(*leafResult.begin()), ndofs, currTree, nodeCoords, numNodes, vertexSet, eleOrder);
 
           // const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
           //       childSubtreesSFC[child_sfc],
@@ -157,7 +188,7 @@ namespace fem
     }
 
     template <typename T, typename TN, typename RE>
-    void matvecForMiddleNode(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForVertices<T> eleOp, double scale, const RE* refElement)
+    void matvecForMiddleNode(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForMiddleNode<T> eleOp, double scale, const RE* refElement)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
 
@@ -183,10 +214,12 @@ namespace fem
 
           const TreeNode<unsigned int, dim>& currTree = treeloop.subtreeInfo().getCurrentSubtree();
 
+          const T * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
+
           // BaseT::getCurrentFrame().template getMyInputHandle<0>(),
           //                    BaseT::getCurrentSubtree(),
 
-          eleOp(&(*leafResult.begin()), ndofs, currTree, nodeCoords, eleOrder);
+          eleOp(nodeValsFlat, &(*leafResult.begin()), ndofs, currTree, nodeCoords, eleOrder);
 
           // const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
           //       childSubtreesSFC[child_sfc],

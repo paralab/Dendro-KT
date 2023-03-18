@@ -353,6 +353,8 @@ namespace ot
     m_eleOrder(eleOrder),
     m_interp_matrices(eleOrder)
   {
+
+    // allNodeCoords are points and treePointPtr are the octants
     typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
 
     // Note that the concrete class is responsible to
