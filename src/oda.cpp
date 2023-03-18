@@ -107,6 +107,24 @@ namespace ot
      * */
 
     template <unsigned int dim>
+    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, int version) {
+
+      if( version == 0 ) {
+        // default implementation behavior for hanging nodes
+        DA( inDistTree, comm, order, grainSz, sfc_tol);
+      }
+      else if( version == 1 ) {
+
+        DA( inDistTree, comm, order, grainSz, sfc_tol);
+
+      }
+      else {
+        throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
+      }
+
+    }
+
+    template <unsigned int dim>
     DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
         : DA(inDistTree, 0, comm, order, grainSz, sfc_tol)
     { }
