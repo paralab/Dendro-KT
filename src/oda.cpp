@@ -188,19 +188,31 @@ namespace ot
 
         DA( inDistTree, comm, order, grainSz, sfc_tol);
 
-        std::vector<VECType> nodeVals;
+        std::vector<VECType> nodeVals( m_uiLocalNodalSz, 0 );
 
-        fem::matvecForVertexNode(nodeVals.data(), m_uiDof, tnCoords, m_oda->getTotalNodalSz(), 
+        static std::vector<VECType> inGhosted, outGhosted;
+        this->template createVector<VECType>(inGhosted, false, true, m_uiDof);
+        this->template createVector<VECType>(outGhosted, false, true, m_uiDof);
+        
+        std::fill(inGhosted.begin(), inGhosted.end(), 0);
+
+        VECType *inGhostedPtr = inGhosted.data();
+        VECType *outGhostedPtr = outGhosted.data();
+
+        fem::matvecForVertexNode(inGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(), 
         &(*this->m_octList->cbegin()), this->m_octList->size(),
         *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
         elementalComputeVecForVertices, scale, m_oda->getReferenceElement());
 
-        std::vector<VECType> updatedNodeVals;
+        this->template writeToGhostsBegin<VECType>(inGhostedPtr, m_uiDof);
+        this->template writeToGhostsEnd<VECType>(inGhostedPtr, m_uiDof);
 
-        fem::matvecForMiddleNode(nodeVals.data(), updatedNodeVals.data(), m_uiDof, tnCoords, m_oda->getTotalNodalSz(), 
+        fem::matvecForMiddleNode(inGhostedPtr, outGhostedPtr, m_uiDof, m_tnCoords, m_oda->getTotalNodalSz(), 
         &(*this->m_octList->cbegin()), this->m_octList->size(),
         *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
         elementalComputeVecForVertices, scale, m_oda->getReferenceElement());
+
+        this->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, nodeVals, true, m_uiDof);
 
       }
       else {
