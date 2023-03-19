@@ -191,33 +191,196 @@ namespace ot
 
         DA( inDistTree, comm, order, grainSz, sfc_tol);
 
-        std::vector<VECType> nodeVals( m_uiLocalNodalSz, 0 );
+        const size_t nActiveEle = distTree.getFilteredTreePartSz(0);
 
-        static std::vector<VECType> inGhosted, outGhosted;
-        this->template createVector<VECType>(inGhosted, false, true, ndofs);
-        this->template createVector<VECType>(outGhosted, false, true, ndofs);
-        
-        std::fill(inGhosted.begin(), inGhosted.end(), 0);
+        // A processor is 'active' if it has elements, otherwise 'inactive'.
+        bool isActive = (nActiveEle > 0);
+        const bool allActive = par::mpi_and(isActive, comm);
+        MPI_Comm activeComm = comm;
+        if (not allActive)
+          MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
 
-        VECType *inGhostedPtr = inGhosted.data();
-        VECType *outGhostedPtr = outGhosted.data();
+        if( isActive ) {
 
-        const std::vector<TreeNode<T, dim>>& currTree = this->m_dist_tree->getTreePartFiltered();
+          std::vector<VECType> nodeVals( m_uiLocalNodalSz, 0 );
 
-        fem::matvecForVertexNode(inGhostedPtr, ndofs, tnCoords, getTotalNodalSz(), 
-        &( currTree.cbegin() ), currTree.size(),
-        *this->getTreePartFront(), *this->getTreePartBack(),
-        elementalComputeVecForVertices, scale, this->getReferenceElement());
+          static std::vector<VECType> inGhosted, outGhosted;
+          this->template createVector<VECType>(inGhosted, false, true, ndofs);
+          this->template createVector<VECType>(outGhosted, false, true, ndofs);
+          
+          std::fill(inGhosted.begin(), inGhosted.end(), 0);
 
-        this->template writeToGhostsBegin<VECType>(inGhostedPtr, ndofs);
-        this->template writeToGhostsEnd<VECType>(inGhostedPtr, ndofs);
+          VECType *inGhostedPtr = inGhosted.data();
+          VECType *outGhostedPtr = outGhosted.data();
 
-        fem::matvecForMiddleNode(inGhostedPtr, outGhostedPtr, ndofs, m_tnCoords, m_oda->getTotalNodalSz(), 
-        &( currTree.cbegin() ), currTree.size(),
-        *this->getTreePartFront(), *this->getTreePartBack(),
-        elementalComputeVecForVertices, scale, this->getReferenceElement());
+          const std::vector<TreeNode<T, dim>>& currTree = this->m_dist_tree->getTreePartFiltered();
 
-        this->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, nodeVals, true, ndofs);
+          fem::matvecForVertexNode(inGhostedPtr, ndofs, tnCoords, getTotalNodalSz(), 
+          &( currTree.cbegin() ), currTree.size(),
+          *this->getTreePartFront(), *this->getTreePartBack(),
+          elementalComputeVecForVertices, scale, this->getReferenceElement());
+
+          this->template writeToGhostsBegin<VECType>(inGhostedPtr, ndofs);
+          this->template writeToGhostsEnd<VECType>(inGhostedPtr, ndofs);
+
+          fem::matvecForMiddleNode(inGhostedPtr, outGhostedPtr, ndofs, m_tnCoords, m_oda->getTotalNodalSz(), 
+          &( currTree.cbegin() ), currTree.size(),
+          *this->getTreePartFront(), *this->getTreePartBack(),
+          elementalComputeVecForVertices, scale, this->getReferenceElement());
+
+          this->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, nodeVals, true, ndofs);
+
+          std::vector<int> isValidNode( m_uiTotalNodalSz, 1 );
+
+          for( int ii = 0; ii < m_uiLocalNodalSz; ii++ ) {
+
+            if( std::static_cast<int>( outGhostedPtr[ ii ] == 0 ) ) {
+
+              isValidNode[ m_uiLocalNodeBegin + ii ] = 0;
+
+            }
+
+          }
+
+          this->template readFromGhostBegin<int>( isValidNode.data(), ndofs );
+          this->template readFromGhostEnd<int>( isValidNode.data(), ndofs );
+
+          std::vector<int> updatedLocalIndices( m_uiLocalNodalSz, 0 );
+
+          for( int idx = 1; idx < m_uiLocalNodalSz; idx++ ) {
+
+            updatedLocalIndices[ idx ] = updatedLocalIndices[ idx - 1 ] + isValidNode[ m_uiLocalNodeBegin + idx ];
+
+          }
+
+          int newLocalSz = updatedLocalIndices.back() + 1;
+
+          std::vector<int> sm_m_map_validity( m_sm.m_map.size(), 0 );
+
+          int currOffset = 0;
+
+          for( int idx = 0; idx < m_sm.m_sendProc.size(); idx++ ) {
+
+            int sendCount = m_sm.sendCounts[idx];
+            int sendOffset = m_sm.m_sendOffsets[idx];
+
+            int currCount = 0;
+
+            for( int sIdx = 0; sIdx < sendCount; sIdx++ ) {
+
+              int localRank = m_sm.m_map[ sendOffset + sIdx ];
+              sm_m_map_validity[ sIdx ] = isValidNode[ m_uiLocalNodeBegin + localRank ];
+
+              if( sm_m_map_validity[ sIdx ] ) {
+                currCount += 1;
+              }
+
+            }
+            
+            m_sm.m_sendOffsets[idx] = currOffset;
+            m_sm.m_sendCounts[idx] = currCount;
+
+            currOffset += currCount;
+
+          }
+
+          for( int idx = sm_m_map_validity.size() - 1; idx >= 0; idx-- ) {
+          
+            if( sm_m_map_validity[idx] == 0 ) {
+                m_sm.erase( m_sm.begin() + idx );
+            }
+          
+          }
+
+          int procIdx = par::mpi_comm_rank( activeComm );
+
+          int rprocIdx = 0;
+
+          int tIdx = 0;
+
+          currOffset = 0;
+
+          while( m_gm.m_recvProc[ rprocIdx ] < procIdx ) {
+
+            int recvCount = m_gm.m_recvCounts[ rprocIdx ];
+            int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
+            int currCount = 0;
+
+            for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
+
+              if( isValidNode[ recvOffset + lIdx ] == 1 ) {
+
+                currCount += 1;
+
+              }
+
+            }
+
+            m_gm.m_recvCounts[ rprocIdx ] = currCount;
+            m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
+
+            currOffset += currCount;
+
+            rprocIdx += 1;
+
+          }
+
+          m_gm.m_locCount = newLocalSz;
+          m_gm.m_locOffset = currOffset;
+
+          currOffset += newLocalSz;
+
+          while( rprocIdx < m_gm.m_recvProc.size() ) {
+
+            int recvCount = m_gm.m_recvCounts[ rprocIdx ];
+            int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
+            int currCount = 0;
+
+            for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
+
+              if( isValidNode[ recvOffset + lIdx ] == 1 ) {
+
+                currCount += 1;
+
+              }
+
+            }
+
+            m_gm.m_recvCounts[ rprocIdx ] = currCount;
+            m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
+
+            currOffset += currCount;
+
+            rprocIdx += 1;
+
+          }
+
+          m_gm.m_totalCount = m_gm.m_recvOffsets.back() + 1;
+
+          std::vector<TreeNode<C, dim>> myNewTNCoords;
+
+          for( int idx = m_uiLocalNodeBegin; idx < m_uiLocalNodeEnd; idx++ ) {
+
+            if( isValidNode[idx] == 1 ) {
+
+              myNewTNCoords.push_back( m_tnCoords[idx] );
+
+            }
+
+          }
+
+          for( int idx = m_tnCoords.size() - 1; idx >= 0; idx-- ) {
+
+            if( isValidNode[idx] == 0 ) {
+
+              m_tnCoords.erase( m_tnCoords.begin() + idx );
+
+            }
+
+          }
+
+          this->_constructInner(myNewTNCoords, m_sm, m_gm, order, this->m_treePartFront, this->m_treePartBack, isActive, comm, activeComm);
+        }
 
       }
       else {
