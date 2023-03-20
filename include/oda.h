@@ -366,6 +366,16 @@ namespace ot
                                MPI_Comm globalComm,
                                MPI_Comm activeComm);
 
+          /** @brief Modifies and adjusts scatter map after identification of unneccessary nodes in the 
+           * degree 2 mesh. This method is used within the new framework used to handle hanging nodes.
+          */
+          void modifyScatterMap( const vector<int>& isValidNode );
+
+          /** @brief Modifies and adjusts gather map after identification of unneccessary nodes in the 
+           * degree 2 mesh. This method is used within the new framework used to handle hanging nodes.
+          */
+          void modifyGatherMap( const vector<int>& isValidNode, int newLocalSize );
+
           /**@brief returns the local element size*/
           inline size_t getLocalElementSz() const { return m_uiLocalElementSz; }
 

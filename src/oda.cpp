@@ -189,14 +189,17 @@ namespace ot
         int ndofs = 1;
         double scale = 1.0;
 
-        DA( inDistTree, comm, order, grainSz, sfc_tol);
+        DA( inDistTree, comm, order + 1, grainSz, sfc_tol);
 
-        const size_t nActiveEle = distTree.getFilteredTreePartSz(0);
+        const size_t nActiveEle = inDistTree.getFilteredTreePartSz();
 
         // A processor is 'active' if it has elements, otherwise 'inactive'.
         bool isActive = (nActiveEle > 0);
+        int rProc = par::mpi_comm_rank( comm );
+
         const bool allActive = par::mpi_and(isActive, comm);
         MPI_Comm activeComm = comm;
+
         if (not allActive)
           MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
 
@@ -234,7 +237,7 @@ namespace ot
 
           for( int ii = 0; ii < m_uiLocalNodalSz; ii++ ) {
 
-            if( std::static_cast<int>( outGhostedPtr[ ii ] == 0 ) ) {
+            if( std::static_cast<int>( nodeVals[ ii ] == 0 ) ) {
 
               isValidNode[ m_uiLocalNodeBegin + ii ] = 0;
 
@@ -255,113 +258,25 @@ namespace ot
 
           int newLocalSz = updatedLocalIndices.back() + 1;
 
-          std::vector<int> sm_m_map_validity( m_sm.m_map.size(), 0 );
+          DA<dim>::modifyScatterMap( isValidNode );
 
-          int currOffset = 0;
-
-          for( int idx = 0; idx < m_sm.m_sendProc.size(); idx++ ) {
-
-            int sendCount = m_sm.sendCounts[idx];
-            int sendOffset = m_sm.m_sendOffsets[idx];
-
-            int currCount = 0;
-
-            for( int sIdx = 0; sIdx < sendCount; sIdx++ ) {
-
-              int localRank = m_sm.m_map[ sendOffset + sIdx ];
-              sm_m_map_validity[ sIdx ] = isValidNode[ m_uiLocalNodeBegin + localRank ];
-
-              if( sm_m_map_validity[ sIdx ] ) {
-                currCount += 1;
-              }
-
-            }
-            
-            m_sm.m_sendOffsets[idx] = currOffset;
-            m_sm.m_sendCounts[idx] = currCount;
-
-            currOffset += currCount;
-
-          }
-
-          for( int idx = sm_m_map_validity.size() - 1; idx >= 0; idx-- ) {
-          
-            if( sm_m_map_validity[idx] == 0 ) {
-                m_sm.erase( m_sm.begin() + idx );
-            }
-          
-          }
-
-          int procIdx = par::mpi_comm_rank( activeComm );
-
-          int rprocIdx = 0;
-
-          int tIdx = 0;
-
-          currOffset = 0;
-
-          while( m_gm.m_recvProc[ rprocIdx ] < procIdx ) {
-
-            int recvCount = m_gm.m_recvCounts[ rprocIdx ];
-            int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
-            int currCount = 0;
-
-            for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
-
-              if( isValidNode[ recvOffset + lIdx ] == 1 ) {
-
-                currCount += 1;
-
-              }
-
-            }
-
-            m_gm.m_recvCounts[ rprocIdx ] = currCount;
-            m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
-
-            currOffset += currCount;
-
-            rprocIdx += 1;
-
-          }
-
-          m_gm.m_locCount = newLocalSz;
-          m_gm.m_locOffset = currOffset;
-
-          currOffset += newLocalSz;
-
-          while( rprocIdx < m_gm.m_recvProc.size() ) {
-
-            int recvCount = m_gm.m_recvCounts[ rprocIdx ];
-            int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
-            int currCount = 0;
-
-            for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
-
-              if( isValidNode[ recvOffset + lIdx ] == 1 ) {
-
-                currCount += 1;
-
-              }
-
-            }
-
-            m_gm.m_recvCounts[ rprocIdx ] = currCount;
-            m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
-
-            currOffset += currCount;
-
-            rprocIdx += 1;
-
-          }
-
-          m_gm.m_totalCount = m_gm.m_recvOffsets.back() + 1;
+          DA<dim>::modifyGatherMap( isValidNode, newLocalSz );
 
           std::vector<TreeNode<C, dim>> myNewTNCoords;
 
+          for( int idx = 0; idx < m_uiTotalNodalSz; idx++ ) {
+
+            if( isValidNode[idx] < 0 ) {
+
+              m_tnCoords[idx].setIsHanging( true );
+
+            }
+
+          }
+
           for( int idx = m_uiLocalNodeBegin; idx < m_uiLocalNodeEnd; idx++ ) {
 
-            if( isValidNode[idx] == 1 ) {
+            if( isValidNode[idx] != 0 ) {
 
               myNewTNCoords.push_back( m_tnCoords[idx] );
 
@@ -378,8 +293,22 @@ namespace ot
             }
 
           }
-
+            
           this->_constructInner(myNewTNCoords, m_sm, m_gm, order, this->m_treePartFront, this->m_treePartBack, isActive, comm, activeComm);
+
+          m_totalSendSz = computeTotalSendSz(m_sm);
+          m_totalRecvSz = totalRecvSz(m_gm);
+          m_numDestNeighbors = m_sm.m_sendProc.size();
+          m_numSrcNeighbors = m_gm.m_recvProc.size();
+
+          const DA<dim> &ghostExchange = *this;
+          m_ghostedNodeOwnerElements = getNodeElementOwnership(
+            m_uiGlobalElementBegin,
+            inDistTree.getTreePartFiltered(),
+            m_tnCoords,
+            order,
+            ghostExchange);
+
         }
 
       }
@@ -446,7 +375,42 @@ namespace ot
           ghostedNodeList.data(),
           octList.data(),
           octList.size(),
-          (octList.size() ? octList.front() : dummyOctant<dim>()),
+          (octLisstd::vector<int> sm_m_map_validity( m_sm.m_map.size(), 0 );
+
+          int currOffset = 0;
+
+          for( int idx = 0; idx < m_sm.m_sendProc.size(); idx++ ) {
+
+            int sendCount = m_sm.sendCounts[idx];
+            int sendOffset = m_sm.m_sendOffsets[idx];
+
+            int currCount = 0;
+
+            for( int sIdx = 0; sIdx < sendCount; sIdx++ ) {
+
+              int localRank = m_sm.m_map[ sendOffset + sIdx ];
+              sm_m_map_validity[ sIdx ] = isValidNode[ m_uiLocalNodeBegin + localRank ];
+
+              if( sm_m_map_validity[ sIdx ] ) {
+                currCount += 1;
+              }
+
+            }
+            
+            m_sm.m_sendOffsets[idx] = currOffset;
+            m_sm.m_sendCounts[idx] = currCount;
+
+            currOffset += currCount;
+
+          }
+
+          for( int idx = sm_m_map_validity.size() - 1; idx >= 0; idx-- ) {
+          
+            if( sm_m_map_validity[idx] == 0 ) {
+                m_sm.erase( m_sm.begin() + idx );
+            }
+          
+          }t.size() ? octList.front() : dummyOctant<dim>()),
           (octList.size() ? octList.back() : dummyOctant<dim>())
           );
 
@@ -487,6 +451,118 @@ namespace ot
       ghostExchange.readFromGhostEnd(ghostedOwners.data(), 1);
 
       return ghostedOwners;
+    }
+
+    template<unsigned int dim>
+    void DA<dim>::modifyScatterMap( const vector<int>& isValidNode ) {
+
+      std::vector<int> sm_m_map_validity( m_sm.m_map.size(), 0 );
+
+      int currOffset = 0;
+
+      for( int idx = 0; idx < m_sm.m_sendProc.size(); idx++ ) {
+
+        int sendCount = m_sm.sendCounts[idx];
+        int sendOffset = m_sm.m_sendOffsets[idx];
+
+        int currCount = 0;
+
+        for( int sIdx = 0; sIdx < sendCount; sIdx++ ) {
+
+          int localRank = m_sm.m_map[ sendOffset + sIdx ];
+          sm_m_map_validity[ sIdx ] = isValidNode[ m_uiLocalNodeBegin + localRank ];
+
+          if( sm_m_map_validity[ sIdx ] != 0 ) {
+            currCount += 1;
+          }
+
+        }
+        
+        m_sm.m_sendOffsets[idx] = currOffset;
+        m_sm.m_sendCounts[idx] = currCount;
+
+        currOffset += currCount;
+
+      }
+
+      for( int idx = sm_m_map_validity.size() - 1; idx >= 0; idx-- ) {
+      
+        if( sm_m_map_validity[idx] == 0 ) {
+            m_sm.erase( m_sm.begin() + idx );
+        }
+      
+      }
+
+    }
+
+    template<unsigned int dim>
+    void modifyGatherMap( const vector<int>& isValidNode, int newLocalSize ) {
+      
+      int procIdx = par::mpi_comm_rank( activeComm );
+
+      int rprocIdx = 0;
+
+      int tIdx = 0;
+
+      int currOffset = 0;
+
+      while( m_gm.m_recvProc[ rprocIdx ] < procIdx ) {
+
+        int recvCount = m_gm.m_recvCounts[ rprocIdx ];
+        int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
+        int currCount = 0;
+
+        for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
+
+          if( isValidNode[ recvOffset + lIdx ] != 0 ) {
+
+            currCount += 1;
+
+          }
+
+        }
+
+        m_gm.m_recvCounts[ rprocIdx ] = currCount;
+        m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
+
+        currOffset += currCount;
+
+        rprocIdx += 1;
+
+      }
+
+      m_gm.m_locCount = newLocalSz;
+      m_gm.m_locOffset = currOffset;
+
+      currOffset += newLocalSz;
+
+      while( rprocIdx < m_gm.m_recvProc.size() ) {
+
+        int recvCount = m_gm.m_recvCounts[ rprocIdx ];
+        int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
+        int currCount = 0;
+
+        for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
+
+          if( isValidNode[ recvOffset + lIdx ] != 0 ) {
+
+            currCount += 1;
+
+          }
+
+        }
+
+        m_gm.m_recvCounts[ rprocIdx ] = currCount;
+        m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
+
+        currOffset += currCount;
+
+        rprocIdx += 1;
+
+      }
+
+      m_gm.m_totalCount = m_gm.m_recvOffsets.back() + 1;
+
     }
 
     template <typename C, unsigned dim>
