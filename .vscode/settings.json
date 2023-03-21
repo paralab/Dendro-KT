@@ -23,6 +23,12 @@
     },
     "files.associations": {
         "*.tcc": "cpp",
-        "array": "cpp"
+        "array": "cpp",
+        "bitset": "cpp",
+        "forward_list": "cpp",
+        "functional": "cpp",
+        "fstream": "cpp",
+        "istream": "cpp",
+        "streambuf": "cpp"
     }
 }
