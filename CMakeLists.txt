@@ -140,6 +140,11 @@ else()
     add_definitions(-DDENDRO_VTU_ASCII)
 endif()
 
+# Add the Tracy profiler.
+option(TRACY_ENABLE "" ON)
+### option(TRACY_ON_DEMAND "" ON)
+add_subdirectory(external/tracy)
+# For targets using tracy:  target_link_libraries(<TARGET> PUBLIC TracyClient)
 
 
 set(DENDRO_KT_INC include/dendro.h
@@ -548,11 +553,12 @@ set(SRC_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/heatVec.h
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/heatVec.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/heatMat.cpp)
-add_executable(matvecBenchAdaptive ${SRC_FILES})
+add_executable(matvecBenchAdaptive ${SRC_FILES} external/tracy/public/TracyClient.cpp)
 target_include_directories(matvecBenchAdaptive PUBLIC ${MPI_INCLUDE_PATH}
                                               ${CMAKE_CURRENT_SOURCE_DIR}/bench/include
                                               ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
 target_link_libraries(matvecBenchAdaptive dendroKT ${MPI_LIBRARIES} m)
+target_link_libraries(matvecBenchAdaptive PUBLIC TracyClient)
 
 
 ## matvec_bench_channel (./matvecBenchChannel)
