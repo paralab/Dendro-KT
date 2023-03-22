@@ -43,6 +43,10 @@ namespace fem
   template <typename da>
   using EleOpTForMiddleNode = std::function<void( const da* in, da *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const unsigned int eleOrder )>;
 
+  template <typename da>
+  /// using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, double *coords, double scale)>;
+  using EleOpTWithNodeConf = std::function<void(const da *in, da *out, unsigned int ndofs, const std::bitset<intPow( eleOrder + 2, dim )> nodeConf, const double *coords, double scale, bool isElementBoundary)>;
+
 
     /**
      * @brief : mesh-free matvec
@@ -103,6 +107,93 @@ namespace fem
         std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
     }
 
+    template <typename T, typename TN, typename RE>
+    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, int version)
+    /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
+    {
+
+      if( version == 0 ) {
+        matvec( vecIn, vecOut, ndofs, coords, sz, treePartPtr, treePartSz, partFront, partBack, eleOp, scale, refElement );
+      }
+      else if( version == 1 ) {
+
+        // Initialize output vector to 0.
+        std::fill(vecOut, vecOut + ndofs*sz, 0);
+
+        using C = typename TN::coordType;  // If not unsigned int, error.
+        constexpr unsigned int dim = ot::coordDim((TN*){});
+        const unsigned int eleOrder = refElement->getOrder();
+        const unsigned int npe = intPow(eleOrder+1, dim);
+
+        ot::MatvecBase<dim, T> treeloop(sz, ndofs, eleOrder, coords, vecIn, treePartPtr, treePartSz, partFront, partBack);
+        std::vector<T> leafResult(ndofs*npe, 0.0);
+
+        std::unordered_set<int> vertexAndMiddleNodeSet;
+        refElement->populateSecondOrderVertexSet( vertexAndMiddleNodeSet );
+
+        if( dim == 2 )
+          vertexAndMiddleNodeSet.insert( 4 );
+        else if( dim == 3 )
+          vertexAndMiddleNodeSet.insert( 13 );
+
+        while (!treeloop.isFinished())
+        {
+          if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf( version ))
+          {
+
+  #ifdef DENDRO_KT_MATVEC_BENCH_H
+            bench::t_elemental.start();
+  #endif
+
+            const TreeNode<unsigned int, dim>* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
+            const int numNodes = treeloop.subtreeInfo().getNumNodesIn();
+            const TreeNode<unsigned int, dim>& currTree = treeloop.subtreeInfo().getCurrentSubtree();
+
+            leafResult.resize( ndofs*numNodes );
+            std::fill( leafResult.begin(), leaResult.end(), 0.0 );
+
+            std::bitset< intPow( eleOrder + 2, dim ) > nodeConf;
+
+            for( int idx = 0; idx < numNodes; idx++ ) {
+              const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
+                                                           nodeCoords[nIdx],
+                                                           eleOrder );
+
+              if( vertexAndMiddleNodeSet.find( nodeRank ) == vertexAndMiddleNodeSet.end() ) {
+
+                nodeConf |= 1 << nodeRank;
+
+              }
+            }
+
+            const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
+            const T * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
+
+            eleOpWithNodeConf(nodeValsFlat, &(*leafResult.begin()), ndofs, nodeConf, nodeCoordsFlat, scale, treeloop.subtreeInfo().isElementBoundary());
+
+            treeloop.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
+
+  #ifdef DENDRO_KT_MATVEC_BENCH_H
+            bench::t_elemental.stop();
+  #endif
+
+            treeloop.next();
+          }
+          else
+            treeloop.step();
+        }
+
+        size_t writtenSz = treeloop.finalize(vecOut);
+
+        if (sz > 0 && writtenSz == 0)
+          std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
+      }
+      else {
+        throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
+      }
+    }
+
+
 
     template <typename T, typename TN, typename RE>
     void matvecForVertexNode( T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForVertices<T> eleOp, double scale, const RE* refElement)
@@ -121,28 +212,7 @@ namespace fem
       std::vector<T> leafResult(ndofs*npe, 0);
 
       std::unordered_set<int> vertexSet;
-      std::array<int, 2> vals{ 0, 2 };
-
-      if( dim == 3 ) {
-        for( auto& idx0: vals ) {
-          for( auto& idx1: vals ) {
-            for( auto& idx2: vals ) {
-
-              vertexSet.insert( idx2*1 + idx1*3 + idx0*9 );
-
-            }
-          }
-        } 
-      }
-      else if( dim == 2 ) {
-
-        for( auto& idx0: vals ) {
-          for( auto& idx1: vals ) {
-              vertexSet.insert( idx1*3 + idx0*1 );
-          }
-        }
-
-      }
+      refElement.populateSecondOrderVertexSet( vertexSet );
 
       while (!treeloop.isFinished())
       {

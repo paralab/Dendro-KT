@@ -20,6 +20,7 @@
 #include <vector>
 #include <iomanip>
 #include "interpMatrices.h"
+#include <unordered_set>
 template <typename T>
 void printArray_1D(const T *a, int length)
 {
@@ -605,6 +606,32 @@ class RefElement
         ///     std::cout << "[refel][error]: Invalid child number specified for 1D interpolation. " << std::endl;
         ///     break;
         /// }
+    }
+
+    void populateSecondOrderVertexSet( std::unordered_set<int>& vertexSet ) {
+
+      std::unordered_set<int> vertexSet;
+      std::array<int, 2> vals{ 0, 2 };
+
+      if( m_uiDimension == 3 ) {
+        for( auto& idx0: vals ) {
+          for( auto& idx1: vals ) {
+            for( auto& idx2: vals ) {
+
+              vertexSet.insert( idx2*1 + idx1*3 + idx0*9 );
+
+            }
+          }
+        } 
+      }
+      else if( dim == 2 ) {
+        for( auto& idx0: vals ) {
+          for( auto& idx1: vals ) {
+              vertexSet.insert( idx1*3 + idx0*1 );
+          }
+        }
+      }
+
     }
 
     /**

@@ -96,6 +96,8 @@ namespace ot
    *     polymorphism, thus avoiding virtual class methods.
    */
 
+  const int versionNumber = 1;
+
   template <typename ...Types>
   class Inputs { };
 
@@ -376,7 +378,7 @@ namespace ot
       {
         static bool reentry = false;
         if (!reentry && (reentry = true))
-          asConcreteType().topDownNodes(parentFrame, extantChildren);
+          asConcreteType().topDownNodes(parentFrame, extantChildren, ot::versionNumber);
         else
           fprintf(stderr, "Warning! NotImplemented topDownNodes() for type %s\n", typeid(asConcreteType()).name());
         reentry = false;
@@ -398,7 +400,7 @@ namespace ot
       {
         static bool reentry = false;
         if (!reentry && (reentry = true))
-          asConcreteType().bottomUpNodes(parentFrame, extantChildren);
+          asConcreteType().bottomUpNodes(parentFrame, extantChildren, ot::versionNumber);
         else
           fprintf(stderr, "Warning! NotImplemented bottomUpNodes() for type %s\n", typeid(asConcreteType()).name());
         reentry = false;

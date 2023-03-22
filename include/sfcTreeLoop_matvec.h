@@ -243,6 +243,36 @@ namespace ot
               <= BaseT::getCurrentSubtree().getLevel();
       }
 
+      bool isLeaf( int version ) const
+      {
+        if( version == 0 ) {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel
+              == BaseT::getCurrentSubtree().getLevel();
+        }
+        else if( version == 1 ) {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeNodeCount < 2*m_eleOrder + 1;
+        }
+        else {
+          throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
+        }
+
+      }
+      bool isLeafOrLower( int version ) const
+      {
+
+        if( version == 0 ) {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeFinestLevel
+              <= BaseT::getCurrentSubtree().getLevel();
+        }
+        else if( version == 1 ) {
+          return BaseT::getCurrentFrame().mySummaryHandle.m_subtreeNodeCount < 2*m_eleOrder + 1;
+        }
+        else {
+        throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
+        }
+
+      }
+
       static MatvecBaseSummary<dim> generate_node_summary(
           const TreeNode<unsigned int, dim> *begin,
           const TreeNode<unsigned int, dim> *end);
@@ -264,6 +294,8 @@ namespace ot
     protected:
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
       void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, int version);
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, int version);
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
