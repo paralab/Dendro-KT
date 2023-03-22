@@ -264,16 +264,6 @@ namespace ot
 
           std::vector<TreeNode<C, dim>> myNewTNCoords;
 
-          for( int idx = 0; idx < m_uiTotalNodalSz; idx++ ) {
-
-            if( isValidNode[idx] < 0 ) {
-
-              m_tnCoords[idx].setIsHanging( true );
-
-            }
-
-          }
-
           for( int idx = m_uiLocalNodeBegin; idx < m_uiLocalNodeEnd; idx++ ) {
 
             if( isValidNode[idx] != 0 ) {

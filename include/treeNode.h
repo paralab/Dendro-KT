@@ -62,10 +62,6 @@ namespace ot {
          * @note false unless previously set (or copied after setting) setIsOnTreeBdry(). */
         bool m_isOnTreeBdry;
 
-        bool m_isMiddleNode;
-
-        bool m_isHangingNode;
-
         // m_isOnTreeBdry is just a tag.
         // Not computed automatically by TreeNode.
 
@@ -161,10 +157,6 @@ namespace ot {
 
       /**@brief Returns the greatest depth at which the other node shares an ancestor.*/
       unsigned int getCommonAncestorDepth(const TreeNode &other) const;
-
-      bool getIsHanging() const { return m_isHangingNode; }
-
-      bool getIsMiddle() const { return m_isMiddleNode; }
 
       bool setIsHanging( bool isHanging ): m_isHangingNode{ isHangingNode } {}
 
