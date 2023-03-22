@@ -14,6 +14,7 @@
 #include "nsort.h"    // TNPoint
 
 #include "sfcTreeLoop_matvec.h"
+#include "sfcTreeLoop_matvec_io.h"
 
 #include<iostream>
 #include<unordered_set>
@@ -37,15 +38,15 @@ namespace fem
   /// using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, double *coords, double scale)>;
   using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, const double *coords, double scale, bool isElementBoundary)>;
 
-  template <typename da>
-  using EleOpTForVertices = std::function<void( da *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const unsigned int eleOrder )>;
+  template <typename da, typename TN>
+  using EleOpTForVertices = std::function<void( da *out, unsigned int ndofs, const TN& leafOctant, const TN* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks,  const unsigned int eleOrder )>;
 
-  template <typename da>
-  using EleOpTForMiddleNode = std::function<void( const da* in, da *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const unsigned int eleOrder )>;
+  template <typename da, typename TN>
+  using EleOpTForMiddleNode = std::function<void( const da* in, da *out, unsigned int ndofs, const TN& leafOctant, const TN* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )>;
 
   template <typename da>
   /// using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, double *coords, double scale)>;
-  using EleOpTWithNodeConf = std::function<void(const da *in, da *out, unsigned int ndofs, const std::bitset<intPow( eleOrder + 2, dim )> nodeConf, const double *coords, double scale, bool isElementBoundary)>;
+  using EleOpTWithNodeConf = std::function<void(const da *in, da *out, unsigned int ndofs, const std::vector<bool>& nodeConf, const double *coords, double scale, bool isElementBoundary, const int eleOrder)>;
 
 
     /**
@@ -108,7 +109,7 @@ namespace fem
     }
 
     template <typename T, typename TN, typename RE>
-    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement, int version)
+    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTWithNodeConf<T> eleOp, double scale, const RE* refElement, int version)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
 
@@ -145,25 +146,22 @@ namespace fem
             bench::t_elemental.start();
   #endif
 
-            const TreeNode<unsigned int, dim>* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
+            const TN* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
             const int numNodes = treeloop.subtreeInfo().getNumNodesIn();
-            const TreeNode<unsigned int, dim>& currTree = treeloop.subtreeInfo().getCurrentSubtree();
+            const TN& currTree = treeloop.subtreeInfo().getCurrentSubtree();
 
             leafResult.resize( ndofs*numNodes );
-            std::fill( leafResult.begin(), leaResult.end(), 0.0 );
+            std::fill( leafResult.begin(), leafResult.end(), 0.0 );
 
-            std::bitset< intPow( eleOrder + 2, dim ) > nodeConf;
+            std::vector<bool> nodeConf( std::pow( eleOrder + 2, dim ), false );
 
             for( int idx = 0; idx < numNodes; idx++ ) {
-              const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
-                                                           nodeCoords[nIdx],
+              const unsigned int nodeRank = ot::TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
+                                                           nodeCoords[idx],
                                                            eleOrder );
 
-              if( vertexAndMiddleNodeSet.find( nodeRank ) == vertexAndMiddleNodeSet.end() ) {
-
-                nodeConf |= 1 << nodeRank;
-
-              }
+              nodeConf[nodeRank] = true;
+              
             }
 
             const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
@@ -196,7 +194,7 @@ namespace fem
 
 
     template <typename T, typename TN, typename RE>
-    void matvecForVertexNode( T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForVertices<T> eleOp, double scale, const RE* refElement)
+    void matvecForVertexNode( T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForVertices<T, TN> eleOp, double scale, const RE* refElement)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
       // Initialize output vector to 0.
@@ -207,12 +205,12 @@ namespace fem
       const unsigned int eleOrder = refElement->getOrder();
       const unsigned int npe = intPow(eleOrder+1, dim);
 
-      ot::MatvecBaseOut<dim, T> treeloop(sz, ndofs, eleOrder, false, 0, coords, treePartPtr, treePartSz, partFront, partBack);
+      ot::MatvecBaseOut<dim, T, false> treeloop(sz, ndofs, eleOrder, false, 0, coords, treePartPtr, treePartSz, partFront, partBack);
      
       std::vector<T> leafResult(ndofs*npe, 0);
 
       std::unordered_set<int> vertexSet;
-      refElement.populateSecondOrderVertexSet( vertexSet );
+      refElement->populateSecondOrderVertexSet( vertexSet );
 
       while (!treeloop.isFinished())
       {
@@ -223,11 +221,11 @@ namespace fem
           bench::t_elemental.start();
 #endif
 
-          const TreeNode<unsigned int, dim>* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
+          const TN* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
 
           const int numNodes = treeloop.subtreeInfo().getNumNodesIn();
 
-          const TreeNode<unsigned int, dim>& currTree = treeloop.subtreeInfo().getCurrentSubtree();
+          const TN& currTree = treeloop.subtreeInfo().getCurrentSubtree();
 
           // BaseT::getCurrentFrame().template getMyInputHandle<0>(),
           //                    BaseT::getCurrentSubtree(),
@@ -258,7 +256,7 @@ namespace fem
     }
 
     template <typename T, typename TN, typename RE>
-    void matvecForMiddleNode(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForMiddleNode<T> eleOp, double scale, const RE* refElement)
+    void matvecForMiddleNode(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForMiddleNode<T, TN> eleOp, double scale, const RE* refElement)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
 
@@ -280,21 +278,13 @@ namespace fem
           bench::t_elemental.start();
 #endif
 
-          const TreeNode<unsigned int, dim>* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
+          const TN* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
 
-          const TreeNode<unsigned int, dim>& currTree = treeloop.subtreeInfo().getCurrentSubtree();
+          const TN& currTree = treeloop.subtreeInfo().getCurrentSubtree();
 
           const T * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
 
-          // BaseT::getCurrentFrame().template getMyInputHandle<0>(),
-          //                    BaseT::getCurrentSubtree(),
-
           eleOp(nodeValsFlat, &(*leafResult.begin()), ndofs, currTree, nodeCoords, eleOrder);
-
-          // const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
-          //       childSubtreesSFC[child_sfc],
-          //       myNodes[nIdx],
-          //       m_eleOrder );
 
           treeloop.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
 

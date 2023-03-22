@@ -19,6 +19,7 @@
 #include "octUtils.h"
 #include "distTree.h"
 #include "lazy.hpp"
+#include "FEM/include/matvec.h"
 
 #include "filterFunction.h"
 
@@ -321,7 +322,7 @@ namespace ot
            */
           DA(const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
           
-          DA(const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3, int version = 0);
+          DA(const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, int version, size_t grainSz = 100, double sfc_tol = 0.3);
 
           // Construct multiple DA for multigrid.
           static void multiLevelDA(std::vector<DA> &outDAPerStratum, const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
@@ -369,12 +370,12 @@ namespace ot
           /** @brief Modifies and adjusts scatter map after identification of unneccessary nodes in the 
            * degree 2 mesh. This method is used within the new framework used to handle hanging nodes.
           */
-          void modifyScatterMap( const vector<int>& isValidNode );
+          void modifyScatterMap( const std::vector<int>& isValidNode );
 
           /** @brief Modifies and adjusts gather map after identification of unneccessary nodes in the 
            * degree 2 mesh. This method is used within the new framework used to handle hanging nodes.
           */
-          void modifyGatherMap( const vector<int>& isValidNode, int newLocalSize );
+          void modifyGatherMap( const std::vector<int>& isValidNode, int newLocalSize, int procIdx );
 
           /**@brief returns the local element size*/
           inline size_t getLocalElementSz() const { return m_uiLocalElementSz; }

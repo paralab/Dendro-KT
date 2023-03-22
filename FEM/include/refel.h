@@ -608,9 +608,8 @@ class RefElement
         /// }
     }
 
-    void populateSecondOrderVertexSet( std::unordered_set<int>& vertexSet ) {
+    void populateSecondOrderVertexSet( std::unordered_set<int>& vertexSet ) const {
 
-      std::unordered_set<int> vertexSet;
       std::array<int, 2> vals{ 0, 2 };
 
       if( m_uiDimension == 3 ) {
@@ -624,14 +623,16 @@ class RefElement
           }
         } 
       }
-      else if( dim == 2 ) {
+      else if( m_uiDimension == 2 ) {
         for( auto& idx0: vals ) {
           for( auto& idx1: vals ) {
               vertexSet.insert( idx1*3 + idx0*1 );
           }
         }
       }
-
+      else {
+        throw std::invalid_argument( "populateSecondOrderVertexSet() not supported for more than 3 dimensions" );
+      }
     }
 
     /**

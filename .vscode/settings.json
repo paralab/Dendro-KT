@@ -29,6 +29,7 @@
         "functional": "cpp",
         "fstream": "cpp",
         "istream": "cpp",
-        "streambuf": "cpp"
+        "streambuf": "cpp",
+        "tuple": "cpp"
     }
 }

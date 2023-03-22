@@ -158,10 +158,6 @@ namespace ot {
       /**@brief Returns the greatest depth at which the other node shares an ancestor.*/
       unsigned int getCommonAncestorDepth(const TreeNode &other) const;
 
-      bool setIsHanging( bool isHanging ): m_isHangingNode{ isHangingNode } {}
-
-      bool setIsMiddle( bool isMiddle ): m_isMiddleNode{ isMiddleNode } {}
-
       /**
        @author Masado Ishii
         */

@@ -604,7 +604,7 @@ namespace ot
     }
 
     
-    Perform any needed interpolations.
+    // Perform any needed interpolations.
     
     std::fill(m_parentNodeBdry.begin(), m_parentNodeBdry.end(), false);
     if (thereAreHangingNodes)
@@ -1129,7 +1129,7 @@ namespace ot
     // ========================================================================
 
     if( version == 0 ) {
-      MatvecBase<dim, NodeT>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren );
+      MatvecBase<dim, NodeT>::bottomUpNodes( parentFrame, extantChildren );
     }
     else if( version == 1 ) {
 

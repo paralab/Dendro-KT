@@ -96,8 +96,6 @@ namespace ot
    *     polymorphism, thus avoiding virtual class methods.
    */
 
-  const int versionNumber = 1;
-
   template <typename ...Types>
   class Inputs { };
 
@@ -258,7 +256,7 @@ namespace ot
       }
 
       // step()
-      bool step()
+      bool step( const int version = 0 )
       {
         if (m_stack.back().m_isPre)
         {
@@ -269,7 +267,7 @@ namespace ot
           FrameT &parentFrame = m_stack.back();
           parentFrame.m_extantChildren = 0u;   /*(1u << (1u << dim)) - 1;*/
           // parentFrame must also contain treeSplitters so that topDownNodes can use it.
-          topDownNodes(parentFrame, &parentFrame.m_extantChildren);  // Free to resize children buffers.
+          topDownNodes(parentFrame, &parentFrame.m_extantChildren, version);  // Free to resize children buffers.
 
           parentFrame.m_numExtantChildren = 0;
 
@@ -299,16 +297,16 @@ namespace ot
             // Enter the new top frame, which represents the 0th child.
             parent2Child(*m_stack.back().m_parentFrame, m_stack.back());
           else
-            bottomUpNodes(parentFrame, parentFrame.m_extantChildren);
+            bottomUpNodes(parentFrame, parentFrame.m_extantChildren, version);
 
           return isPre();
         }
         else         // After a recursive call, can't step immediately.
-          return next();
+          return next( version );
       }
 
       // next()
-      bool next()
+      bool next( const int version = 0 )
       {
         if (m_stack.size() > 1)
         {
@@ -320,7 +318,7 @@ namespace ot
             // Enter the new top frame, which represents some other child.
             parent2Child(*m_stack.back().m_parentFrame, m_stack.back());
           else
-            bottomUpNodes(m_stack.back(), m_stack.back().m_extantChildren);
+            bottomUpNodes(m_stack.back(), m_stack.back().m_extantChildren, version);
         }
         else
           m_stack.back().m_isPre = false;
@@ -374,11 +372,11 @@ namespace ot
        *
        *  Utilities are provided to identify and iterate over incident children.
        */
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
       {
         static bool reentry = false;
         if (!reentry && (reentry = true))
-          asConcreteType().topDownNodes(parentFrame, extantChildren, ot::versionNumber);
+          asConcreteType().topDownNodes(parentFrame, extantChildren, version);
         else
           fprintf(stderr, "Warning! NotImplemented topDownNodes() for type %s\n", typeid(asConcreteType()).name());
         reentry = false;
@@ -396,11 +394,11 @@ namespace ot
        *
        *  Utilities are provided to identify and iterate over incident children.
        */
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren)
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version)
       {
         static bool reentry = false;
         if (!reentry && (reentry = true))
-          asConcreteType().bottomUpNodes(parentFrame, extantChildren, ot::versionNumber);
+          asConcreteType().bottomUpNodes(parentFrame, extantChildren, version);
         else
           fprintf(stderr, "Warning! NotImplemented bottomUpNodes() for type %s\n", typeid(asConcreteType()).name());
         reentry = false;

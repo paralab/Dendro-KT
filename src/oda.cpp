@@ -108,9 +108,10 @@ namespace ot
      * */
 
 
-    template <unsigned int dim>
-    void elementalComputeVecForVertices( VECType *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
+    template <typename da, typename TN>
+    void elementalComputeVecForVertices( da *out, unsigned int ndofs, const TN& leafOctant, const TN* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
     {
+      constexpr unsigned int dim = ot::coordDim((TN*){});
 
       std::vector<int> posVals( ndofs, 2 );
 
@@ -120,8 +121,6 @@ namespace ot
               TNPoint<unsigned int, dim>::get_lexNodeRank( leafOctant,
                                                            nodeCoords[idx],
                                                            eleOrder );
-
-          assert(nodeRank < npe);
 
         if( vertexRanks.find( nodeRank ) != vertexRanks.end() ) {
 
@@ -133,10 +132,11 @@ namespace ot
 
     }
 
-    template <unsigned int dim>
-    void elementalComputeVecForMiddleNodes( const VECType* in, VECType *out, unsigned int ndofs, const TreeNode<unsigned int, dim>& leafOctant, const TreeNode<unsigned int, dim>* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
+    template <typename da, typename TN>
+    void elementalComputeVecForMiddleNodes( const da* in, da* out, unsigned int ndofs, const TN& leafOctant, const TN* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
     {
       std::vector<int> posVals( ndofs, 2 );
+      constexpr unsigned int dim = ot::coordDim((TN*){});
 
       int middleNodeRank;
 
@@ -153,8 +153,6 @@ namespace ot
               TNPoint<unsigned int, dim>::get_lexNodeRank( leafOctant,
                                                            nodeCoords[idx],
                                                            eleOrder );
-
-          assert(nodeRank < npe);
 
         if( vertexRanks.find( nodeRank ) != vertexRanks.end() ) {
 
@@ -178,7 +176,7 @@ namespace ot
     }
 
     template <unsigned int dim>
-    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, int version) {
+    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, int version, size_t grainSz, double sfc_tol) {
 
       if( version == 0 ) {
         // default implementation behavior for hanging nodes
@@ -205,39 +203,42 @@ namespace ot
 
         if( isActive ) {
 
+          int procIdx = par::mpi_comm_rank( activeComm );
+
           std::vector<VECType> nodeVals( m_uiLocalNodalSz, 0 );
 
           static std::vector<VECType> inGhosted, outGhosted;
-          this->template createVector<VECType>(inGhosted, false, true, ndofs);
-          this->template createVector<VECType>(outGhosted, false, true, ndofs);
+          createVector<VECType>(inGhosted, false, true, ndofs);
+          createVector<VECType>(outGhosted, false, true, ndofs);
           
           std::fill(inGhosted.begin(), inGhosted.end(), 0);
 
           VECType *inGhostedPtr = inGhosted.data();
           VECType *outGhostedPtr = outGhosted.data();
 
-          const std::vector<TreeNode<T, dim>>& currTree = this->m_dist_tree->getTreePartFiltered();
+          const std::vector<TreeNode<C, dim>>& currTree = this->m_dist_tree->getTreePartFiltered();
 
-          fem::matvecForVertexNode(inGhostedPtr, ndofs, tnCoords, getTotalNodalSz(), 
-          &( currTree.cbegin() ), currTree.size(),
+          fem::matvecForVertexNode(inGhostedPtr, ndofs, &( *m_tnCoords.cbegin() ), getTotalNodalSz(), &( *currTree.cbegin() ), currTree.size(),
           *this->getTreePartFront(), *this->getTreePartBack(),
           elementalComputeVecForVertices, scale, this->getReferenceElement());
 
-          this->template writeToGhostsBegin<VECType>(inGhostedPtr, ndofs);
-          this->template writeToGhostsEnd<VECType>(inGhostedPtr, ndofs);
+          DA<dim>::writeToGhostsBegin(inGhostedPtr, ndofs);
+          DA<dim>::writeToGhostsEnd(inGhostedPtr, ndofs);
 
-          fem::matvecForMiddleNode(inGhostedPtr, outGhostedPtr, ndofs, m_tnCoords, m_oda->getTotalNodalSz(), 
-          &( currTree.cbegin() ), currTree.size(),
+          fem::matvecForMiddleNode(inGhostedPtr, outGhostedPtr, ndofs, &( *m_tnCoords.cbegin() ), this->getTotalNodalSz(), 
+          &( *currTree.cbegin() ), currTree.size(),
           *this->getTreePartFront(), *this->getTreePartBack(),
-          elementalComputeVecForVertices, scale, this->getReferenceElement());
+          elementalComputeVecForMiddleNodes, scale, this->getReferenceElement());
 
-          this->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, nodeVals, true, ndofs);
+          auto nodeValsPtr = nodeVals.data();
+
+          DA<dim>::ghostedNodalToNodalVec(outGhostedPtr, nodeValsPtr, true, ndofs);
 
           std::vector<int> isValidNode( m_uiTotalNodalSz, 1 );
 
           for( int ii = 0; ii < m_uiLocalNodalSz; ii++ ) {
 
-            if( std::static_cast<int>( nodeVals[ ii ] == 0 ) ) {
+            if( static_cast<int>( nodeVals[ ii ] ) == 0  ) {
 
               isValidNode[ m_uiLocalNodeBegin + ii ] = 0;
 
@@ -245,8 +246,8 @@ namespace ot
 
           }
 
-          this->template readFromGhostBegin<int>( isValidNode.data(), ndofs );
-          this->template readFromGhostEnd<int>( isValidNode.data(), ndofs );
+          DA<dim>::readFromGhostBegin( isValidNode.data(), ndofs );
+          DA<dim>::readFromGhostEnd( isValidNode.data(), ndofs );
 
           std::vector<int> updatedLocalIndices( m_uiLocalNodalSz, 0 );
 
@@ -260,7 +261,7 @@ namespace ot
 
           DA<dim>::modifyScatterMap( isValidNode );
 
-          DA<dim>::modifyGatherMap( isValidNode, newLocalSz );
+          DA<dim>::modifyGatherMap( isValidNode, newLocalSz, procIdx );
 
           std::vector<TreeNode<C, dim>> myNewTNCoords;
 
@@ -284,7 +285,7 @@ namespace ot
 
           }
             
-          this->_constructInner(myNewTNCoords, m_sm, m_gm, order, this->m_treePartFront, this->m_treePartBack, isActive, comm, activeComm);
+          this->_constructInner(myNewTNCoords, m_sm, m_gm, order, &(this->m_treePartFront), &(this->m_treePartBack), isActive, comm, activeComm);
 
           m_totalSendSz = computeTotalSendSz(m_sm);
           m_totalRecvSz = totalRecvSz(m_gm);
@@ -365,42 +366,7 @@ namespace ot
           ghostedNodeList.data(),
           octList.data(),
           octList.size(),
-          (octLisstd::vector<int> sm_m_map_validity( m_sm.m_map.size(), 0 );
-
-          int currOffset = 0;
-
-          for( int idx = 0; idx < m_sm.m_sendProc.size(); idx++ ) {
-
-            int sendCount = m_sm.sendCounts[idx];
-            int sendOffset = m_sm.m_sendOffsets[idx];
-
-            int currCount = 0;
-
-            for( int sIdx = 0; sIdx < sendCount; sIdx++ ) {
-
-              int localRank = m_sm.m_map[ sendOffset + sIdx ];
-              sm_m_map_validity[ sIdx ] = isValidNode[ m_uiLocalNodeBegin + localRank ];
-
-              if( sm_m_map_validity[ sIdx ] ) {
-                currCount += 1;
-              }
-
-            }
-            
-            m_sm.m_sendOffsets[idx] = currOffset;
-            m_sm.m_sendCounts[idx] = currCount;
-
-            currOffset += currCount;
-
-          }
-
-          for( int idx = sm_m_map_validity.size() - 1; idx >= 0; idx-- ) {
-          
-            if( sm_m_map_validity[idx] == 0 ) {
-                m_sm.erase( m_sm.begin() + idx );
-            }
-          
-          }t.size() ? octList.front() : dummyOctant<dim>()),
+          (octList.size() ? octList.front() : dummyOctant<dim>()),
           (octList.size() ? octList.back() : dummyOctant<dim>())
           );
 
@@ -444,7 +410,7 @@ namespace ot
     }
 
     template<unsigned int dim>
-    void DA<dim>::modifyScatterMap( const vector<int>& isValidNode ) {
+    void DA<dim>::modifyScatterMap( const std::vector<int>& isValidNode ) {
 
       std::vector<int> sm_m_map_validity( m_sm.m_map.size(), 0 );
 
@@ -452,7 +418,7 @@ namespace ot
 
       for( int idx = 0; idx < m_sm.m_sendProc.size(); idx++ ) {
 
-        int sendCount = m_sm.sendCounts[idx];
+        int sendCount = m_sm.m_sendCounts[idx];
         int sendOffset = m_sm.m_sendOffsets[idx];
 
         int currCount = 0;
@@ -478,7 +444,7 @@ namespace ot
       for( int idx = sm_m_map_validity.size() - 1; idx >= 0; idx-- ) {
       
         if( sm_m_map_validity[idx] == 0 ) {
-            m_sm.erase( m_sm.begin() + idx );
+            m_sm.m_map.erase( m_sm.m_map.begin() + idx );
         }
       
       }
@@ -486,10 +452,8 @@ namespace ot
     }
 
     template<unsigned int dim>
-    void modifyGatherMap( const vector<int>& isValidNode, int newLocalSize ) {
+    void DA<dim>::modifyGatherMap( const std::vector<int>& isValidNode, int newLocalSize, int procIdx ) {
       
-      int procIdx = par::mpi_comm_rank( activeComm );
-
       int rprocIdx = 0;
 
       int tIdx = 0;
@@ -521,10 +485,10 @@ namespace ot
 
       }
 
-      m_gm.m_locCount = newLocalSz;
+      m_gm.m_locCount = newLocalSize;
       m_gm.m_locOffset = currOffset;
 
-      currOffset += newLocalSz;
+      currOffset += newLocalSize;
 
       while( rprocIdx < m_gm.m_recvProc.size() ) {
 
