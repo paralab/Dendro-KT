@@ -232,8 +232,8 @@ namespace ot
       }
 
     protected:
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren) {}
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version = 0);
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version = 0) {}
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
@@ -415,8 +415,8 @@ namespace ot
       }
 
     protected:
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren) {}
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version = 0);
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version = 0) {}
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
@@ -638,8 +638,8 @@ namespace ot
       }
 
     protected:
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, int version = 0);
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, int version = 0);
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version = 0);
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version = 0);
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
@@ -905,7 +905,7 @@ namespace ot
   // MatvecBaseCoords topDown
   //
   template <unsigned int dim>
-  void MatvecBaseCoords<dim>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
+  void MatvecBaseCoords<dim>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1143,7 +1143,7 @@ namespace ot
   // MatvecBaseIn topDown
   //
   template <unsigned int dim, typename NodeT, bool p2c>
-  void MatvecBaseIn<dim, NodeT, p2c>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
+  void MatvecBaseIn<dim, NodeT, p2c>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1453,7 +1453,7 @@ namespace ot
   // MavtecBaseOut topDown
   //
   template <unsigned int dim, typename NodeT, bool UseAccumulation>
-  void MatvecBaseOut<dim, NodeT, UseAccumulation>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, int version)
+  void MatvecBaseOut<dim, NodeT, UseAccumulation>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1681,7 +1681,7 @@ namespace ot
 
 
   template <unsigned int dim, typename NodeT, bool UseAccumulation>
-  void MatvecBaseOut<dim, NodeT, UseAccumulation>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, int version )
+  void MatvecBaseOut<dim, NodeT, UseAccumulation>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version )
   {
     /**
      *  Copied from sfcTreeLoop.h:

@@ -80,33 +80,7 @@ namespace ot
     ///     //     Without a change to the interface, we can avoid copying
     ///     //     if we give back the DistTree instead, and let the user
     ///     //     get a const ref to the tree partition.
-    /// }
-
-
-    /**@brief: Constructor for the DA data structures
-      * @param [in] inDistTree : input octree that is already filtered,
-      *                          need to be 2:1 balanced unique sorted octree.
-      *                          Will NOT be emptied during construction of DA.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-      * @note If you have a custom domain decider function, use this overload.
-     * */
-    template <unsigned int dim>
-    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-        : m_refel{dim, order}
-    {
-      constructStratum(inDistTree, stratum, comm, order, grainSz, sfc_tol);
-    }
-
-    /**@brief: Constructor for the DA data structures
-      * @param [in] inDistTree : input octree that is already filtered,
-      *                          need to be 2:1 balanced unique sorted octree.
-      *                          Will NOT be automatically emptied during construction of DA.
-      * @param [in] comm: MPI global communicator for mesh generation.
-      * @param [in] order: order of the element.
-      * @note If you have a custom domain decider function, use this overload.
-     * */
-
+    /// }    
 
     template <typename da, typename TN>
     void elementalComputeVecForVertices( da *out, unsigned int ndofs, const TN& leafOctant, const TN* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
@@ -124,7 +98,7 @@ namespace ot
 
         if( vertexRanks.find( nodeRank ) != vertexRanks.end() ) {
 
-          std::copy_n( posVals, ndofs, &out[ndofs * nodeRank] );
+          std::copy_n( posVals.begin(), ndofs, &out[ndofs * nodeRank] );
         
         }
 
@@ -169,25 +143,35 @@ namespace ot
 
       if( hasHangingNodes ) {
 
-        std::copy_n( posVals, ndofs, &out[ndofs * middleNodeRank] );
+        std::copy_n( posVals.begin(), ndofs, &out[ndofs * middleNodeRank] );
 
       }
 
     }
 
+
+    /**@brief: Constructor for the DA data structures
+      * @param [in] inDistTree : input octree that is already filtered,
+      *                          need to be 2:1 balanced unique sorted octree.
+      *                          Will NOT be emptied during construction of DA.
+      * @param [in] comm: MPI global communicator for mesh generation.
+      * @param [in] order: order of the element.
+      * @note If you have a custom domain decider function, use this overload.
+     * */
+
     template <unsigned int dim>
-    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, MPI_Comm comm, unsigned int order, int version, size_t grainSz, double sfc_tol) {
+    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, int version) {
 
       if( version == 0 ) {
         // default implementation behavior for hanging nodes
-        DA( inDistTree, comm, order, grainSz, sfc_tol);
+         constructStratum(inDistTree, stratum, comm, order, grainSz, sfc_tol);
       }
       else if( version == 1 ) {
         
         int ndofs = 1;
         double scale = 1.0;
 
-        DA( inDistTree, comm, order + 1, grainSz, sfc_tol);
+        constructStratum(inDistTree, stratum, comm, order, grainSz, sfc_tol);
 
         const size_t nActiveEle = inDistTree.getFilteredTreePartSz();
 
@@ -218,17 +202,24 @@ namespace ot
 
           const std::vector<TreeNode<C, dim>>& currTree = this->m_dist_tree->getTreePartFiltered();
 
+          std::function<void(VECType*, unsigned int, const TreeNode<unsigned int, dim>&, const TreeNode<unsigned int, dim>*, const int, const std::unordered_set<int>&, unsigned int)> funcPtr1 = elementalComputeVecForVertices< VECType, TreeNode<unsigned int, dim> >;
+
           fem::matvecForVertexNode(inGhostedPtr, ndofs, &( *m_tnCoords.cbegin() ), getTotalNodalSz(), &( *currTree.cbegin() ), currTree.size(),
           *this->getTreePartFront(), *this->getTreePartBack(),
-          elementalComputeVecForVertices, scale, this->getReferenceElement());
+          funcPtr1, scale, this->getReferenceElement());
 
           DA<dim>::writeToGhostsBegin(inGhostedPtr, ndofs);
           DA<dim>::writeToGhostsEnd(inGhostedPtr, ndofs);
 
+          DA<dim>::readFromGhostBegin( inGhostedPtr, ndofs );
+          DA<dim>::readFromGhostEnd( inGhostedPtr, ndofs );
+
+          std::function<void(const VECType*, VECType*, unsigned int, const TreeNode<unsigned int, dim>&, const TreeNode<unsigned int, dim>*, const int, const std::unordered_set<int>&, const unsigned int)> funcPtr2 = elementalComputeVecForMiddleNodes< VECType, TreeNode<unsigned int, dim> >;
+
           fem::matvecForMiddleNode(inGhostedPtr, outGhostedPtr, ndofs, &( *m_tnCoords.cbegin() ), this->getTotalNodalSz(), 
           &( *currTree.cbegin() ), currTree.size(),
           *this->getTreePartFront(), *this->getTreePartBack(),
-          elementalComputeVecForMiddleNodes, scale, this->getReferenceElement());
+          funcPtr2, scale, this->getReferenceElement());
 
           auto nodeValsPtr = nodeVals.data();
 

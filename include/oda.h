@@ -315,14 +315,12 @@ namespace ot
           /// DA(std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
           /// DA(const std::vector<TreeNode<C,dim>> &inTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
 
-          DA(const DistTree<C, dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz /*= 100*/, double sfc_tol /*= 0.3*/);
-
           /**
            * @brief Construct DA assuming only one level of grid. Delegates to the "stratum" constructor using stratum=0.
            */
           DA(const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);
           
-          DA(const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, int version, size_t grainSz = 100, double sfc_tol = 0.3);
+          DA(const DistTree<C, dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3, int version = 0);
 
           // Construct multiple DA for multigrid.
           static void multiLevelDA(std::vector<DA> &outDAPerStratum, const DistTree<C, dim> &inDistTree, MPI_Comm comm, unsigned int order, size_t grainSz = 100, double sfc_tol = 0.3);

@@ -372,7 +372,7 @@ namespace ot
        *
        *  Utilities are provided to identify and iterate over incident children.
        */
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version = 0)
       {
         static bool reentry = false;
         if (!reentry && (reentry = true))
@@ -394,7 +394,7 @@ namespace ot
        *
        *  Utilities are provided to identify and iterate over incident children.
        */
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version)
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version = 0)
       {
         static bool reentry = false;
         if (!reentry && (reentry = true))

@@ -73,7 +73,7 @@ class DummySubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outpu
 
     DummySubclass() : BaseT(nullptr, 0, m_uiMaxDepth) {}
 
-    void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
+    void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren, const int version = 0)
     {
       if (this->getCurrentSubtree().getLevel() < 2)
         *extantChildren = (1 << (1u << dim)) - 1;  // All children.
@@ -85,7 +85,7 @@ class DummySubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<double>, ot::Outpu
                 << "\n";
     }
 
-    void bottomUpNodes(FrameT &parentFrame, ot::ExtantCellFlagT extantChildren)
+    void bottomUpNodes(FrameT &parentFrame, ot::ExtantCellFlagT extantChildren, const int version = 0)
     {
       std::cout << "Bottom-up nodes on \t" << this->getCurrentSubtree() << "\n";
     }
@@ -149,7 +149,7 @@ class TopDownSubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<uns
   public:
     TopDownSubclass() : BaseT(nullptr, 0, m_uiMaxDepth) {}
 
-    void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren)
+    void topDownNodes(FrameT &parentFrame, ot::ExtantCellFlagT *extantChildren, const int version = 0)
     {
       ot::sfc_tree_utils::topDownNodes(parentFrame, extantChildren);
 
@@ -159,7 +159,7 @@ class TopDownSubclass : public ot::SFC_TreeLoop<dim, ot::Inputs<ot::TreeNode<uns
         *extantChildren = 0u;
     }
 
-    void bottomUpNodes(FrameT &parentFrame, ot::ExtantCellFlagT extantChildren)
+    void bottomUpNodes(FrameT &parentFrame, ot::ExtantCellFlagT extantChildren, const int version = 0)
     {
     }
 

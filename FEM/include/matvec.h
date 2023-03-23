@@ -161,7 +161,7 @@ namespace fem
                                                            eleOrder );
 
               nodeConf[nodeRank] = true;
-              
+
             }
 
             const double * nodeCoordsFlat = treeloop.subtreeInfo().getNodeCoords();
@@ -175,10 +175,10 @@ namespace fem
             bench::t_elemental.stop();
   #endif
 
-            treeloop.next();
+            treeloop.next( version );
           }
           else
-            treeloop.step();
+            treeloop.step( version );
         }
 
         size_t writtenSz = treeloop.finalize(vecOut);
@@ -269,6 +269,9 @@ namespace fem
      
       std::vector<T> leafResult(ndofs*npe, 0);
 
+      std::unordered_set<int> vertexSet;
+      refElement->populateSecondOrderVertexSet( vertexSet );
+
       while (!treeloop.isFinished())
       {
         if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf())
@@ -284,7 +287,9 @@ namespace fem
 
           const T * nodeValsFlat = treeloop.subtreeInfo().readNodeValsIn();
 
-          eleOp(nodeValsFlat, &(*leafResult.begin()), ndofs, currTree, nodeCoords, eleOrder);
+          const int numNodes = treeloop.subtreeInfo().getNumNodesIn();
+
+          eleOp(nodeValsFlat, &(*leafResult.begin()), ndofs, currTree, nodeCoords, numNodes, vertexSet, eleOrder);
 
           treeloop.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
 
