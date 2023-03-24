@@ -128,15 +128,11 @@ namespace ot
                                                            nodeCoords[idx],
                                                            eleOrder );
 
-        if( vertexRanks.find( nodeRank ) != vertexRanks.end() ) {
+        std::copy_n( &in[ndofs * nodeRank], ndofs, &out[ndofs * nodeRank] );
 
-          std::copy_n( &in[ndofs * nodeRank], ndofs, &out[ndofs * nodeRank] );
-        
-        }
-        else if( in[ ndofs * nodeRank ] > 0 ) {
+        if( vertexRanks.find( nodeRank ) == vertexRanks.end() && in[ ndofs * nodeRank ] > 0 ) {
 
           hasHangingNodes = true;
-          out[ ndofs * nodeRank ] = INT_MIN;
 
         }
       }
@@ -189,8 +185,6 @@ namespace ot
 
           int procIdx = par::mpi_comm_rank( activeComm );
 
-          std::vector<VECType> nodeVals( m_uiLocalNodalSz, 0 );
-
           static std::vector<VECType> inGhosted, outGhosted;
           createVector<VECType>(inGhosted, false, true, ndofs);
           createVector<VECType>(outGhosted, false, true, ndofs);
@@ -221,24 +215,17 @@ namespace ot
           *this->getTreePartFront(), *this->getTreePartBack(),
           funcPtr2, scale, this->getReferenceElement());
 
-          auto nodeValsPtr = nodeVals.data();
-
-          DA<dim>::ghostedNodalToNodalVec(outGhostedPtr, nodeValsPtr, true, ndofs);
-
           std::vector<int> isValidNode( m_uiTotalNodalSz, 1 );
 
-          for( int ii = 0; ii < m_uiLocalNodalSz; ii++ ) {
+          for( int ii = 0; ii < m_uiTotalNodalSz; ii++ ) {
 
-            if( static_cast<int>( nodeVals[ ii ] ) == 0  ) {
+            if( static_cast<int>( outGhostedPtr[ ii ] ) == 0  ) {
 
-              isValidNode[ m_uiLocalNodeBegin + ii ] = 0;
+              isValidNode[ ii ] = 0;
 
             }
 
           }
-
-          DA<dim>::readFromGhostBegin( isValidNode.data(), ndofs );
-          DA<dim>::readFromGhostEnd( isValidNode.data(), ndofs );
 
           std::vector<int> updatedLocalIndices( m_uiLocalNodalSz, 0 );
 
@@ -250,9 +237,13 @@ namespace ot
 
           int newLocalSz = updatedLocalIndices.back() + 1;
 
-          DA<dim>::modifyScatterMap( isValidNode );
+          if( m_sm.m_map.size() > 0 ) {
+            DA<dim>::modifyScatterMap( isValidNode );
+          }
 
-          DA<dim>::modifyGatherMap( isValidNode, newLocalSz, procIdx );
+          if( m_gm.m_recvProc.size() > 0 ) {
+            DA<dim>::modifyGatherMap( isValidNode, newLocalSz, procIdx );
+          }
 
           std::vector<TreeNode<C, dim>> myNewTNCoords;
 
