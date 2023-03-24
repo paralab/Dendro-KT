@@ -44,9 +44,9 @@ namespace fem
   template <typename da, typename TN>
   using EleOpTForMiddleNode = std::function<void( const da* in, da *out, unsigned int ndofs, const TN& leafOctant, const TN* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )>;
 
-  template <typename da>
+  template <typename da, unsigned int dim>
   /// using EleOpT = std::function<void(const da *in, da *out, unsigned int ndofs, double *coords, double scale)>;
-  using EleOpTWithNodeConf = std::function<void(const da *in, da *out, unsigned int ndofs, const std::vector<bool>& nodeConf, const double *coords, double scale, bool isElementBoundary, const int eleOrder)>;
+  using EleOpTWithNodeConf = std::function<void(const da *in, da *out, unsigned int ndofs, const std::bitset< intPow( 3, dim ) >& nodeConf, const double *coords, double scale, bool isElementBoundary, const int eleOrder)>;
 
 
     /**
@@ -108,8 +108,8 @@ namespace fem
         std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
     }
 
-    template <typename T, typename TN, typename RE>
-    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTWithNodeConf<T> eleOp, double scale, const RE* refElement, int version)
+    template <typename T, typename TN, typename RE, unsigned int dim>
+    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTWithNodeConf<T, dim> eleOp, double scale, const RE* refElement, int version)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
 
@@ -122,7 +122,7 @@ namespace fem
         std::fill(vecOut, vecOut + ndofs*sz, 0);
 
         using C = typename TN::coordType;  // If not unsigned int, error.
-        constexpr unsigned int dim = ot::coordDim((TN*){});
+        // constexpr unsigned int dim = ot::coordDim((TN*){});
         const unsigned int eleOrder = refElement->getOrder();
         const unsigned int npe = intPow(eleOrder+1, dim);
 
@@ -153,14 +153,18 @@ namespace fem
             leafResult.resize( ndofs*numNodes );
             std::fill( leafResult.begin(), leafResult.end(), 0.0 );
 
-            std::vector<bool> nodeConf( std::pow( eleOrder + 2, dim ), false );
+            std::bitset<intPow( 3, dim )> nodeConf;
 
             for( int idx = 0; idx < numNodes; idx++ ) {
               const unsigned int nodeRank = ot::TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
                                                            nodeCoords[idx],
                                                            eleOrder );
 
-              nodeConf[nodeRank] = true;
+              if( vertexAndMiddleNodeSet.find( nodeRank ) == vertexAndMiddleNodeSet.end() ) {
+
+                nodeConf |= 1 << nodeRank;
+              
+              }
 
             }
 
