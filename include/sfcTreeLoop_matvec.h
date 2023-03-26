@@ -292,10 +292,10 @@ namespace ot
       }
 
     protected:
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
-      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, int version);
-      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, int version);
+      void topDownNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
+      void bottomUpNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT extantChildren);
+      void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version = 0);
+      void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version = 0);
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
@@ -453,7 +453,7 @@ namespace ot
 
 
   template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
+  void MatvecBase<dim, NodeT>::topDownNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -701,7 +701,7 @@ namespace ot
 
 
   template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, int version)
+  void MatvecBase<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version = 0)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -744,7 +744,7 @@ namespace ot
     // ========================================================================
 
     if( version == 0 ) {
-      MatvecBase<dim, NodeT>::topDownNodes(parentFrame, extantChildren );
+      MatvecBase<dim, NodeT>::topDownNodesInterpolate(parentFrame, extantChildren );
     }
     else if( version == 1 ) {
 
@@ -903,7 +903,7 @@ namespace ot
 
 
   template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren)
+  void MatvecBase<dim, NodeT>::bottomUpNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT extantChildren)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1091,7 +1091,7 @@ namespace ot
 
 
   template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, int version)
+  void MatvecBase<dim, NodeT>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1129,7 +1129,7 @@ namespace ot
     // ========================================================================
 
     if( version == 0 ) {
-      MatvecBase<dim, NodeT>::bottomUpNodes( parentFrame, extantChildren );
+      MatvecBase<dim, NodeT>::bottomUpNodesInterpolate( parentFrame, extantChildren );
     }
     else if( version == 1 ) {
 
