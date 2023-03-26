@@ -158,132 +158,8 @@ namespace ot
     template <unsigned int dim>
     DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, int version) {
 
-      if( version == 0 ) {
-        // default implementation behavior for hanging nodes
-         constructStratum(inDistTree, stratum, comm, order, grainSz, sfc_tol);
-      }
-      else if( version == 1 ) {
-        
-        int ndofs = 1;
-        double scale = 1.0;
-
-        constructStratum(inDistTree, stratum, comm, order, grainSz, sfc_tol);
-
-        const size_t nActiveEle = inDistTree.getFilteredTreePartSz();
-
-        // A processor is 'active' if it has elements, otherwise 'inactive'.
-        bool isActive = (nActiveEle > 0);
-        int rProc = par::mpi_comm_rank( comm );
-
-        const bool allActive = par::mpi_and(isActive, comm);
-        MPI_Comm activeComm = comm;
-
-        if (not allActive)
-          MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
-
-        if( isActive ) {
-
-          int procIdx = par::mpi_comm_rank( activeComm );
-
-          static std::vector<VECType> inGhosted, outGhosted;
-          createVector<VECType>(inGhosted, false, true, ndofs);
-          createVector<VECType>(outGhosted, false, true, ndofs);
-          
-          std::fill(inGhosted.begin(), inGhosted.end(), 0);
-
-          VECType *inGhostedPtr = inGhosted.data();
-          VECType *outGhostedPtr = outGhosted.data();
-
-          const std::vector<TreeNode<C, dim>>& currTree = this->m_dist_tree->getTreePartFiltered();
-
-          std::function<void(VECType*, unsigned int, const TreeNode<unsigned int, dim>&, const TreeNode<unsigned int, dim>*, const int, const std::unordered_set<int>&, unsigned int)> funcPtr1 = elementalComputeVecForVertices< VECType, TreeNode<unsigned int, dim> >;
-
-          fem::matvecForVertexNode(inGhostedPtr, ndofs, &( *m_tnCoords.cbegin() ), getTotalNodalSz(), &( *currTree.cbegin() ), currTree.size(),
-          *this->getTreePartFront(), *this->getTreePartBack(),
-          funcPtr1, scale, this->getReferenceElement());
-
-          DA<dim>::writeToGhostsBegin(inGhostedPtr, ndofs);
-          DA<dim>::writeToGhostsEnd(inGhostedPtr, ndofs);
-
-          DA<dim>::readFromGhostBegin( inGhostedPtr, ndofs );
-          DA<dim>::readFromGhostEnd( inGhostedPtr, ndofs );
-
-          std::function<void(const VECType*, VECType*, unsigned int, const TreeNode<unsigned int, dim>&, const TreeNode<unsigned int, dim>*, const int, const std::unordered_set<int>&, const unsigned int)> funcPtr2 = elementalComputeVecForMiddleNodes< VECType, TreeNode<unsigned int, dim> >;
-
-          fem::matvecForMiddleNode(inGhostedPtr, outGhostedPtr, ndofs, &( *m_tnCoords.cbegin() ), this->getTotalNodalSz(), 
-          &( *currTree.cbegin() ), currTree.size(),
-          *this->getTreePartFront(), *this->getTreePartBack(),
-          funcPtr2, scale, this->getReferenceElement());
-
-          std::vector<int> isValidNode( m_uiTotalNodalSz, 1 );
-
-          for( int ii = 0; ii < m_uiTotalNodalSz; ii++ ) {
-
-            if( static_cast<int>( outGhostedPtr[ ii ] ) == 0  ) {
-
-              isValidNode[ ii ] = 0;
-
-            }
-
-          }
-
-          std::vector<int> updatedLocalIndices( m_uiLocalNodalSz, 0 );
-
-          for( int idx = 1; idx < m_uiLocalNodalSz; idx++ ) {
-
-            updatedLocalIndices[ idx ] = updatedLocalIndices[ idx - 1 ] + isValidNode[ m_uiLocalNodeBegin + idx ];
-
-          }
-
-          int newLocalSz = updatedLocalIndices.back() + 1;
-
-          if( m_sm.m_map.size() > 0 ) {
-            DA<dim>::modifyScatterMap( isValidNode );
-          }
-
-          if( m_gm.m_recvProc.size() > 0 ) {
-            DA<dim>::modifyGatherMap( isValidNode, newLocalSz, procIdx );
-          }
-
-          std::vector<TreeNode<C, dim>> myNewTNCoords;
-
-          for( int idx = m_uiLocalNodeBegin; idx < m_uiLocalNodeEnd; idx++ ) {
-
-            if( isValidNode[idx] != 0 ) {
-
-              myNewTNCoords.push_back( m_tnCoords[idx] );
-
-            }
-
-          }
-
-          for( int idx = m_tnCoords.size() - 1; idx >= 0; idx-- ) {
-
-            if( isValidNode[idx] == 0 ) {
-
-              m_tnCoords.erase( m_tnCoords.begin() + idx );
-
-            }
-
-          }
-            
-          this->_constructInner(myNewTNCoords, m_sm, m_gm, order, &(this->m_treePartFront), &(this->m_treePartBack), isActive, comm, activeComm);
-
-          m_totalSendSz = computeTotalSendSz(m_sm);
-          m_totalRecvSz = totalRecvSz(m_gm);
-          m_numDestNeighbors = m_sm.m_sendProc.size();
-          m_numSrcNeighbors = m_gm.m_recvProc.size();
-
-          const DA<dim> &ghostExchange = *this;
-          m_ghostedNodeOwnerElements = getNodeElementOwnership(
-            m_uiGlobalElementBegin,
-            inDistTree.getTreePartFiltered(),
-            m_tnCoords,
-            order,
-            ghostExchange);
-
-        }
-
+      if( version == 0 || version == 1 ) {
+        constructStratum( inDistTree, stratum, comm, order, grainSz, sfc_tol, version );
       }
       else {
         throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
@@ -541,7 +417,7 @@ namespace ot
      */
     template <unsigned int dim>
     /// void DA<dim>::construct(const ot::TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
-    void DA<dim>::constructStratum(const ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol)
+    void DA<dim>::constructStratumWithoutMiddleNode(const ot::DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol )
     {
       DOLLAR("DA::constructStratum()");
       // TODO remove grainSz parameter from ODA, which must respect the tree!
@@ -1014,6 +890,151 @@ namespace ot
       // This is finally destroyed in the destructor of DA.
     }
 
+    template<unsigned int dim>
+    void DA<dim>::constructStratum(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, const int version ) {
+
+      if( version == 0 ) {
+
+        constructStratumWithoutMiddleNode( distTree, stratum, comm, order, grainSz, sfc_tol );
+
+      }
+      else if( version == 1 ) {
+
+        int ndofs = 1;
+        double scale = 1.0;
+
+        constructStratumWithoutMiddleNode( distTree, stratum, comm, order + 1, grainSz, sfc_tol);
+
+        const size_t nActiveEle = distTree.getFilteredTreePartSz();
+
+        // A processor is 'active' if it has elements, otherwise 'inactive'.
+        bool isActive = (nActiveEle > 0);
+        int rProc = par::mpi_comm_rank( comm );
+
+        const bool allActive = par::mpi_and(isActive, comm);
+        MPI_Comm activeComm = comm;
+
+        if (not allActive)
+          MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
+
+        if( isActive ) {
+
+          int procIdx = par::mpi_comm_rank( activeComm );
+
+          static std::vector<VECType> inGhosted, outGhosted;
+          createVector<VECType>(inGhosted, false, true, ndofs);
+          createVector<VECType>(outGhosted, false, true, ndofs);
+          
+          std::fill(inGhosted.begin(), inGhosted.end(), 0);
+
+          VECType *inGhostedPtr = inGhosted.data();
+          VECType *outGhostedPtr = outGhosted.data();
+
+          const std::vector<TreeNode<C, dim>>& currTree = this->m_dist_tree->getTreePartFiltered();
+
+          std::function<void(VECType*, unsigned int, const TreeNode<unsigned int, dim>&, const TreeNode<unsigned int, dim>*, const int, const std::unordered_set<int>&, unsigned int)> funcPtr1 = elementalComputeVecForVertices< VECType, TreeNode<unsigned int, dim> >;
+
+          fem::matvecForVertexNode(inGhostedPtr, ndofs, &( *m_tnCoords.cbegin() ), getTotalNodalSz(), &( *currTree.cbegin() ), currTree.size(),
+          *this->getTreePartFront(), *this->getTreePartBack(),
+          funcPtr1, scale, this->getReferenceElement());
+
+          DA<dim>::writeToGhostsBegin(inGhostedPtr, ndofs);
+          DA<dim>::writeToGhostsEnd(inGhostedPtr, ndofs);
+
+          DA<dim>::readFromGhostBegin( inGhostedPtr, ndofs );
+          DA<dim>::readFromGhostEnd( inGhostedPtr, ndofs );
+
+          std::function<void(const VECType*, VECType*, unsigned int, const TreeNode<unsigned int, dim>&, const TreeNode<unsigned int, dim>*, const int, const std::unordered_set<int>&, const unsigned int)> funcPtr2 = elementalComputeVecForMiddleNodes< VECType, TreeNode<unsigned int, dim> >;
+
+          fem::matvecForMiddleNode(inGhostedPtr, outGhostedPtr, ndofs, &( *m_tnCoords.cbegin() ), this->getTotalNodalSz(), 
+          &( *currTree.cbegin() ), currTree.size(),
+          *this->getTreePartFront(), *this->getTreePartBack(),
+          funcPtr2, scale, this->getReferenceElement());
+
+          std::vector<int> isValidNode( m_uiTotalNodalSz, 1 );
+
+          for( int ii = 0; ii < m_uiTotalNodalSz; ii++ ) {
+
+            if( static_cast<int>( outGhostedPtr[ ii ] ) == 0  ) {
+
+              isValidNode[ ii ] = 0;
+
+            }
+
+          }
+
+          std::vector<int> updatedLocalIndices( m_uiLocalNodalSz, 0 );
+
+          for( int idx = 1; idx < m_uiLocalNodalSz; idx++ ) {
+
+            updatedLocalIndices[ idx ] = updatedLocalIndices[ idx - 1 ] + isValidNode[ m_uiLocalNodeBegin + idx ];
+
+          }
+
+          int newLocalSz = updatedLocalIndices.back() + 1;
+
+          if( m_sm.m_map.size() > 0 ) {
+            DA<dim>::modifyScatterMap( isValidNode );
+          }
+
+          if( m_gm.m_recvProc.size() > 0 ) {
+            DA<dim>::modifyGatherMap( isValidNode, newLocalSz, procIdx );
+          }
+
+          std::vector<TreeNode<C, dim>> myNewTNCoords;
+
+          for( int idx = m_uiLocalNodeBegin; idx < m_uiLocalNodeEnd; idx++ ) {
+
+            if( isValidNode[idx] != 0 ) {
+
+              myNewTNCoords.push_back( m_tnCoords[idx] );
+
+            }
+
+          }
+
+          for( int idx = m_tnCoords.size() - 1; idx >= 0; idx-- ) {
+
+            if( isValidNode[idx] == 0 ) {
+
+              m_tnCoords.erase( m_tnCoords.begin() + idx );
+
+            }
+
+          }
+            
+          this->_constructInner(myNewTNCoords, m_sm, m_gm, order, &(this->m_treePartFront), &(this->m_treePartBack), isActive, comm, activeComm);
+
+          m_totalSendSz = computeTotalSendSz(m_sm);
+          m_totalRecvSz = totalRecvSz(m_gm);
+          m_numDestNeighbors = m_sm.m_sendProc.size();
+          m_numSrcNeighbors = m_gm.m_recvProc.size();
+
+          const DA<dim> &ghostExchange = *this;
+          m_ghostedNodeOwnerElements = getNodeElementOwnership(
+            m_uiGlobalElementBegin,
+            distTree.getTreePartFiltered(),
+            m_tnCoords,
+            order,
+            ghostExchange);
+
+        }
+
+      }
+      else {
+        throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
+      }
+    }
+
+    template<unsigned int dim>
+    void DA<dim>:: changeObjectInteriorVersion( const int version, int stratum, size_t grainSz, double sfc_tol ) {
+      if( version == 0 || version == 1 ) {
+        constructStratum( *m_dist_tree, stratum, m_uiGlobalComm, m_uiElementOrder, grainSz, sfc_tol, version );
+      }
+      else {
+        throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
+      }
+    }
 
     template <typename C, unsigned dim>
     void sortUniqXPreferCoarser(std::vector<TNPoint<C, dim>> &points,

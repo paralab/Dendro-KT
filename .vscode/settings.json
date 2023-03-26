@@ -30,6 +30,7 @@
         "fstream": "cpp",
         "istream": "cpp",
         "streambuf": "cpp",
-        "tuple": "cpp"
+        "tuple": "cpp",
+        "stdexcept": "cpp"
     }
 }

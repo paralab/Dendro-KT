@@ -351,7 +351,11 @@ namespace ot
            * @brief does the work for the constructors.
            */
           /// void construct(const TreeNode<C,dim> *inTree, size_t nEle, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
-          void constructStratum(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
+          void constructStratumWithoutMiddleNode(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
+          void constructStratum(const DistTree<C, dim> &distTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, const int version = 0);
+
+          void changeObjectInteriorVersion( const int version, int stratum = 0, size_t grainSz = 100, double sfc_tol = 0.3 );
+
           void construct(const DistTree<C, dim> &distTree, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol);
 
           /** @brief The latter part of construct() if already have ownedNodes. */
