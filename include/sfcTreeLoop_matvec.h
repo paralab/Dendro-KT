@@ -701,7 +701,7 @@ namespace ot
 
 
   template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version = 0)
+  void MatvecBase<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
   {
     /**
      *  Copied from sfcTreeLoop.h:
