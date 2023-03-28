@@ -103,6 +103,7 @@ namespace ot
       {
         CHECK( nbhd.any() );
       }
+      periodic::PCoord<uint32_t, 3>::reset_periods();
       _DestroyHcurve();
     }
 

@@ -40,6 +40,8 @@ namespace ot {
     /// template <int dim>  constexpr int nchild() { return 1 << dim; }
     constexpr int nchild(int dim) { return 1 << dim; }
 
+    constexpr int nverts(int dim) { return 1 << dim; }
+
     template <template <typename TNT, unsigned TND> typename TN, typename T, unsigned dim>
     constexpr unsigned coordDim(const TN<T, dim> *) { return dim; }
 

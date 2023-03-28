@@ -36,6 +36,7 @@ namespace periodic
       inline static void period(int axis, T period);
       inline static std::array<T, dim> periods();
       inline static void periods(const std::array<T, dim> &periods);
+      inline static void reset_periods();
       //
       inline static T map(int axis, T coord) { return m_masks[axis] & coord; }
 
@@ -163,6 +164,14 @@ namespace periodic
   {
     for (int d = 0; d < dim; ++d)
       PCoord<T, dim>::period(d, periods[d]);
+  }
+
+  // reset_periods()
+  template <typename T, int dim>
+  inline void PCoord<T, dim>::reset_periods()
+  {
+    for (int d = 0; d < dim; ++d)
+      PCoord<T, dim>::period(d, NO_PERIOD);
   }
 
   // PCoord()

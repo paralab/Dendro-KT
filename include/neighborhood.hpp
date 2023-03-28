@@ -16,6 +16,7 @@ inline void link_neighborhood_tests() {};
 
 #include <bitset>
 #include <iostream>
+#include <sstream>
 
 
 // =============================================================================
@@ -23,6 +24,8 @@ inline void link_neighborhood_tests() {};
 // =============================================================================
 namespace ot
 {
+  // This could be constexpr, if only std::bitset was constexpr pre c++23.
+
   /** @brief Multidimensional neighborhood, including by edges and corners. */
   template <int dim>
   struct Neighborhood
@@ -34,17 +37,32 @@ namespace ot
     static Neighborhood full();
     static Neighborhood empty();
     static Neighborhood solitary();
+    template <typename IdxToBool>
+      static Neighborhood where(IdxToBool idx_to_bool);
 
-    // Boolean reductions.
+    // Class properties.
+    static constexpr size_t n_neighbors();
+
+    // Reductions.
     bool all() const;
     bool any() const;
     bool none() const;
+    size_t count() const;
 
     bool center_occupied() const;
+
+    // Clear upper or lower hyperplane.
+    Neighborhood cleared_up(int axis) const;
+    Neighborhood cleared_down(int axis) const;
 
     // Shift along an axis, like Matlab circshift(), but overflow is truncated.
     Neighborhood shifted_up(int axis) const;
     Neighborhood shifted_down(int axis) const;
+
+    // Scalar bit manipulation.
+    void set_flat(size_t idx);
+    void clear_flat(size_t idx);
+    void flip_flat(size_t idx);
 
     // Bitwise logic operators.
     Neighborhood operator~() const;
@@ -129,6 +147,9 @@ namespace std
 {
   template <int dim>
   inline std::ostream & operator<<(std::ostream &out, const ot::Neighborhood<dim> &neighborhood);
+
+  template <int dim>
+  inline std::string to_string(const ot::Neighborhood<dim> &neighborhood);
 }
 
 
@@ -198,10 +219,29 @@ namespace ot
     return {std::bitset<intPow(3, dim)>().set(detail::center_index<dim>())};
   }
 
+  template <int dim>
+  template <typename IdxToBool>
+  Neighborhood<dim> Neighborhood<dim>::where(IdxToBool idx_to_bool)
+  {
+    std::bitset<intPow(3, dim)> neighbor_included;
+    for (int i = 0; i < neighbor_included.size(); ++i)
+      if (idx_to_bool(i))
+        neighbor_included.set(i);
+    return {neighbor_included};
+  }
 
 
   // ---------------------------------------------------------------------------
-  // Boolean reductions.
+  // Class properties.
+  // ---------------------------------------------------------------------------
+  template <int dim>
+  constexpr size_t Neighborhood<dim>::n_neighbors()
+  {
+    return intPow(3, dim);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reductions.
   // ---------------------------------------------------------------------------
 
   template <int dim>
@@ -222,11 +262,35 @@ namespace ot
     return this->block.none();
   }
 
+  template <int dim>
+  size_t Neighborhood<dim>::count() const
+  {
+    return this->block.count();
+  }
+
 
   template <int dim>
   bool Neighborhood<dim>::center_occupied() const
   {
     return this->block.test(detail::center_index<dim>());
+  }
+
+
+
+  // ---------------------------------------------------------------------------
+  // Clear upper or lower hyperplane.
+  // ---------------------------------------------------------------------------
+
+  template <int dim>
+  Neighborhood<dim> Neighborhood<dim>::cleared_up(int axis) const
+  {
+    return { this->block & ~detail::hyperplane<dim>(axis, 2) };
+  }
+
+  template <int dim>
+  Neighborhood<dim> Neighborhood<dim>::cleared_down(int axis) const
+  {
+    return { this->block & ~detail::hyperplane<dim>(axis, 0) };
   }
 
 
@@ -237,32 +301,54 @@ namespace ot
   template <int dim>
   Neighborhood<dim> Neighborhood<dim>::shifted_up(int axis) const
   {
-    auto block = this->block;
-
     // Bits in the highest plane normal to axis are truncated.
-    block &= ~detail::hyperplane<dim>(axis, 2);
+    Neighborhood<dim> result = this->cleared_up(axis);
 
-    // Shift.
+    // Shift up.
     const int stride = intPow(3, axis);
-    block <<= stride;
+    result.block <<= stride;
 
-    return {block};
+    return result;
   }
 
   template <int dim>
   Neighborhood<dim> Neighborhood<dim>::shifted_down(int axis) const
   {
-    auto block = this->block;
-
     // Bits in the lowest plane normal to axis are truncated.
-    block &= ~detail::hyperplane<dim>(axis, 0);
+    Neighborhood<dim> result = this->cleared_down(axis);
 
-    // Shift.
+    // Shift down.
     const int stride = intPow(3, axis);
-    block >>= stride;
+    result.block >>= stride;
 
-    return {block};
+    return result;
   }
+
+
+  // ---------------------------------------------------------------------------
+  // Scalar bit manipulation.
+  // ---------------------------------------------------------------------------
+
+  template <int dim>
+  void Neighborhood<dim>::set_flat(size_t idx)
+  {
+    this->block.set(idx);
+  }
+
+  template <int dim>
+  void Neighborhood<dim>::clear_flat(size_t idx)
+  {
+    this->block.clear(idx);
+  }
+
+  template <int dim>
+  void Neighborhood<dim>::flip_flat(size_t idx)
+  {
+    this->block.flip(idx);
+  }
+
+
+
 
 
   // ---------------------------------------------------------------------------
@@ -384,6 +470,15 @@ namespace std
       }
     }
     return out;
+  }
+
+
+  template <int dim>
+  inline std::string to_string(const ot::Neighborhood<dim> &neighborhood)
+  {
+    std::stringstream ss;
+    ss << neighborhood;
+    return ss.str();
   }
 }
 
