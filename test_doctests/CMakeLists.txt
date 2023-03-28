@@ -11,6 +11,11 @@ add_executable(doctest_hello_world hello_world.cpp main.cpp)
 target_include_directories(doctest_hello_world PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_hello_world dendroKT ${MPI_LIBRARIES} m)
 
+add_executable(doctest_lib_tests lib_tests.cpp main.cpp)
+### add_dependencies(doctest_lib_tests copy_assets)
+target_include_directories(doctest_lib_tests PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_lib_tests dendroKT ${MPI_LIBRARIES} m)
+
 
 add_executable(doctest_coarsening coarsening.cpp main.cpp)
 add_dependencies(doctest_coarsening copy_assets)
