@@ -40,7 +40,7 @@ namespace ot
       CHECK( result.second.empty() );
       _DestroyHcurve();
     }
-      
+
     DOCTEST_TEST_CASE("Singleton set mapped to one occupied key and 3^dim-1 neighbors")
     {
       _InitializeHcurve(3);
@@ -57,6 +57,28 @@ namespace ot
       for (auto nbhd: result.second)
       {
         CHECK( nbhd.any() );
+      }
+      _DestroyHcurve();
+    }
+
+
+    DOCTEST_TEST_CASE("Singleton set on non-periodic corner mapped to one occupied key and 2^dim-1 neighbors")
+    {
+      _InitializeHcurve(3);
+      for (int extreme : {0, 7})
+      {
+        const auto some_octant = TreeNode<uint32_t, 3>().getChildMorton(extreme)
+                                                        .getChildMorton(extreme);
+        auto result = neighbor_sets<3>({some_octant});
+        CHECK( result.first.size() == result.second.size() );
+        CHECK( result.second.size() == 8 );
+        CHECK( std::count_if(result.second.begin(), result.second.end(),
+              [](auto nbhd) { return nbhd.center_occupied(); })
+            == 1 );
+        for (auto nbhd: result.second)
+        {
+          CHECK( nbhd.any() );
+        }
       }
       _DestroyHcurve();
     }
@@ -108,8 +130,6 @@ namespace ot
 
       _DestroyHcurve();
     }
-
-    //next: have to make sure that edges of non-periodic domain are clipped
 
     //nextpath:
     // - [ ] count nodes (using local implementation).
@@ -180,14 +200,20 @@ namespace ot
         // Send up: Current key's neighborhood as viewed by upward neighbor.
         auto key_up = key;
         key_up.setX(axis, key.getX(axis) + cell_size);
-        new_keys.push_back(key_up);
-        new_values.push_back(neighborhood.shifted_down(axis));
+        if (TreeNode<uint32_t, dim>().isAncestorInclusive(key_up))
+        {
+          new_keys.push_back(key_up);
+          new_values.push_back(neighborhood.shifted_down(axis));
+        }
 
         // Send down: Current key's neighborhood as viewed by downward neighbor.
         auto key_down = key;
         key_down.setX(axis, key.getX(axis) - cell_size);
-        new_keys.push_back(key_down);
-        new_values.push_back(neighborhood.shifted_up(axis));
+        if (TreeNode<uint32_t, dim>().isAncestorInclusive(key_down))
+        {
+          new_keys.push_back(key_down);
+          new_values.push_back(neighborhood.shifted_up(axis));
+        }
       }
 
       // Reduce (segment reduction)
