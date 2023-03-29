@@ -32,6 +32,9 @@ namespace ot
       Policy &&policy);
 
   template <int dim>
+  inline std::array<Neighborhood<dim>, nverts(dim)> corner_neighbors();
+
+  template <int dim>
   inline std::array<Neighborhood<dim>, nverts(dim)> vertex_preferred_neighbors();
 
   // In general the node ownership policy could be a function of the
@@ -82,19 +85,31 @@ namespace ot
     assert(degree == 1);  //this policy only emits vertices
 
     const static std::array<Neighborhood<dim>, nverts(dim)>
-      preferred_neighbors =
-        vertex_preferred_neighbors<dim>();
+      preferred_neighbors = vertex_preferred_neighbors<dim>();
       // Ideally constexpr, but Neighborhood uses std::bitset.
+    const static std::array<Neighborhood<dim>, nverts(dim)>
+      child_relevant = corner_neighbors<dim>();
 
     const size_t range_begin = output.size();
-
-    //TODO look at parent neighborhood
 
     // Append any vertices who prefer no proper neighbor over the current cell.
     if (self_neighborhood.center_occupied())
     {
+      // Policy for now: Parent's neighbor owns a vertex shared with child,
+      //       ___       but one of the children owns a hanging node.
+      //     _|   |_     Only one vertex on the child could be shared with a
+      //   _|_|___|_|_   parent's neighbor, which it also shares with parent.
+
+      //future: Maybe parent should inspect neighbors of children.
+
+      const bool skip_shared_vertex =
+        (parent_neighborhood & child_relevant[child_number]).any();
+
+      // Except for the shared vertex, proceed as with same-level neighbors.
       for (int vertex = 0; vertex < nverts(dim); ++vertex)
       {
+        if (skip_shared_vertex and (vertex == child_number))
+          continue;
         if ((self_neighborhood & preferred_neighbors[vertex]).none())
         {
           auto vertex_pt = self_key.range().min();
@@ -199,6 +214,122 @@ namespace ot
       CHECK( nodes.size() == (verts_per_side * verts_per_side * verts_per_side) );
       _DestroyHcurve;
     }
+
+    DOCTEST_TEST_CASE("Count vertices on nonuniform 2D grid")
+    {
+      //  Case 1 _ _ _ _      Case 2  _ _ _ _
+      //        |_|_|_|_|            |+|+|+|+|
+      //        |_|+|+|_|            |+|_|_|+|
+      //        |_|+|+|_|            |+|_|_|+|
+      //        |_|_|_|_|            |+|+|+|+|
+      //
+
+      const auto shell = [](int dim, size_t outer_side) {
+        size_t outer_ball = 1;
+        size_t inner_ball = 1;
+        while (dim > 0)
+        {
+          outer_ball *= outer_side;
+          inner_ball *= (outer_side - 2);
+          --dim;
+        }
+        return outer_ball - inner_ball;
+      };
+
+      const auto case_1_vertices = [shell](int dim, int max_depth) {
+        return 1 + shell(dim, 3) + shell(dim, 5) * (max_depth - 2 + 1);
+      };
+
+      const auto case_2_vertices = [shell](int dim, int max_depth) {
+        size_t vertices = 1;
+        for (int side = 5; side < (1 << max_depth) + 1; side = side * 2 + 3)
+          vertices += shell(dim, side);
+        vertices += shell(dim, (1 << max_depth) + 1 - 2);
+        vertices += shell(dim, (1 << max_depth) + 1);
+        return vertices;
+      };
+
+      _InitializeHcurve(2);
+
+      for (int max_depth = 2; max_depth <= 5; ++max_depth)
+      {
+        // Case 1
+        {
+          // Grid.
+          std::vector<TreeNode<uint32_t, 2>> grid = { TreeNode<uint32_t, 2>() };
+          std::vector<TreeNode<uint32_t, 2>> queue;
+          for (int level = 1; level <= max_depth; ++level)
+          {
+            queue.clear();
+            const auto middle = TreeNode<uint32_t, 2>().getChildMorton(0).range().max();
+            for (auto oct: grid)
+            {
+              // Case 1: Refine the center.
+              if (oct.range().closedContains(middle))
+                for (int child = 0; child < nchild(2); ++child)
+                  queue.push_back(oct.getChildMorton(child));
+              else
+                queue.push_back(oct);
+            }
+            std::swap(grid, queue);
+          }
+
+          // Neighbors.
+          const auto neighbor_sets_pair = neighbor_sets(grid);
+          const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.first;
+          const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.second;
+
+          // Nodes.
+          const int degree = 1;
+          std::vector<TreeNode<uint32_t, 2>> nodes =
+              node_set<2>(
+                  octant_keys, neighborhoods, degree, neighborhood_to_all_vertices<2>);
+
+          CHECK( nodes.size() == case_1_vertices(2, max_depth) );
+        }
+
+        // Case 2
+        {
+          // Grid.
+          std::vector<TreeNode<uint32_t, 2>> grid = { TreeNode<uint32_t, 2>() };
+          std::vector<TreeNode<uint32_t, 2>> queue;
+          for (int level = 1; level <= max_depth; ++level)
+          {
+            queue.clear();
+            const uint32_t maximum = TreeNode<uint32_t, 2>().range().side();
+            for (auto oct: grid)
+            {
+              // Case 2: Refine the cube surface.
+              const std::array<uint32_t, 2> min = oct.range().min();
+              const std::array<uint32_t, 2> max = oct.range().max();
+              if (*(std::min_element(min.begin(), min.end())) == 0 or
+                  *(std::max_element(max.begin(), max.end())) == maximum)
+                for (int child = 0; child < nchild(2); ++child)
+                  queue.push_back(oct.getChildMorton(child));
+              else
+                queue.push_back(oct);
+            }
+            std::swap(grid, queue);
+          }
+
+          // Neighbors.
+          const auto neighbor_sets_pair = neighbor_sets(grid);
+          const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.first;
+          const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.second;
+
+          // Nodes.
+          const int degree = 1;
+          std::vector<TreeNode<uint32_t, 2>> nodes =
+              node_set<2>(
+                  octant_keys, neighborhoods, degree, neighborhood_to_all_vertices<2>);
+
+          CHECK( nodes.size() == case_2_vertices(2, max_depth) );
+        }
+      }
+
+      _DestroyHcurve;
+    }
+
   }
 
 }
@@ -240,6 +371,27 @@ namespace ot
 
 
   template <int dim>
+  inline std::array<Neighborhood<dim>, nverts(dim)> corner_neighbors()
+  {
+    constexpr int V = nverts(dim);
+    std::array<Neighborhood<dim>, V> neighbors = {};
+    //future: static variable
+
+    // Middle-high, or low-middle, neighbors for high, or low, corners.
+    neighbors[V - 1] =
+      Neighborhood<dim>::full() & ~Neighborhood<dim>::solitary();
+    for (int codim = dim-1; codim >= 0; --codim)
+      for (int i = nverts(codim) - 1; i < V; i += nverts(codim + 1))
+      {
+        int j = i + nverts(codim);
+        neighbors[i] = neighbors[j].cleared_up(codim);
+        neighbors[j] = neighbors[j].cleared_down(codim);
+      }
+    return neighbors;
+  }
+
+
+  template <int dim>
   std::array<Neighborhood<dim>, nverts(dim)> vertex_preferred_neighbors()
   {
     //     Relevant           Priority              Preferred
@@ -251,18 +403,8 @@ namespace ot
     //  o|x|_   _|x|o      o|x|_    o|x|_        o|x|_    _|x|_
     //  o|o|_   _|o|o      o|o|o    o|o|o        o|o|_    _|o|o
     constexpr int V = nverts(dim);
-    std::array<Neighborhood<dim>, V> preferred_neighbors = {};
-
-    // Relevance: Middle-high or low-middle neighbors for high or low verts.
-    preferred_neighbors[V - 1] =
-      Neighborhood<dim>::full() & ~Neighborhood<dim>::solitary();
-    for (int codim = dim-1; codim >= 0; --codim)
-      for (int i = nverts(codim) - 1; i < V; i += nverts(codim + 1))
-      {
-        int j = i + nverts(codim);
-        preferred_neighbors[i] = preferred_neighbors[j].cleared_up(codim);
-        preferred_neighbors[j] = preferred_neighbors[j].cleared_down(codim);
-      }
+    std::array<Neighborhood<dim>, V> preferred_neighbors =
+      corner_neighbors<dim>();
 
     // Prioritization: Lexicographic predecessors.
     constexpr int N = Neighborhood<dim>::n_neighbors();
@@ -272,6 +414,7 @@ namespace ot
 
     return preferred_neighbors;
   }
+
 
   DOCTEST_TEST_CASE("vertex_preferred_neighbors 2D")
   {
