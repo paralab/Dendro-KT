@@ -6,6 +6,7 @@
  */
 
 #include "doctest/extensions/doctest_mpi.h"
+#include "include/corner_set.hpp"
 #include "include/neighborhood.hpp"
 #include "include/neighbor_sets.hpp"
 #include "include/neighbors_to_nodes.hpp"
@@ -14,6 +15,7 @@ namespace lib_tests
 {
   void references()
   {
+    link_corner_set_tests();
     link_neighborhood_tests();
     link_neighbor_sets_tests();
     link_neighbors_to_nodes_tests();

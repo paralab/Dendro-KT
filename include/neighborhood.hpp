@@ -5,11 +5,15 @@
  * @brief  A neighborhood is a 3x3x... surrounding grid of same-level cells.
  */
 
+//future: Rename to neighbor_set.hpp, NeighborSet
+
 #ifndef DENDRO_KT_NEIGHBORHOOD_HPP
 #define DENDRO_KT_NEIGHBORHOOD_HPP
 
 // Function declaration for linkage purposes.
 inline void link_neighborhood_tests() {};
+
+#include "include/bitset_wrapper.hpp"
 
 #include "doctest/doctest.h"
 #include "include/mathUtils.h"
@@ -24,59 +28,30 @@ inline void link_neighborhood_tests() {};
 // =============================================================================
 namespace ot
 {
-  // This could be constexpr, if only std::bitset was constexpr pre c++23.
-
   /** @brief Multidimensional neighborhood, including by edges and corners. */
   template <int dim>
-  struct Neighborhood
+  struct Neighborhood : public BitsetWrapper<intPow(3, dim), Neighborhood<dim>>
   {
-    std::bitset<intPow(3, dim)> block;   // 3x3, 3x3x3, 3x3x3x3 local grids.
+    // BitsetWrapper::block is 3x3, 3x3x3, 3x3x3x3 local grids.
       // Center is center bit, not 0th.
 
-    // Factory methods.
-    static Neighborhood full();
-    static Neighborhood empty();
-    static Neighborhood solitary();
-    template <typename IdxToBool>
-      static Neighborhood where(IdxToBool idx_to_bool);
+    using Base = BitsetWrapper<intPow(3, dim), Neighborhood<dim>>;
+    using Base::Base;  // inherit constructors
+
+    static inline Neighborhood solitary();
 
     // Class properties.
     static constexpr size_t n_neighbors();
 
-    // Reductions.
-    bool all() const;
-    bool any() const;
-    bool none() const;
-    size_t count() const;
-
-    bool center_occupied() const;
+    inline bool center_occupied() const;
 
     // Clear upper or lower hyperplane.
-    Neighborhood cleared_up(int axis) const;
-    Neighborhood cleared_down(int axis) const;
+    inline Neighborhood cleared_up(int axis) const;
+    inline Neighborhood cleared_down(int axis) const;
 
     // Shift along an axis, like Matlab circshift(), but overflow is truncated.
-    Neighborhood shifted_up(int axis) const;
-    Neighborhood shifted_down(int axis) const;
-
-    // Scalar bit manipulation.
-    void set_flat(size_t idx);
-    void clear_flat(size_t idx);
-    void flip_flat(size_t idx);
-
-    // Bitwise logic operators.
-    Neighborhood operator~() const;
-    Neighborhood operator&(const Neighborhood &other) const;
-    Neighborhood operator|(const Neighborhood &other) const;
-    Neighborhood operator^(const Neighborhood &other) const;
-
-    Neighborhood & operator&=(const Neighborhood &other);
-    Neighborhood & operator|=(const Neighborhood &other);
-    Neighborhood & operator^=(const Neighborhood &other);
-
-    // Comparison operators.
-    bool operator==(const Neighborhood &other) const;
-    bool operator!=(const Neighborhood &other) const;
+    inline Neighborhood shifted_up(int axis) const;
+    inline Neighborhood shifted_down(int axis) const;
   };
 
 
@@ -173,61 +148,20 @@ namespace ot
                                    "000" );
   }
 
-
   namespace detail
   {
     template <int dim>
-    static inline std::bitset<intPow(3, dim)> hyperplane(int axis, int pos = 0)
-    {
-      std::bitset<intPow(3, dim)> bitset;
-      bitset[0] = true;
-      for (int a = 0; a < dim; ++a)
-      {
-        const int stride = intPow(3, a);
-        if (a != axis)
-          bitset |= (bitset << stride) | (bitset << 2 * stride);
-        else
-          bitset <<= pos * stride;
-      }
-      return bitset;
-    }
-
-    template <int dim>
     static inline size_t center_index() { return intPow(3, dim) / 2; }
   }
-
 
   // ---------------------------------------------------------------------------
   // Factory methods.
   // ---------------------------------------------------------------------------
 
   template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::full()
-  {
-    return {std::bitset<intPow(3, dim)>().set()};
-  }
-
-  template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::empty()
-  {
-    return {std::bitset<intPow(3, dim)>().reset()};
-  }
-
-  template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::solitary()
+  inline Neighborhood<dim> Neighborhood<dim>::solitary()
   {
     return {std::bitset<intPow(3, dim)>().set(detail::center_index<dim>())};
-  }
-
-  template <int dim>
-  template <typename IdxToBool>
-  Neighborhood<dim> Neighborhood<dim>::where(IdxToBool idx_to_bool)
-  {
-    std::bitset<intPow(3, dim)> neighbor_included;
-    for (int i = 0; i < neighbor_included.size(); ++i)
-      if (idx_to_bool(i))
-        neighbor_included.set(i);
-    return {neighbor_included};
   }
 
 
@@ -240,37 +174,13 @@ namespace ot
     return intPow(3, dim);
   }
 
+
   // ---------------------------------------------------------------------------
   // Reductions.
   // ---------------------------------------------------------------------------
 
   template <int dim>
-  bool Neighborhood<dim>::all() const
-  {
-    return this->block.all();
-  }
-
-  template <int dim>
-  bool Neighborhood<dim>::any() const
-  {
-    return this->block.any();
-  }
-
-  template <int dim>
-  bool Neighborhood<dim>::none() const
-  {
-    return this->block.none();
-  }
-
-  template <int dim>
-  size_t Neighborhood<dim>::count() const
-  {
-    return this->block.count();
-  }
-
-
-  template <int dim>
-  bool Neighborhood<dim>::center_occupied() const
+  inline bool Neighborhood<dim>::center_occupied() const
   {
     return this->block.test(detail::center_index<dim>());
   }
@@ -282,15 +192,15 @@ namespace ot
   // ---------------------------------------------------------------------------
 
   template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::cleared_up(int axis) const
+  inline Neighborhood<dim> Neighborhood<dim>::cleared_up(int axis) const
   {
-    return { this->block & ~detail::hyperplane<dim>(axis, 2) };
+    return { this->block & ~detail::hyperplane<dim, 3>(axis, 2) };
   }
 
   template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::cleared_down(int axis) const
+  inline Neighborhood<dim> Neighborhood<dim>::cleared_down(int axis) const
   {
-    return { this->block & ~detail::hyperplane<dim>(axis, 0) };
+    return { this->block & ~detail::hyperplane<dim, 3>(axis, 0) };
   }
 
 
@@ -299,7 +209,7 @@ namespace ot
   // ---------------------------------------------------------------------------
 
   template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::shifted_up(int axis) const
+  inline Neighborhood<dim> Neighborhood<dim>::shifted_up(int axis) const
   {
     // Bits in the highest plane normal to axis are truncated.
     Neighborhood<dim> result = this->cleared_up(axis);
@@ -312,7 +222,7 @@ namespace ot
   }
 
   template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::shifted_down(int axis) const
+  inline Neighborhood<dim> Neighborhood<dim>::shifted_down(int axis) const
   {
     // Bits in the lowest plane normal to axis are truncated.
     Neighborhood<dim> result = this->cleared_down(axis);
@@ -322,97 +232,6 @@ namespace ot
     result.block >>= stride;
 
     return result;
-  }
-
-
-  // ---------------------------------------------------------------------------
-  // Scalar bit manipulation.
-  // ---------------------------------------------------------------------------
-
-  template <int dim>
-  void Neighborhood<dim>::set_flat(size_t idx)
-  {
-    this->block.set(idx);
-  }
-
-  template <int dim>
-  void Neighborhood<dim>::clear_flat(size_t idx)
-  {
-    this->block.clear(idx);
-  }
-
-  template <int dim>
-  void Neighborhood<dim>::flip_flat(size_t idx)
-  {
-    this->block.flip(idx);
-  }
-
-
-
-
-
-  // ---------------------------------------------------------------------------
-  // Bitwise logic operators.
-  // ---------------------------------------------------------------------------
-
-  // Wrap std::bitset operators.
-
-  template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::operator~() const
-  {
-    return {~this->block};
-  }
-
-  template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::operator&(const Neighborhood &other) const
-  {
-    return {this->block & other.block};
-  }
-
-  template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::operator|(const Neighborhood &other) const
-  {
-    return {this->block | other.block};
-  }
-
-  template <int dim>
-  Neighborhood<dim> Neighborhood<dim>::operator^(const Neighborhood &other) const
-  {
-    return {this->block ^ other.block};
-  }
-
-
-  template <int dim>
-  Neighborhood<dim> & Neighborhood<dim>::operator&=(const Neighborhood &other)
-  {
-    (*this) = (*this) & other;
-    return *this;
-  }
-
-  template <int dim>
-  Neighborhood<dim> & Neighborhood<dim>::operator|=(const Neighborhood &other)
-  {
-    (*this) = (*this) | other;
-    return *this;
-  }
-
-  template <int dim>
-  Neighborhood<dim> & Neighborhood<dim>::operator^=(const Neighborhood &other)
-  {
-    (*this) = (*this) ^ other;
-    return *this;
-  }
-
-  template <int dim>
-  bool Neighborhood<dim>::operator==(const Neighborhood &other) const
-  {
-    return this->block == other.block;
-  }
-
-  template <int dim>
-  bool Neighborhood<dim>::operator!=(const Neighborhood &other) const
-  {
-    return this->block != other.block;
   }
 }
 

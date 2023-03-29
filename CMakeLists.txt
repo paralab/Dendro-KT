@@ -184,7 +184,11 @@ set(DENDRO_KT_INC include/dendro.h
                   include/p2p.tcc
                   include/lazy.hpp
                   include/passive_shared_ptr.hpp
+                  include/bitset_wrapper.hpp
+                  include/corner_set.hpp
+                  include/neighborhood.hpp
                   include/neighbor_sets.hpp
+                  include/neighbors_to_nodes.hpp
                   IO/zlib/inc/zlib.h
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h

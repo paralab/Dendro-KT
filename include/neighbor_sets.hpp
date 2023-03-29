@@ -5,6 +5,8 @@
  * @brief  Build set of same-level neighbors for octants (+ parents + children)
  */
 
+//future: Rename to share_neighbors.hpp, share_neighbors()
+
 #ifndef DENDRO_KT_NEIGHBOR_SETS_HPP
 #define DENDRO_KT_NEIGHBOR_SETS_HPP
 
