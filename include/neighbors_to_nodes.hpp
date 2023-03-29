@@ -45,8 +45,7 @@ namespace ot
 
   template <int dim>
   inline
-  std::pair< typename std::vector<TreeNode<uint32_t, dim>>::iterator,    // range begin
-             typename std::vector<TreeNode<uint32_t, dim>>::iterator >   // range end
+  std::pair< size_t, size_t >   // range begin and end for vertices of this cell
   neighborhood_to_nonhanging(
       const TreeNode<uint32_t, dim> &self_key,
       Neighborhood<dim> self_neighborhood,
@@ -57,13 +56,44 @@ namespace ot
   {
     assert(degree == 1);  //future: support quadratic and high-order.
 
-    auto range_begin = output.end();
+    const static std::array<Neighborhood<dim>, nverts(dim)>
+      preferred_neighbors = vertex_preferred_neighbors<dim>();
+      // Ideally constexpr, but Neighborhood uses std::bitset.
+    const static std::array<Neighborhood<dim>, nverts(dim)>
+      corner_relevant = corner_neighbors<dim>();
 
-    // insert...
+    const size_t range_begin = output.size();
 
-    throw std::logic_error("Not implemented: neighborhood_to_nonhanging()");
+    // Append any vertices who prefer no proper neighbor over the current cell.
+    if (self_neighborhood.center_occupied())
+    {
+      // Policy for now: If a node touches any coarser cell, then it is either
+      //       ___       hanging or owned by the coarser cell, so do not emit
+      //     _|   |_     from the fine cell. There is no directional priority;
+      //   _|_|___|_|_   just filter for neighbors that can touch the vertex.
 
-    auto range_end = output.end();
+      //future: Maybe parent should inspect neighbors of children.
+
+      parent_neighborhood &= corner_relevant[child_number];
+
+      // Combine same-level directional priority with coarseness-priority.
+      for (int vertex = 0; vertex < nverts(dim); ++vertex)
+      {
+        if (((self_neighborhood & preferred_neighbors[vertex])
+              | (parent_neighborhood & corner_relevant[vertex])
+            ).none())
+        {
+          auto vertex_pt = self_key.range().min();
+          for (int d = 0; d < dim; ++d)
+            if (bool(vertex & (1 << d)))
+              vertex_pt.coord(d, self_key.range().max(d));
+          output.push_back(TreeNode<uint32_t, dim>(vertex_pt, self_key.getLevel()));
+        }
+      }
+    }
+
+    const size_t range_end = output.size();
+
     return {range_begin, range_end};
   }
 
@@ -88,7 +118,7 @@ namespace ot
       preferred_neighbors = vertex_preferred_neighbors<dim>();
       // Ideally constexpr, but Neighborhood uses std::bitset.
     const static std::array<Neighborhood<dim>, nverts(dim)>
-      child_relevant = corner_neighbors<dim>();
+      corner_relevant = corner_neighbors<dim>();
 
     const size_t range_begin = output.size();
 
@@ -103,7 +133,7 @@ namespace ot
       //future: Maybe parent should inspect neighbors of children.
 
       const bool skip_shared_vertex =
-        (parent_neighborhood & child_relevant[child_number]).any();
+        (parent_neighborhood & corner_relevant[child_number]).any();
 
       // Except for the shared vertex, proceed as with same-level neighbors.
       for (int vertex = 0; vertex < nverts(dim); ++vertex)
@@ -215,7 +245,7 @@ namespace ot
       _DestroyHcurve;
     }
 
-    DOCTEST_TEST_CASE("Count vertices on nonuniform 2D grid")
+    DOCTEST_TEST_CASE("Count hanging and nonhanging vertices on nonuniform 2D grid")
     {
       //  Case 1 _ _ _ _      Case 2  _ _ _ _
       //        |_|_|_|_|            |+|+|+|+|
@@ -240,6 +270,10 @@ namespace ot
         return 1 + shell(dim, 3) + shell(dim, 5) * (max_depth - 2 + 1);
       };
 
+      const auto case_1_nonhanging = [shell](int dim, int max_depth) {
+        return 1 + shell(dim, 5) + shell(dim, 3) * (max_depth - 2 + 1);
+      };
+
       const auto case_2_vertices = [shell](int dim, int max_depth) {
         size_t vertices = 1;
         for (int side = 5; side < (1 << max_depth) + 1; side = side * 2 + 3)
@@ -248,6 +282,15 @@ namespace ot
         vertices += shell(dim, (1 << max_depth) + 1);
         return vertices;
       };
+
+      const auto case_2_nonhanging = [shell](int dim, int max_depth) {
+        size_t vertices = 1;
+        for (int side = 3; side < (1 << max_depth) + 1; side = side * 2 + 1)
+          vertices += shell(dim, side);
+        vertices += shell(dim, (1 << max_depth) + 1);
+        return vertices;
+      };
+
 
       _InitializeHcurve(2);
 
@@ -281,11 +324,16 @@ namespace ot
 
           // Nodes.
           const int degree = 1;
-          std::vector<TreeNode<uint32_t, 2>> nodes =
+          std::vector<TreeNode<uint32_t, 2>> vertices =
               node_set<2>(
                   octant_keys, neighborhoods, degree, neighborhood_to_all_vertices<2>);
 
-          CHECK( nodes.size() == case_1_vertices(2, max_depth) );
+          std::vector<TreeNode<uint32_t, 2>> nodes =
+              node_set<2>(
+                  octant_keys, neighborhoods, degree, neighborhood_to_nonhanging<2>);
+
+          CHECK( vertices.size() == case_1_vertices(2, max_depth) );
+          CHECK( nodes.size() == case_1_nonhanging(2, max_depth) );
         }
 
         // Case 2
@@ -319,11 +367,16 @@ namespace ot
 
           // Nodes.
           const int degree = 1;
-          std::vector<TreeNode<uint32_t, 2>> nodes =
+          std::vector<TreeNode<uint32_t, 2>> vertices =
               node_set<2>(
                   octant_keys, neighborhoods, degree, neighborhood_to_all_vertices<2>);
 
-          CHECK( nodes.size() == case_2_vertices(2, max_depth) );
+          std::vector<TreeNode<uint32_t, 2>> nodes =
+              node_set<2>(
+                  octant_keys, neighborhoods, degree, neighborhood_to_nonhanging<2>);
+
+          CHECK( vertices.size() == case_2_vertices(2, max_depth) );
+          CHECK( nodes.size() == case_2_nonhanging(2, max_depth) );
         }
       }
 
