@@ -979,16 +979,6 @@ namespace ot
             }
 
           }
-
-          for( int idx = m_tnCoords.size() - 1; idx >= 0; idx-- ) {
-
-            if( isValidNode[idx] == 0 ) {
-
-              m_tnCoords.erase( m_tnCoords.begin() + idx );
-
-            }
-
-          }
             
           this->_constructInner(myNewTNCoords, m_sm, m_gm, order, &(this->m_treePartFront), &(this->m_treePartBack), isActive, comm, activeComm);
 
