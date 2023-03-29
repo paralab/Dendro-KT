@@ -101,7 +101,7 @@ namespace ot
           for (int d = 0; d < dim; ++d)
             if (bool(vertex & (1 << d)))
               vertex_pt.coord(d, self_key.range().max(d));
-          output.push_back(TreeNode<uint32_t, dim>(vertex_pt, self_key.getLevel()))
+          output.push_back(TreeNode<uint32_t, dim>(vertex_pt, self_key.getLevel()));
         }
       }
     }
