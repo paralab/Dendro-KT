@@ -14,82 +14,80 @@ namespace ot
   template <typename IdxT = size_t, typename BdxT = int>
   class BucketMultiplexer
   {
-      struct SrcDestPair
-      {
-        IdxT idx;
-        BdxT bucket;
-      };
+    struct SrcDestPair
+    {
+      IdxT idx;
+      BdxT bucket;
+    };
 
-    private:
-      std::vector<IdxT> m_bucketCounts;
-      std::vector<SrcDestPair> m_srcDestList;
+  private:
+    std::vector<IdxT> m_bucketCounts;
+    std::vector<SrcDestPair> m_srcDestList;
 
-    public:
-      BucketMultiplexer() = delete;
-      BucketMultiplexer(BdxT numBuckets, IdxT listReserveSz = 0)
+  public:
+    BucketMultiplexer() = delete;
+    BucketMultiplexer(BdxT numBuckets, IdxT listReserveSz = 0)
         : m_bucketCounts(numBuckets, 0)
-      {
-        m_srcDestList.reserve(listReserveSz);
-      }
+    {
+      m_srcDestList.reserve(listReserveSz);
+    }
 
+    // Definitions
 
-      // Definitions
+    // addToBucket()
+    inline void addToBucket(IdxT index, BdxT bucket)
+    {
+      SrcDestPair srcDestPair;
+      srcDestPair.idx = index;
+      srcDestPair.bucket = bucket;
 
-      // addToBucket()
-      inline void addToBucket(IdxT index, BdxT bucket)
-      {
-        SrcDestPair srcDestPair;
-        srcDestPair.idx = index;
-        srcDestPair.bucket = bucket;
+      m_srcDestList.emplace_back(srcDestPair);
+      m_bucketCounts[bucket]++;
+    }
 
-        m_srcDestList.emplace_back(srcDestPair);
-        m_bucketCounts[bucket]++;
-      }
+    // getTotalItems()
+    inline IdxT getTotalItems() const
+    {
+      return (IdxT)m_srcDestList.size();
+    }
 
-      // getTotalItems()
-      inline IdxT getTotalItems() const
-      {
-        return (IdxT) m_srcDestList.size();
-      }
+    // getBucketCounts()
+    std::vector<IdxT> getBucketCounts() const
+    {
+      return m_bucketCounts;
+    }
 
-      // getBucketCounts()
-      std::vector<IdxT> getBucketCounts() const
-      {
-        return m_bucketCounts;
-      }
+    // getBucketOffsets()
+    std::vector<IdxT> getBucketOffsets() const
+    {
+      std::vector<IdxT> bucketOffsets(1, 0);
+      for (IdxT c : m_bucketCounts)
+        bucketOffsets.push_back(bucketOffsets.back() + c);
+      bucketOffsets.pop_back();
 
-      // getBucketOffsets()
-      std::vector<IdxT> getBucketOffsets() const
-      {
-        std::vector<IdxT> bucketOffsets(1, 0);
-        for (IdxT c : m_bucketCounts)
-          bucketOffsets.push_back(bucketOffsets.back() + c);
-        bucketOffsets.pop_back();
+      return bucketOffsets;
+    }
 
-        return bucketOffsets;
-      }
-
-      // transferCopies()
-      template <typename X, typename Y>
-      inline void transferCopies(Y * dest, const X * src) const
-      {
-        std::vector<IdxT> bucketOffsets = getBucketOffsets();
-        for (const SrcDestPair &sd : m_srcDestList)
-          dest[bucketOffsets[sd.bucket]++] = src[sd.idx];
-      }
+    // transferCopies()
+    template <typename X, typename Y>
+    inline void transferCopies(Y *dest, const X *src) const
+    {
+      std::vector<IdxT> bucketOffsets = getBucketOffsets();
+      for (const SrcDestPair &sd : m_srcDestList)
+        dest[bucketOffsets[sd.bucket]++] = src[sd.idx];
+    }
   };
-
 
   //
   // distRemeshSubdomainViaWhole()
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::distRemeshSubdomainViaWhole( const DistTree &inTree,
-                                              const std::vector<OCT_FLAGS::Refine> &refnFlags,
-                                              DistTree &_outTree,
-                                              DistTree &_surrogateTree,
-                                              RemeshPartition remeshPartition,
-                                              double loadFlexibility)
+  void DistTree<T, dim>::distRemeshSubdomainViaWhole(const DistTree &inTree,
+                                                     const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                                     DistTree &_outTree,
+                                                     DistTree &_surrogateTree,
+                                                     RemeshPartition remeshPartition,
+                                                     double loadFlexibility)
   {
     DOLLAR("DistTree::distRemeshSubdomainViaWhole()");
     MPI_Comm comm = inTree.m_comm;
@@ -120,17 +118,16 @@ namespace ot
     _surrogateTree = surrogateTree;
   }
 
-
   //
   // distRemeshSubdomain()
   //
   template <typename T, unsigned int dim>
-  void DistTree<T, dim>::distRemeshSubdomain( const DistTree &inTree,
-                                              const std::vector<OCT_FLAGS::Refine> &refnFlags,
-                                              DistTree &_outTree,
-                                              DistTree &_surrogateTree,
-                                              RemeshPartition remeshPartition,
-                                              double loadFlexibility)
+  void DistTree<T, dim>::distRemeshSubdomain(const DistTree &inTree,
+                                             const std::vector<OCT_FLAGS::Refine> &refnFlags,
+                                             DistTree &_outTree,
+                                             DistTree &_surrogateTree,
+                                             RemeshPartition remeshPartition,
+                                             double loadFlexibility)
   {
     // validate args
     DENDRO_KT_ASSERT_SORTED_UNIQ(inTree.getTreePartFiltered(), inTree.m_comm);
@@ -164,12 +161,11 @@ namespace ot
     _surrogateTree = surrogateTree;
   }
 
-
   // distRefine
   template <typename T, unsigned int dim>
   void DistTree<T, dim>::distRefine(
       const DistTree &inTree,
-      std::vector<int> &&delta_level,  // Consumed. To reuse, clear() and resize().
+      std::vector<int> &&delta_level, // Consumed. To reuse, clear() and resize().
       DistTree &outTree,
       double sfc_tol,
       bool repartition)
@@ -183,7 +179,7 @@ namespace ot
         SFC_Tree<T, dim>::locRefine(inTree.getTreePartFiltered(), std::move(delta_level));
 
     DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
-    SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
+    SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm); // future: distTreePartition(), if stable
 
 #ifndef USE_2TO1_GLOBAL_SORT
     SFC_Tree<T, dim>::distMinimalBalanced(newOctList, sfc_tol, comm);
@@ -192,7 +188,7 @@ namespace ot
 #endif
     DistTree<T, dim>::filterOctList(inTree.getDomainDecider(), newOctList);
     if (repartition)
-      SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm);//future: distTreePartition(), if stable
+      SFC_Tree<T, dim>::distTreeSort(newOctList, sfc_tol, comm); // future: distTreePartition(), if stable
 
     SFC_Tree<T, dim>::distCoalesceSiblings(newOctList, comm);
 
@@ -200,13 +196,12 @@ namespace ot
     outTree.filterTree(inTree.getDomainDecider());
   }
 
-
   template <typename T, unsigned int dim>
   DistTree<T, dim> DistTree<T, dim>::repartitioned(const double sfc_tol) &&
   {
     DOLLAR("repartitioned()");
     std::vector<TreeNode<T, dim>> &octList = this->get_m_treePartFiltered();
-    SFC_Tree<T, dim>::distTreeSort(octList, sfc_tol, this->getComm());//future: distTreePartition(), if stable
+    SFC_Tree<T, dim>::distTreeSort(octList, sfc_tol, this->getComm()); // future: distTreePartition(), if stable
     SFC_Tree<T, dim>::distCoalesceSiblings(octList, this->getComm());
 
     DistTree outTree = DistTree<T, dim>(octList, this->getComm());
@@ -214,7 +209,6 @@ namespace ot
 
     return outTree;
   }
-
 
   //
   // insertRefinedGrid()
@@ -289,7 +283,6 @@ namespace ot
     }
   }
 
-
   //
   // defineCoarsenedGrid()
   //   - refnFlags must be same length as treePart in coarsest grid of distTree.
@@ -363,7 +356,6 @@ namespace ot
     }
   }
 
-
   //
   // generateGridHierarchyUp()
   //
@@ -387,9 +379,9 @@ namespace ot
       if (isFixedNumStrata) // interpret lev as desired number of strata.
         targetNumStrata = lev;
       else
-      {  // interpret lev as the desired finest level in the coarsest grid.
+      { // interpret lev as the desired finest level in the coarsest grid.
         LevI observedMaxDepth_loc = 0, observedMaxDepth_glob = 0;
-        for (const TreeNode<T, dim> & tn : m_gridStrata[0])
+        for (const TreeNode<T, dim> &tn : m_gridStrata[0])
           if (observedMaxDepth_loc < tn.getLevel())
             observedMaxDepth_loc = tn.getLevel();
 
@@ -420,11 +412,10 @@ namespace ot
     return surrogateCoarseByFine;
   }
 
-
   // generateGridHierarchyDown()
   template <typename T, unsigned int dim>
-  DistTree<T, dim>  DistTree<T, dim>::generateGridHierarchyDown(unsigned int numStrata,
-                                                                double loadFlexibility)
+  DistTree<T, dim> DistTree<T, dim>::generateGridHierarchyDown(unsigned int numStrata,
+                                                               double loadFlexibility)
   {
     int nProc, rProc;
     MPI_Comm_size(m_comm, &nProc);
@@ -433,7 +424,7 @@ namespace ot
     // Determine the number of grids in the grid hierarchy. (m_numStrata)
     {
       LevI observedMaxDepth_loc = 0, observedMaxDepth_glob = 0;
-      for (const TreeNode<T, dim> & tn : m_gridStrata[0])
+      for (const TreeNode<T, dim> &tn : m_gridStrata[0])
         if (observedMaxDepth_loc < tn.getLevel())
           observedMaxDepth_loc = tn.getLevel();
 
@@ -445,9 +436,10 @@ namespace ot
       {
         std::cerr << "Warning: generateGridHierarchyDown() cannot generate all requested "
                   << numStrata << " grids.\n"
-                  "Conditional refinement is currently unsupported. "
-                  "(Enforcing m_uiMaxDepth would require conditional refinement).\n"
-                  "Only " << strataLimit << " grids are generated.\n";
+                                  "Conditional refinement is currently unsupported. "
+                                  "(Enforcing m_uiMaxDepth would require conditional refinement).\n"
+                                  "Only "
+                  << strataLimit << " grids are generated.\n";
 
         m_numStrata = strataLimit;
       }
@@ -472,13 +464,13 @@ namespace ot
 
     // The only grid we know about is in layer [0].
     // It becomes the coarsest, in layer [m_numStrata-1].
-    std::swap(m_gridStrata[0], m_gridStrata[m_numStrata-1]);
-    std::swap(m_tpFrontStrata[0], m_tpFrontStrata[m_numStrata-1]);
-    std::swap(m_tpBackStrata[0], m_tpBackStrata[m_numStrata-1]);
-    std::swap(m_originalTreePartSz[0], m_originalTreePartSz[m_numStrata-1]);
-    std::swap(m_filteredTreePartSz[0], m_filteredTreePartSz[m_numStrata-1]);
+    std::swap(m_gridStrata[0], m_gridStrata[m_numStrata - 1]);
+    std::swap(m_tpFrontStrata[0], m_tpFrontStrata[m_numStrata - 1]);
+    std::swap(m_tpBackStrata[0], m_tpBackStrata[m_numStrata - 1]);
+    std::swap(m_originalTreePartSz[0], m_originalTreePartSz[m_numStrata - 1]);
+    std::swap(m_filteredTreePartSz[0], m_filteredTreePartSz[m_numStrata - 1]);
 
-    for (int coarseStratum = m_numStrata-1; coarseStratum >= 1; coarseStratum--)
+    for (int coarseStratum = m_numStrata - 1; coarseStratum >= 1; coarseStratum--)
     {
       // Identify coarse and fine strata.
       int fineStratum = coarseStratum - 1;
@@ -542,12 +534,6 @@ namespace ot
     return surrogateDT;
   }
 
-
-
-
-
-
-
   template <typename T, unsigned int dim>
   void addMortonDescendants(unsigned int finestLevel,
                             const TreeNode<T, dim> &anc,
@@ -560,13 +546,11 @@ namespace ot
         addMortonDescendants(finestLevel, anc.getChildMorton(c), list);
   }
 
-
-
   template <typename T, unsigned int dim>
-  DistTree<T, dim>  DistTree<T, dim>::constructSubdomainDistTree(
-          unsigned int finestLevel,
-          MPI_Comm comm,
-          double sfc_tol)
+  DistTree<T, dim> DistTree<T, dim>::constructSubdomainDistTree(
+      unsigned int finestLevel,
+      MPI_Comm comm,
+      double sfc_tol)
   {
     int rProc, nProc;
     MPI_Comm_size(comm, &nProc);
@@ -602,11 +586,11 @@ namespace ot
   }
 
   template <typename T, unsigned int dim>
-  DistTree<T, dim>  DistTree<T, dim>::constructSubdomainDistTree(
-          unsigned int finestLevel,
-          const ::ibm::DomainDecider &domainDecider,
-          MPI_Comm comm,
-          double sfc_tol)
+  DistTree<T, dim> DistTree<T, dim>::constructSubdomainDistTree(
+      unsigned int finestLevel,
+      const ::ibm::DomainDecider &domainDecider,
+      MPI_Comm comm,
+      double sfc_tol)
   {
     int rProc, nProc;
     MPI_Comm_size(comm, &nProc);
@@ -629,13 +613,14 @@ namespace ot
 
       // Re-select.
       DendroIntL numKept = 0;
-
       double phycd[dim];
       double physz;
 
       for (DendroIntL i = 0; i < finerTreePart.size(); ++i)
+      {
         if ((treeNode2Physical(finerTreePart[i], phycd, physz), domainDecider(phycd, physz) != ibm::IN) && (numKept++ < i))
-          finerTreePart[numKept-1] = finerTreePart[i];
+          finerTreePart[numKept - 1] = finerTreePart[i];
+      }
       finerTreePart.resize(numKept);
 
       // Re-partition.
@@ -649,19 +634,17 @@ namespace ot
     }
 
     DistTree<T, dim> dtree(treePart, comm);
-    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+    dtree.filterTree(domainDecider); // Associate decider with dtree.
 
     return dtree;
   }
 
-
-
   template <typename T, unsigned int dim>
-  DistTree<T, dim>  DistTree<T, dim>::minimalSubdomainDistTree(
-          unsigned int finestLevel,
-          const ::ibm::DomainDecider &domainDecider,
-          MPI_Comm comm,
-          double sfc_tol)
+  DistTree<T, dim> DistTree<T, dim>::minimalSubdomainDistTree(
+      unsigned int finestLevel,
+      const ::ibm::DomainDecider &domainDecider,
+      MPI_Comm comm,
+      double sfc_tol)
   {
     int rProc, nProc;
     MPI_Comm_size(comm, &nProc);
@@ -725,18 +708,17 @@ namespace ot
     SFC_Tree<T, dim>::distCoalesceSiblings(treeFinal, comm);
 
     DistTree<T, dim> dtree(treeFinal, comm);
-    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+    dtree.filterTree(domainDecider); // Associate decider with dtree.
 
     return dtree;
   }
 
-
   template <typename T, unsigned int dim>
-  DistTree<T, dim>  DistTree<T, dim>::minimalSubdomainDistTreeGrain(
-          size_t grainMin,
-          const ::ibm::DomainDecider &domainDecider,
-          MPI_Comm comm,
-          double sfc_tol)
+  DistTree<T, dim> DistTree<T, dim>::minimalSubdomainDistTreeGrain(
+      size_t grainMin,
+      const ::ibm::DomainDecider &domainDecider,
+      MPI_Comm comm,
+      double sfc_tol)
   {
     int rProc, nProc;
     MPI_Comm_size(comm, &nProc);
@@ -753,7 +735,8 @@ namespace ot
     filterOctList(domainDecider, tree);
 
     int saturated = bool(tree.size() > grainMin);
-    { int saturatedGlobal;
+    {
+      int saturatedGlobal;
       par::Mpi_Allreduce(&saturated, &saturatedGlobal, 1, MPI_LAND, comm);
       saturated = saturatedGlobal;
     }
@@ -767,30 +750,29 @@ namespace ot
       tree.insert(tree.end(), nextLevel.begin(), nextLevel.end());
       SFC_Tree<T, dim>::locTreeSort(tree);
       SFC_Tree<T, dim>::locRemoveDuplicates(tree);
-      SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm);  //future: distTreePartition(), once stable
+      SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm); // future: distTreePartition(), once stable
 #ifndef USE_2TO1_GLOBAL_SORT
       SFC_Tree<T, dim>::distMinimalBalanced(tree, sfc_tol, comm);
 #else
       SFC_Tree<T, dim>::distMinimalBalancedGlobalSort(tree, sfc_tol, comm);
 #endif
-      SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm);  //future: distTreePartition(), once stable
+      SFC_Tree<T, dim>::distTreeSort(tree, sfc_tol, comm); // future: distTreePartition(), once stable
       SFC_Tree<T, dim>::distCoalesceSiblings(tree, comm);
       filterOctList(domainDecider, tree);
 
       saturated = bool(tree.size() > grainMin);
-      { int saturatedGlobal;
+      {
+        int saturatedGlobal;
         par::Mpi_Allreduce(&saturated, &saturatedGlobal, 1, MPI_LAND, comm);
         saturated = saturatedGlobal;
       }
     }
 
     DistTree<T, dim> dtree(tree, comm);
-    dtree.filterTree(domainDecider);  // Associate decider with dtree.
+    dtree.filterTree(domainDecider); // Associate decider with dtree.
 
     return dtree;
   }
-
-
 
   // Explicit instantiations
   template class DistTree<unsigned int, 2u>;

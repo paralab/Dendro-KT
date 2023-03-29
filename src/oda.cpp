@@ -89,18 +89,9 @@ namespace ot
 
       std::vector<int> posVals( ndofs, 2 );
 
-      for( int idx = 0; idx < numNodes; idx++ ) {
+      for( const auto& nodeRank: vertexRanks ) {
 
-        const unsigned int nodeRank =
-              TNPoint<unsigned int, dim>::get_lexNodeRank( leafOctant,
-                                                           nodeCoords[idx],
-                                                           eleOrder );
-
-        if( vertexRanks.find( nodeRank ) != vertexRanks.end() ) {
-
-          std::copy_n( posVals.begin(), ndofs, &out[ndofs * nodeRank] );
-        
-        }
+        std::copy_n( posVals.begin(), ndofs, &out[ndofs * nodeRank] );
 
       }
 
@@ -121,20 +112,16 @@ namespace ot
 
       bool hasHangingNodes = false;
 
-      for( int idx = 0; idx < numNodes; idx++ ) {
+      for( int nodeRank = 0; nodeRank < numNodes; nodeRank++ ) {
 
-        const unsigned int nodeRank =
-              TNPoint<unsigned int, dim>::get_lexNodeRank( leafOctant,
-                                                           nodeCoords[idx],
-                                                           eleOrder );
+          std::copy_n( &in[ndofs * nodeRank], ndofs, &out[ndofs * nodeRank] );
 
-        std::copy_n( &in[ndofs * nodeRank], ndofs, &out[ndofs * nodeRank] );
+          if( vertexRanks.find( nodeRank ) == vertexRanks.end() && in[ ndofs * nodeRank ] > 0 ) {
 
-        if( vertexRanks.find( nodeRank ) == vertexRanks.end() && in[ ndofs * nodeRank ] > 0 ) {
+            hasHangingNodes = true;
 
-          hasHangingNodes = true;
+          }
 
-        }
       }
 
       if( hasHangingNodes ) {

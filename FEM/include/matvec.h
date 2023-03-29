@@ -201,6 +201,9 @@ namespace fem
     void matvecForVertexNode( T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForVertices<T, TN> eleOp, double scale, const RE* refElement)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
+
+      assert( ndofs == 1 );
+
       // Initialize output vector to 0.
       std::fill(vecOut, vecOut + ndofs*sz, 0);
 
@@ -263,6 +266,8 @@ namespace fem
     void matvecForMiddleNode(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTForMiddleNode<T, TN> eleOp, double scale, const RE* refElement)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
+
+      assert( ndofs == 1 );
 
       using C = typename TN::coordType;  // If not unsigned int, error.
       constexpr unsigned int dim = ot::coordDim((TN*){});
