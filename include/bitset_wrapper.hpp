@@ -47,6 +47,7 @@ namespace ot
     inline void set_flat(size_t idx);
     inline void clear_flat(size_t idx);
     inline void flip_flat(size_t idx);
+    inline bool test_flat(size_t idx) const;
 
     // Bitwise logic operators.
     inline Derived operator~() const;
@@ -169,6 +170,11 @@ namespace ot
     this->block.flip(idx);
   }
 
+  template <size_t N, class Derived>
+  inline bool BitsetWrapper<N, Derived>::test_flat(size_t idx) const
+  {
+    return this->block.test(idx);
+  }
 
   // ---------------------------------------------------------------------------
   // Bitwise logic operators.
@@ -234,6 +240,64 @@ namespace ot
     return this->block != other.block;
   }
 
+
+  // For derived classes implementing multidimensional sets.
+  namespace detail
+  {
+    template <int dim, int side, class Derived>
+    inline std::ostream & print_grid(std::ostream &out,
+        const ot::BitsetWrapper<intPow(side, dim), Derived> &bitset)
+    {
+      // Up to 4D.
+      // In horizontal axes, 0=left, 1=middle, 2=right.
+      // In vertical axes, 0=bottom, 1=middle, 2=top.
+      constexpr int N = intPow(side, dim);
+      constexpr int max = side - 1;
+      static_assert(dim <= 4, "Only supported up to dimension 4.");
+      int i[4] = {};
+      int index[4] = {};
+      const int stride[4] = {1, side, side*side, side*side*side};
+      for (i[3] = 0; i[3] < side and i[3] * stride[3] < N; ++i[3])
+      {
+        if (i[3] > 0)  // new row block
+          out << "\n\n";
+        if (stride[3] < N)
+          index[3] = (max - i[3]) % side;  // vertical: reverse and shift.
+
+        for (i[1] = 0; i[1] < side and i[1] * stride[1] < N; ++i[1])
+        {
+          if (i[1] > 0)  // new row
+            out << "\n";
+          if (stride[1] < N)
+            index[1] = (max - i[1]) % side;   // vertical: reverse and shift.
+
+          for (i[2] = 0; i[2] < side and i[2] * stride[2] < N; ++i[2])
+          {
+            if (i[2] > 0)  // new column block
+              out << "  ";
+            if (stride[2] < N)
+              index[2] = (i[2]) % side;  // horizontal: shift.
+
+            for (i[0] = 0; i[0] < side and i[0] * stride[0] < N; ++i[0])
+            {
+              if (i[0] > 0)  // new column
+                out << " ";
+              if (stride[0] < N)
+                index[0] = (i[0]) % side;  // horizontal: shift.
+
+              const int flat = stride[3] * index[3] + 
+                               stride[2] * index[2] +
+                               stride[1] * index[1] +
+                               stride[0] * index[0];
+
+              out << bitset.block[flat];
+            }
+          }
+        }
+      }
+      return out;
+    }
+  }
 }
 
 #endif//DENDRO_KT_BITSET_WRAPPER_HPP

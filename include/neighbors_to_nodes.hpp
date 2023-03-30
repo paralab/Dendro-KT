@@ -11,12 +11,17 @@
 // Function declaration for linkage purposes.
 inline void link_neighbors_to_nodes_tests() {};
 
+#include "include/corner_set.hpp"
 #include "include/neighborhood.hpp"
 #include "include/neighbor_sets.hpp"
+#include "include/nested_for.hpp"
 
 #include "doctest/doctest.h"
 
 #include <vector>
+
+// debug
+#include "include/octUtils.h"
 
 // =============================================================================
 // Interfaces
@@ -30,6 +35,19 @@ namespace ot
       const std::vector<Neighborhood<dim>> &neighborhoods,
       const int degree,
       Policy &&policy);
+
+
+  namespace detail
+  {
+    template <int dim>
+    inline std::array<Neighborhood<dim>, dim> neighbors_not_down();
+
+    template <int dim>
+    inline std::array<Neighborhood<dim>, dim> neighbors_not_up();
+  }
+
+  template <int dim>
+  inline Neighborhood<dim> priority_neighbors();
 
   template <int dim>
   inline std::array<Neighborhood<dim>, nverts(dim)> corner_neighbors();
@@ -54,17 +72,49 @@ namespace ot
       const int degree,
       std::vector<TreeNode<uint32_t, dim>> &output )
   {
-    assert(degree == 1);  //future: support quadratic and high-order.
+    const static std::array<Neighborhood<dim>, dim>
+        directions[2] = { detail::neighbors_not_up<dim>(),
+                          detail::neighbors_not_down<dim>() };
+    const static Neighborhood<dim>
+        priority = priority_neighbors<dim>();
 
-    const static std::array<Neighborhood<dim>, nverts(dim)>
-      preferred_neighbors = vertex_preferred_neighbors<dim>();
-      // Ideally constexpr, but Neighborhood uses std::bitset.
-    const static std::array<Neighborhood<dim>, nverts(dim)>
-      corner_relevant = corner_neighbors<dim>();
+    const auto combine_on_corner = [&](int corner) -> Neighborhood<dim>
+    {
+      //                            1 1 1     0 1 1      0 1 1
+      // NorthEast = North & East = 1 1 1  &  0 1 1  ==  0 1 1
+      //                            0 0 0     0 1 1      0 0 0
+      auto neighborhood = Neighborhood<dim>::full();
+      for (int axis = 0; axis < dim; ++axis)
+        neighborhood &= directions[((corner >> axis) & 1)][axis];
+      return neighborhood;
+    };
+
+    const auto combine_on_facet = [&](auto...facet_idxs) -> Neighborhood<dim>
+    {
+      //                               1 1 1     0 1 1     1 1 0      0 1 0
+      // TrueNorth = North & (E & W) = 1 1 1  &  0 1 1  &  1 1 0  ==  0 1 0
+      //                               0 0 0     0 1 1     1 1 0      0 0 0
+      const std::array<int, dim> idxs = {facet_idxs...};
+      auto neighborhood = Neighborhood<dim>::full();
+      for (int axis = 0; axis < dim; ++axis)
+      {
+        if (idxs[axis] < 2)
+          neighborhood &= directions[0][axis];
+        if (idxs[axis] > 0)
+          neighborhood &= directions[1][axis];
+      }
+      return neighborhood;
+    };
+
+    /// const static std::array<Neighborhood<dim>, nverts(dim)>
+    ///   preferred_neighbors = vertex_preferred_neighbors<dim>();
+    ///   // Ideally constexpr, but Neighborhood uses std::bitset.
+    /// const static std::array<Neighborhood<dim>, nverts(dim)>
+    ///   corner_relevant = corner_neighbors<dim>();
 
     const size_t range_begin = output.size();
 
-    // Append any vertices who prefer no proper neighbor over the current cell.
+    // Append any nodes who prefer no proper neighbor over the current cell.
     if (self_neighborhood.center_occupied())
     {
       // Policy for now: If a node touches any coarser cell, then it is either
@@ -74,22 +124,135 @@ namespace ot
 
       //future: Maybe parent should inspect neighbors of children.
 
-      parent_neighborhood &= corner_relevant[child_number];
+      // Restrict parent neighbors to those visible from this child.
+      // Restrict self neighbors to those that this cell may borrow from.
+      const Neighborhood<dim> greedy_neighbors =
+          (parent_neighborhood & combine_on_corner(child_number))
+          | (self_neighborhood & priority);
 
-      // Combine same-level directional priority with coarseness-priority.
-      for (int vertex = 0; vertex < nverts(dim); ++vertex)
+      // Classify facets.
+      Neighborhood<dim> facets_nonhanging_owned;
+      int facet_idx = 0;
+      tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
       {
-        if (((self_neighborhood & preferred_neighbors[vertex])
-              | (parent_neighborhood & corner_relevant[vertex])
-            ).none())
+        if ((greedy_neighbors & combine_on_facet(idx_pack...)).none())
+          facets_nonhanging_owned.set_flat(facet_idx);
+        ++facet_idx;
+      });
+ 
+      // Map numerators (node indices) and denominator (degree) to coordinate.
+      const auto create_node = [](
+          TreeNode<uint32_t, dim> octant, std::array<int, dim> idxs, int degree)
+        -> TreeNode<uint32_t, dim>
+      {
+        periodic::PCoord<uint32_t, dim> node_pt = {};
+        const uint32_t side = octant.range().side();
+        for (int d = 0; d < dim; ++d)
+          node_pt.coord(d, side * idxs[d] / degree);
+        node_pt += octant.range().min();
+        return TreeNode<uint32_t, dim>(node_pt, octant.getLevel());
+      };
+
+      // Emit nodes for all facets that are owned and nonhanging.
+      tmp::nested_for<dim>(0, degree + 1, [&](auto...idx_pack)
+      {
+        std::array<int, dim> idxs = {idx_pack...};  // 0..degree per axis.
+        // Map node index to facet index.
+        int stride = 1;
+        int facet_idx = 0;
+        for (int d = 0; d < dim; ++d, stride *= 3)
+          facet_idx += ((idxs[d] > 0) + (idxs[d] == degree)) * stride;
+        if(facets_nonhanging_owned.test_flat(facet_idx))
         {
-          auto vertex_pt = self_key.range().min();
-          for (int d = 0; d < dim; ++d)
-            if (bool(vertex & (1 << d)))
-              vertex_pt.coord(d, self_key.range().max(d));
-          output.push_back(TreeNode<uint32_t, dim>(vertex_pt, self_key.getLevel()));
+          output.push_back(create_node(self_key, idxs, degree));
         }
-      }
+      });
+
+      /// /// CornerSet<dim> vertices_hanging;
+      /// /// CornerSet<dim> vertices_borrowed;
+
+      /// // Combine same-level directional priority with coarseness-priority.
+      /// for (int vertex = 0; vertex < nverts(dim); ++vertex)
+      /// {
+      ///   bool hanging = (parent_neighborhood & corner_relevant[vertex]).any();
+      ///   bool borrowed = (self_neighborhood & preferred_neighbors[vertex]).any();
+      ///   /// if (hanging)
+      ///   ///   vertices_hanging.set_flat(vertex);
+      ///   /// if (borrowed)
+      ///   ///   vertices_borrowed.set_flat(vertex);
+
+      ///   if (degree == 1 and ((not hanging) & (not borrowed)))
+      ///   {
+      ///     auto vertex_pt = self_key.range().min();
+      ///     for (int d = 0; d < dim; ++d)
+      ///       if (bool(vertex & (1 << d)))
+      ///         vertex_pt.coord(d, self_key.range().max(d));
+      ///     output.push_back(TreeNode<uint32_t, dim>(vertex_pt, self_key.getLevel()));
+      ///   }
+      /// }
+
+      /// if (degree > 1)
+      /// {
+      ///   /// // Infer edge/face hanging and ownership from status of incident vertices.
+      ///   /// // Iterate over pow(3, dim) facets.
+      ///   /// // Add pow(degree - 1, k) nodes per k-dimensional facet.
+      ///   ///
+      ///   /// // Classify facets.
+      ///   /// Neighborhood<dim> facets_owned;
+      ///   /// int facet_idx = 0;
+      ///   /// tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
+      ///   /// {
+      ///   ///   do
+      ///   ///   {
+      ///   ///     const std::array<int, dim> idxs = {idx_pack...};  // 0..2 per axis.
+      ///   ///     // A facet is hanging if the vertex nearest cell siblings is hanging.
+      ///   ///     int hanging_detector_vertex = 0;
+      ///   ///     for (int d = 0; d < dim; ++d)
+      ///   ///     {
+      ///   ///       // 0 (low)-> 0;  2 (high)-> 1;  1 (middle)-> opposite of child bit.
+      ///   ///       bool bit = (idxs[d] == 2) | (idxs[d] == 1) & (not ((child_number >> d) & 1));
+      ///   ///       hanging_detector_vertex |= (bit << d);
+      ///   ///     }
+      ///   ///     if (vertices_hanging.test_flat(hanging_detector_vertex))
+      ///   ///       continue;
+      ///   ///
+      ///   ///     // A facet is owned if the most-likely-owned vertex is owned.
+      ///   ///     // Depends on lexicographic priority in vertex_preferred_neighbors.
+      ///   ///     int borrow_detector_vertex = 0;
+      ///   ///     for (int d = 0; d < dim; ++d)
+      ///   ///     {
+      ///   ///       // 0 (low)-> 0;  2 (high)-> 1;  1 (middle)-> 1 (go high when can)
+      ///   ///       bool bit = idxs[d] > 0;
+      ///   ///       borrow_detector_vertex |= (bit << d);
+      ///   ///     }
+      ///   ///     if (vertices_borrowed.test_flat(borrow_detector_vertex))
+      ///   ///       continue;
+      ///   ///
+      ///   ///     // If above checks passed, mark the facet as owned and nonhanging.
+      ///   ///     facets_owned.set_flat(facet_idx);
+      ///   ///   } while (false); // Allows continue to skip
+      ///   ///   ++facet_idx;
+      ///   /// }); //end classify facets
+      ///   ///
+      ///   /// // Emit nodes for all facets that are owned and nonhanging.
+      ///   /// int node_idx = 0;
+      ///   /// tmp::nested_for<dim>(0, degree + 1, [&](auto...idx_pack)
+      ///   /// {
+      ///   ///   std::array<int, dim> idxs = {idx_pack...};  // 0..degree per axis.
+      ///   ///   int stride = 1;
+      ///   ///   int facet_idx = 0;
+      ///   ///   for (int d = 0; d < dim; ++d, stride *= 3)
+      ///   ///     facet_idx += ((idxs[d] > 0) + (idxs[d] == degree)) * stride;
+      ///   ///   const bool owned_and_nonhanging = facets_owned.test_flat(facet_idx);
+      ///   ///
+      ///   ///   if (owned_and_nonhanging)
+      ///   ///   {
+      ///   ///     output.push_back(create_node(self_key, idxs, degree));
+      ///   ///   }
+      ///   ///   ++node_idx;
+      ///   /// }); //end emit nodes
+
+      /// }//end degree > 1
     }
 
     const size_t range_end = output.size();
@@ -196,7 +359,7 @@ namespace ot
 
       const int verts_per_side = (1u << max_depth) + 1;
       CHECK( nodes.size() == (verts_per_side * verts_per_side) );
-      _DestroyHcurve;
+      _DestroyHcurve();
     }
 
     DOCTEST_TEST_CASE("Count vertices on uniform 3D grid")
@@ -242,10 +405,10 @@ namespace ot
 
       const int verts_per_side = (1u << max_depth) + 1;
       CHECK( nodes.size() == (verts_per_side * verts_per_side * verts_per_side) );
-      _DestroyHcurve;
+      _DestroyHcurve();
     }
 
-    DOCTEST_TEST_CASE("Count hanging and nonhanging vertices on nonuniform 2D grid")
+    DOCTEST_TEST_CASE("Count hanging vertices and nonhanging nodes on nonuniform 2D grid")
     {
       //  Case 1 _ _ _ _      Case 2  _ _ _ _
       //        |_|_|_|_|            |+|+|+|+|
@@ -253,63 +416,79 @@ namespace ot
       //        |_|+|+|_|            |+|_|_|+|
       //        |_|_|_|_|            |+|+|+|+|
       //
+      constexpr int dim = 2;
 
-      const auto shell = [](int dim, size_t outer_side) {
+      const auto node_shell = [](int dim, size_t outer_cells, int degree = 1) {
         size_t outer_ball = 1;
         size_t inner_ball = 1;
         while (dim > 0)
         {
-          outer_ball *= outer_side;
-          inner_ball *= (outer_side - 2);
+          outer_ball *= outer_cells * degree + 1;
+          inner_ball *= (outer_cells - 2) * degree + 1;
           --dim;
         }
         return outer_ball - inner_ball;
       };
 
-      const auto case_1_vertices = [shell](int dim, int max_depth) {
-        return 1 + shell(dim, 3) + shell(dim, 5) * (max_depth - 2 + 1);
+      const auto inner_node_shell = [node_shell](int dim, size_t outer_cells, int degree) {
+        size_t outer_ball = 1;
+        size_t inner_ball = 1;
+        while (dim > 0)
+        {
+          outer_ball *= outer_cells * degree - 1;
+          inner_ball *= (outer_cells - 2) * degree - 1;
+          --dim;
+        }
+        return outer_ball - inner_ball;
       };
 
-      const auto case_1_nonhanging = [shell](int dim, int max_depth) {
-        return 1 + shell(dim, 5) + shell(dim, 3) * (max_depth - 2 + 1);
+      const auto case_1_vertices = [node_shell](int dim, int max_depth) {
+        return 1 + node_shell(dim, 2) + node_shell(dim, 4) * (max_depth - 2 + 1);
       };
 
-      const auto case_2_vertices = [shell](int dim, int max_depth) {
+      const auto case_1_nonhanging = [node_shell, inner_node_shell](
+          int dim, int max_depth, int degree) {
+        return 1 + node_shell(dim, 2, degree) - node_shell(dim, 2 * degree, 1)
+               +  inner_node_shell(dim, 4, degree) * (max_depth - 2 + 1)
+               + node_shell(dim, 4 * degree, 1);
+      };
+
+      const auto case_2_vertices = [node_shell](int dim, int max_depth) {
         size_t vertices = 1;
-        for (int side = 5; side < (1 << max_depth) + 1; side = side * 2 + 3)
-          vertices += shell(dim, side);
-        vertices += shell(dim, (1 << max_depth) + 1 - 2);
-        vertices += shell(dim, (1 << max_depth) + 1);
+        for (int cells = 4; cells < (1 << max_depth); cells = cells * 2 + 4)
+          vertices += node_shell(dim, cells);
+        vertices += node_shell(dim, (1 << max_depth) - 2);
+        vertices += node_shell(dim, (1 << max_depth));
         return vertices;
       };
 
-      const auto case_2_nonhanging = [shell](int dim, int max_depth) {
+      const auto case_2_nonhanging = [node_shell](int dim, int max_depth, int degree) {
         size_t vertices = 1;
-        for (int side = 3; side < (1 << max_depth) + 1; side = side * 2 + 1)
-          vertices += shell(dim, side);
-        vertices += shell(dim, (1 << max_depth) + 1);
+        for (int cells = 2; cells < (1 << max_depth); cells = cells * 2 + 2)
+          vertices += node_shell(dim, cells, degree);
+        vertices += node_shell(dim, (1 << max_depth), degree);
         return vertices;
       };
 
 
-      _InitializeHcurve(2);
+      _InitializeHcurve(dim);
 
       for (int max_depth = 2; max_depth <= 5; ++max_depth)
       {
         // Case 1
         {
           // Grid.
-          std::vector<TreeNode<uint32_t, 2>> grid = { TreeNode<uint32_t, 2>() };
-          std::vector<TreeNode<uint32_t, 2>> queue;
+          std::vector<TreeNode<uint32_t, dim>> grid = { TreeNode<uint32_t, dim>() };
+          std::vector<TreeNode<uint32_t, dim>> queue;
           for (int level = 1; level <= max_depth; ++level)
           {
             queue.clear();
-            const auto middle = TreeNode<uint32_t, 2>().getChildMorton(0).range().max();
+            const auto middle = TreeNode<uint32_t, dim>().getChildMorton(0).range().max();
             for (auto oct: grid)
             {
               // Case 1: Refine the center.
               if (oct.range().closedContains(middle))
-                for (int child = 0; child < nchild(2); ++child)
+                for (int child = 0; child < nchild(dim); ++child)
                   queue.push_back(oct.getChildMorton(child));
               else
                 queue.push_back(oct);
@@ -319,40 +498,45 @@ namespace ot
 
           // Neighbors.
           const auto neighbor_sets_pair = neighbor_sets(grid);
-          const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.first;
-          const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.second;
+          const std::vector<TreeNode<uint32_t, dim>> &octant_keys = neighbor_sets_pair.first;
+          const std::vector<Neighborhood<dim>> &neighborhoods = neighbor_sets_pair.second;
 
           // Nodes.
           const int degree = 1;
-          std::vector<TreeNode<uint32_t, 2>> vertices =
-              node_set<2>(
-                  octant_keys, neighborhoods, degree, neighborhood_to_all_vertices<2>);
+          std::vector<TreeNode<uint32_t, dim>> vertices =
+              node_set<dim>(
+                  octant_keys, neighborhoods, degree, neighborhood_to_all_vertices<dim>);
+          CHECK_MESSAGE( vertices.size() == case_1_vertices(dim, max_depth),
+              "dim==", dim, " degree==", degree, "  max_depth==", max_depth);
 
-          std::vector<TreeNode<uint32_t, 2>> nodes =
-              node_set<2>(
-                  octant_keys, neighborhoods, degree, neighborhood_to_nonhanging<2>);
-
-          CHECK( vertices.size() == case_1_vertices(2, max_depth) );
-          CHECK( nodes.size() == case_1_nonhanging(2, max_depth) );
+          for (int degree: {1, 2, 3})
+          {
+            std::vector<TreeNode<uint32_t, dim>> nodes =
+                node_set<dim>(
+                    octant_keys, neighborhoods, degree, neighborhood_to_nonhanging<dim>);
+           
+            CHECK_MESSAGE( nodes.size() == case_1_nonhanging(dim, max_depth, degree),
+                "dim==", dim, " degree==", degree, "  max_depth==", max_depth);
+          }
         }
 
         // Case 2
         {
           // Grid.
-          std::vector<TreeNode<uint32_t, 2>> grid = { TreeNode<uint32_t, 2>() };
-          std::vector<TreeNode<uint32_t, 2>> queue;
+          std::vector<TreeNode<uint32_t, dim>> grid = { TreeNode<uint32_t, dim>() };
+          std::vector<TreeNode<uint32_t, dim>> queue;
           for (int level = 1; level <= max_depth; ++level)
           {
             queue.clear();
-            const uint32_t maximum = TreeNode<uint32_t, 2>().range().side();
+            const uint32_t maximum = TreeNode<uint32_t, dim>().range().side();
             for (auto oct: grid)
             {
               // Case 2: Refine the cube surface.
-              const std::array<uint32_t, 2> min = oct.range().min();
-              const std::array<uint32_t, 2> max = oct.range().max();
+              const std::array<uint32_t, dim> min = oct.range().min();
+              const std::array<uint32_t, dim> max = oct.range().max();
               if (*(std::min_element(min.begin(), min.end())) == 0 or
                   *(std::max_element(max.begin(), max.end())) == maximum)
-                for (int child = 0; child < nchild(2); ++child)
+                for (int child = 0; child < nchild(dim); ++child)
                   queue.push_back(oct.getChildMorton(child));
               else
                 queue.push_back(oct);
@@ -362,25 +546,29 @@ namespace ot
 
           // Neighbors.
           const auto neighbor_sets_pair = neighbor_sets(grid);
-          const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.first;
-          const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.second;
+          const std::vector<TreeNode<uint32_t, dim>> &octant_keys = neighbor_sets_pair.first;
+          const std::vector<Neighborhood<dim>> &neighborhoods = neighbor_sets_pair.second;
 
           // Nodes.
           const int degree = 1;
-          std::vector<TreeNode<uint32_t, 2>> vertices =
-              node_set<2>(
-                  octant_keys, neighborhoods, degree, neighborhood_to_all_vertices<2>);
+          std::vector<TreeNode<uint32_t, dim>> vertices =
+              node_set<dim>(
+                  octant_keys, neighborhoods, degree, neighborhood_to_all_vertices<dim>);
+          CHECK_MESSAGE( vertices.size() == case_2_vertices(dim, max_depth),
+              "dim==", dim, " degree==", degree, "  max_depth==", max_depth);
 
-          std::vector<TreeNode<uint32_t, 2>> nodes =
-              node_set<2>(
-                  octant_keys, neighborhoods, degree, neighborhood_to_nonhanging<2>);
-
-          CHECK( vertices.size() == case_2_vertices(2, max_depth) );
-          CHECK( nodes.size() == case_2_nonhanging(2, max_depth) );
+          for (int degree: {1, 2})
+          {
+            std::vector<TreeNode<uint32_t, dim>> nodes =
+                node_set<dim>(
+                    octant_keys, neighborhoods, degree, neighborhood_to_nonhanging<dim>);
+            CHECK_MESSAGE( nodes.size() == case_2_nonhanging(dim, max_depth, degree),
+                "dim==", dim, " degree==", degree, "  max_depth==", max_depth);
+          }
         }
       }
 
-      _DestroyHcurve;
+      _DestroyHcurve();
     }
 
   }
@@ -390,6 +578,7 @@ namespace ot
 // =============================================================================
 // Implementation
 // =============================================================================
+
 namespace ot
 {
   // node_set()
@@ -422,25 +611,52 @@ namespace ot
     return nodes;
   }
 
+  namespace detail
+  {
+
+    template <int dim>
+    inline std::array<Neighborhood<dim>, dim> neighbors_not_down()
+    {
+      std::array<Neighborhood<dim>, dim> neighborhoods = {};
+      for (int axis = 0; axis < dim; ++axis)
+        neighborhoods[axis] = Neighborhood<dim>::not_down(axis);
+      return neighborhoods;
+    }
+
+    template <int dim>
+    inline std::array<Neighborhood<dim>, dim> neighbors_not_up()
+    {
+      std::array<Neighborhood<dim>, dim> neighborhoods = {};
+      for (int axis = 0; axis < dim; ++axis)
+        neighborhoods[axis] = Neighborhood<dim>::not_up(axis);
+      return neighborhoods;
+    }
+  }
+
+  template <int dim>
+  inline Neighborhood<dim> priority_neighbors()
+  {
+    // Prioritization: Lexicographic predecessors.
+    constexpr int N = Neighborhood<dim>::n_neighbors();
+    return Neighborhood<dim>::where([N](int i) { return i < N/2; });
+  }
 
   template <int dim>
   inline std::array<Neighborhood<dim>, nverts(dim)> corner_neighbors()
   {
     constexpr int V = nverts(dim);
-    std::array<Neighborhood<dim>, V> neighbors = {};
+    std::array<Neighborhood<dim>, V> neighborhoods = {};
+    neighborhoods.fill(Neighborhood<dim>::full());
     //future: static variable
 
-    // Middle-high, or low-middle, neighbors for high, or low, corners.
-    neighbors[V - 1] =
-      Neighborhood<dim>::full() & ~Neighborhood<dim>::solitary();
-    for (int codim = dim-1; codim >= 0; --codim)
-      for (int i = nverts(codim) - 1; i < V; i += nverts(codim + 1))
-      {
-        int j = i + nverts(codim);
-        neighbors[i] = neighbors[j].cleared_up(codim);
-        neighbors[j] = neighbors[j].cleared_down(codim);
-      }
-    return neighbors;
+    for (int v = 0; v < V; ++v)
+      for (int axis = 0; axis < dim; ++axis)
+        if (bool(v & (1 << axis)))//up
+          neighborhoods[v] &= Neighborhood<dim>::not_down(axis);
+        else//down
+          neighborhoods[v] &= Neighborhood<dim>::not_up(axis);
+
+    return neighborhoods;
   }
 
 
@@ -459,9 +675,7 @@ namespace ot
     std::array<Neighborhood<dim>, V> preferred_neighbors =
       corner_neighbors<dim>();
 
-    // Prioritization: Lexicographic predecessors.
-    constexpr int N = Neighborhood<dim>::n_neighbors();
-    auto priority = Neighborhood<dim>::where([N](int i) { return i < N/2; });
+    Neighborhood<dim> priority = priority_neighbors<dim>();
     for (int vertex = 0; vertex < V; ++vertex)
       preferred_neighbors[vertex] &= priority;
 

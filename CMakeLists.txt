@@ -184,6 +184,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/p2p.tcc
                   include/lazy.hpp
                   include/passive_shared_ptr.hpp
+                  include/nested_for.hpp
                   include/bitset_wrapper.hpp
                   include/corner_set.hpp
                   include/neighborhood.hpp

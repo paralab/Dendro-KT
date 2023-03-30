@@ -39,6 +39,8 @@ namespace ot
     using Base::Base;  // inherit constructors
 
     static inline Neighborhood solitary();
+    static inline Neighborhood not_down(int axis);
+    static inline Neighborhood not_up(int axis);
 
     // Class properties.
     static constexpr size_t n_neighbors();
@@ -164,6 +166,18 @@ namespace ot
     return {std::bitset<intPow(3, dim)>().set(detail::center_index<dim>())};
   }
 
+  template <int dim>
+  inline Neighborhood<dim> Neighborhood<dim>::not_down(int axis)
+  {
+    return {~detail::hyperplane<dim, 3>(axis, 0)};
+  }
+
+  template <int dim>
+  inline Neighborhood<dim> Neighborhood<dim>::not_up(int axis)
+  {
+    return {~detail::hyperplane<dim, 3>(axis, 2)};
+  }
+
 
   // ---------------------------------------------------------------------------
   // Class properties.
@@ -242,53 +256,7 @@ namespace std
   template <int dim>
   inline std::ostream & operator<<(std::ostream &out, const ot::Neighborhood<dim> &neighborhood)
   {
-    // Up to 4D.
-    // In horizontal axes, 0=left, 1=middle, 2=right.
-    // In vertical axes, 0=bottom, 1=middle, 2=top.
-    constexpr int N = intPow(3, dim);
-    static_assert(dim <= 4, "Only supported up to dimension 4.");
-    int i[4] = {};
-    int index[4] = {};
-    const int stride[4] = {1, 3, 9, 27};
-    for (i[3] = 0; i[3] < 3 and i[3] * stride[3] < N; ++i[3])
-    {
-      if (i[3] > 0)  // new row block
-        out << "\n\n";
-      if (stride[3] < N)
-        index[3] = (2 - i[3]) % 3;  // vertical: reverse and shift.
-
-      for (i[1] = 0; i[1] < 3 and i[1] * stride[1] < N; ++i[1])
-      {
-        if (i[1] > 0)  // new row
-          out << "\n";
-        if (stride[1] < N)
-          index[1] = (2 - i[1]) % 3;   // vertical: reverse and shift.
-
-        for (i[2] = 0; i[2] < 3 and i[2] * stride[2] < N; ++i[2])
-        {
-          if (i[2] > 0)  // new column block
-            out << "  ";
-          if (stride[2] < N)
-            index[2] = (i[2]) % 3;  // horizontal: shift.
-
-          for (i[0] = 0; i[0] < 3 and i[0] * stride[0] < N; ++i[0])
-          {
-            if (i[0] > 0)  // new column
-              out << " ";
-            if (stride[0] < N)
-              index[0] = (i[0]) % 3;  // horizontal: shift.
-
-            const int flat = stride[3] * index[3] + 
-                             stride[2] * index[2] +
-                             stride[1] * index[1] +
-                             stride[0] * index[0];
-
-            out << neighborhood.block[flat];
-          }
-        }
-      }
-    }
-    return out;
+    return ot::detail::print_grid<dim, 3>(out, neighborhood);
   }
 
 

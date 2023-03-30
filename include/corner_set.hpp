@@ -72,10 +72,20 @@ namespace ot
 
   }//DOCTEST_TEST_SUITE("CornerSet")
 
-
-
-
 }
+
+
+namespace std
+{
+  template <int dim>
+  inline std::ostream & operator<<(std::ostream &out, const ot::CornerSet<dim> &corner_set);
+
+  template <int dim>
+  inline std::string to_string(const ot::CornerSet<dim> &corner_set);
+}
+
+
+
 
 
 // =============================================================================
@@ -142,6 +152,27 @@ namespace ot
     return result;
   }
 }
+
+
+// Streamification
+namespace std
+{
+  template <int dim>
+  inline std::ostream & operator<<(std::ostream &out, const ot::CornerSet<dim> &corner_set)
+  {
+    return ot::detail::print_grid<dim, 2>(out, corner_set);
+  }
+
+
+  template <int dim>
+  inline std::string to_string(const ot::CornerSet<dim> &corner_set)
+  {
+    std::stringstream ss;
+    ss << corner_set;
+    return ss.str();
+  }
+}
+
 
 
 #endif//DENDRO_KT_CORNER_SET_HPP
