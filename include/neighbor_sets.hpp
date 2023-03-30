@@ -13,8 +13,6 @@
 // Function declaration for linkage purposes.
 inline void link_neighbor_sets_tests() {};
 
-#include "doctest/doctest.h"
-
 #include "include/tsort.h"
 #include "include/treeNode.h"
 #include "include/neighborhood.hpp"
@@ -32,6 +30,7 @@ namespace ot
              std::vector<Neighborhood<dim>> >
   neighbor_sets(const std::vector<TreeNode<uint32_t, dim>> &leaf_set);
 
+#ifdef DOCTEST_LIBRARY_INCLUDED
   DOCTEST_TEST_SUITE("Neighbor sets")
   {
     DOCTEST_TEST_CASE("Empty set mapped to empty set")
@@ -143,6 +142,7 @@ namespace ot
     //   - [ ] compute scattermap
     //   - [ ] compute gathermap
   }
+#endif//DOCTEST_LIBRARY_INCLUDED
 
 
 }

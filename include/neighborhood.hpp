@@ -15,7 +15,6 @@ inline void link_neighborhood_tests() {};
 
 #include "include/bitset_wrapper.hpp"
 
-#include "doctest/doctest.h"
 #include "include/mathUtils.h"
 
 #include <bitset>
@@ -57,6 +56,7 @@ namespace ot
   };
 
 
+#ifdef DOCTEST_LIBRARY_INCLUDED
   DOCTEST_TEST_SUITE("Neighborhood")
   {
     DOCTEST_TEST_CASE("Full is full")
@@ -117,6 +117,7 @@ namespace ot
     }
 
   }//DOCTEST_TEST_SUITE("Neighborhood")
+#endif//DOCTEST_LIBRARY_INCLUDED
 
 }
 
@@ -139,6 +140,7 @@ namespace std
 namespace ot
 {
 
+#ifdef DOCTEST_LIBRARY_INCLUDED
   DOCTEST_TEST_CASE("Can shift std::bitset")
   {
     DOCTEST_CHECK( (std::bitset<9>("000"
@@ -149,6 +151,7 @@ namespace ot
                                    "000"
                                    "000" );
   }
+#endif//DOCTEST_LIBRARY_INCLUDED
 
   namespace detail
   {

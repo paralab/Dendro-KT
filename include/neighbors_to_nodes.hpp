@@ -16,12 +16,8 @@ inline void link_neighbors_to_nodes_tests() {};
 #include "include/neighbor_sets.hpp"
 #include "include/nested_for.hpp"
 
-#include "doctest/doctest.h"
-
 #include <vector>
 
-// debug
-#include "include/octUtils.h"
 
 // =============================================================================
 // Interfaces
@@ -228,7 +224,7 @@ namespace ot
   }
 
 
-
+#ifdef DOCTEST_LIBRARY_INCLUDED
   DOCTEST_TEST_SUITE("neighbors to nodes")
   {
     DOCTEST_TEST_CASE("Count vertices on uniform 2D grid")
@@ -480,6 +476,7 @@ namespace ot
     }
 
   }
+#endif//DOCTEST_LIBRARY_INCLUDED
 
 }
 
@@ -591,6 +588,7 @@ namespace ot
   }
 
 
+#ifdef DOCTEST_LIBRARY_INCLUDED
   DOCTEST_TEST_CASE("vertex_preferred_neighbors 2D")
   {
     const std::array<Neighborhood<2>, nverts(2)> preferred =
@@ -644,6 +642,7 @@ namespace ot
                               "0 0 0  0 0 0  0 0 0\n"
                               "0 0 0  0 0 0  0 0 0") );
   }
+#endif//DOCTEST_LIBRARY_INCLUDED
 
 
 }

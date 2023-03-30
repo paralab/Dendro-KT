@@ -13,7 +13,6 @@ inline void link_corner_set_tests() {};
 
 #include "include/bitset_wrapper.hpp"
 
-#include "doctest/doctest.h"
 #include "include/mathUtils.h"
 
 #include <iostream>
@@ -45,6 +44,7 @@ namespace ot
   };
 
 
+#ifdef DOCTEST_LIBRARY_INCLUDED
   DOCTEST_TEST_SUITE("CornerSet")
   {
     DOCTEST_TEST_CASE("Shifted empty is empty")
@@ -71,6 +71,7 @@ namespace ot
     }
 
   }//DOCTEST_TEST_SUITE("CornerSet")
+#endif//DOCTEST_LIBRARY_INCLUDED
 
 }
 

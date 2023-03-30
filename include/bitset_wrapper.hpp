@@ -11,7 +11,6 @@
 // Function declaration for linkage purposes.
 inline void link_bitset_wrapper_tests() {};
 
-#include "doctest/doctest.h"
 #include "include/mathUtils.h"
 #include <bitset>
 
