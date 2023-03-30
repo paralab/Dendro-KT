@@ -688,6 +688,7 @@ namespace ot
         parentFrame.template getChildInput<0>(child_sfc)[nodeRank] = myNodes[nIdx];
 
         // Nodal values.
+
         std::copy_n( &parentFrame.template getMyInputHandle<1>()[m_ndofs * nIdx],  m_ndofs,
                      &parentFrame.template getChildInput<1>(child_sfc)[m_ndofs * nodeRank]);
       }

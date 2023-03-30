@@ -1670,6 +1670,7 @@ namespace ot
         // So, must add the node here.
         parentFrame.template getChildInput<0>(child_sfc)[nodeRank] = myNodes[nIdx];
         parentFrame.template getChildInput<1>(child_sfc)[nodeRank] = true; // nonhanging
+
         // Note this will miss hanging nodes.
       }
     }
@@ -1808,28 +1809,26 @@ namespace ot
 
           if (childOutIsDirty[nodeRank])
           {
-            // Don't move nonhanging nodes that are on a hanging face.
-            if (!UseAccumulation || !hangingInChild[child_sfc] || myNodes[nIdx].getLevel() > parSubtree.getLevel())
+            
+            // Nodal values.
+            for (int dof = 0; dof < m_ndofs; dof++)
             {
-              // Nodal values.
-              for (int dof = 0; dof < m_ndofs; dof++)
+              if (UseAccumulation)
               {
-                if (UseAccumulation)
-                {
-                  myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
-                }
-                else
-                  myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
+                myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
               }
-
-              myOutIsDirty[nIdx] |= bool(childOutIsDirty[nodeRank]);
+              else
+                myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
             }
+
+            myOutIsDirty[nIdx] |= bool(childOutIsDirty[nodeRank]);
 
             // Zero out the values after they are transferred.
             // This is necessary so that later linear transforms are not contaminated.
             std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
                          m_ndofs, zero );
             childOutIsDirty[nodeRank] = false;
+
           }
         }
       }
@@ -1895,9 +1894,11 @@ namespace ot
             for (int nIdx = 0; nIdx < npe; ++nIdx)
               if (childOutIsDirty[nIdx])
               {
+              
                 for (int dof = 0; dof < m_ndofs; ++dof)
                   parentNodeVals[nIdx * m_ndofs + dof] += childOutput[nIdx * m_ndofs + dof];
                 parentIPT_IsDirty[nIdx] |= bool(childOutIsDirty[nIdx]);
+
               }
           }
         }
@@ -1907,21 +1908,27 @@ namespace ot
           // Accumulate from intermediate parent lex buffer to parent output.
           for (size_t nIdx = 0; nIdx < numParentNodes; nIdx++)
           {
+
             if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
             {
               const unsigned int nodeRank =
                   TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
                                                                myNodes[nIdx],
                                                                m_eleOrder );
+
               assert(nodeRank < npe);
               for (int dof = 0; dof < m_ndofs; dof++)
                 myOutNodeValues[m_ndofs * nIdx + dof]
                   += m_parentNodeVals[m_ndofs * nodeRank + dof];
+
             }
           }
         }
         else
         {
+
+
+
         }
 
         if (parentNonleaf)

@@ -85,6 +85,9 @@ namespace ot
     template <typename da, typename TN>
     void elementalComputeVecForVertices( da *out, unsigned int ndofs, const TN& leafOctant, const TN* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
     {
+
+      assert(ndofs == 1);
+
       constexpr unsigned int dim = ot::coordDim((TN*){});
 
       std::vector<int> posVals( ndofs, 2 );
@@ -92,15 +95,17 @@ namespace ot
       for( const auto& nodeRank: vertexRanks ) {
 
         std::copy_n( posVals.begin(), ndofs, &out[ndofs * nodeRank] );
-
       }
-
+      
     }
 
     template <typename da, typename TN>
     void elementalComputeVecForMiddleNodes( const da* in, da* out, unsigned int ndofs, const TN& leafOctant, const TN* nodeCoords, const int numNodes, const std::unordered_set<int>& vertexRanks, const unsigned int eleOrder )
     {
       std::vector<int> posVals( ndofs, 2 );
+
+      assert(ndofs == 1);
+
       constexpr unsigned int dim = ot::coordDim((TN*){});
 
       int middleNodeRank;
@@ -114,22 +119,31 @@ namespace ot
 
       for( int nodeRank = 0; nodeRank < numNodes; nodeRank++ ) {
 
-          std::copy_n( &in[ndofs * nodeRank], ndofs, &out[ndofs * nodeRank] );
+          auto nodeval = *( nodeCoords + nodeRank );
 
-          if( vertexRanks.find( nodeRank ) == vertexRanks.end() && in[ ndofs * nodeRank ] > 0 ) {
+          int validNodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
+                  leafOctant,
+                  nodeval,
+                  eleOrder );
 
-            hasHangingNodes = true;
+          if( validNodeRank < 9 && validNodeRank >= 0 ) {
+
+            std::copy_n( &in[ndofs * nodeRank], ndofs, &out[ndofs * nodeRank] );
+
+            if( vertexRanks.find( nodeRank ) == vertexRanks.end() && in[ ndofs * nodeRank ] > 0 ) {
+
+              hasHangingNodes = true;
+
+            }
 
           }
-
-      }
+      }     
 
       if( hasHangingNodes ) {
 
         std::copy_n( posVals.begin(), ndofs, &out[ndofs * middleNodeRank] );
 
       }
-
     }
 
 

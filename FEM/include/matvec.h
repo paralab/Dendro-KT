@@ -15,6 +15,7 @@
 
 #include "sfcTreeLoop_matvec.h"
 #include "sfcTreeLoop_matvec_io.h"
+#include "tnUtils.h"
 
 #include<iostream>
 #include<unordered_set>
@@ -212,7 +213,7 @@ namespace fem
       const unsigned int eleOrder = refElement->getOrder();
       const unsigned int npe = intPow(eleOrder+1, dim);
 
-      ot::MatvecBaseOut<dim, T, false> treeloop(sz, ndofs, eleOrder, false, 0, coords, treePartPtr, treePartSz, partFront, partBack);
+      ot::MatvecBaseOut<dim, T, true> treeloop(sz, ndofs, eleOrder, false, 0, coords, treePartPtr, treePartSz, partFront, partBack);
      
       std::vector<T> leafResult(ndofs*npe, 0);
 
