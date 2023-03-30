@@ -523,6 +523,8 @@ add_subdirectory(test_doctests)
 add_subdirectory(utility)
 
 
+add_subdirectory(bench)
+
 ## tsort_bench (./tsortBench)
 ## -----------
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/include/tsort_bench.h ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/tsort_bench.cpp)

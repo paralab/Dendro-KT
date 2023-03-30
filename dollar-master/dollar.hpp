@@ -37,6 +37,8 @@ namespace dollar {
     inline void chrome( std::ostream &cout ) {}
     inline void markdown( std::ostream &cout ) {}
     inline void pause( bool paused ) {}
+    inline void clobber() {}
+    inline void unclobber() {}
     inline bool is_paused() {}
     inline void clear() {}
 
@@ -178,6 +180,7 @@ namespace dollar
     {
         std::vector<int> stack;
         bool paused;
+        bool clobbered = false;
 
         using URI = std::vector<int>;
         const URI top_uri() const { return stack; }
@@ -462,6 +465,14 @@ namespace dollar
             return paused;
         }
 
+        void clobber( bool clobbered_ ) {
+            clobbered = clobbered_;
+        }
+
+        bool is_clobbered() const {
+            return clobbered;
+        }
+
         void clear() {
             bool p = paused;
             auto num_unfinished_scopes = stack.size();
@@ -503,15 +514,18 @@ namespace dollar
         sampler( const sampler & );
         sampler& operator=( const sampler & );
         profiler::info *handle;
+        bool clobbered = false;
 
         public: // public api
 
         explicit sampler( const std::string &title ) {
-            handle = &singleton<profiler>()->in( title );
+            if (not (clobbered = singleton<profiler>()->is_clobbered()))
+              handle = &singleton<profiler>()->in( title );
         }
 
         ~sampler() {
-            singleton<profiler>()->out( *handle );
+            if (not clobbered)
+              singleton<profiler>()->out( *handle );
         }
     };
 
@@ -541,6 +555,14 @@ namespace dollar
 
     inline bool is_paused() {
         return singleton<profiler>()->is_paused();
+    }
+
+    inline void clobber() {
+        singleton<profiler>()->clobber(true);
+    }
+
+    inline void unclobber() {
+        singleton<profiler>()->clobber(false);
     }
 
     inline void clear() {
