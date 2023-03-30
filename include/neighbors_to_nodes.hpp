@@ -106,12 +106,6 @@ namespace ot
       return neighborhood;
     };
 
-    /// const static std::array<Neighborhood<dim>, nverts(dim)>
-    ///   preferred_neighbors = vertex_preferred_neighbors<dim>();
-    ///   // Ideally constexpr, but Neighborhood uses std::bitset.
-    /// const static std::array<Neighborhood<dim>, nverts(dim)>
-    ///   corner_relevant = corner_neighbors<dim>();
-
     const size_t range_begin = output.size();
 
     // Append any nodes who prefer no proper neighbor over the current cell.
@@ -167,92 +161,6 @@ namespace ot
           output.push_back(create_node(self_key, idxs, degree));
         }
       });
-
-      /// /// CornerSet<dim> vertices_hanging;
-      /// /// CornerSet<dim> vertices_borrowed;
-
-      /// // Combine same-level directional priority with coarseness-priority.
-      /// for (int vertex = 0; vertex < nverts(dim); ++vertex)
-      /// {
-      ///   bool hanging = (parent_neighborhood & corner_relevant[vertex]).any();
-      ///   bool borrowed = (self_neighborhood & preferred_neighbors[vertex]).any();
-      ///   /// if (hanging)
-      ///   ///   vertices_hanging.set_flat(vertex);
-      ///   /// if (borrowed)
-      ///   ///   vertices_borrowed.set_flat(vertex);
-
-      ///   if (degree == 1 and ((not hanging) & (not borrowed)))
-      ///   {
-      ///     auto vertex_pt = self_key.range().min();
-      ///     for (int d = 0; d < dim; ++d)
-      ///       if (bool(vertex & (1 << d)))
-      ///         vertex_pt.coord(d, self_key.range().max(d));
-      ///     output.push_back(TreeNode<uint32_t, dim>(vertex_pt, self_key.getLevel()));
-      ///   }
-      /// }
-
-      /// if (degree > 1)
-      /// {
-      ///   /// // Infer edge/face hanging and ownership from status of incident vertices.
-      ///   /// // Iterate over pow(3, dim) facets.
-      ///   /// // Add pow(degree - 1, k) nodes per k-dimensional facet.
-      ///   ///
-      ///   /// // Classify facets.
-      ///   /// Neighborhood<dim> facets_owned;
-      ///   /// int facet_idx = 0;
-      ///   /// tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
-      ///   /// {
-      ///   ///   do
-      ///   ///   {
-      ///   ///     const std::array<int, dim> idxs = {idx_pack...};  // 0..2 per axis.
-      ///   ///     // A facet is hanging if the vertex nearest cell siblings is hanging.
-      ///   ///     int hanging_detector_vertex = 0;
-      ///   ///     for (int d = 0; d < dim; ++d)
-      ///   ///     {
-      ///   ///       // 0 (low)-> 0;  2 (high)-> 1;  1 (middle)-> opposite of child bit.
-      ///   ///       bool bit = (idxs[d] == 2) | (idxs[d] == 1) & (not ((child_number >> d) & 1));
-      ///   ///       hanging_detector_vertex |= (bit << d);
-      ///   ///     }
-      ///   ///     if (vertices_hanging.test_flat(hanging_detector_vertex))
-      ///   ///       continue;
-      ///   ///
-      ///   ///     // A facet is owned if the most-likely-owned vertex is owned.
-      ///   ///     // Depends on lexicographic priority in vertex_preferred_neighbors.
-      ///   ///     int borrow_detector_vertex = 0;
-      ///   ///     for (int d = 0; d < dim; ++d)
-      ///   ///     {
-      ///   ///       // 0 (low)-> 0;  2 (high)-> 1;  1 (middle)-> 1 (go high when can)
-      ///   ///       bool bit = idxs[d] > 0;
-      ///   ///       borrow_detector_vertex |= (bit << d);
-      ///   ///     }
-      ///   ///     if (vertices_borrowed.test_flat(borrow_detector_vertex))
-      ///   ///       continue;
-      ///   ///
-      ///   ///     // If above checks passed, mark the facet as owned and nonhanging.
-      ///   ///     facets_owned.set_flat(facet_idx);
-      ///   ///   } while (false); // Allows continue to skip
-      ///   ///   ++facet_idx;
-      ///   /// }); //end classify facets
-      ///   ///
-      ///   /// // Emit nodes for all facets that are owned and nonhanging.
-      ///   /// int node_idx = 0;
-      ///   /// tmp::nested_for<dim>(0, degree + 1, [&](auto...idx_pack)
-      ///   /// {
-      ///   ///   std::array<int, dim> idxs = {idx_pack...};  // 0..degree per axis.
-      ///   ///   int stride = 1;
-      ///   ///   int facet_idx = 0;
-      ///   ///   for (int d = 0; d < dim; ++d, stride *= 3)
-      ///   ///     facet_idx += ((idxs[d] > 0) + (idxs[d] == degree)) * stride;
-      ///   ///   const bool owned_and_nonhanging = facets_owned.test_flat(facet_idx);
-      ///   ///
-      ///   ///   if (owned_and_nonhanging)
-      ///   ///   {
-      ///   ///     output.push_back(create_node(self_key, idxs, degree));
-      ///   ///   }
-      ///   ///   ++node_idx;
-      ///   /// }); //end emit nodes
-
-      /// }//end degree > 1
     }
 
     const size_t range_end = output.size();
