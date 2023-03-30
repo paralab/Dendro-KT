@@ -18,6 +18,8 @@ inline void link_neighbors_to_nodes_tests() {};
 
 #include <vector>
 
+// needed by doctests
+#include <initializer_list>
 
 // =============================================================================
 // Interfaces
@@ -116,6 +118,7 @@ namespace ot
 
       // Restrict parent neighbors to those visible from this child.
       // Restrict self neighbors to those that this cell may borrow from.
+
       const Neighborhood<dim> greedy_neighbors =
           (parent_neighborhood & combine_on_corner(child_number))
           | (self_neighborhood & priority);
@@ -129,7 +132,7 @@ namespace ot
           facets_nonhanging_owned.set_flat(facet_idx);
         ++facet_idx;
       });
- 
+
       // Map numerators (node indices) and denominator (degree) to coordinate.
       const auto create_node = [](
           TreeNode<uint32_t, dim> octant, std::array<int, dim> idxs, int degree)
@@ -312,6 +315,40 @@ namespace ot
       _DestroyHcurve();
     }
 
+
+    DOCTEST_TEST_CASE("Parent-neighbor interference")
+    {
+      _InitializeHcurve(2);
+
+      const auto descendant = [](
+          TreeNode<uint32_t, 2> node, std::initializer_list<int> lineage) {
+        for (int c : lineage)
+          node = node.getChildMorton(c);
+        return node;
+      };
+
+      // Incomplete tree with gap between coarse and fine cells.
+      std::vector<TreeNode<uint32_t, 2>> grid;
+      const auto root = TreeNode<uint32_t, 2>();
+      grid.push_back(descendant(root, {0, 1}));
+      grid.push_back(descendant(root, {1, 1, 0}));
+      grid.push_back(descendant(root, {1, 1, 1}));
+      grid.push_back(descendant(root, {1, 1, 2}));
+      grid.push_back(descendant(root, {1, 1, 3}));
+
+      const auto neighbor_sets_pair = neighbor_sets(grid);
+      const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.first;
+      const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.second;
+      const int degree = 1;
+      std::vector<TreeNode<uint32_t, 2>> nodes =
+          node_set<2>(
+              octant_keys, neighborhoods, degree, neighborhood_to_nonhanging<2>);
+      CHECK( nodes.size() == 4 + 9 );
+
+      _DestroyHcurve();
+    }
+
+
     DOCTEST_TEST_CASE("Count hanging vertices and nonhanging nodes on nonuniform 2D grid")
     {
       //  Case 1 _ _ _ _      Case 2  _ _ _ _
@@ -418,7 +455,7 @@ namespace ot
             std::vector<TreeNode<uint32_t, dim>> nodes =
                 node_set<dim>(
                     octant_keys, neighborhoods, degree, neighborhood_to_nonhanging<dim>);
-           
+
             CHECK_MESSAGE( nodes.size() == case_1_nonhanging(dim, max_depth, degree),
                 "dim==", dim, " degree==", degree, "  max_depth==", max_depth);
           }
@@ -494,6 +531,8 @@ namespace ot
       const int degree,
       Policy &&policy)
   {
+    using Coordinate = periodic::PCoord<uint32_t, dim>;
+    std::vector<Coordinate>        parents_by_level(m_uiMaxDepth + 1);
     std::vector<Neighborhood<dim>> neighborhoods_by_level(m_uiMaxDepth + 1);
 
     std::vector<TreeNode<uint32_t, dim>> nodes;
@@ -505,12 +544,19 @@ namespace ot
       const int child_number = key.getMortonIndex();
 
       const auto self_neighborhood = neighborhoods[i];
-      const auto parent_neighborhood = neighborhoods_by_level[key_level - 1];
+
+      auto parent_neighborhood = Neighborhood<dim>::empty();
+      if (TreeNode<uint32_t, dim>(
+            parents_by_level[key_level - 1], key_level - 1).isAncestor(key))
+        parent_neighborhood = neighborhoods_by_level[key_level - 1];
 
       policy(key, self_neighborhood, parent_neighborhood, child_number, degree, nodes);
 
       if (i + 1 < end and key.isAncestor(octant_keys[i + 1]))
+      {
+        parents_by_level[key_level] = key.coords();
         neighborhoods_by_level[key_level] = self_neighborhood;
+      }
     }
 
     return nodes;
