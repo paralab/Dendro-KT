@@ -16,7 +16,7 @@
 #include "treeNode.h"
 #include "mathUtils.h"
 #include "binUtils.h"
-
+#include "tnUtils.h"
 #include "refel.h"
 /// #include "tensor.h"
 
@@ -183,6 +183,37 @@ namespace ot
         /** readNodeValsOut() */
         const NodeT * readNodeValsOut() const {
           return &(*treeloop.getCurrentFrame().template getMyOutputHandle<0>().cbegin());
+        }
+
+        const std::bitset<intPow( 3, dim )> getLeafBitsetInfo() {
+
+          const TreeNode<unsigned int, dim>* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
+          const int numNodes = treeloop.subtreeInfo().getNumNodesIn();
+          const TreeNode<unsigned int, dim>& currTree = treeloop.subtreeInfo().getCurrentSubtree();
+
+          assert( m_eleOrder == 1 );
+          assert( treeloop.subtreeInfo().isLeaf() );
+
+          RefElement refel( dim, m_eleOrder + 1 );
+
+          std::unordered_set<int> vertexAndMiddleNodeSet;
+          refel.populateSecondOrderVertexSet( vertexAndMiddleNodeSet );
+
+          std::bitset<intPow( 3, dim )> nodeConf;
+
+          for( int idx = 0; idx < numNodes; idx++ ) {
+            const unsigned int nodeRank = ot::TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
+                                                          nodeCoords[idx],
+                                                          m_eleOrder + 1 );
+
+            if( vertexAndMiddleNodeSet.find( nodeRank ) == vertexAndMiddleNodeSet.end() ) {
+
+              nodeConf |= 1 << nodeRank;
+            
+            }
+          }
+
+          return nodeConf;
         }
 
         /** overwriteNodeValsIn() */

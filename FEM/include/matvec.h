@@ -159,7 +159,7 @@ namespace fem
             for( int idx = 0; idx < numNodes; idx++ ) {
               const unsigned int nodeRank = ot::TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
                                                            nodeCoords[idx],
-                                                           eleOrder );
+                                                           eleOrder + 1 );
 
               if( vertexAndMiddleNodeSet.find( nodeRank ) == vertexAndMiddleNodeSet.end() ) {
 
