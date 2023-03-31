@@ -105,7 +105,7 @@ namespace ot
       std::vector<int> posVals( ndofs, 2 );
 
       assert(ndofs == 1);
-
+      
       constexpr unsigned int dim = ot::coordDim((TN*){});
 
       int middleNodeRank;
@@ -142,6 +142,11 @@ namespace ot
       if( hasHangingNodes ) {
 
         std::copy_n( posVals.begin(), ndofs, &out[ndofs * middleNodeRank] );
+
+        // std::vector<double> physcoords( dim, 2 );
+        // auto nodeval = *( nodeCoords + ndofs*middleNodeRank );
+        // treeNode2Physical( nodeval, eleOrder, &( *physcoords.begin() ) );
+        // std::cout << "Attempting middle node at \t" << physcoords[0] << "\t" << physcoords[1] << "\n";
 
       }
     }

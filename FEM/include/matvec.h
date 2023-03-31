@@ -251,10 +251,10 @@ namespace fem
           bench::t_elemental.stop();
 #endif
 
-          treeloop.next();
+          treeloop.next(1);
         }
         else
-          treeloop.step();
+          treeloop.step(1);
       }
 
       size_t writtenSz = treeloop.finalize(vecOut);
