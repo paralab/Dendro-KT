@@ -324,62 +324,73 @@ namespace ot
 
       int currOffset = 0;
 
-      while( m_gm.m_recvProc[ rprocIdx ] < procIdx ) {
+      if( m_gm.m_recvProc.size() > 0 ) {
 
-        int recvCount = m_gm.m_recvCounts[ rprocIdx ];
-        int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
-        int currCount = 0;
+        while( m_gm.m_recvProc[ rprocIdx ] < procIdx ) {
 
-        for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
+          int recvCount = m_gm.m_recvCounts[ rprocIdx ];
+          int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
+          int currCount = 0;
 
-          if( isValidNode[ recvOffset + lIdx ] != 0 ) {
+          for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
 
-            currCount += 1;
+            if( isValidNode[ recvOffset + lIdx ] != 0 ) {
 
-          }
+              currCount += 1;
 
-        }
-
-        m_gm.m_recvCounts[ rprocIdx ] = currCount;
-        m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
-
-        currOffset += currCount;
-
-        rprocIdx += 1;
-
-      }
-
-      m_gm.m_locCount = newLocalSize;
-      m_gm.m_locOffset = currOffset;
-
-      currOffset += newLocalSize;
-
-      while( rprocIdx < m_gm.m_recvProc.size() ) {
-
-        int recvCount = m_gm.m_recvCounts[ rprocIdx ];
-        int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
-        int currCount = 0;
-
-        for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
-
-          if( isValidNode[ recvOffset + lIdx ] != 0 ) {
-
-            currCount += 1;
+            }
 
           }
 
+          m_gm.m_recvCounts[ rprocIdx ] = currCount;
+          m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
+
+          currOffset += currCount;
+
+          rprocIdx += 1;
+
         }
 
-        m_gm.m_recvCounts[ rprocIdx ] = currCount;
-        m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
+        m_gm.m_locCount = newLocalSize;
+        m_gm.m_locOffset = currOffset;
 
-        currOffset += currCount;
+        currOffset += newLocalSize;
 
-        rprocIdx += 1;
+        while( rprocIdx < m_gm.m_recvProc.size() ) {
 
+          int recvCount = m_gm.m_recvCounts[ rprocIdx ];
+          int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
+          int currCount = 0;
+
+          for( int lIdx = 0; lIdx < recvCount; lIdx++ ) {
+
+            if( isValidNode[ recvOffset + lIdx ] != 0 ) {
+
+              currCount += 1;
+
+            }
+
+          }
+
+          m_gm.m_recvCounts[ rprocIdx ] = currCount;
+          m_gm.m_recvOffsets[ rprocIdx ] = currOffset;
+
+          currOffset += currCount;
+
+          rprocIdx += 1;
+
+        }
+
+        m_gm.m_totalCount = currOffset;
       }
+      else {
+        m_gm.m_locCount = newLocalSize;
+        m_gm.m_locOffset = currOffset;
+        m_gm.m_totalCount = newLocalSize;
+      }
+      
 
-      m_gm.m_totalCount = currOffset;
+      
 
     }
 
@@ -981,9 +992,7 @@ namespace ot
             DA<dim>::modifyScatterMap( isValidNode );
           }
 
-          if( m_gm.m_recvProc.size() > 0 ) {
-            DA<dim>::modifyGatherMap( isValidNode, newLocalSz, procIdx );
-          }
+          DA<dim>::modifyGatherMap( isValidNode, newLocalSz, procIdx );
 
           std::vector<TreeNode<C, dim>> myNewTNCoords;
 

@@ -104,9 +104,14 @@ int main(int argc, char *argv[]) {
         std::cout << distTree.getTreePartFiltered().size() << "\n";
         ot::DA<DIM> *newDA1 = new ot::DA<DIM>(distTree, 0,comm, eleOrder, 100, 0.3,1); //DistTree overload
         ot::DA<DIM> *newDA2 = new ot::DA<DIM>(distTree, 0,comm, eleOrder, 100, 0.3,0);
-        std::cout << "NewDA1 = " << newDA1->getGlobalNodeSz() << "\n";
-        std::cout << "NewDA2 = " << newDA2->getGlobalNodeSz() << "\n";
+        // std::cout << "NewDA1 = " << newDA1->getGlobalNodeSz() << "\n";
+        // std::cout << "NewDA2 = " << newDA2->getGlobalNodeSz() << "\n";
+        // std::cout << "NewDA1 = " << newDA1->getLocalNodalSz() << "\n";
+        // std::cout << "NewDA2 = " << newDA2->getLocalNodalSz() << "\n";
+
+        std::cout << "NewDA1 = " << newDA1->getTotalNodalSz() << "\n";
         std::cout << "NewDA1 = " << newDA1->getLocalNodalSz() << "\n";
+        std::cout << "NewDA2 = " << newDA2->getTotalNodalSz() << "\n";
         std::cout << "NewDA2 = " << newDA2->getLocalNodalSz() << "\n";
 
         // auto stringify = [](const std::pair<double, double>& p, std::string sep = "-")-> std::string{
