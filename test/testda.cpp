@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
         static int subcase_id_hack = 0;
         int finest_level = 5;
         const std::vector<ot::TreeNode<unsigned int, DIM>> &treePart = distTree.getTreePartFiltered();
-        // ot::quadTreeToGnuplot( treePart, finest_level, "output", comm);
+        ot::quadTreeToGnuplot( treePart, finest_level, "output", comm);
         // ot::quadTreeToGnuplot(sorted, finest_level, "_output/case_" + std::to_string(subcase_id_hack) + "_sorted", comm);
         ++subcase_id_hack;
 
@@ -109,61 +109,61 @@ int main(int argc, char *argv[]) {
         std::cout << "NewDA1 = " << newDA1->getLocalNodalSz() << "\n";
         std::cout << "NewDA2 = " << newDA2->getLocalNodalSz() << "\n";
 
-        auto stringify = [](const std::pair<double, double>& p, std::string sep = "-")-> std::string{
-            return std::to_string(p.first) + sep + std::to_string(p.second);
-        };
+        // auto stringify = [](const std::pair<double, double>& p, std::string sep = "-")-> std::string{
+        //     return std::to_string(p.first) + sep + std::to_string(p.second);
+        // };
 
-        auto tnCoords1 = newDA1->getTNCoords();
-        auto tnCoords2 = newDA2->getTNCoords();
+        // auto tnCoords1 = newDA1->getTNCoords();
+        // auto tnCoords2 = newDA2->getTNCoords();
 
-        std::vector<double> physcoords( DIM, 0 );
+        // std::vector<double> physcoords( DIM, 0 );
 
-        std::unordered_set<std::string> coord1str;
-        std::unordered_set<std::string> coord2str;
+        // std::unordered_set<std::string> coord1str;
+        // std::unordered_set<std::string> coord2str;
 
-        std::unordered_map<std::string, int> coord1map;
-        std::unordered_map<std::string, int> coord2map;
+        // std::unordered_map<std::string, int> coord1map;
+        // std::unordered_map<std::string, int> coord2map;
 
-        int idx = 0;
+        // int idx = 0;
 
-        for( idx = 0; idx < newDA2->getLocalNodalSz(); idx++ ) {
+        // for( idx = 0; idx < newDA2->getLocalNodalSz(); idx++ ) {
 
-            ot::treeNode2Physical( *tnCoords2, eleOrder, &( *physcoords.begin() ) );
+        //     ot::treeNode2Physical( *tnCoords2, eleOrder, &( *physcoords.begin() ) );
 
-            // std::cout << std::to_string( physcoords[0] ) << "\t" << std::to_string( physcoords[1] ) << "\n";
+        //     // std::cout << std::to_string( physcoords[0] ) << "\t" << std::to_string( physcoords[1] ) << "\n";
 
-            auto key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
+        //     auto key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
 
-            coord2str.insert( key );
+        //     coord2str.insert( key );
 
-            coord2map[key] += 1;
+        //     coord2map[key] += 1;
 
-            tnCoords2++;
+        //     tnCoords2++;
 
-        }
+        // }
 
-        for( idx = 0 ; idx < newDA1->getLocalNodalSz(); idx++ ) {
+        // for( idx = 0 ; idx < newDA1->getLocalNodalSz(); idx++ ) {
 
-            ot::treeNode2Physical( *tnCoords1, eleOrder, &( *physcoords.begin() ) );
+        //     ot::treeNode2Physical( *tnCoords1, eleOrder, &( *physcoords.begin() ) );
 
-            auto key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
+        //     auto key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
 
-            // if( key == "0.062500-0.062500" ) {
+        //     // if( key == "0.062500-0.062500" ) {
 
-            //     ot::treeNode2Physical( *tnCoords1, eleOrder + 1, &( *physcoords.begin() ) );
-            //     key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
+        //     //     ot::treeNode2Physical( *tnCoords1, eleOrder + 1, &( *physcoords.begin() ) );
+        //     //     key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
 
-            //     std::cout << key << "\n";
+        //     //     std::cout << key << "\n";
 
-            // }
+        //     // }
 
-            coord1str.insert( stringify( std::make_pair( physcoords[0], physcoords[1] ) ) );
+        //     coord1str.insert( stringify( std::make_pair( physcoords[0], physcoords[1] ) ) );
 
-            coord1map[key] += 1;
+        //     coord1map[key] += 1;
             
-            tnCoords1++;
+        //     tnCoords1++;
 
-        }
+        // }
 
         // for( auto& strval: coord1str ) {
 

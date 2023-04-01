@@ -290,9 +290,9 @@ namespace ot
         for( int sIdx = 0; sIdx < sendCount; sIdx++ ) {
 
           int localRank = m_sm.m_map[ sendOffset + sIdx ];
-          sm_m_map_validity[ sIdx ] = isValidNode[ m_uiLocalNodeBegin + localRank ];
+          sm_m_map_validity[ sendOffset + sIdx ] = isValidNode[ m_uiLocalNodeBegin + localRank ];
 
-          if( sm_m_map_validity[ sIdx ] != 0 ) {
+          if( sm_m_map_validity[ sendOffset + sIdx ] != 0 ) {
             currCount += 1;
           }
 
@@ -379,7 +379,7 @@ namespace ot
 
       }
 
-      m_gm.m_totalCount = m_gm.m_recvOffsets.back() + 1;
+      m_gm.m_totalCount = currOffset;
 
     }
 
@@ -969,15 +969,13 @@ namespace ot
 
           }
 
-          std::vector<int> updatedLocalIndices( m_uiLocalNodalSz, 0 );
+          int newLocalSz{0};
 
-          for( int idx = 1; idx < m_uiLocalNodalSz; idx++ ) {
-
-            updatedLocalIndices[ idx ] = updatedLocalIndices[ idx - 1 ] + isValidNode[ m_uiLocalNodeBegin + idx ];
-
+          for( int idx = 0; idx < m_uiLocalNodalSz; idx++ ) {
+            
+            newLocalSz += isValidNode[ m_uiLocalNodeBegin + idx ];
+            
           }
-
-          int newLocalSz = updatedLocalIndices.back() + 1;
 
           if( m_sm.m_map.size() > 0 ) {
             DA<dim>::modifyScatterMap( isValidNode );
@@ -1005,6 +1003,12 @@ namespace ot
           m_totalRecvSz = totalRecvSz(m_gm);
           m_numDestNeighbors = m_sm.m_sendProc.size();
           m_numSrcNeighbors = m_gm.m_recvProc.size();
+
+          // print the nodal coordinates
+          // printNodeCoords( &( *m_tnCoords.begin() ),
+          //                 &( *m_tnCoords.end() ),
+          //                 2, 
+          //                 fval );
 
           const DA<dim> &ghostExchange = *this;
           m_ghostedNodeOwnerElements = getNodeElementOwnership(

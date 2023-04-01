@@ -1810,6 +1810,11 @@ namespace ot
 
           if (childOutIsDirty[nodeRank])
           {
+            // std::vector<double> physcoords( dim, 2 );
+            // auto nodeval = ( myNodes[nIdx] );
+            // treeNode2Physical( nodeval, m_eleOrder, &( *physcoords.begin() ) );
+            // std::cout << physcoords[0] << "\t" << physcoords[1] << "\n";
+            // std::cout << myNodes[nIdx].getLevel() << "\t" << parSubtree.getLevel() << "\n";
             if (!UseAccumulation || !hangingInChild[child_sfc] || myNodes[nIdx].getLevel() > parSubtree.getLevel()) 
             {
             // Nodal values.
