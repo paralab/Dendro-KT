@@ -140,7 +140,7 @@ namespace fem
 
         while (!treeloop.isFinished())
         {
-          if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf( version ))
+          if (treeloop.isPre() && treeloop.subtreeInfo().isLeaf() )
           {
 
   #ifdef DENDRO_KT_MATVEC_BENCH_H

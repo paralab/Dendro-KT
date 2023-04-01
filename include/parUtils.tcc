@@ -113,11 +113,11 @@ namespace par {
 #ifdef __PROFILE_WITH_BARRIER__
     MPI_Barrier(comm);
 #endif
-    PROF_PAR_SCAN_BEGIN
+    // PROF_PAR_SCAN_BEGIN
 
     MPI_Scan(sendbuf, recvbuf, count, par::Mpi_datatype<T>::value(), op, comm);
 
-    PROF_PAR_SCAN_END
+    // PROF_PAR_SCAN_END
   }
 
   template<typename T>
