@@ -232,8 +232,11 @@ namespace ot
       }
 
     protected:
+
+      void topDownNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT *extantChildren );
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version = 0);
       void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version = 0) {}
+      
       void parent2Child(FrameT &parentFrame, FrameT &childFrame) {}
       void child2Parent(FrameT &parentFrame, FrameT &childFrame) {}
 
@@ -907,7 +910,7 @@ namespace ot
   // MatvecBaseCoords topDown
   //
   template <unsigned int dim>
-  void MatvecBaseCoords<dim>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
+  void MatvecBaseCoords<dim>::topDownNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT *extantChildren )
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1139,7 +1142,251 @@ namespace ot
   }
 
 
+  //
+  // MatvecBaseCoords topDown
+  //
+  template <unsigned int dim>
+  void MatvecBaseCoords<dim>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
+  {
+    /**
+     *  Copied from sfcTreeLoop.h:
+     *
+     *  topDownNodes()
+     *  is responsible to
+     *    1. Resize the child input buffers (SFC order) in the parent frame;
+     *
+     *    2. Duplicate elements of the parent input buffers to
+     *       incident child input buffers (SFC order);
+     *
+     *    2.1. Initialize a summary object for each child (SFC order).
+     *
+     *    3. Indicate to SFC_TreeLoop which children to traverse,
+     *       by accumulating into the extantChildren bit array (Morton order).
+     *
+     *  Restrictions
+     *    - MAY NOT resize or write to parent input buffers.
+     *    - MAY NOT resize or write to variably sized output buffers.
+     *
+     *  Utilities are provided to identify and iterate over incident children.
+     */
 
+    // =========================
+    // Top-down Outline:
+    // =========================
+    // - First pass: Count (#nodes, finest node level) per child.
+    //   - Note: A child is a leaf iff finest node level == subtree level.
+    //   - Note: A child is a leaf with hanging nodes if #nodes < npe.
+    //
+    // - Allocate child input nodes (with at least npe per child).
+    //
+    // - For each child:
+    //   - If child has hanging nodes, interpolate from parent.
+    //     - Note: Any interpolated nonhanging nodes will be overwritten anyway.
+    //
+    // - Second pass: Duplicate parent nodes into children.
+    //   - If a child is a leaf and #nonhanging nodes <= npe, copy into lex position.
+    //   - Else copy nodes into same order as they appear in parent.
+    // ========================================================================
+
+    if( version == 0 ) {
+      MatvecBaseCoords<dim>::topDownNodesInterpolate( parentFrame, extantChildren );
+    }
+    else if( version == 1 ) {
+
+      const unsigned npe = intPow(m_eleOrder+1, dim);
+      const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
+
+      std::array<size_t, NumChildren> childNodeCounts;
+      std::array<LevI, NumChildren> childFinestLevel;
+      std::array<size_t, NumChildren> childBdryCounts;
+      childNodeCounts.fill(0);
+      childFinestLevel.fill(0);
+      childBdryCounts.fill(0);
+      *extantChildren = parentFrame.getExtantTreeChildrenMorton();
+
+      static std::vector<char> childLexPresent;
+      childLexPresent.clear();
+      childLexPresent.resize(NumChildren * (2 * npe + 1 ), false);
+      const auto setChildLexPresent = [&](int child, int lex) {
+        childLexPresent[lex * NumChildren + child] += 1; //= true;
+      };
+      const auto allChildLexPresent = [&](int child) {
+        int count = 0;
+        for (int lex = 0; lex < 2 * npe + 1; ++lex)
+          count += bool(childLexPresent[lex * NumChildren + child]);
+        return count == npe;
+      };
+
+      const std::vector<TreeNode<unsigned int, dim>> &myNodes = parentFrame.template getMyInputHandle<0>();
+      const size_t numInputNodes = parentFrame.mySummaryHandle.m_subtreeNodeCount;
+
+      // Compute child subtree TreeNodes for temporary use.
+      std::array<TreeNode<unsigned int, dim>, NumChildren> childSubtreesSFC;
+      for (sfc::SubIndex child_sfc(0); child_sfc < nchild(dim); ++child_sfc)
+      {
+        const SFC_State<dim> sfc = this->getCurrentRotation();
+        childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(sfc.child_num(child_sfc));
+      }
+
+      //
+      // Initial pass over the input data.
+      // Count #points per child, finest level, extant children.
+      //
+      for (const auto &nodeInstance : IterateNodesToChildren<dim>( this->getCurrentSubtree(),
+                                                                  &(*myNodes.begin()),
+                                                                  numInputNodes,
+                                                                  this->getCurrentRotation(),
+                                                                  *extantChildren ))
+      {
+        const ChildI child_sfc = nodeInstance.getChild_sfc();
+
+        const LevI nodeLevel = myNodes[nodeInstance.getPNodeIdx()].getLevel();
+        if (myNodes[nodeInstance.getPNodeIdx()].getIsOnTreeBdry())
+          childBdryCounts[child_sfc]++;
+        if (childFinestLevel[child_sfc] < nodeLevel)
+          childFinestLevel[child_sfc] = nodeLevel;
+        childNodeCounts[child_sfc]++;
+
+        if (nodeLevel <= parSubtree.getLevel() + 1)
+          setChildLexPresent(child_sfc, TNPoint<unsigned, dim>::get_lexNodeRank(
+                childSubtreesSFC[child_sfc], myNodes[nodeInstance.getPNodeIdx()], m_eleOrder + 1));
+      }
+
+
+      //
+      // Update child summaries.
+      //
+      bool thereAreHangingNodes = false;
+      std::array<bool, NumChildren> hangingInChild;
+      hangingInChild.fill(false);
+      MatvecBaseSummary<dim> (&summaries)[NumChildren] = parentFrame.childSummaries;
+      for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+      {
+        const LevI parLev = parSubtree.getLevel();
+        if (childFinestLevel[child_sfc] <= parLev)
+        {
+          childNodeCounts[child_sfc] = 0;
+        }
+
+        summaries[child_sfc].m_subtreeFinestLevel = childFinestLevel[child_sfc];
+        summaries[child_sfc].m_subtreeNodeCount = childNodeCounts[child_sfc];
+        summaries[child_sfc].m_numBdryNodes = childBdryCounts[child_sfc];
+
+        summaries[child_sfc].m_initializedIn = true;
+        summaries[child_sfc].m_initializedOut = false;
+
+        if (childNodeCounts[child_sfc] > 0 and
+            childFinestLevel[child_sfc] <= parLev + 1 and
+            not allChildLexPresent(child_sfc))
+        {
+          hangingInChild[child_sfc] = true;
+          thereAreHangingNodes = true;
+        }
+
+        summaries[child_sfc].m_haveHanging = hangingInChild[child_sfc];
+      }
+      //TODO need to add to MatvecBaseSummary<dim>, bool isBoundary (to decide whether to skip subtree)
+
+      //
+      // Resize child input buffers in the parent frame.
+      //
+      for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
+      {
+        size_t allocNodes = childNodeCounts[child_sfc];
+        allocNodes = (allocNodes == 0 && !m_visitEmpty ? 0 : allocNodes < 2 * npe + 1 ? 2 * npe + 1 : allocNodes);
+
+        if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1)
+        {
+          parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
+
+          parentFrame.template getChildInput<1>(child_sfc).clear();
+          parentFrame.template getChildInput<1>(child_sfc).resize(allocNodes, false);
+        }
+        else
+        {
+          // Cannot use Element::appendNodes() because the node may be parent level.
+          parentFrame.template getChildInput<0>(child_sfc).resize(allocNodes);
+
+          parentFrame.template getChildInput<1>(child_sfc).clear();
+          parentFrame.template getChildInput<1>(child_sfc).resize(allocNodes, false);
+        }
+      }
+
+      // --- No inputs except coordinates, but leaf node boundary depends on p2c. ---
+
+      std::fill(m_parentNodeBdry.begin(), m_parentNodeBdry.end(), false);
+      if (thereAreHangingNodes)
+      {
+        for (size_t nIdx = 0; nIdx < numInputNodes; nIdx++)
+        {
+          if (myNodes[nIdx].getLevel() == parSubtree.getLevel())
+          {
+            const unsigned int nodeRank =
+                TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
+                                                            myNodes[nIdx],
+                                                            m_eleOrder + 1 );
+            assert(nodeRank < 2 * npe + 1);
+            m_parentNodeBdry[nodeRank] = parentFrame.template getMyInputHandle<0>()[nIdx].getIsOnTreeBdry();
+          }
+        }
+      }
+
+
+      childNodeCounts.fill(0);
+      // Note: Re-uses the memory from childNodeCounts for mutable offsets.
+
+      /// ExtantCellFlagT iterateChildren = (m_visitEmpty ? segmentChildren : *extantChildren);
+
+      //
+      // Copy input data to child buffers in parent frame.
+      //
+      for (const auto &nodeInstance : IterateNodesToChildren<dim>( this->getCurrentSubtree(),
+                                                                  &(*myNodes.begin()),
+                                                                  numInputNodes,
+                                                                  this->getCurrentRotation(),
+                                                                  *extantChildren ))
+      {
+        const ChildI child_sfc = nodeInstance.getChild_sfc();
+        const size_t nIdx = nodeInstance.getPNodeIdx();
+        const size_t childOffset = childNodeCounts[child_sfc];
+
+        if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
+        {
+          // Node coordinates.
+          parentFrame.template getChildInput<0>(child_sfc)[childOffset] = myNodes[nIdx];
+          parentFrame.template getChildInput<1>(child_sfc)[childOffset] = true;//nonhanging
+
+          childNodeCounts[child_sfc]++;
+        }
+        else   // Leaf
+        {
+          const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
+                  childSubtreesSFC[child_sfc],
+                  myNodes[nIdx],
+                  m_eleOrder + 1 );
+          assert(nodeRank < 2 * npe + 1);
+
+          // Node coordinates.
+          /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
+          // Cannot use Element::appendNodes() because the node may be parent level.
+          // So, must add the node here.
+          parentFrame.template getChildInput<0>(child_sfc)[nodeRank] = myNodes[nIdx];
+          parentFrame.template getChildInput<1>(child_sfc)[nodeRank] = true;//nonhanging
+          // Note this will miss hanging nodes.
+          // Use the isHanging buffer to figure out if the coordinate is valid.
+        }
+      }
+
+      if (m_visitEmpty && this->isLeafOrLower())
+        /// *extantChildren = segmentChildren;
+        *extantChildren = (1u << (1u << dim)) - 1;
+    }
+    else {
+        throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
+    }
+  }
+
+  // no data here
 
   //
   // MatvecBaseIn topDown
