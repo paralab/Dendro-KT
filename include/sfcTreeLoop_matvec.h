@@ -205,7 +205,12 @@ namespace ot
             
             refel.populateSecondOrderVertexSet( vertexAndMiddleNodeSet );
 
-            vertexAndMiddleNodeSet.insert( 13 );
+            if( dim == 2 ) {
+              vertexAndMiddleNodeSet.insert( 4 );
+            }
+            else if( dim == 3 ) {
+              vertexAndMiddleNodeSet.insert( 13 );
+            }
 
             for( int idx = 0; idx < numNodes; idx++ ) {
               const unsigned int nodeRank = ot::TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
