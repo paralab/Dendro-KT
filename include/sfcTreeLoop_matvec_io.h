@@ -170,6 +170,59 @@ namespace ot
           return treeloop.isLeafOrLower();
         }
 
+        const std::bitset<intPow( 3, dim )> getLeafBitsetInfo( bool pickOnlyHanging = false ) {
+
+          assert( treeloop.m_eleOrder == 1 );
+          assert( treeloop.subtreeInfo().isLeaf() );
+
+          std::bitset<intPow( 3, dim )> nodeConf;
+
+          const TreeNode<unsigned int, dim>* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
+          const int numNodes = treeloop.subtreeInfo().getNumNodesIn();
+          const TreeNode<unsigned int, dim>& currTree = treeloop.subtreeInfo().getCurrentSubtree();
+
+          if( pickOnlyHanging ) {
+            /* detect only the hanging nodes */
+
+            RefElement refel( dim, treeloop.m_eleOrder + 1 );
+
+            std::unordered_set<int> vertexAndMiddleNodeSet;
+            
+            refel.populateSecondOrderVertexSet( vertexAndMiddleNodeSet );
+
+            vertexAndMiddleNodeSet.insert( 13 );
+
+            for( int idx = 0; idx < numNodes; idx++ ) {
+              const unsigned int nodeRank = ot::TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
+                                                            nodeCoords[idx],
+                                                            treeloop.m_eleOrder + 1 );
+
+              if( nodeRank >= 0 && nodeRank < 9 && vertexAndMiddleNodeSet.find( nodeRank ) == vertexAndMiddleNodeSet.end() ) {
+
+                nodeConf |= 1 << nodeRank;
+              
+              }
+            }
+          }
+          else {
+            /* default case, detect all active nodes regardless of hanging status */
+
+            for( int idx = 0; idx < numNodes; idx++ ) {
+              const unsigned int nodeRank = ot::TNPoint<unsigned int, dim>::get_lexNodeRank( currTree,
+                                                            nodeCoords[idx],
+                                                            treeloop.m_eleOrder + 1 );
+
+              if( nodeRank >= 0 && nodeRank < 9 ) {
+
+                nodeConf |= 1 << nodeRank;
+              
+              }
+            }
+          }
+
+          return nodeConf;
+        }
+
         /** getNumNodesIn() */
         size_t getNumNodesIn() const {
           return treeloop.getCurrentFrame().template getMyInputHandle<0>().size();
