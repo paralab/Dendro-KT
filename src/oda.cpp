@@ -109,11 +109,14 @@ namespace ot
       constexpr unsigned int dim = ot::coordDim((TN*){});
 
       int middleNodeRank;
+      int maxNodeRank = intPow( 3, dim );
 
-      if( dim == 2 )
+      if( dim == 2 ) {
         middleNodeRank = 4;
-      else if( dim == 3 )
+      }
+      else if( dim == 3 ) {
         middleNodeRank = 13;
+      }
 
       bool hasHangingNodes = false;
 
@@ -126,7 +129,7 @@ namespace ot
                   nodeval,
                   eleOrder );
 
-          if( validNodeRank < 9 && validNodeRank >= 0 ) {
+          if( validNodeRank < maxNodeRank && validNodeRank >= 0 ) {
 
             std::copy_n( &in[ndofs * nodeRank], ndofs, &out[ndofs * nodeRank] );
 

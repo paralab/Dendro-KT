@@ -191,6 +191,7 @@ namespace ot
           assert( treeloop.subtreeInfo().isLeaf() );
 
           std::bitset<intPow( 3, dim )> nodeConf;
+          int maxNodeRank = intPow( 3, dim );
 
           const TreeNode<unsigned int, dim>* nodeCoords = treeloop.subtreeInfo().readNodeCoordsIn();
           const int numNodes = treeloop.subtreeInfo().getNumNodesIn();
@@ -217,7 +218,7 @@ namespace ot
                                                             nodeCoords[idx],
                                                             treeloop.m_eleOrder + 1 );
 
-              if( nodeRank >= 0 && nodeRank < 9 && vertexAndMiddleNodeSet.find( nodeRank ) == vertexAndMiddleNodeSet.end() ) {
+              if( nodeRank >= 0 && nodeRank < maxNodeRank && vertexAndMiddleNodeSet.find( nodeRank ) == vertexAndMiddleNodeSet.end() ) {
 
                 nodeConf |= 1 << nodeRank;
               
@@ -232,7 +233,7 @@ namespace ot
                                                             nodeCoords[idx],
                                                             treeloop.m_eleOrder + 1 );
 
-              if( nodeRank >= 0 && nodeRank < 9 ) {
+              if( nodeRank >= 0 && nodeRank < maxNodeRank ) {
 
                 nodeConf |= 1 << nodeRank;
               
