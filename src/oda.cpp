@@ -209,7 +209,7 @@ namespace ot
     // getNodeElementOwnership()
     //
     template <unsigned int dim>
-    std::vector<DendroIntL> getNodeElementOwnership(
+    std::vector<DendroIntL> getNodeElementOwnership_HangingInterpolate(
         DendroIntL globElementBegin,
         const std::vector<TreeNode<unsigned int, dim>> &octList,
         const std::vector<TreeNode<unsigned int, dim>> &ghostedNodeList,
@@ -274,6 +274,101 @@ namespace ot
       ghostExchange.readFromGhostEnd(ghostedOwners.data(), 1);
 
       return ghostedOwners;
+    }
+
+    template <unsigned int dim>
+    std::vector<DendroIntL> getNodeElementOwnership(
+        DendroIntL globElementBegin,
+        const std::vector<TreeNode<unsigned int, dim>> &octList,
+        const std::vector<TreeNode<unsigned int, dim>> &ghostedNodeList,
+        const unsigned int eleOrder,
+        const DA<dim> &ghostExchange, 
+        const int version = 0)  //TODO factor part as class GhostExchange
+    {
+
+      if( version == 0 ) {
+        return getNodeElementOwnership_HangingInterpolate( globElementBegin, octList, ghostedNodeList, eleOrder, ghostExchange );
+      }
+      else if( version == 1 ) {
+
+        DOLLAR("getNodeElementOwnership()");
+        using OwnershipT = DendroIntL;
+        using DirtyT = char;
+
+        OwnershipT globElementId = globElementBegin;  // enumerate elements in loop.
+
+        const unsigned int nPe = intPow(eleOrder+1, dim);
+        const unsigned int maxNodeRank = intPow( eleOrder + 2, dim );
+
+        MatvecBaseOut<dim, OwnershipT, false> elementLoop(
+            ghostedNodeList.size(),
+            1,
+            eleOrder,
+            false,
+            0,
+            ghostedNodeList.data(),
+            octList.data(),
+            octList.size(),
+            (octList.size() ? octList.front() : dummyOctant<dim>()),
+            (octList.size() ? octList.back() : dummyOctant<dim>())
+            );
+
+        int rank;
+        MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+
+        std::vector<OwnershipT> leafBuffer(maxNodeRank, 0);
+        std::vector<DirtyT> leafDirty(maxNodeRank, 0);
+        while (!elementLoop.isFinished())
+        {
+          if (elementLoop.isPre() && elementLoop.subtreeInfo().isLeaf())
+          {
+            // if( rank == 0 ) {
+            //   std::cout << "Element loop start \n";
+            // }
+
+            const TreeNode<unsigned int, dim>* nodeCoords = elementLoop.subtreeInfo().readNodeCoordsIn();
+
+            const TreeNode<unsigned int, dim>& currTree = elementLoop.subtreeInfo().getCurrentSubtree();
+
+            for (size_t nIdx = 0; nIdx < maxNodeRank; ++nIdx) 
+            {
+
+              auto nodeval = *( nodeCoords + nIdx );
+
+              int validNodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
+                  currTree,
+                  nodeval,
+                  eleOrder );
+
+              if( validNodeRank < maxNodeRank && validNodeRank >= 0 ) {
+                leafBuffer[nIdx] = globElementId;
+                leafDirty[nIdx] = true;
+              }
+            }
+            elementLoop.subtreeInfo().overwriteNodeValsOut(leafBuffer.data(), leafDirty.data());
+            elementLoop.next(2);
+            globElementId++;
+
+            // if( rank == 0 ) {
+            //   std::cout << "Element loop end \n";
+            // }
+          }
+          else
+            elementLoop.step(2);
+        }
+
+        std::vector<OwnershipT> ghostedOwners(ghostedNodeList.size(), 0);
+        std::vector<DirtyT> ghostedDirty(ghostedNodeList.size(), 0);
+
+        const size_t writtenSz = elementLoop.finalize(ghostedOwners.data(), ghostedDirty.data());
+
+        ghostExchange.writeToGhostsBegin(ghostedOwners.data(), 1, ghostedDirty.data());
+        ghostExchange.writeToGhostsEnd(ghostedOwners.data(), 1, false, ghostedDirty.data()); // overwrite mode
+        ghostExchange.readFromGhostBegin(ghostedOwners.data(), 1);
+        ghostExchange.readFromGhostEnd(ghostedOwners.data(), 1);
+
+        return ghostedOwners;
+      }
     }
 
     template<unsigned int dim>
@@ -1028,7 +1123,8 @@ namespace ot
             distTree.getTreePartFiltered(),
             m_tnCoords,
             order,
-            ghostExchange);
+            ghostExchange,
+            1 );
 
         }
 

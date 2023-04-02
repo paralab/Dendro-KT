@@ -15,7 +15,7 @@
 #include <unordered_set>
 #include <unordered_map>
 
-constexpr unsigned int DIM = 3;
+constexpr unsigned int DIM = 2;
 constexpr unsigned int nchild = 1u << DIM;
 static double xDomainExtent;
 static constexpr std::array<double, 3> domain = {1.0, 1.0, 1.0};
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
             ///   printTree(treePart, level+1);
         }
         std::cout << "Old Tree \n";
-        std::cout << "Num elements: " << oldTreeSize << "\n";
+        std::cout << "Num elements: " << oldTreeSize << "\t rank = \t" << rank << "\n";
 
         for (int i = 0; i < 1; i++) {
             std::vector<ot::OCT_FLAGS::Refine> refineFlags(octDA->getLocalElementSz(),
@@ -83,6 +83,8 @@ int main(int argc, char *argv[]) {
 
             // distRemeshSubdomain()
             ot::DistTree<unsigned int, DIM> newDistTree, surrDistTree;
+
+            std::cout << "before remesh \n";
             ot::DistTree<unsigned int, DIM>::distRemeshSubdomain(distTree, refineFlags, newDistTree, surrDistTree,
                                                                  ot::RemeshPartition::SurrogateInByOut, 0.3);
 
@@ -94,18 +96,18 @@ int main(int argc, char *argv[]) {
 
         }
 
-        static int subcase_id_hack = 0;
-        int finest_level = 5;
         const std::vector<ot::TreeNode<unsigned int, DIM>> &treePart = distTree.getTreePartFiltered();
-        ot::quadTreeToGnuplot( treePart, finest_level, "output", comm);
-        // ot::quadTreeToGnuplot(sorted, finest_level, "_output/case_" + std::to_string(subcase_id_hack) + "_sorted", comm);
-        ++subcase_id_hack;
+        ot::quadTreeToGnuplot( treePart, level + 1, "output", comm);
+        
+        std::cout << "New tree num elements: \t";
+        std::cout << distTree.getTreePartFiltered().size() << "\t rproc = \t" << rank << "\n";
 
-        std::cout << distTree.getTreePartFiltered().size() << "\n";
-        ot::DA<DIM> *newDA1 = new ot::DA<DIM>(distTree, 0,comm, eleOrder, 100, 0.3,1); //DistTree overload
         ot::DA<DIM> *newDA2 = new ot::DA<DIM>(distTree, 0,comm, eleOrder, 100, 0.3,0);
-        std::cout << "NewDA1 = " << newDA1->getGlobalNodeSz() << "\n";
         std::cout << "NewDA2 = " << newDA2->getGlobalNodeSz() << "\n";
+
+        ot::DA<DIM> *newDA1 = new ot::DA<DIM>(distTree, 0,comm, eleOrder, 100, 0.3,1); //DistTree overload
+        std::cout << "NewDA1 = " << newDA1->getGlobalNodeSz() << "\n";
+        
         // std::cout << "NewDA1 = " << newDA1->getLocalNodalSz() << "\n";
         // std::cout << "NewDA2 = " << newDA2->getLocalNodalSz() << "\n";
 
@@ -114,113 +116,119 @@ int main(int argc, char *argv[]) {
         // std::cout << "NewDA2 = " << newDA2->getTotalNodalSz() << "\n";
         // std::cout << "NewDA2 = " << newDA2->getLocalNodalSz() << "\n";
 
-        auto stringifyPair = [](const std::pair<double, double>& p, std::string sep = "-")-> std::string{
-            return std::to_string(p.first) + sep + std::to_string(p.second);
-        };
+        // auto stringifyPair = [](const std::pair<double, double>& p, std::string sep = "-")-> std::string{
+        //     return std::to_string(p.first) + sep + std::to_string(p.second);
+        // };
 
-        auto stringifyVECTOR = [](const std::vector<double>& p, std::string sep = "-")-> std::string{
+        // auto stringifyVECTOR = [](const std::vector<double>& p, std::string sep = "-")-> std::string{
 
-            std::string compstring;
-            int idx{0};
+        //     std::string compstring;
+        //     int idx{0};
 
-            std::stringstream precisionValue;
-            precisionValue.precision(4);
+        //     std::stringstream precisionValue;
+        //     precisionValue.precision(4);
 
-            for( ; idx < p.size() - 1; idx++ ) {
+        //     for( ; idx < p.size() - 1; idx++ ) {
 
-                precisionValue << p[idx] << sep;
+        //         precisionValue << p[idx] << sep;
 
-            }
+        //     }
 
-            precisionValue << p[idx];
+        //     precisionValue << p[idx];
 
-            return precisionValue.str();
-        };
+        //     return precisionValue.str();
+        // };
 
-        auto tnCoords1 = newDA1->getTNCoords();
-        auto tnCoords2 = newDA2->getTNCoords();
+        // auto tnCoords1 = newDA1->getTNCoords();
+        // auto tnCoords2 = newDA2->getTNCoords();
 
-        std::vector<double> physcoords( DIM, 0 );
+        // std::vector<double> physcoords( DIM, 0 );
 
-        std::unordered_set<std::string> coord1str;
-        std::unordered_set<std::string> coord2str;
+        // std::unordered_set<std::string> coord1str;
+        // std::unordered_set<std::string> coord2str;
 
-        std::unordered_map<std::string, int> coord1map;
-        std::unordered_map<std::string, int> coord2map;
+        // std::unordered_map<std::string, int> coord1map;
+        // std::unordered_map<std::string, int> coord2map;
 
-        int idx = 0;
+        // int idx = 0;
 
-        // std::cout << "New DA Coords \n";
+        // // std::cout << "New DA Coords \n";
 
-        for( idx = 0; idx < newDA1->getLocalNodalSz(); idx++ ) {
+        // for( idx = 0; idx < newDA1->getTotalNodalSz(); idx++ ) {
 
-            ot::treeNode2Physical( *tnCoords1, eleOrder + 1, &( *physcoords.begin() ) );
+        //     ot::treeNode2Physical( *tnCoords1, eleOrder + 1, &( *physcoords.begin() ) );
 
-            // std::cout << std::to_string( physcoords[0] ) << "\t" << std::to_string( physcoords[1] ) << "\t" << std::to_string( physcoords[2] ) << "\n";
+        //     // if( rank == 1 )
+        //     //  std::cout << std::to_string( physcoords[0] ) << "\t" << std::to_string( physcoords[1] ) << "\t" << std::to_string( physcoords[2] ) << "\n";
 
-            auto key = stringifyVECTOR( physcoords );
+        //     auto key = stringifyVECTOR( physcoords );
 
-            coord1str.insert( key );
+        //     coord1str.insert( key );
 
-            coord1map[key] += 1;
+        //     coord1map[key] += 1;
 
-            tnCoords1++;
+        //     tnCoords1++;
 
-        }   
-        // std::cout << "New DA Coords End \n";
+        // }   
+        //  std::cout << "New DA Coords End \n";
 
-        // std::cout << "Old DA Coords \n";
+        //  std::cout << "Old DA Coords \n";
 
-        for( idx = 0; idx < newDA2->getLocalNodalSz(); idx++ ) {
+        // for( idx = 0; idx < newDA2->getTotalNodalSz(); idx++ ) {
 
-            ot::treeNode2Physical( *tnCoords2, eleOrder, &( *physcoords.begin() ) );
+        //     ot::treeNode2Physical( *tnCoords2, eleOrder + 1, &( *physcoords.begin() ) );
 
-            auto key = stringifyVECTOR( physcoords );
+        //     auto key = stringifyVECTOR( physcoords );
 
-            // std::cout << std::to_string( physcoords[0] ) << "\t" << std::to_string( physcoords[1] ) << "\t" << std::to_string( physcoords[2] ) << "\n";
+        //     // if( rank == 1 )
+        //     // std::cout << std::to_string( physcoords[0] ) << "\t" << std::to_string( physcoords[1] ) << "\n";
 
-            // if( key == "0.062500-0.062500" ) {
+        //     // if( key == "0.062500-0.062500" ) {
 
-            //     ot::treeNode2Physical( *tnCoords1, eleOrder + 1, &( *physcoords.begin() ) );
-            //     key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
+        //     //     ot::treeNode2Physical( *tnCoords1, eleOrder + 1, &( *physcoords.begin() ) );
+        //     //     key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
 
-            //     std::cout << key << "\n";
+        //     //     std::cout << key << "\n";
 
-            // }
+        //     // }
 
-            coord2str.insert( key );
+        //     coord2str.insert( key );
 
-            coord2map[key] += 1;
+        //     coord2map[key] += 1;
             
-            tnCoords2++;
+        //     tnCoords2++;
 
-        }
+        // }
 
         // std::cout << "Old DA Coords End \n";
 
-        for( auto& strval: coord1str ) {
+        // for( auto& strval: coord1str ) {
 
-            if( coord2str.find( strval ) == coord2str.end() ) {
-                std::cout << strval << "\n";
-            }
+        //     if( coord2str.find( strval ) == coord2str.end() ) {
+        //         if( rank == 1 )
+        //         std::cout << strval << "\t" << rank << "\n";
+        //     }
 
-        }
+        // }
 
-        std::cout << "end" << "\n";
+        // if( rank == 1 )
+        //     std::cout << "end" << "\n";
+        
+        // for( auto& strval: coord2str ) {
 
-        for( auto& strval: coord2str ) {
+        //     if( coord1str.find( strval ) == coord1str.end() ) {
 
-            if( coord1str.find( strval ) == coord1str.end() ) {
-                std::cout << strval << "\n";
-            }
+        //         if( rank == 1 )
+        //             std::cout << strval  << "\n";
+        //     }
 
-        }
+        // }
 
         // for( auto& keyval: coord1map ) {
 
         //     if( coord1map[keyval.first] > 1 ) {
 
-        //         std::cout << keyval.first << "\n";
+        //         std::cout << keyval.first << "\t" << rank << "\n" ;
 
         //     }
 
