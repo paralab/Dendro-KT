@@ -1252,7 +1252,10 @@ namespace ot
     }
     else if( version == 1 ) {
 
-      const unsigned npe = intPow(m_eleOrder+1, dim);
+      assert( m_eleOrder == 1 );
+
+      const unsigned npe = intPow( m_eleOrder + 1, dim);
+      const unsigned maxNodeRank = intPow(m_eleOrder + 2, dim);
       const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
 
       std::array<size_t, NumChildren> childNodeCounts;
@@ -1265,13 +1268,13 @@ namespace ot
 
       static std::vector<char> childLexPresent;
       childLexPresent.clear();
-      childLexPresent.resize(NumChildren * (2 * npe + 1 ), false);
+      childLexPresent.resize(NumChildren * maxNodeRank, false);
       const auto setChildLexPresent = [&](int child, int lex) {
         childLexPresent[lex * NumChildren + child] += 1; //= true;
       };
       const auto allChildLexPresent = [&](int child) {
         int count = 0;
-        for (int lex = 0; lex < 2 * npe + 1; ++lex)
+        for (int lex = 0; lex < maxNodeRank; ++lex)
           count += bool(childLexPresent[lex * NumChildren + child]);
         return count == npe;
       };
@@ -1352,7 +1355,7 @@ namespace ot
       for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
       {
         size_t allocNodes = childNodeCounts[child_sfc];
-        allocNodes = (allocNodes == 0 && !m_visitEmpty ? 0 : allocNodes < 2 * npe + 1 ? 2 * npe + 1 : allocNodes);
+        allocNodes = (allocNodes == 0 && !m_visitEmpty ? 0 : allocNodes < maxNodeRank ? maxNodeRank : allocNodes);
 
         if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1)
         {
@@ -1384,8 +1387,9 @@ namespace ot
                 TNPoint<unsigned int, dim>::get_lexNodeRank( parSubtree,
                                                             myNodes[nIdx],
                                                             m_eleOrder + 1 );
-            assert(nodeRank < 2 * npe + 1);
-            m_parentNodeBdry[nodeRank] = parentFrame.template getMyInputHandle<0>()[nIdx].getIsOnTreeBdry();
+            assert(nodeRank < maxNodeRank);
+            // if( nodeRank < maxNodeRank && nodeRank >= 0 )
+              m_parentNodeBdry[nodeRank] = parentFrame.template getMyInputHandle<0>()[nIdx].getIsOnTreeBdry();
           }
         }
       }
@@ -1423,7 +1427,7 @@ namespace ot
                   childSubtreesSFC[child_sfc],
                   myNodes[nIdx],
                   m_eleOrder + 1 );
-          assert(nodeRank < 2 * npe + 1);
+          assert(nodeRank < maxNodeRank);
 
           // Node coordinates.
           /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
