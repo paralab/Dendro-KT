@@ -813,6 +813,7 @@ namespace ot
 #endif
 
     const unsigned npe = intPow(m_eleOrder+1, dim);
+    const unsigned maxNodeRank = intPow(m_eleOrder + 2, dim);
     const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
 
     std::array<size_t, NumChildren> childNodeCounts;
@@ -879,7 +880,7 @@ namespace ot
       summaries[child_sfc].m_initializedIn = true;
       summaries[child_sfc].m_initializedOut = false;
 
-      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < 2*npe + 1 && childNodeCounts[child_sfc] != npe )
+      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < maxNodeRank && childNodeCounts[child_sfc] != npe )
       {
         hangingInChild[child_sfc] = true;
         thereAreHangingNodes = true;
@@ -893,7 +894,7 @@ namespace ot
     for (ChildI child_sfc = 0; child_sfc < NumChildren; child_sfc++)
     {
       size_t allocNodes = childNodeCounts[child_sfc];
-      allocNodes = (allocNodes == 0 ? 0 : allocNodes < 2*npe + 1 ? 2*npe + 1 : allocNodes);
+      allocNodes = (allocNodes == 0 ? 0 : allocNodes < maxNodeRank ? maxNodeRank : allocNodes);
       parentFrame.template getChildInput<1>(child_sfc).resize(m_ndofs * allocNodes);
 
       // TODO currently the size of the vector  getChildInput<0>(child_sfc)
@@ -949,7 +950,7 @@ namespace ot
                 childSubtreesSFC[child_sfc],
                 myNodes[nIdx],
                 m_eleOrder + 1 );
-        assert(nodeRank < 2*npe + 1);
+        assert(nodeRank < maxNodeRank);
 
         // Node coordinates.
         /// assert(parentFrame.template getChildInput<0>(child_sfc)[nodeRank] == myNodes[nIdx]);
@@ -1211,6 +1212,7 @@ namespace ot
 #endif
 
     const unsigned npe = intPow(m_eleOrder+1, dim);
+    const unsigned maxNodeRank = intPow(m_eleOrder + 2, dim);
     const TreeNode<unsigned int,dim> & parSubtree = this->getCurrentSubtree();
     const NodeT zero = 0;
 
@@ -1229,7 +1231,7 @@ namespace ot
       childFinestLevel[child_sfc] = summaries[child_sfc].m_subtreeFinestLevel;
       childNodeCounts[child_sfc] = summaries[child_sfc].m_subtreeNodeCount;
 
-      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < 2*npe + 1)
+      if (childNodeCounts[child_sfc] > 0 && childNodeCounts[child_sfc] < maxNodeRank)
         thereAreHangingNodes = true;
     }
 
@@ -1279,7 +1281,7 @@ namespace ot
                   childSubtreesSFC[child_sfc],
                   myNodes[nIdx],
                   m_eleOrder + 1 );
-          assert(nodeRank < 2*npe + 1);
+          assert(nodeRank < maxNodeRank);
 
           // Nodal values.
           for (int dof = 0; dof < m_ndofs; dof++)
