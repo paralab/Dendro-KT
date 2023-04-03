@@ -54,7 +54,7 @@ void doLoop(ot::DA<DIM>* octDA, const std::vector<TREENODE> &treePart){
             
             if( rank == 0 ) {
                 for( int idx = 0; idx < numNodes; idx++ ) {
-                    ot::treeNode2Physical( *( tnCoords + idx ), eleOrder, &( *physcoords.begin() ) );
+                    ot::treeNode2Physical( *( nodeCoords + idx ), eleOrder + 1, &( *physcoords.begin() ) );
 
                     if( m_bits[idx] == 1 )
                         std::cout << std::to_string( physcoords[0] ) << "," << std::to_string( physcoords[1] ) << "\n";
