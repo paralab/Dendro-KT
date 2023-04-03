@@ -110,14 +110,9 @@ namespace fem
     }
 
     template <typename T, typename TN, typename RE, unsigned int dim>
-    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTWithNodeConf<T, dim> eleOp, double scale, const RE* refElement, int version)
+    void matvec(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpTWithNodeConf<T, dim> eleOp, double scale, const RE* refElement)
     /// void matvec_sfctreeloop(const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, const RE* refElement)
     {
-
-      if( version == 0 ) {
-        matvec( vecIn, vecOut, ndofs, coords, sz, treePartPtr, treePartSz, partFront, partBack, eleOp, scale, refElement );
-      }
-      else if( version == 1 ) {
 
         // Initialize output vector to 0.
         std::fill(vecOut, vecOut + ndofs*sz, 0);
@@ -180,20 +175,16 @@ namespace fem
             bench::t_elemental.stop();
   #endif
 
-            treeloop.next( version );
+            treeloop.next( 1 );
           }
           else
-            treeloop.step( version );
+            treeloop.step( 1 );
         }
 
         size_t writtenSz = treeloop.finalize(vecOut);
 
         if (sz > 0 && writtenSz == 0)
           std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
-      }
-      else {
-        throw std::invalid_argument( "Only 0 or 1 allowed for version number" );
-      }
     }
 
     template <typename T, typename TN, typename RE, unsigned int dim>
