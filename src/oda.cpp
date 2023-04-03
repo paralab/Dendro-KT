@@ -424,7 +424,7 @@ namespace ot
 
       if( m_gm.m_recvProc.size() > 0 ) {
 
-        while( m_gm.m_recvProc[ rprocIdx ] < procIdx ) {
+        while( rprocIdx < m_gm.m_recvProc.size() and m_gm.m_recvProc[ rprocIdx ] < procIdx ) {
 
           int recvCount = m_gm.m_recvCounts[ rprocIdx ];
           int recvOffset = m_gm.m_recvOffsets[ rprocIdx ];
