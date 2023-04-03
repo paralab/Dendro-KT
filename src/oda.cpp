@@ -403,6 +403,25 @@ namespace ot
 
       }
 
+      // Convert local indices from old mesh to new mesh, before erasing.
+      std::vector<size_t> old_to_new_idx(isValidNode.size(), 0);  //ghosted
+      size_t new_local_begin = 0;
+      for (size_t i = 0, count = 0; i < isValidNode.size(); ++i)
+      {
+        old_to_new_idx[i] = count;
+        count += bool(isValidNode[i]);
+        new_local_begin += (bool(isValidNode[i]) and i < m_uiLocalNodeBegin);
+      }
+      for (size_t i = 0; i < m_sm.m_map.size(); ++i)
+      {
+        const size_t local_rank = m_sm.m_map[i];
+        const size_t ghosted_rank = m_uiLocalNodeBegin + local_rank;
+        const size_t new_ghosted_rank = old_to_new_idx[ghosted_rank];
+        const size_t new_local_rank = new_ghosted_rank - new_local_begin;
+        m_sm.m_map[i] = new_local_rank;
+      }
+
+      // Erase
       for( int idx = sm_m_map_validity.size() - 1; idx >= 0; idx-- ) {
       
         if( sm_m_map_validity[idx] == 0 ) {
