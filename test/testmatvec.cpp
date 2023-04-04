@@ -31,7 +31,7 @@ static const auto DomainDecider = ot::DistTree<unsigned, 3>::BoxDecider(domain);
 
 void doLoop(ot::DA<DIM>* octDA, const std::vector<TREENODE> &treePart){
     unsigned int eleOrder = octDA->getElementOrder();
-    const size_t sz = octDA->getLocalNodalSz();
+    const size_t sz = octDA->getTotalNodalSz();
     auto partFront = octDA->getTreePartFront();
     auto partBack = octDA->getTreePartBack();
     const auto tnCoords = octDA->getTNCoords();
@@ -52,18 +52,19 @@ void doLoop(ot::DA<DIM>* octDA, const std::vector<TREENODE> &treePart){
             int  numNodes = loop.subtreeInfo().getNumNodesIn();
             auto m_bits = loop.subtreeInfo().getLeafBitsetInfo();
             
-            if( rank == 0 ) {
+            if( rank == 1 ) {
                 for( int idx = 0; idx < numNodes; idx++ ) {
                     ot::treeNode2Physical( *( nodeCoords + idx ), eleOrder + 1, &( *physcoords.begin() ) );
 
-                    if( m_bits[idx] == 1 )
+                    if( m_bits[idx] == 1 && rank == 1 )
                         std::cout << std::to_string( physcoords[0] ) << "," << std::to_string( physcoords[1] ) << "\n";
                 }
             }
             
-            // if( rank == 0 ) {
-            //     std::cout << numNodes << " " <<  m_bits.count() << "\t comm_rank = \t" << rank << "\n";
-            // }
+            if( rank == 1 ) {
+                std::cout << "numNodes = \t" << numNodes << " set bits count = \t" <<  m_bits.count() << "\t comm_rank = \t" << rank << "\n";
+            }
+            if( rank == 1 )
             std::cout << "loop end leaf \n";
             elemID++;
             loop.next(1);
@@ -154,9 +155,9 @@ int main(int argc, char *argv[]) {
 
         ot::DA<DIM> *newDA1 = new ot::DA<DIM>(distTree, 0,comm, eleOrder, 100, 0.3,1); //DistTree overload
         ot::DA<DIM> *newDA2 = new ot::DA<DIM>(distTree, 0,comm, eleOrder, 100, 0.3,0);
-        std::cout << "NewDA1 = " << newDA1->getGlobalNodeSz() << "\n";
-        std::cout << "NewDA2 = " << newDA2->getGlobalNodeSz() << "\n";
-        // std::cout << "NewDA1 = " << newDA1->getLocalNodalSz() << "\n";
+        // std::cout << "NewDA1 = " << newDA1->getGlobalNodeSz() << "\n";
+        // std::cout << "NewDA2 = " << newDA2->getGlobalNodeSz() << "\n";
+        std::cout << "NewDA1 = " << newDA1->getLocalNodalSz() << "\n";
         // std::cout << "NewDA2 = " << newDA2->getLocalNodalSz() << "\n";
         // std::cout << "NewDA2 = " << newDA2->getTotalNodalSz() << "\n";
         // std::cout << "NewDA1 = " << newDA1->getTotalNodalSz() << "\n";
