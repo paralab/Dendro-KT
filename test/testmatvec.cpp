@@ -15,7 +15,7 @@
 #include <unordered_set>
 #include <unordered_map>
 
-constexpr unsigned int DIM = 2;
+constexpr unsigned int DIM = 3;
 constexpr unsigned int nchild = 1u << DIM;
 static double xDomainExtent;
 static constexpr std::array<double, 3> domain = {1.0, 1.0, 1.0};
@@ -57,7 +57,7 @@ void doLoop(ot::DA<DIM>* octDA, const std::vector<TREENODE> &treePart){
                     ot::treeNode2Physical( *( nodeCoords + idx ), eleOrder + 1, &( *physcoords.begin() ) );
 
                     if( m_bits[idx] == 1 && rank == 1 )
-                        std::cout << std::to_string( physcoords[0] ) << "," << std::to_string( physcoords[1] ) << "\n";
+                        std::cout << std::to_string( physcoords[0] ) << "," << std::to_string( physcoords[1] ) << "," <<  std::to_string( physcoords[2] ) << "\n";
                 }
             }
             
@@ -167,8 +167,7 @@ int main(int argc, char *argv[]) {
             return std::to_string(p.first) + sep + std::to_string(p.second);
         };
 
-
-   /**     auto tnCoords2 = newDA2->getTNCoords();
+        auto tnCoords2 = newDA2->getTNCoords();
 
         std::vector<double> physcoords( DIM, 0 );
 
@@ -179,12 +178,15 @@ int main(int argc, char *argv[]) {
         std::unordered_map<std::string, int> coord2map;
 
         int idx = 0;
-        auto tnCoords1 = newDA1->getTNCoords();
+        auto tnCoords1 = newDA1->getTNCoords() + newDA1->getLocalNodeBegin();
+
+        std::ofstream fval( "coords" + std::to_string( rank ) + ".txt" );
+
         for( idx = 0; idx < newDA1->getLocalNodalSz(); idx++ ) {
 
-            ot::treeNode2Physical( *tnCoords1, eleOrder+1, &( *physcoords.begin() ) );
+             ot::treeNode2Physical( *tnCoords1, eleOrder+1, &( *physcoords.begin() ) );
 
-             std::cout << std::to_string( physcoords[0] ) << "," << std::to_string( physcoords[1] ) << "," <<  std::to_string( physcoords[2] ) << "\n";
+             fval << std::to_string( physcoords[0] ) << "," << std::to_string( physcoords[1] ) << "," <<  std::to_string( physcoords[2] ) << "\n";
 
 //            auto key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
 //
@@ -196,28 +198,30 @@ int main(int argc, char *argv[]) {
 
         }
 
-        for( idx = 0 ; idx < newDA1->getLocalNodalSz(); idx++ ) {
+        fval.close();
 
-            ot::treeNode2Physical( *tnCoords1, eleOrder, &( *physcoords.begin() ) );
+        // for( idx = 0 ; idx < newDA1->getLocalNodalSz(); idx++ ) {
 
-            auto key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
+        //     ot::treeNode2Physical( *tnCoords1, eleOrder, &( *physcoords.begin() ) );
 
-            // if( key == "0.062500-0.062500" ) {
+        //     auto key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
 
-            //     ot::treeNode2Physical( *tnCoords1, eleOrder + 1, &( *physcoords.begin() ) );
-            //     key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
+        //     // if( key == "0.062500-0.062500" ) {
 
-            //     std::cout << key << "\n";
+        //     //     ot::treeNode2Physical( *tnCoords1, eleOrder + 1, &( *physcoords.begin() ) );
+        //     //     key = stringify( std::make_pair( physcoords[0], physcoords[1] ) );
 
-            // }
+        //     //     std::cout << key << "\n";
 
-            coord1str.insert( stringify( std::make_pair( physcoords[0], physcoords[1] ) ) );
+        //     // }
 
-            coord1map[key] += 1;
+        //     coord1str.insert( stringify( std::make_pair( physcoords[0], physcoords[1] ) ) );
 
-            tnCoords1++;
+        //     coord1map[key] += 1;
 
-        }
+        //     tnCoords1++;
+
+        // }
 
         // for( auto& strval: coord1str ) {
 
@@ -247,7 +251,6 @@ int main(int argc, char *argv[]) {
 
         // }
 
-**/
         delete octDA;
         delete newDA1;
         delete newDA2;
