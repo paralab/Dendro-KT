@@ -102,10 +102,12 @@ namespace par {
                           MPI_Comm comm, MPI_Status *status) {
     PROF_PAR_SENDRECV_BEGIN
 
+    auto ret =
     MPI_Sendrecv(sendBuf, sendCount, par::Mpi_datatype<T>::value(), dest, sendTag,
                  recvBuf, recvCount, par::Mpi_datatype<S>::value(), source, recvTag, comm, status);
 
     PROF_PAR_SENDRECV_END
+    return ret;
   }
 
   template<typename T>
@@ -115,9 +117,11 @@ namespace par {
 #endif
     // PROF_PAR_SCAN_BEGIN
 
+    auto ret =
     MPI_Scan(sendbuf, recvbuf, count, par::Mpi_datatype<T>::value(), op, comm);
 
     // PROF_PAR_SCAN_END
+    return ret;
   }
 
   template<typename T>
@@ -127,9 +131,11 @@ namespace par {
 #endif
     PROF_PAR_SCAN_BEGIN
 
+    auto ret =
     MPI_Exscan(sendbuf, recvbuf, count, par::Mpi_datatype<T>::value(), op, comm);
 
     PROF_PAR_SCAN_END
+    return ret;
   }
 
 
@@ -140,9 +146,11 @@ namespace par {
 #endif
     PROF_PAR_ALLREDUCE_BEGIN
 
+    auto ret =
     MPI_Allreduce(sendbuf, recvbuf, count, par::Mpi_datatype<T>::value(), op, comm);
 
     PROF_PAR_ALLREDUCE_END
+    return ret;
   }
 
   template<typename T>
@@ -152,10 +160,12 @@ namespace par {
 #endif
     PROF_PAR_ALL2ALL_BEGIN
 
+    auto ret =
     MPI_Alltoall(sendbuf, count, par::Mpi_datatype<T>::value(),
                  recvbuf, count, par::Mpi_datatype<T>::value(), comm);
 
     PROF_PAR_ALL2ALL_END
+    return ret;
   }
 
   template<typename T>
@@ -166,11 +176,12 @@ namespace par {
     MPI_Barrier(comm);
 #endif
 
+    auto ret =
     MPI_Alltoallv(
         sendbuf, sendcnts, sdispls, par::Mpi_datatype<T>::value(),
         recvbuf, recvcnts, rdispls, par::Mpi_datatype<T>::value(),
         comm);
-    return 0;
+    return ret;
   }
 
   template<typename T>
@@ -180,10 +191,12 @@ namespace par {
 #endif
     PROF_PAR_GATHER_BEGIN
 
+    auto ret =
     MPI_Gather(sendBuffer, count, par::Mpi_datatype<T>::value(),
                recvBuffer, count, par::Mpi_datatype<T>::value(), root, comm);
 
     PROF_PAR_GATHER_END
+    return ret;
   }
 
   template<typename T>
@@ -193,9 +206,11 @@ namespace par {
 #endif
     PROF_PAR_BCAST_BEGIN
 
+    auto ret =
     MPI_Bcast(buffer, count, par::Mpi_datatype<T>::value(), root, comm);
 
     PROF_PAR_BCAST_END
+    return ret;
   }
 
   template<typename T>
@@ -205,9 +220,11 @@ namespace par {
 #endif
     PROF_PAR_REDUCE_BEGIN
 
+    auto ret =
     MPI_Reduce(sendbuf, recvbuf, count, par::Mpi_datatype<T>::value(), op, root, comm);
 
     PROF_PAR_REDUCE_END
+    return ret;
   }
 
   template<typename T>
@@ -241,6 +258,7 @@ namespace par {
   T* dummyRecvBuf = new T[maxSendCount*npes];
   assert(dummyRecvBuf);
 
+  auto ret =
   par::Mpi_Alltoall<T>(dummySendBuf, dummyRecvBuf, maxSendCount, comm);
 
 #pragma omp parallel for
@@ -255,12 +273,14 @@ namespace par {
 
 #else
 
+    auto ret =
     MPI_Allgatherv(sendBuf, sendCount, par::Mpi_datatype<T>::value(),
                    recvBuf, recvCounts, displs, par::Mpi_datatype<T>::value(), comm);
 
 #endif
 
     PROF_PAR_ALLGATHERV_END
+    return ret;
   }
 
   /** @author Masado Ishii */
@@ -296,17 +316,20 @@ namespace par {
       dummySendBuf[(i*count) + j] = sendBuf[j];
     }
   }
+  auto ret =
   par::Mpi_Alltoall<T>(dummySendBuf, recvBuf, count, comm);
   delete [] dummySendBuf;
 
 #else
 
+    auto ret =
     MPI_Allgather(sendBuf, count, par::Mpi_datatype<T>::value(),
                   recvBuf, count, par::Mpi_datatype<T>::value(), comm);
 
 #endif
 
     PROF_PAR_ALLGATHER_END
+    return ret;
   }
 
   template<typename T>
@@ -403,6 +426,7 @@ namespace par {
 
   PROF_A2AV_WAIT_BEGIN
 
+    auto ret =
     MPI_Waitall(commCnt, requests, statuses);
 
   PROF_A2AV_WAIT_END
@@ -412,6 +436,7 @@ namespace par {
 //#endif
 
     PROF_PAR_ALL2ALLV_SPARSE_END
+    return ret;
   }
 
   template<typename T>
@@ -423,6 +448,7 @@ namespace par {
     PROF_PAR_ALL2ALLV_DENSE_BEGIN
 
 #ifndef ALLTOALLV_FIX
+    auto ret =
     Mpi_Alltoallv
         (sendbuf, sendcnts, sdispls,
          recvbuf, recvcnts, rdispls, comm);
@@ -468,6 +494,7 @@ namespace par {
       }
     }
 
+    auto ret =
     par::Mpi_Alltoall<T>(tmpSendBuf, tmpRecvBuf, allToAllCount, comm);
 
     for(int i = 0; i < rank; i++) {
@@ -496,6 +523,7 @@ namespace par {
 #endif
 
     PROF_PAR_ALL2ALLV_DENSE_END
+    return ret;
   }
 
 
@@ -515,6 +543,7 @@ namespace par {
         PROF_PAR_ALL2ALLV_DENSE_BEGIN
 
 #ifndef ALLTOALLV_FIX
+    auto ret =
         Mpi_Alltoallv
                 (sbuff_, s_cnt_, sdisp_,
                  rbuff_, r_cnt_, rdisp_, c);
@@ -793,9 +822,12 @@ namespace par {
   // */
   //Free memory.
   if(sbuff   !=NULL) delete[] sbuff;
+
+    auto ret = 0;
 #endif
 
         PROF_PAR_ALL2ALLV_DENSE_END
+    return ret;
     }
 
 
@@ -2008,6 +2040,7 @@ namespace par {
 #endif
 
     PROF_PARTW_END
+    return 0;
   }//end function
 
 

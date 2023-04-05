@@ -371,6 +371,8 @@ namespace ot
 
         return ghostedOwners;
       }
+      throw std::runtime_error("Bad version in getNodeElementOwnership()");
+      return {};
     }
 
     template<unsigned int dim>
