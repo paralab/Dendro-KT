@@ -98,18 +98,18 @@ namespace ot
   //    }
 
   //
-  template <unsigned int dim, typename NodeT>
+  template <unsigned int dim, typename NodeT, bool UseAccumulation = true>
   class MatvecBase : public SFC_TreeLoop<dim,
                                          Inputs<TreeNode<unsigned int, dim>, NodeT>,
                                          Outputs<NodeT>,
                                          MatvecBaseSummary<dim>,
-                                         MatvecBase<dim, NodeT>>
+                                         MatvecBase<dim, NodeT, UseAccumulation>>
   {
     using BaseT = SFC_TreeLoop<dim,
                                Inputs<TreeNode<unsigned int, dim>, NodeT>,
                                Outputs<NodeT>,
                                MatvecBaseSummary<dim>,
-                               MatvecBase<dim, NodeT>>;
+                               MatvecBase<dim, NodeT, UseAccumulation>>;
     friend BaseT;
 
     public:
@@ -390,9 +390,9 @@ namespace ot
   //
   // generate_node_summary()
   //
-  template <unsigned int dim, typename NodeT>
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
   MatvecBaseSummary<dim>
-  MatvecBase<dim, NodeT>::generate_node_summary(
+  MatvecBase<dim, NodeT, UseAccumulation>::generate_node_summary(
       const TreeNode<unsigned int, dim> *begin,
       const TreeNode<unsigned int, dim> *end)
   {
@@ -413,9 +413,9 @@ namespace ot
     return summary;
   }
 
-  template <unsigned int dim, typename NodeT>
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
   unsigned int
-  MatvecBase<dim, NodeT>::get_max_depth( const TreeNode<unsigned int, dim> *begin,
+  MatvecBase<dim, NodeT, UseAccumulation>::get_max_depth( const TreeNode<unsigned int, dim> *begin,
                                          size_t numNodes)
   {
     unsigned int maxDepth = 0;
@@ -429,8 +429,8 @@ namespace ot
   //
   // MatvecBase()
   //
-  template <unsigned int dim, typename NodeT>
-  MatvecBase<dim, NodeT>::MatvecBase( size_t numNodes,
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  MatvecBase<dim, NodeT, UseAccumulation>::MatvecBase( size_t numNodes,
                                       unsigned int ndofs,
                                       unsigned int eleOrder,
                                       const TreeNode<unsigned int, dim> * allNodeCoords,
@@ -492,8 +492,8 @@ namespace ot
 
   // Returns the number of nodes copied.
   // This represents in total (m_ndofs * return_value) data items.
-  template <unsigned int dim, typename NodeT>
-  size_t MatvecBase<dim, NodeT>::finalize(NodeT * outputNodeVals) const
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  size_t MatvecBase<dim, NodeT, UseAccumulation>::finalize(NodeT * outputNodeVals) const
   {
     const typename BaseT::FrameT &rootFrame = BaseT::getRootFrame();
 
@@ -511,8 +511,8 @@ namespace ot
   }
 
 
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::topDownNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  void MatvecBase<dim, NodeT, UseAccumulation>::topDownNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT *extantChildren)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -760,8 +760,8 @@ namespace ot
   }
 
 
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  void MatvecBase<dim, NodeT, UseAccumulation>::topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren, const int version)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -804,7 +804,7 @@ namespace ot
     // ========================================================================
 
     if( version == 0 ) {
-      MatvecBase<dim, NodeT>::topDownNodesInterpolate(parentFrame, extantChildren );
+      MatvecBase<dim, NodeT, UseAccumulation>::topDownNodesInterpolate(parentFrame, extantChildren );
     }
     else if( version == 1 ) {
 
@@ -976,8 +976,8 @@ namespace ot
   }
 
 
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::bottomUpNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT extantChildren)
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  void MatvecBase<dim, NodeT, UseAccumulation>::bottomUpNodesInterpolate(FrameT &parentFrame, ExtantCellFlagT extantChildren)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1164,8 +1164,8 @@ namespace ot
   }
 
 
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version)
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  void MatvecBase<dim, NodeT, UseAccumulation>::bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren, const int version)
   {
     /**
      *  Copied from sfcTreeLoop.h:
@@ -1203,7 +1203,7 @@ namespace ot
     // ========================================================================
 
     if( version == 0 ) {
-      MatvecBase<dim, NodeT>::bottomUpNodesInterpolate( parentFrame, extantChildren );
+      MatvecBase<dim, NodeT, UseAccumulation>::bottomUpNodesInterpolate( parentFrame, extantChildren );
     }
     else if( version == 1 ) {
 
@@ -1269,9 +1269,20 @@ namespace ot
         if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
         {
           // Nodal values.
-          for (int dof = 0; dof < m_ndofs; dof++)
-            myOutNodeValues[m_ndofs * nIdx + dof]
-              += childOutput[m_ndofs * childOffset + dof];
+          if( UseAccumulation ) {
+
+            for (int dof = 0; dof < m_ndofs; dof++)
+              myOutNodeValues[m_ndofs * nIdx + dof]
+                += childOutput[m_ndofs * childOffset + dof];
+
+          }
+          else {
+
+            for (int dof = 0; dof < m_ndofs; dof++)
+              myOutNodeValues[m_ndofs * nIdx + dof]
+                = childOutput[m_ndofs * childOffset + dof];
+
+          }
 
           childNodeOffsets[child_sfc]++;
         }
@@ -1284,9 +1295,18 @@ namespace ot
           assert(nodeRank < maxNodeRank);
 
           // Nodal values.
-          for (int dof = 0; dof < m_ndofs; dof++)
-            myOutNodeValues[m_ndofs * nIdx + dof]
-              += childOutput[m_ndofs * nodeRank + dof];
+          if( UseAccumulation ) {
+
+            for (int dof = 0; dof < m_ndofs; dof++)
+              myOutNodeValues[m_ndofs * nIdx + dof]
+                += childOutput[m_ndofs * nodeRank + dof];
+          }
+          else {
+
+            for (int dof = 0; dof < m_ndofs; dof++)
+              myOutNodeValues[m_ndofs * nIdx + dof]
+                = childOutput[m_ndofs * nodeRank + dof];
+          }
 
           // Zero out the values after they are transferred.
           // This is necessary so that later linear transforms are not contaminated.
@@ -1368,8 +1388,8 @@ namespace ot
 
 
   // fillAccessNodeCoordsFlat()
-  template <unsigned int dim, typename NodeT>
-  void MatvecBase<dim, NodeT>::fillAccessNodeCoordsFlat()
+  template <unsigned int dim, typename NodeT, bool UseAccumulation>
+  void MatvecBase<dim, NodeT, UseAccumulation>::fillAccessNodeCoordsFlat()
   {
     ::ot::fillAccessNodeCoordsFlat(!isLeafOrLower(),
                              BaseT::getCurrentFrame().template getMyInputHandle<0>(),
