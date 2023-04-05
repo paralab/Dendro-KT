@@ -165,7 +165,9 @@ namespace ot
      * */
 
     template <unsigned int dim>
-    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, int version) {
+    DA<dim>::DA(const ot::DistTree<C,dim> &inDistTree, int stratum, MPI_Comm comm, unsigned int order, size_t grainSz, double sfc_tol, int version)
+      : m_refel(dim, order)
+    {
 
       if( version == 0 || version == 1 ) {
         constructStratum( inDistTree, stratum, comm, order, grainSz, sfc_tol, version );
