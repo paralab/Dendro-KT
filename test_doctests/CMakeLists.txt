@@ -31,3 +31,11 @@ add_executable(doctest_octree_adler32 octree_adler32.cpp main.cpp)
 add_dependencies(doctest_octree_adler32 copy_assets)
 target_include_directories(doctest_octree_adler32 PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_octree_adler32 dendroKT ${MPI_LIBRARIES} m)
+
+add_executable(doctest_partition_unweighted partition_unweighted.cpp main.cpp)
+target_include_directories(doctest_partition_unweighted PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_partition_unweighted dendroKT ${MPI_LIBRARIES} m)
+
+add_executable(doctest_binary_search binary_search.cpp main.cpp)
+target_include_directories(doctest_binary_search PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_binary_search dendroKT ${MPI_LIBRARIES} m)
