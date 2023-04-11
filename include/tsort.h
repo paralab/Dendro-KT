@@ -35,17 +35,17 @@ namespace type
     T m_i;
 
     // Construction & conversion
-    explicit StrongIndex(const T i) : m_i(i) {}
-    operator T() const { return m_i; }
-    T get() const { return m_i; }
+    constexpr explicit StrongIndex(const T i) : m_i(i) {}
+    constexpr operator T() const { return m_i; }
+    constexpr T get() const { return m_i; }
 
     // Arithmetic
-    StrongIndex & operator++() { ++m_i; return *this; }
-    StrongIndex & operator+=(const T d) { m_i += d; return *this; }
+    constexpr StrongIndex & operator++() { ++m_i; return *this; }
+    constexpr StrongIndex & operator+=(const T d) { m_i += d; return *this; }
 
     // Avoid ambiguity in expressions like  si + 1.
-    StrongIndex plus(const T d)  const { return StrongIndex(m_i + d); }
-    StrongIndex minus(const T d) const { return StrongIndex(m_i - d); }
+    constexpr StrongIndex plus(const T d)  const { return StrongIndex(m_i + d); }
+    constexpr StrongIndex minus(const T d) const { return StrongIndex(m_i - d); }
   };
 };
 
