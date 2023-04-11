@@ -190,7 +190,10 @@ inline void TreeNode<T,dim>::setMortonIndex(unsigned char child)
 template <typename T, unsigned int dim>
 inline unsigned int TreeNode<T,dim>::getCommonAncestorDepth(const TreeNode &other) const
 {
-  unsigned int depth_rt = m_uiMaxDepth;
+  unsigned int depth_rt = this->getLevel();
+  if (other.getLevel() < depth_rt)
+    depth_rt = other.getLevel();
+
   #pragma unroll(dim)
   for (int d = 0; d < dim; d++)
   {
