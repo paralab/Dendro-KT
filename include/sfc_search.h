@@ -15,9 +15,9 @@ namespace ot
       size_t begin,
       size_t end,
       RankType rank_type,
+      Equals equals = {},           // Can use for descendant ranges, for example
       SFC_Region<T, dim> ra = {},   // future: single region, two levels
-      SFC_Region<T, dim> rb = {},
-      Equals equals = {})
+      SFC_Region<T, dim> rb = {})
   {
     // begin <= rank <= end
     if (begin == end)
@@ -31,8 +31,8 @@ namespace ot
     const auto rf = (ra.octant.getLevel() <= rb.octant.getLevel() ? rb : ra);
 
     int comp;
-    SFC_Region<T, dim> rk;
-    std::tie(comp, rk) = sfc_compare<T, dim>(x, key, (rf.octant.isAncestorInclusive(x) ? rf : rc));
+    SFC_Region<T, dim> rk = (rf.octant.isAncestorInclusive(x) ? rf : rc);
+    std::tie(comp, rk) = sfc_compare<T, dim>(x, key, rk, equals);
     // future: condition on whether the finer level is less-or-equal to level(x)
     // future: sfc_compare takes region and level that is less-or-equal level of region
 
@@ -40,9 +40,9 @@ namespace ot
     /// const bool replace_b = (comp == 1) or ((rank_type == exclusive) and (comp == 0));
 
     if (replace_a)
-      return sfc_binary_search<T, dim>(key, list, i+1, end, rank_type, rk, rb, equals);
+      return sfc_binary_search<T, dim>(key, list, i+1, end, rank_type, equals, rk, rb);
     else
-      return sfc_binary_search<T, dim>(key, list, begin, i, rank_type, ra, rk, equals);
+      return sfc_binary_search<T, dim>(key, list, begin, i, rank_type, equals, ra, rk);
   }
 
 }//namespace ot

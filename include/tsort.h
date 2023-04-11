@@ -140,16 +140,20 @@ struct SFC_Region
   }
 };
 
-template <typename T, int dim>
+template <typename T, int dim, typename Equals = std::equal_to<TreeNode<T, dim>>>
 std::pair<int, SFC_Region<T, dim>> sfc_compare(
-    TreeNode<T, dim> x, const TreeNode<T, dim> &y, SFC_Region<T, dim> r)
+    TreeNode<T, dim> x,
+    TreeNode<T, dim> y,
+    SFC_Region<T, dim> r,
+    Equals equals = {})
 {
   const int anc_level = x.getCommonAncestorDepth(y);
   while (r.octant.getLevel() != anc_level)
     r = r.subdivide(r.locate_segment(x));
 
-  const int cmp = (x == y) ? 0 : (r.octant == x) ? -1 : (r.octant == y) ? 1 :
-    r.locate_segment(x) < r.locate_segment(y) ? -1 : 1;
+  const int cmp = equals(x, y) ? 0                           // equiv. relation
+    : (r.octant == x) ? -1 : (r.octant == y) ? 1             // pre-order
+    : r.locate_segment(x) < r.locate_segment(y) ? -1 : 1;    // sfc-order
 
   return {cmp, r};
 }
