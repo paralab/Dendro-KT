@@ -3,6 +3,10 @@
 #define DENDRO_KT_TNUTILS_H
 
 #include "treeNode.h"
+#include "nsort.h"
+#include <sstream>
+#include <iomanip>
+#include <initializer_list>
 
 namespace ot
 {
@@ -147,6 +151,25 @@ std::string dbgCoordStr(const TreeNode<T,dim> &tnCoords, unsigned int refLev)
   return dbgCoordStr<T,dim>(uiCoords, refLev);
 }
 
+template <typename T, unsigned int dim>
+std::string hex_rational_string(const TreeNode<T, dim> &tn)
+{
+  const T side = tn.range().side();
+  const T denominator = TreeNode<T, dim>().range().side() / side;
+  std::stringstream ss;
+  ss << std::showbase << std::hex << std::uppercase;
+  ss << "(";
+  for (int d = 0; d < dim; ++d)
+  {
+    if (d != 0)
+      ss << ", ";
+    ss << tn.getX(d) / side;
+  }
+  ss << ")";
+  ss << ":(" << denominator << ")";
+  return ss.str();
+}
+
 
 template <typename T, unsigned int dim>
 std::array<T, dim> clampCoords(const std::array<T, dim> &coords, unsigned int cellLevel)
@@ -246,6 +269,17 @@ TreeNode<T, dim> dld(const TreeNode<T, dim> &oct)
   }
 
   return descendant;
+}
+
+
+template <unsigned dim>
+TreeNode<uint32_t, dim> morton_lineage(
+    TreeNode<uint32_t, dim> source,
+    std::initializer_list<int> lineage)
+{
+  for (int c : lineage)
+    source = source.getChildMorton(c);
+  return source;
 }
 
 

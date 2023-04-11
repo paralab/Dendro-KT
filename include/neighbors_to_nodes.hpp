@@ -18,9 +18,6 @@ inline void link_neighbors_to_nodes_tests() {};
 
 #include <vector>
 
-// needed by doctests
-#include <initializer_list>
-
 // =============================================================================
 // Interfaces
 // =============================================================================
@@ -225,9 +222,16 @@ namespace ot
 
     return {range_begin, range_end};
   }
+}
 
 
+// =============================================================================
+// Tests
+// =============================================================================
 #ifdef DOCTEST_LIBRARY_INCLUDED
+#include "include/tnUtils.h"
+namespace ot
+{
   DOCTEST_TEST_SUITE("neighbors to nodes")
   {
     DOCTEST_TEST_CASE("Count vertices on uniform 2D grid")
@@ -322,9 +326,7 @@ namespace ot
 
       const auto descendant = [](
           TreeNode<uint32_t, 2> node, std::initializer_list<int> lineage) {
-        for (int c : lineage)
-          node = node.getChildMorton(c);
-        return node;
+        return morton_lineage(node, lineage);
       };
 
       // Incomplete tree with gap between coarse and fine cells.
@@ -513,9 +515,9 @@ namespace ot
     }
 
   }
+}
 #endif//DOCTEST_LIBRARY_INCLUDED
 
-}
 
 // =============================================================================
 // Implementation
