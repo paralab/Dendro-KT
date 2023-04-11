@@ -10,6 +10,7 @@
 #include "include/neighborhood.hpp"
 #include "include/neighbor_sets.hpp"
 #include "include/neighbors_to_nodes.hpp"
+#include "include/leaf_sets.hpp"
 
 namespace lib_tests
 {
@@ -19,6 +20,7 @@ namespace lib_tests
     link_neighborhood_tests();
     link_neighbor_sets_tests();
     link_neighbors_to_nodes_tests();
+    link_leaf_sets_tests();
   }
 }
 
