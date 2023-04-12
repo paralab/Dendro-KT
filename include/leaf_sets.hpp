@@ -62,6 +62,14 @@ namespace ot
       Derived & cast() { return static_cast<Derived &>(*this); }
       const Derived & cast() const { return static_cast<const Derived &>(*this); }
 
+      LeafSet(DescendantSet<dim> scope) : m_scope(scope) {}
+
+      LeafSet() = default;
+      explicit LeafSet(const LeafSet &other) = default;
+      explicit LeafSet(LeafSet &&other) = default;
+      LeafSet & operator=(const LeafSet &other) = default;
+      LeafSet & operator=(LeafSet &&other) = default;
+
       TreeNode<uint32_t, dim> root() const
       {
         return m_scope.m_root;
@@ -71,6 +79,9 @@ namespace ot
       {
         return m_scope.m_sfc;
       }
+
+    private:
+      LeafSet(const Derived &);  // Protect from partial copies in CRTP.
 
     public:
       DescendantSet<dim> m_scope;
