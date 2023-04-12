@@ -94,6 +94,14 @@ namespace ot
       LeafListView<dim> view() const {
         return this->slice(0, this->vec.size());
       }
+
+      // range()
+      LeafRange<dim> range() const {
+        return this->vec.empty() ?
+          LeafRange<dim>::make_empty()
+          :
+          LeafRange<dim>::make(this->vec.front(), this->vec.back());
+      }
     };
 
     // uniform_refine_morton()
@@ -191,12 +199,26 @@ namespace ot
       const auto all = [](auto &&x) { return std::forward<decltype(x)>(x); };
 
       LeafVector<dim> interpart_low,  interpart_high;
-      where_border(all(list_low.view()), any(part_high.view()), [&interpart_low](const Octant *oct) {
-          interpart_low.vec.push_back(*oct);
-      });
-      where_border(all(list_high.view()), any(part_low.view()), [&interpart_high](const Octant *oct) {
-          interpart_high.vec.push_back(*oct);
-      });
+
+      DOCTEST_SUBCASE("With any_set of LeafListView")
+      {
+        where_border(all(list_low.view()), any(part_high.view()), [&interpart_low](const Octant *oct) {
+            interpart_low.vec.push_back(*oct);
+        });
+        where_border(all(list_high.view()), any(part_low.view()), [&interpart_high](const Octant *oct) {
+            interpart_high.vec.push_back(*oct);
+        });
+      }
+
+      DOCTEST_SUBCASE("With any_set of LeafRange")
+      {
+        where_border(all(list_low.view()), any(part_high.range()), [&interpart_low](const Octant *oct) {
+            interpart_low.vec.push_back(*oct);
+        });
+        where_border(all(list_high.view()), any(part_low.range()), [&interpart_high](const Octant *oct) {
+            interpart_high.vec.push_back(*oct);
+        });
+      }
 
       CHECK( interpart_low.vec.size() == expected_interpart_low );
       CHECK( interpart_high.vec.size() == expected_interpart_high );
