@@ -24,7 +24,7 @@ namespace ot
     struct LeafSet;
 
   // LeafSet implementations
-  template <int dim>  struct LeafList;   // loop over explicit array.
+  template <int dim>  struct LeafListView;   // loop over explicit array.
   template <int dim>  struct LeafRange;  // loop over implicit range.
 
   // DescendantSet
@@ -52,7 +52,7 @@ namespace ot
 
   /**
    * LeafSet
-   * @brief Base class to group kinds of leaf sets (LeafList, LeafRange).
+   * @brief Base class to group kinds of leaf sets (LeafListView, LeafRange).
    */
   template <int dim, typename Derived>
   struct LeafSet
@@ -78,18 +78,18 @@ namespace ot
 
 
   /**
-   * LeafList
+   * LeafListView
    *
    * @brief Sublist of explicit sorted array of leaf octants.
    */
   template <int dim>
-  struct LeafList : public LeafSet<dim, LeafList<dim>>
+  struct LeafListView : public LeafSet<dim, LeafListView<dim>>
   {
-    using Base = LeafSet<dim, LeafList<dim>>;
+    using Base = LeafSet<dim, LeafListView<dim>>;
     using Base::Base;
     public:
-      LeafList() = default;
-      LeafList( const TreeNode<uint32_t, dim> *begin,
+      LeafListView() = default;
+      LeafListView( const TreeNode<uint32_t, dim> *begin,
                 const TreeNode<uint32_t, dim> *end,
                 DescendantSet<dim> scope = {} );
 
@@ -98,8 +98,8 @@ namespace ot
       bool is_singleton() const;
       bool is_singleton_of(const TreeNode<uint32_t, dim> &member) const;
 
-      LeafList subdivide(sfc::SubIndex s) const;
-      LeafList child(sfc::ChildNum c) const;
+      LeafListView subdivide(sfc::SubIndex s) const;
+      LeafListView child(sfc::ChildNum c) const;
 
     public:
       const TreeNode<uint32_t, dim> *m_begin;
@@ -185,8 +185,8 @@ namespace ot
       constexpr int dim = 2;
 
       TreeNode<uint32_t, dim> array[1] = {};
-      CHECK( LeafList<dim>().none() );
-      CHECK( LeafList<dim>( array, array + 1 ).is_singleton() );
+      CHECK( LeafListView<dim>().none() );
+      CHECK( LeafListView<dim>( array, array + 1 ).is_singleton() );
 
       CHECK( LeafRange<dim>().none() );
       CHECK( LeafRange<dim>::make( {}, {} ).is_singleton() );
@@ -196,7 +196,7 @@ namespace ot
     {
       constexpr int dim = 2;
       _InitializeHcurve(dim);
-      LeafList<dim> owned_cells = {};
+      LeafListView<dim> owned_cells = {};
       CHECK( owned_cells.subdivide(sfc::SubIndex(0)).none() );
       CHECK( owned_cells.subdivide(sfc::SubIndex(0)).root().getLevel() == 1 );
 
@@ -212,18 +212,20 @@ namespace ot
       _InitializeHcurve(dim);
       TreeNode<uint32_t, dim> root = {};
 
-      // LeafList
+      // LeafListView
       const std::array<TreeNode<uint32_t, dim>, 2> leaf_list_array = {
         morton_lineage(root, {0, 2, 2, 2}),
         morton_lineage(root, {3, 1, 1, 1})
       };
-      LeafList<dim> leaf_list(
+      LeafListView<dim> leaf_list(
           &(*leaf_list_array.begin()), &(*leaf_list_array.end()));
       REQUIRE( leaf_list.any() );
       REQUIRE_FALSE( leaf_list.is_singleton() );
+      CHECK( leaf_list.child(sfc::ChildNum(0)).is_singleton() );
       CHECK( leaf_list.child(sfc::ChildNum(0)).root().getLevel() == 4 );
       CHECK( leaf_list.child(sfc::ChildNum(1)).none() );
       CHECK( leaf_list.child(sfc::ChildNum(2)).none() );
+      CHECK( leaf_list.child(sfc::ChildNum(3)).is_singleton() );
       CHECK( leaf_list.child(sfc::ChildNum(3)).root().getLevel() == 4 );
 
       // LeafRange
@@ -233,7 +235,9 @@ namespace ot
       REQUIRE( leaf_range.any() );
       REQUIRE_FALSE( leaf_range.is_singleton() );
       CHECK( leaf_range.child(sfc::ChildNum(0)).none() );
+      CHECK( leaf_range.child(sfc::ChildNum(1)).is_singleton() );
       CHECK( leaf_range.child(sfc::ChildNum(1)).root().getLevel() == 4 );
+      CHECK( leaf_range.child(sfc::ChildNum(2)).is_singleton() );
       CHECK( leaf_range.child(sfc::ChildNum(2)).root().getLevel() == 4 );
       CHECK( leaf_range.child(sfc::ChildNum(3)).none() );
 
@@ -275,45 +279,47 @@ namespace ot
   }
 
 
-  // LeafList::LeafList()
+  // TODO make interface LeafListView: if is_singleton() then root() == member.
+
+  // LeafListView::LeafListView()
   template <int dim>
-  LeafList<dim>::LeafList( const TreeNode<uint32_t, dim> *begin,
+  LeafListView<dim>::LeafListView( const TreeNode<uint32_t, dim> *begin,
                            const TreeNode<uint32_t, dim> *end,
                            DescendantSet<dim> scope )
     : Base({scope}), m_begin(begin), m_end(end)
   { }
 
-  // LeafList::any()
+  // LeafListView::any()
   template <int dim>
-  bool LeafList<dim>::any() const
+  bool LeafListView<dim>::any() const
   {
     return m_begin < m_end;
   }
 
-  // LeafList::none()
+  // LeafListView::none()
   template <int dim>
-  bool LeafList<dim>::none() const
+  bool LeafListView<dim>::none() const
   {
     return not any();
   }
 
-  // LeafList::is_singleton()
+  // LeafListView::is_singleton()
   template <int dim>
-  bool LeafList<dim>::is_singleton() const
+  bool LeafListView<dim>::is_singleton() const
   {
     return m_begin + 1 == m_end;
   }
 
-  // LeafList::is_singleton_of()
+  // LeafListView::is_singleton_of()
   template <int dim>
-  bool LeafList<dim>::is_singleton_of(const TreeNode<uint32_t, dim> &member) const
+  bool LeafListView<dim>::is_singleton_of(const TreeNode<uint32_t, dim> &member) const
   {
     return is_singleton() and *m_begin == member;
   }
 
-  // LeafList::child()
+  // LeafListView::child()
   template <int dim>
-  LeafList<dim> LeafList<dim>::child(sfc::ChildNum c) const
+  LeafListView<dim> LeafListView<dim>::child(sfc::ChildNum c) const
   {
     assert(( (not this->is_singleton())
           or (this->root().getLevel() < m_begin->getLevel()) ));
@@ -340,7 +346,7 @@ namespace ot
         child_key, m_begin, new_begin, end, RankType::inclusive, equal);
 
     // New slice
-    LeafList result(
+    LeafListView result(
       m_begin + new_begin, m_begin + new_end, this->m_scope.child(c));
 
     // Drill down to deepest common ancestor.
@@ -356,9 +362,9 @@ namespace ot
     return result;
   }
 
-  // LeafList::subdivide()
+  // LeafListView::subdivide()
   template <int dim>
-  LeafList<dim> LeafList<dim>::subdivide(sfc::SubIndex s) const
+  LeafListView<dim> LeafListView<dim>::subdivide(sfc::SubIndex s) const
   {
     return this->child(this->sfc().child_num(s));
   }
