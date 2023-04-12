@@ -84,12 +84,12 @@ namespace ot
       return neighborhood;
     };
 
-    const auto combine_on_facet = [&](auto...facet_idxs) -> Neighborhood<dim>
+    const auto combine_on_hyperface = [&](auto...hyperface_idxs) -> Neighborhood<dim>
     {
       //                               1 1 1     0 1 1     1 1 0      0 1 0
       // TrueNorth = North & (E & W) = 1 1 1  &  0 1 1  &  1 1 0  ==  0 1 0
       //                               0 0 0     0 1 1     1 1 0      0 0 0
-      const std::array<int, dim> idxs = {facet_idxs...};
+      const std::array<int, dim> idxs = {hyperface_idxs...};
       auto neighborhood = Neighborhood<dim>::full();
       for (int axis = 0; axis < dim; ++axis)
       {
@@ -120,14 +120,14 @@ namespace ot
           (parent_neighborhood & combine_on_corner(child_number))
           | (self_neighborhood & priority);
 
-      // Classify facets.
-      Neighborhood<dim> facets_nonhanging_owned;
-      int facet_idx = 0;
+      // Classify hyperfaces.
+      Neighborhood<dim> hyperfaces_nonhanging_owned;
+      int hyperface_idx = 0;
       tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
       {
-        if ((greedy_neighbors & combine_on_facet(idx_pack...)).none())
-          facets_nonhanging_owned.set_flat(facet_idx);
-        ++facet_idx;
+        if ((greedy_neighbors & combine_on_hyperface(idx_pack...)).none())
+          hyperfaces_nonhanging_owned.set_flat(hyperface_idx);
+        ++hyperface_idx;
       });
 
       // Map numerators (node indices) and denominator (degree) to coordinate.
@@ -143,16 +143,16 @@ namespace ot
         return TreeNode<uint32_t, dim>(node_pt, octant.getLevel());
       };
 
-      // Emit nodes for all facets that are owned and nonhanging.
+      // Emit nodes for all hyperfaces that are owned and nonhanging.
       tmp::nested_for<dim>(0, degree + 1, [&](auto...idx_pack)
       {
         std::array<int, dim> idxs = {idx_pack...};  // 0..degree per axis.
-        // Map node index to facet index.
+        // Map node index to hyperface index.
         int stride = 1;
-        int facet_idx = 0;
+        int hyperface_idx = 0;
         for (int d = 0; d < dim; ++d, stride *= 3)
-          facet_idx += ((idxs[d] > 0) + (idxs[d] == degree)) * stride;
-        if(facets_nonhanging_owned.test_flat(facet_idx))
+          hyperface_idx += ((idxs[d] > 0) + (idxs[d] == degree)) * stride;
+        if(hyperfaces_nonhanging_owned.test_flat(hyperface_idx))
         {
           output.push_back(create_node(self_key, idxs, degree));
         }
