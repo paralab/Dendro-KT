@@ -112,6 +112,10 @@ namespace ot
       LeafListView subdivide(sfc::SubIndex s) const;
       LeafListView child(sfc::ChildNum c) const;
 
+      // Specific to LeafListView
+      const TreeNode<uint32_t, dim> *begin() const;
+      const TreeNode<uint32_t, dim> *end() const;
+
     public:
       const TreeNode<uint32_t, dim> *m_begin;
       const TreeNode<uint32_t, dim> *m_end;
@@ -380,6 +384,22 @@ namespace ot
     return this->child(this->sfc().child_num(s));
   }
 
+  // LeafListView::begin()
+  template <int dim>
+  const TreeNode<uint32_t, dim> *LeafListView<dim>::begin() const
+  {
+    return m_begin;
+  }
+
+  // LeafListView::end()
+  template <int dim>
+  const TreeNode<uint32_t, dim> *LeafListView<dim>::end() const
+  {
+    return m_end;
+  }
+
+
+  // TODO make interface LeafRange: if is_singleton() then root() == member.
 
   // LeafRange()
   template <int dim>

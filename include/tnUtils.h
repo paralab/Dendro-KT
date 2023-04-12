@@ -282,6 +282,13 @@ TreeNode<uint32_t, dim> morton_lineage(
   return source;
 }
 
+template <int dim>
+TreeNode<uint32_t, dim> morton_lineage(
+    std::initializer_list<int> lineage)
+{
+  return morton_lineage<dim>(TreeNode<uint32_t, dim>{}, lineage);
+}
+
 
 }//end namespace ot
 
