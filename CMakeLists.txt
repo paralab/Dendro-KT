@@ -192,6 +192,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/neighbors_to_nodes.hpp
                   include/leaf_sets.hpp
                   include/partition_border.hpp
+                  include/contextual_hyperface.hpp
                   IO/zlib/inc/zlib.h
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
