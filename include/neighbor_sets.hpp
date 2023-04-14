@@ -25,10 +25,22 @@ inline void link_neighbor_sets_tests() {};
 // =============================================================================
 namespace ot
 {
+  template <int dim>
+  struct NeighborSetDict
+  {
+    std::vector<TreeNode<uint32_t, dim>> keys;
+    std::vector<Neighborhood<dim>> neighborhoods;
+  };
+
+  /**
+   * neighbor_sets()
+   * @brief Create a sorted dictionary from octants to (3^dim) neighbors.
+   * @param leaf_set: Leafs cannot overlap unless exact duplicates. Unsorted ok.
+   */
   template <unsigned dim>
-  std::pair< std::vector<TreeNode<uint32_t, dim>>,
-             std::vector<Neighborhood<dim>> >
-  neighbor_sets(const std::vector<TreeNode<uint32_t, dim>> &leaf_set);
+  NeighborSetDict<dim> neighbor_sets(
+      const std::vector<TreeNode<uint32_t, dim>> &leaf_set);
+
 
 #ifdef DOCTEST_LIBRARY_INCLUDED
   DOCTEST_TEST_SUITE("Neighbor sets")
@@ -37,8 +49,8 @@ namespace ot
     {
       _InitializeHcurve(3);
       auto result = neighbor_sets<3>({});
-      CHECK( result.first.empty() );
-      CHECK( result.second.empty() );
+      CHECK( result.keys.empty() );
+      CHECK( result.neighborhoods.empty() );
       _DestroyHcurve();
     }
 
@@ -50,12 +62,12 @@ namespace ot
                                                       .getChildMorton(7)
                                                       .getChildMorton(7);
       auto result = neighbor_sets<3>({some_octant});
-      CHECK( result.first.size() == result.second.size() );
-      CHECK( result.second.size() == 27 );
-      CHECK( std::count_if(result.second.begin(), result.second.end(),
+      CHECK( result.keys.size() == result.neighborhoods.size() );
+      CHECK( result.neighborhoods.size() == 27 );
+      CHECK( std::count_if(result.neighborhoods.begin(), result.neighborhoods.end(),
             [](auto nbhd) { return nbhd.center_occupied(); })
           == 1 );
-      for (auto nbhd: result.second)
+      for (auto nbhd: result.neighborhoods)
       {
         CHECK( nbhd.any() );
       }
@@ -71,12 +83,12 @@ namespace ot
         const auto some_octant = TreeNode<uint32_t, 3>().getChildMorton(extreme)
                                                         .getChildMorton(extreme);
         auto result = neighbor_sets<3>({some_octant});
-        CHECK( result.first.size() == result.second.size() );
-        CHECK( result.second.size() == 8 );
-        CHECK( std::count_if(result.second.begin(), result.second.end(),
+        CHECK( result.keys.size() == result.neighborhoods.size() );
+        CHECK( result.neighborhoods.size() == 8 );
+        CHECK( std::count_if(result.neighborhoods.begin(), result.neighborhoods.end(),
               [](auto nbhd) { return nbhd.center_occupied(); })
             == 1 );
-        for (auto nbhd: result.second)
+        for (auto nbhd: result.neighborhoods)
         {
           CHECK( nbhd.any() );
         }
@@ -95,12 +107,12 @@ namespace ot
                                                       .getChildMorton(0)
                                                       .getChildMorton(0);
       auto result = neighbor_sets<3>({some_octant});
-      CHECK( result.first.size() == result.second.size() );
-      CHECK( result.second.size() == 27 );
-      CHECK( std::count_if(result.second.begin(), result.second.end(),
+      CHECK( result.keys.size() == result.neighborhoods.size() );
+      CHECK( result.neighborhoods.size() == 27 );
+      CHECK( std::count_if(result.neighborhoods.begin(), result.neighborhoods.end(),
             [](auto nbhd) { return nbhd.center_occupied(); })
           == 1 );
-      for (auto nbhd: result.second)
+      for (auto nbhd: result.neighborhoods)
       {
         CHECK( nbhd.any() );
       }
@@ -124,9 +136,9 @@ namespace ot
         octlist.push_back(octantB.getChildMorton(c));
 
       auto result = neighbor_sets<3>(octlist);
-      CHECK( result.second.size() == (27 + 64) );
+      CHECK( result.neighborhoods.size() == (27 + 64) );
 
-      CHECK( std::count_if(result.second.begin(), result.second.end(),
+      CHECK( std::count_if(result.neighborhoods.begin(), result.neighborhoods.end(),
             [](auto nbhd) { return nbhd.center_occupied(); })
           == 9 );
 
@@ -134,11 +146,11 @@ namespace ot
     }
 
     //nextpath:
-    // - [ ] count nodes (using local implementation).
-    // - [ ] generate nodes in a single pass.
+    // - [x] count nodes (using local implementation).
+    // - [x] generate nodes in a single pass.
     // - [ ] test: do an input matvec on an adaptive grid, ensuring all nonzero.
     // - [ ] distributed version.
-    //   - [ ] find boundary octants
+    //   - [x] find boundary octants
     //   - [ ] compute scattermap
     //   - [ ] compute gathermap
   }
@@ -155,12 +167,10 @@ namespace ot
 
 namespace ot
 {
-  //future: filter out the keys that do not occupy their own neighborhood,
-  //        unless a parent or child does.
+  // neighbor_sets()
   template <unsigned dim>
-  std::pair< std::vector<TreeNode<uint32_t, dim>>,
-             std::vector<Neighborhood<dim>> >
-  neighbor_sets(const std::vector<TreeNode<uint32_t, dim>> &leaf_set)
+  NeighborSetDict<dim> neighbor_sets(
+      const std::vector<TreeNode<uint32_t, dim>> &leaf_set)
   {
     std::vector<TreeNode<uint32_t, dim>> keys;
     std::vector<Neighborhood<dim>> neighbor_sets;

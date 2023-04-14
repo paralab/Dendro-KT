@@ -253,8 +253,8 @@ namespace ot
       REQUIRE( uniform_grid.size() == (1u << (2 * max_depth)) );
 
       const auto neighbor_sets_pair = neighbor_sets(uniform_grid);
-      const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.first;
-      const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.second;
+      const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.keys;
+      const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.neighborhoods;
       REQUIRE( std::count_if(neighborhoods.begin(), neighborhoods.end(),
                    [](auto nh){return nh.count() == 4;})  ==  4 );
       REQUIRE( std::count_if(neighborhoods.begin(), neighborhoods.end(),
@@ -292,8 +292,8 @@ namespace ot
       REQUIRE( uniform_grid.size() == (1u << (3 * max_depth)) );
 
       const auto neighbor_sets_pair = neighbor_sets(uniform_grid);
-      const std::vector<TreeNode<uint32_t, 3>> &octant_keys = neighbor_sets_pair.first;
-      const std::vector<Neighborhood<3>> &neighborhoods = neighbor_sets_pair.second;
+      const std::vector<TreeNode<uint32_t, 3>> &octant_keys = neighbor_sets_pair.keys;
+      const std::vector<Neighborhood<3>> &neighborhoods = neighbor_sets_pair.neighborhoods;
 
       const size_t corner_cell_mid = 1;
       const size_t edge_cell_mid   = ((1u << max_depth) - 2);
@@ -339,8 +339,8 @@ namespace ot
       grid.push_back(descendant(root, {1, 1, 3}));
 
       const auto neighbor_sets_pair = neighbor_sets(grid);
-      const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.first;
-      const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.second;
+      const std::vector<TreeNode<uint32_t, 2>> &octant_keys = neighbor_sets_pair.keys;
+      const std::vector<Neighborhood<2>> &neighborhoods = neighbor_sets_pair.neighborhoods;
       const int degree = 1;
       std::vector<TreeNode<uint32_t, 2>> nodes =
           node_set<2>(
@@ -441,8 +441,8 @@ namespace ot
 
           // Neighbors.
           const auto neighbor_sets_pair = neighbor_sets(grid);
-          const std::vector<TreeNode<uint32_t, dim>> &octant_keys = neighbor_sets_pair.first;
-          const std::vector<Neighborhood<dim>> &neighborhoods = neighbor_sets_pair.second;
+          const std::vector<TreeNode<uint32_t, dim>> &octant_keys = neighbor_sets_pair.keys;
+          const std::vector<Neighborhood<dim>> &neighborhoods = neighbor_sets_pair.neighborhoods;
 
           // Nodes.
           const int degree = 1;
@@ -489,8 +489,8 @@ namespace ot
 
           // Neighbors.
           const auto neighbor_sets_pair = neighbor_sets(grid);
-          const std::vector<TreeNode<uint32_t, dim>> &octant_keys = neighbor_sets_pair.first;
-          const std::vector<Neighborhood<dim>> &neighborhoods = neighbor_sets_pair.second;
+          const std::vector<TreeNode<uint32_t, dim>> &octant_keys = neighbor_sets_pair.keys;
+          const std::vector<Neighborhood<dim>> &neighborhoods = neighbor_sets_pair.neighborhoods;
 
           // Nodes.
           const int degree = 1;
