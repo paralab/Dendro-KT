@@ -27,6 +27,13 @@ namespace ot
   template <int dim>  struct LeafListView;   // loop over explicit array.
   template <int dim>  struct LeafRange;  // loop over implicit range.
 
+  template <int dim, typename V>
+  LeafListView<dim> vec_leaf_list_view(const V &vector);  // STL vector or array
+
+  template <int dim, typename V>
+  LeafRange<dim> vec_leaf_range(const V &vector);  // STL vector or array
+
+
   // DescendantSet
   template <int dim>
   struct DescendantSet;
@@ -167,7 +174,6 @@ namespace ot
       TreeNode<uint32_t, dim> m_last;
       bool m_nonempty;
   };
-
 
 }
 
@@ -425,6 +431,16 @@ namespace ot
   }
 
 
+  // vec_leaf_list_view()
+  template <int dim, typename V>
+  LeafListView<dim> vec_leaf_list_view(const V &vector)
+  {
+    // Need random access.
+    return LeafListView<dim>(&vector[0], &vector[vector.size()]);
+  }
+
+
+
   // LeafRange()
   template <int dim>
   LeafRange<dim>::LeafRange( TreeNode<uint32_t, dim> first,
@@ -559,6 +575,17 @@ namespace ot
   LeafRange<dim> LeafRange<dim>::subdivide(sfc::SubIndex s) const
   {
     return this->child(this->sfc().child_num(s));
+  }
+
+
+  // vec_leaf_range()
+  template <int dim, typename V>
+  LeafRange<dim> vec_leaf_range(const V &vector)
+  {
+    if (vector.empty())
+      return LeafRange<dim>::make_empty();
+    else
+      return LeafRange<dim>::make(vector.front(), vector.back());
   }
 
 }

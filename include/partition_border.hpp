@@ -85,23 +85,11 @@ namespace ot
         SFC_Tree<uint32_t, dim>::locTreeSort(this->vec);
       }
 
-      // slice()
-      LeafListView<dim> slice(size_t begin, size_t end) const {
-        return LeafListView<dim>(&vec[begin], &vec[end]);
-      }
-
       // view()
-      LeafListView<dim> view() const {
-        return this->slice(0, this->vec.size());
-      }
+      LeafListView<dim> view() const { return vec_leaf_list_view<dim>(this->vec); }
 
       // range()
-      LeafRange<dim> range() const {
-        return this->vec.empty() ?
-          LeafRange<dim>::make_empty()
-          :
-          LeafRange<dim>::make(this->vec.front(), this->vec.back());
-      }
+      LeafRange<dim> range() const { return vec_leaf_range<dim>(this->vec); }
     };
 
     // uniform_refine_morton()
