@@ -43,17 +43,49 @@ namespace ot
   ///   All<LeafListView<dim>> all(LeafListView<dim> view) { return { view }; }
   /// };
 
+
+  // LocalAdjacencyList
+  struct LocalAdjacencyList
+  {
+    int local_rank;
+    std::vector<int> neighbor_ranks;
+  };
+
+  // sfc_partition(): Returns partition indices where local borders or overlaps.
+  template <unsigned dim>
+  LocalAdjacencyList sfc_partition(
+      int local_rank,
+      bool is_active,
+      const std::vector<int> &active_list,
+      const PartitionFrontBack<uint32_t, dim> &endpoints);
+
+
+  // where_border()
   template <int dim, typename AnySet, typename Emit>  // void emit(const TreeNode *tn)
   void where_border(
       LeafListView<dim> all_list,
       const LeafSet<dim, AnySet> &any_set,
       Emit &&emit);
 
+  // border_any() (leaf to set)
   template <int dim, typename AnySet>
   bool border_any(
       TreeNode<uint32_t, dim> octant,
       const LeafSet<dim, AnySet> &any_set);
 
+  // border_any() (set to set)
+  template <int dim, typename PSet, typename QSet>
+  bool border_any(
+      const LeafSet<dim, PSet> &P,
+      const LeafSet<dim, QSet> &Q);
+
+  // border_or_overlap_any() (set to set)
+  template <int dim, typename PSet, typename QSet>
+  bool border_or_overlap_any(
+      const LeafSet<dim, PSet> &P,
+      const LeafSet<dim, QSet> &Q);
+
+  // adjacent()
   template <unsigned dim>
   bool adjacent(
       const TreeNode<uint32_t, dim> &a,
@@ -103,11 +135,21 @@ namespace ot
           uniform_refine_morton(region.getChildMorton(c), depth - 1, emit);
     }
 
-    DOCTEST_TEST_CASE("border_any")
+    DOCTEST_TEST_CASE("border_any with leaf")
     {
       constexpr int dim = 2;
       using Octant = TreeNode<uint32_t, dim>;
       _InitializeHcurve(dim);
+
+      //  _______________
+      // |       |     ¡_|
+      // |       |     !_|
+      // |       |  _ _¡_|
+      // |_______|_|_|_!_|
+      // |       |  ^ ^¡_|
+      // |       |     !_|
+      // |       |     ¡_|
+      // |_______|_____!_|
 
       const LeafVector<dim> right_side = LeafVector<dim>::sorted({
         morton_lineage<dim>({1, 1, 1}),
@@ -132,8 +174,8 @@ namespace ot
     {
       // This partitioning should work with both Hilbert and Z curve.
       //  _______________
-      // |       |       |
-      // |       |       |     Two partitions defined by space-filling curve.
+      // |???    |    ???|     Two partitions defined by space-filling curve.
+      // |???    |    ???|     The last cells are in one of the "???" corners.
       // |       |       |
       // |.......!_______|     Higher partition gets the top 6 regions.
       // |       ¡   |   |
@@ -206,6 +248,16 @@ namespace ot
         where_border(all(list_high.view()), any(part_low.range()), [&interpart_high](const Octant *oct) {
             interpart_high.vec.push_back(*oct);
         });
+
+        CHECK( border_any(any(part_low.range()), any(part_high.range())) );
+
+        if (refine_depth > 1)
+        {
+          const size_t tail_length = intPow(2, dim * (refine_depth - 1));
+          const LeafRange<dim> tail = LeafRange<dim>::make(
+              *(list_high.vec.end() - tail_length), list_high.vec.back());
+          CHECK_FALSE( border_any(any(part_low.range()), any(tail)) );
+        }
       }
 
       CHECK( interpart_low.vec.size() == expected_interpart_low );
@@ -224,6 +276,70 @@ namespace ot
 // =============================================================================
 namespace ot
 {
+
+  // sfc_partition(): Returns partition indices where local borders or overlaps.
+  template <unsigned dim>
+  LocalAdjacencyList sfc_partition(
+      int local_rank,
+      bool is_active,
+      const std::vector<int> &active_list,
+      const PartitionFrontBack<uint32_t, dim> &endpoints)
+  {
+    std::vector<int> neighbor_ranks;
+
+    if (not is_active)
+    {
+      return { local_rank, std::move(neighbor_ranks) };
+    }
+
+    std::vector<TreeNode<uint32_t, dim>> partitions_coarsened;
+    partitions_coarsened.reserve(active_list.size());
+
+    // Agglomerating each partition's range into a single octant,
+    // so we can narrow down the final search space.
+    for (size_t active_idx = 0; active_idx < active_list.size(); ++active_idx)
+    {
+      const auto front = endpoints.m_fronts[active_list[active_idx]];
+      const auto back = endpoints.m_backs[active_list[active_idx]];
+      const TreeNode<uint32_t, dim> common =
+        front.getAncestor(front.getCommonAncestorDepth(back));
+
+      partitions_coarsened.push_back(common);
+    }
+
+    // Construct local partition range.
+    const LeafRange<dim> local_range = LeafRange<dim>::make(
+        endpoints.m_fronts[local_rank], endpoints.m_backs[local_rank]);
+
+    // Initial search: (coarse) list-on-range.
+    LeafListView<dim> view_partitions_coarsened(
+        &(*partitions_coarsened.begin()), &(*partitions_coarsened.end()) );
+    std::vector<int> active_candidates;
+    active_candidates.reserve(500);
+    const auto *view_begin = &(*partitions_coarsened.begin());
+    where_border(view_partitions_coarsened, local_range, [&](const auto *oct) {
+        active_candidates.push_back(oct - view_begin);
+    });
+
+    // Improve search: range-on-range for each remote candidate.
+    for (int active_candidate : active_candidates)
+    {
+      const int candidate_rank = active_list[active_candidate];
+      if (candidate_rank == local_rank)
+        continue;
+
+      const LeafRange<dim> remote_range = LeafRange<dim>::make(
+          endpoints.m_fronts[candidate_rank], endpoints.m_backs[candidate_rank]);
+
+      if (border_or_overlap_any<dim>(remote_range, local_range))
+        neighbor_ranks.push_back(candidate_rank);
+    }
+
+    return { local_rank, std::move(neighbor_ranks) };
+  }
+
+
+
   // where_border()
   template <int dim, typename AnySet, typename Emit>  // void emit(const TreeNode *tn)
   void where_border(
@@ -299,6 +415,97 @@ namespace ot
     const AnySet &any_set = any_set_.cast();
     if (descendants_adjacent_to_leaf(any_set.root(), octant))
       return border_any_impl<dim>(octant, any_set);
+    else
+      return false;
+  }
+
+  template <int dim, bool overlaps_ok, typename PSet, typename QSet>
+  bool border_any_impl(
+      const LeafSet<dim, PSet> &P_,
+      const LeafSet<dim, QSet> &Q_)
+  {
+    using namespace detail;
+    const PSet &P = P_.cast();
+    const QSet &Q = Q_.cast();
+    // Assume adjacent or descendants are.
+
+    if (adjacent(P.root(), Q.root()) or overlaps_ok)
+      if (P.is_singleton() and Q.is_singleton())
+        return true;
+
+    const auto may_border = [](const auto &R, const auto &S) {
+      return descendants_adjacent_to_leaf(R, S)
+          or descendants_adjacent_to_leaf(S, R);
+    };
+
+    // Split the non-singleton(s) and recurse.
+    if (P.is_singleton())
+      return border_any<dim>(P.root(), Q);
+    else if (Q.is_singleton())
+      return border_any<dim>(Q.root(), P);
+    else
+    {
+      // future: separate implementations depending on
+      //         whether subdivision is costly or not.
+      std::bitset<nchild(dim)> p_init, q_init;
+      std::array<PSet, nchild(dim)> p_sub;
+      std::array<QSet, nchild(dim)> q_sub;
+      for (sfc::SubIndex pc(0); pc < nchild(dim); ++pc)
+        if (may_border(P.scope().subdivide(pc).m_root, Q.root()))
+        {
+          p_sub[pc] = P.subdivide(pc);
+          p_init[pc] = p_sub[pc].any();
+        }
+      for (sfc::SubIndex qc(0); qc < nchild(dim); ++qc)
+        if (may_border(Q.scope().subdivide(qc).m_root, P.root()))
+        {
+          q_sub[qc] = Q.subdivide(qc);
+          q_init[qc] = q_sub[qc].any();
+        }
+      // future: prioritize pairs by highest dimensionality of intersection.
+      for (sfc::SubIndex pc(0); pc < nchild(dim); ++pc)
+        if (p_init[pc])
+          for (sfc::SubIndex qc(0); qc < nchild(dim); ++qc)
+            if (q_init[qc])
+              if (may_border(p_sub[pc].root(), q_sub[qc].root()))
+                if (border_any_impl<dim, overlaps_ok>(p_sub[pc], q_sub[qc]))
+                  return true;
+    }
+
+    return false;
+  }
+
+
+  template <int dim, typename PSet, typename QSet>
+  bool border_any(
+      const LeafSet<dim, PSet> &P_,
+      const LeafSet<dim, QSet> &Q_)
+  {
+    using namespace detail;
+    const PSet &P = P_.cast();
+    const QSet &Q = Q_.cast();
+    if (descendants_adjacent_to_leaf(P.root(), Q.root())
+        or descendants_adjacent_to_leaf(Q.root(), P.root()))
+    {
+      return border_any_impl<dim, false>(P, Q);
+    }
+    else
+      return false;
+  }
+
+  template <int dim, typename PSet, typename QSet>
+  bool border_or_overlap_any(
+      const LeafSet<dim, PSet> &P_,
+      const LeafSet<dim, QSet> &Q_)
+  {
+    using namespace detail;
+    const PSet &P = P_.cast();
+    const QSet &Q = Q_.cast();
+    if (descendants_adjacent_to_leaf(P.root(), Q.root())
+        or descendants_adjacent_to_leaf(Q.root(), P.root()))
+    {
+      return border_any_impl<dim, true>(P, Q);
+    }
     else
       return false;
   }
