@@ -80,6 +80,11 @@ namespace ot
         return m_scope.m_sfc;
       }
 
+      DescendantSet<dim> scope() const
+      {
+        return m_scope;
+      }
+
     private:
       LeafSet(const Derived &);  // Protect from partial copies in CRTP.
 
@@ -108,6 +113,7 @@ namespace ot
       bool none() const;
       bool is_singleton() const;
       bool is_singleton_of(const TreeNode<uint32_t, dim> &member) const;
+      // If this->is_singleton(), then this->is_singleton_of(this->root()).
 
       LeafListView subdivide(sfc::SubIndex s) const;
       LeafListView child(sfc::ChildNum c) const;
@@ -145,6 +151,7 @@ namespace ot
       bool none() const;
       bool is_singleton() const;
       bool is_singleton_of(const TreeNode<uint32_t, dim> &member) const;
+      // If this->is_singleton(), then this->is_singleton_of(this->root()).
 
       LeafRange subdivide(sfc::SubIndex s) const;
       LeafRange child(sfc::ChildNum c) const;
@@ -221,6 +228,29 @@ namespace ot
       _DestroyHcurve();
     }
 
+    DOCTEST_TEST_CASE("Drill to descendant on construct")
+    {
+      constexpr int dim = 2;
+      _InitializeHcurve(dim);
+      TreeNode<uint32_t, dim> root = {};
+      std::array<TreeNode<uint32_t, dim>, 1> singleton = {
+        morton_lineage(root, {1, 2, 2, 2})
+      };
+
+      LeafListView<dim> leaf_list(&(*singleton.begin()), &(*singleton.end()));
+      REQUIRE( leaf_list.is_singleton() );
+      CHECK( leaf_list.is_singleton_of(leaf_list.root()) );
+      CHECK( leaf_list.root().getLevel() == 4 );
+
+      LeafRange<dim> leaf_range = LeafRange<dim>::make(
+          singleton.front(), singleton.back() );
+      REQUIRE( leaf_range.is_singleton() );
+      CHECK( leaf_range.is_singleton_of(leaf_range.root()) );
+      CHECK( leaf_range.root().getLevel() == 4 );
+
+      _DestroyHcurve();
+    }
+
     DOCTEST_TEST_CASE("Drill to descendant")
     {
       constexpr int dim = 2;
@@ -294,14 +324,15 @@ namespace ot
   }
 
 
-  // TODO make interface LeafListView: if is_singleton() then root() == member.
-
   // LeafListView::LeafListView()
   template <int dim>
   LeafListView<dim>::LeafListView( const TreeNode<uint32_t, dim> *begin,
                            const TreeNode<uint32_t, dim> *end,
                            DescendantSet<dim> scope )
-    : Base({scope}), m_begin(begin), m_end(end)
+    : Base({(begin < end ?
+              scope.select(common_ancestor(*begin, *(end - 1)))  // Drill down
+              : scope)}),
+      m_begin(begin), m_end(end)
   { }
 
   // LeafListView::any()
@@ -322,7 +353,12 @@ namespace ot
   template <int dim>
   bool LeafListView<dim>::is_singleton() const
   {
-    return m_begin + 1 == m_end;
+    const bool is_singleton = m_begin + 1 == m_end;
+    if (is_singleton)
+    {
+      assert(this->root() == *m_begin);
+    }
+    return is_singleton;
   }
 
   // LeafListView::is_singleton_of()
@@ -364,16 +400,6 @@ namespace ot
     LeafListView result(
       m_begin + new_begin, m_begin + new_end, this->m_scope.child(c));
 
-    // Drill down to deepest common ancestor.
-    if (new_begin < new_end)
-    {
-      const TreeNode<uint32_t, dim> first = *(result.m_begin);
-      const TreeNode<uint32_t, dim> last = *(result.m_end - 1);
-      const TreeNode<uint32_t, dim> common
-          = first.getAncestor(first.getCommonAncestorDepth(last));
-      result.m_scope = result.m_scope.select(common);
-    }
-
     return result;
   }
 
@@ -399,15 +425,16 @@ namespace ot
   }
 
 
-  // TODO make interface LeafRange: if is_singleton() then root() == member.
-
   // LeafRange()
   template <int dim>
   LeafRange<dim>::LeafRange( TreeNode<uint32_t, dim> first,
                              TreeNode<uint32_t, dim> last,
                              bool nonempty,
                              DescendantSet<dim> scope )
-    : Base({scope}), m_first(first), m_last(last), m_nonempty(nonempty)
+    : Base({(nonempty?
+              scope.select(common_ancestor(first, last))  // Drill down
+              : scope)}),
+      m_first(first), m_last(last), m_nonempty(nonempty)
   { }
 
   // LeafRange::make_empty()
@@ -446,7 +473,12 @@ namespace ot
   template <int dim>
   bool LeafRange<dim>::is_singleton() const
   {
-    return any() and m_first == m_last;
+    const bool is_singleton = any() and m_first == m_last;
+    if (is_singleton)
+    {
+      assert(this->root() == m_first);
+    }
+    return is_singleton;
   }
 
   // LeafRange::is_singleton_of()
@@ -519,10 +551,7 @@ namespace ot
       }
     }
 
-    // Drill down DescendantSet to deepest common ancestor.
-    const TreeNode<uint32_t, dim> common =
-        new_first.getAncestor(new_first.getCommonAncestorDepth(new_last));
-    return LeafRange::make(new_first, new_last, this->m_scope.select(common));
+    return LeafRange::make(new_first, new_last, this->m_scope.child(c));
   }
 
   // LeafRange::subdivide()

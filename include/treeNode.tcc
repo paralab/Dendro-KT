@@ -432,4 +432,13 @@ inline bool TreeNode<T,dim>::isAncestorInclusive(TreeNode<T,dim> const &other) c
 
 // ================ End is-tests ========================== //
 
+
+template <unsigned dim>
+inline TreeNode<uint32_t, dim> common_ancestor(
+    const TreeNode<uint32_t, dim> &a,
+    const TreeNode<uint32_t, dim> &b)
+{
+  return a.getAncestor(a.getCommonAncestorDepth(b));
+}
+
 } //end namespace ot

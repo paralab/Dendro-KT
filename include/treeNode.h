@@ -222,6 +222,11 @@ namespace ot {
       void appendCoarseNeighbours(std::vector<TreeNode> &nodeList) const;
     };
 
+    template <unsigned dim>
+    inline TreeNode<uint32_t, dim> common_ancestor(
+        const TreeNode<uint32_t, dim> &a,
+        const TreeNode<uint32_t, dim> &b);
+
 } // end namespace ot
 
 // Template specializations
