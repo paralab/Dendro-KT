@@ -12,6 +12,7 @@
 #include "include/neighbors_to_nodes.hpp"
 #include "include/leaf_sets.hpp"
 #include "include/partition_border.hpp"
+#include "include/contextual_hyperface.hpp"
 
 namespace lib_tests
 {
@@ -23,6 +24,7 @@ namespace lib_tests
     link_neighbors_to_nodes_tests();
     link_leaf_sets_tests();
     link_partition_border_tests();
+    link_contextual_hyperface_tests();
   }
 }
 
