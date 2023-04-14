@@ -30,6 +30,9 @@ namespace ot
   {
     std::vector<TreeNode<uint32_t, dim>> keys;
     std::vector<Neighborhood<dim>> neighborhoods;
+
+    inline void concat(const NeighborSetDict &other);
+    inline void reduce();
   };
 
   /**
@@ -167,46 +170,89 @@ namespace ot
 
 namespace ot
 {
+  namespace detail
+  {
+    template <int dim>
+    void translate(NeighborSetDict<dim> &in, int axis);
+
+    template <int dim>
+    void reduce(NeighborSetDict<dim> &dict);
+  }
+
+
+  // NeighborSetDict::concat()
+  template <int dim>
+  inline void NeighborSetDict<dim>::concat(const NeighborSetDict &other)
+  {
+    this->keys.insert( this->keys.begin(),
+        other.keys.cbegin(), other.keys.cend() );
+
+    this->neighborhoods.insert( this->neighborhoods.begin(),
+        other.neighborhoods.cbegin(), other.neighborhoods.cbegin() );
+  }
+
+  // NeighborSetDict::reduce()
+  template <int dim>
+  inline void NeighborSetDict<dim>::reduce()
+  {
+    detail::reduce(*this);
+  }
+
+
+
   // neighbor_sets()
   template <unsigned dim>
   NeighborSetDict<dim> neighbor_sets(
       const std::vector<TreeNode<uint32_t, dim>> &leaf_set)
   {
-    std::vector<TreeNode<uint32_t, dim>> keys;
-    std::vector<Neighborhood<dim>> neighbor_sets;
+    NeighborSetDict<dim> dict;
 
-    keys.reserve(leaf_set.size());
-    neighbor_sets.reserve(leaf_set.size());
+    dict.keys.reserve(leaf_set.size());
+    dict.neighborhoods.reserve(leaf_set.size());
 
     // Initialize with solitary neighborhood for each leaf.
     const auto self_set = Neighborhood<dim>::solitary();
     for (const auto leaf: leaf_set)
     {
-      keys.push_back(leaf);
-      neighbor_sets.push_back(self_set);
+      dict.keys.push_back(leaf);
+      dict.neighborhoods.push_back(self_set);
     }
 
     // For each axis, inform face-neighbors of partial neighborhoods.
     // This is a map-reduce by sorting on octant keys. Accumulate each pass.
-    std::vector<TreeNode<uint32_t, dim>> new_keys;
-    std::vector<Neighborhood<dim>> new_values;
     for (int axis = 0; axis < dim; ++axis)
     {
-      new_keys.clear();
-      new_values.clear();
-      new_keys.reserve(3 * keys.size());
-      new_values.reserve(3 * keys.size());
+      detail::translate<dim>(dict, axis);
+      detail::reduce<dim>(dict);
+    }
+
+    return dict;
+  }
+
+  namespace detail
+  {
+    // translate()
+    template <int dim>
+    void translate(NeighborSetDict<dim> &in, int axis)
+    {
+      // future: memory pools
+      static NeighborSetDict<dim> next;
+
+      next.keys.clear();
+      next.neighborhoods.clear();
+      next.keys.reserve(3 * in.keys.size());
+      next.neighborhoods.reserve(3 * in.keys.size());
 
       // Map (multiple outputs)
-      const size_t n_keys = keys.size();
+      const size_t n_keys = in.keys.size();
       for (size_t i = 0; i < n_keys; ++i)
       {
-        const auto key = keys[i];
-        const auto neighborhood = neighbor_sets[i];
+        const auto key = in.keys[i];
+        const auto neighborhood = in.neighborhoods[i];
 
         // Identity
-        new_keys.push_back(key);
-        new_values.push_back(neighborhood);
+        next.keys.push_back(key);
+        next.neighborhoods.push_back(neighborhood);
 
         const uint32_t cell_size = key.range().side();
 
@@ -215,8 +261,8 @@ namespace ot
         key_up.setX(axis, key.getX(axis) + cell_size);
         if (TreeNode<uint32_t, dim>().isAncestorInclusive(key_up))
         {
-          new_keys.push_back(key_up);
-          new_values.push_back(neighborhood.shifted_down(axis));
+          next.keys.push_back(key_up);
+          next.neighborhoods.push_back(neighborhood.shifted_down(axis));
         }
 
         // Send down: Current key's neighborhood as viewed by downward neighbor.
@@ -224,47 +270,50 @@ namespace ot
         key_down.setX(axis, key.getX(axis) - cell_size);
         if (TreeNode<uint32_t, dim>().isAncestorInclusive(key_down))
         {
-          new_keys.push_back(key_down);
-          new_values.push_back(neighborhood.shifted_up(axis));
+          next.keys.push_back(key_down);
+          next.neighborhoods.push_back(neighborhood.shifted_up(axis));
         }
       }
 
+      std::swap(next, in);
+    }
+
+    template <int dim>
+    void reduce(NeighborSetDict<dim> &dict)
+    {
       // Reduce (segment reduction)
-      SFC_Tree<uint32_t, dim>::locTreeSort(new_keys, new_values);
+      SFC_Tree<uint32_t, dim>::locTreeSort(dict.keys, dict.neighborhoods);
 
       // For each set of equal keys, reduce the corresponding set of neighborhoods.
       // Note that parents and children are handled separately.
       // The final key set likely includes ancestors that overlaps leafs.
 
       size_t n_written = 0;
-      for (size_t i = 0; i < new_keys.size(); ++i)
+      const size_t input_size = dict.keys.size();
+      for (size_t i = 0; i < input_size; ++i)
       {
-        const Neighborhood<dim> value = new_values[i];
-        const bool equals_prev = i > 0 and new_keys[i - 1] == new_keys[i];
+        const Neighborhood<dim> value = dict.neighborhoods[i];
+        const bool equals_prev = i > 0 and dict.keys[i - 1] == dict.keys[i];
         if (equals_prev)
         {
-          new_values[n_written - 1] |= value;
+          dict.neighborhoods[n_written - 1] |= value;
         }
         else
         {
-          new_values[n_written] = value;
+          dict.neighborhoods[n_written] = value;
           ++n_written;
         }
       }
-      new_values.erase(new_values.begin() + n_written, new_values.end());
+      dict.neighborhoods.erase(
+          dict.neighborhoods.begin() + n_written,
+          dict.neighborhoods.end());
 
       // For each set of equal keys, keep one of them.
-      new_keys.erase(std::unique(new_keys.begin(), new_keys.end()), new_keys.end());
-
-      std::swap(keys, new_keys);
-      std::swap(neighbor_sets, new_values);
+      dict.keys.erase(
+          std::unique(dict.keys.begin(), dict.keys.end()),
+          dict.keys.end());
     }
-    new_keys.clear();
-    new_values.clear();
-
-    return {keys, neighbor_sets};
   }
-
 
 }
 
