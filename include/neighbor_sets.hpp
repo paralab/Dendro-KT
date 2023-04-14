@@ -45,6 +45,18 @@ namespace ot
       const std::vector<TreeNode<uint32_t, dim>> &leaf_set);
 
 
+  /**
+   * filter_occupied()
+   * @brief Keep entries relevant to center_occupied()-entries (parents + kids).
+   * @param dict The dictionary to modify.
+   * @param begin The ith relevant entry will be retained only if i >= begin.
+   * @param end The ith relevant entry will be retained only if i < end.
+   */
+  template <int dim>
+  void filter_occupied(NeighborSetDict<dim> &dict,
+      size_t begin = 0, size_t end = -(size_t)1);
+
+
 #ifdef DOCTEST_LIBRARY_INCLUDED
   DOCTEST_TEST_SUITE("Neighbor sets")
   {
@@ -313,6 +325,88 @@ namespace ot
           std::unique(dict.keys.begin(), dict.keys.end()),
           dict.keys.end());
     }
+  }
+
+
+  // filter_occupied()
+  template <int dim>
+  void filter_occupied(NeighborSetDict<dim> &dict, size_t slice_begin, size_t slice_end)
+  {
+    using Coordinate = periodic::PCoord<uint32_t, dim>;
+    std::vector<Coordinate>        parents_by_level(m_uiMaxDepth + 1);
+    std::vector<uint8_t>           parents_written(m_uiMaxDepth + 1, false);
+    std::vector<Neighborhood<dim>> neighborhoods_by_level(m_uiMaxDepth + 1);
+
+    // This streaming algorithm does not look ahead (by more than one entry),
+    // and any look-back is stored on the above stacks.
+
+    const size_t input_size = dict.keys.size();
+    size_t output_size = 0;
+    size_t count_occupied = 0;
+    for (size_t i = 0, end = input_size; i < end; ++i)
+    {
+      const auto key = dict.keys[i];
+      const int key_level = key.getLevel();
+      const int child_number = key.getMortonIndex();
+
+      const auto self_neighborhood = dict.neighborhoods[i];
+
+      auto parent_neighborhood = Neighborhood<dim>::empty();
+      if (TreeNode<uint32_t, dim>(
+            parents_by_level[key_level - 1], key_level - 1).isAncestor(key))
+        parent_neighborhood = neighborhoods_by_level[key_level - 1];
+
+      const bool self_occupied = self_neighborhood.center_occupied();
+      const bool parent_occupied = parent_neighborhood.center_occupied();
+      bool emitted_self = false;
+
+      const auto emit = [&dict, &output_size](
+          const TreeNode<uint32_t, dim> &t, const Neighborhood<dim> &n)
+      {
+        dict.keys[output_size] = t;
+        dict.neighborhoods[output_size] = n;
+        ++output_size;
+      };
+
+      // Modify dict
+      assert(output_size <= i);
+
+      // Emit parent if it is purely a parent of a self-occupied entry,
+      // and this is its first self-occupied child.
+      if (self_occupied
+          and (slice_begin <= count_occupied and count_occupied < slice_end)
+          and not parent_occupied and parent_neighborhood.any()
+          and not parents_written[key_level - 1])
+      {
+        emit(key.getParent(), parent_neighborhood);
+        parents_written[key_level - 1] = true;
+      }
+
+      // Emit self if parent is occupied or self is occupied.
+      if ((self_occupied
+            and (slice_begin <= count_occupied and count_occupied < slice_end))
+          or (parent_occupied and parents_written[key_level - 1]))
+      {
+        emit(key, self_neighborhood);
+        emitted_self = true;
+      }
+
+      if (self_occupied)
+        ++count_occupied;
+
+      if (i + 1 < end and key.isAncestor(dict.keys[i + 1]))
+      {
+        parents_by_level[key_level] = key.coords();
+        neighborhoods_by_level[key_level] = self_neighborhood;
+        parents_written[key_level] = emitted_self;
+      }
+    }
+
+    dict.keys.erase(
+        dict.keys.begin() + output_size, dict.keys.end() );
+
+    dict.neighborhoods.erase(
+        dict.neighborhoods.begin() + output_size, dict.neighborhoods.end() );
   }
 
 }
