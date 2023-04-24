@@ -40,6 +40,7 @@ namespace ot
     static inline Neighborhood solitary();
     static inline Neighborhood not_down(int axis);
     static inline Neighborhood not_up(int axis);
+    static inline Neighborhood center_slab_mask(int axis);
 
     // Class properties.
     static constexpr size_t n_neighbors();
@@ -50,9 +51,15 @@ namespace ot
     inline Neighborhood cleared_up(int axis) const;
     inline Neighborhood cleared_down(int axis) const;
 
+    // Clear upper and lower hyperplane.
+    inline Neighborhood center_slab(int axis) const;
+
     // Shift along an axis, like Matlab circshift(), but overflow is truncated.
     inline Neighborhood shifted_up(int axis) const;
     inline Neighborhood shifted_down(int axis) const;
+
+    // Union with center_slab shifted up and down on each axis.
+    inline Neighborhood spread_out() const;
   };
 
 
@@ -181,6 +188,12 @@ namespace ot
     return {~detail::hyperplane<dim, 3>(axis, 2)};
   }
 
+  template <int dim>
+  inline Neighborhood<dim> Neighborhood<dim>::center_slab_mask(int axis)
+  {
+    return {detail::hyperplane<dim, 3>(axis, 1)};
+  }
+
 
   // ---------------------------------------------------------------------------
   // Class properties.
@@ -205,7 +218,7 @@ namespace ot
 
 
   // ---------------------------------------------------------------------------
-  // Clear upper or lower hyperplane.
+  // Clear upper or lower hyperplane or both.
   // ---------------------------------------------------------------------------
 
   template <int dim>
@@ -218,6 +231,12 @@ namespace ot
   inline Neighborhood<dim> Neighborhood<dim>::cleared_down(int axis) const
   {
     return { this->block & ~detail::hyperplane<dim, 3>(axis, 0) };
+  }
+
+  template <int dim>
+  inline Neighborhood<dim> Neighborhood<dim>::center_slab(int axis) const
+  {
+    return { this->block & detail::hyperplane<dim, 3>(axis, 1) };
   }
 
 
@@ -250,6 +269,23 @@ namespace ot
 
     return result;
   }
+
+
+  // spread_out()
+  template <int dim>
+  inline Neighborhood<dim> Neighborhood<dim>::spread_out() const
+  {
+    Neighborhood<dim> result = *this;
+    for (int axis = 0; axis < dim; ++axis)
+    {
+      const auto slab = result.center_slab(axis);
+      const int stride = intPow(3, axis);
+      result.block |= slab.block >> stride; // Spread down.
+      result.block |= slab.block << stride; // Spread up.
+    }
+    return result;
+  }
+
 }
 
 

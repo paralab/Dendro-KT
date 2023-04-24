@@ -24,6 +24,7 @@ inline void link_neighbors_to_nodes_tests() {};
 namespace ot
 {
   // node_set()
+  // parent_neighborhood and children_neighborhood are made relative to current.
   template <int dim, typename Policy>
   std::vector<TreeNode<uint32_t, dim>> node_set(
       const std::vector<TreeNode<uint32_t, dim>> &octant_keys,
@@ -31,24 +32,12 @@ namespace ot
       const int degree,
       Policy &&policy);
 
-
-  namespace detail
-  {
-    template <int dim>
-    inline std::array<Neighborhood<dim>, dim> neighbors_not_down();
-
-    template <int dim>
-    inline std::array<Neighborhood<dim>, dim> neighbors_not_up();
-  }
-
   template <int dim>
   inline Neighborhood<dim> priority_neighbors();
 
   template <int dim>
-  inline std::array<Neighborhood<dim>, nverts(dim)> corner_neighbors();
+  inline Neighborhood<dim> pure_corners();
 
-  template <int dim>
-  inline std::array<Neighborhood<dim>, nverts(dim)> vertex_preferred_neighbors();
 
   // In general the node ownership policy could be a function of the
   // same-level, coarser, and finer neighborhoods, and the SFC ordering.
@@ -63,43 +52,11 @@ namespace ot
       const TreeNode<uint32_t, dim> &self_key,
       Neighborhood<dim> self_neighborhood,
       Neighborhood<dim> parent_neighborhood,
-      const int child_number,
+      Neighborhood<dim> children_neighborhood,
       const int degree,
       std::vector<TreeNode<uint32_t, dim>> &output )
   {
-    const static std::array<Neighborhood<dim>, dim>
-        directions[2] = { detail::neighbors_not_up<dim>(),
-                          detail::neighbors_not_down<dim>() };
-    const static Neighborhood<dim>
-        priority = priority_neighbors<dim>();
-
-    const auto combine_on_corner = [&](int corner) -> Neighborhood<dim>
-    {
-      //                            1 1 1     0 1 1      0 1 1
-      // NorthEast = North & East = 1 1 1  &  0 1 1  ==  0 1 1
-      //                            0 0 0     0 1 1      0 0 0
-      auto neighborhood = Neighborhood<dim>::full();
-      for (int axis = 0; axis < dim; ++axis)
-        neighborhood &= directions[((corner >> axis) & 1)][axis];
-      return neighborhood;
-    };
-
-    const auto combine_on_hyperface = [&](auto...hyperface_idxs) -> Neighborhood<dim>
-    {
-      //                               1 1 1     0 1 1     1 1 0      0 1 0
-      // TrueNorth = North & (E & W) = 1 1 1  &  0 1 1  &  1 1 0  ==  0 1 0
-      //                               0 0 0     0 1 1     1 1 0      0 0 0
-      const std::array<int, dim> idxs = {hyperface_idxs...};
-      auto neighborhood = Neighborhood<dim>::full();
-      for (int axis = 0; axis < dim; ++axis)
-      {
-        if (idxs[axis] < 2)
-          neighborhood &= directions[0][axis];
-        if (idxs[axis] > 0)
-          neighborhood &= directions[1][axis];
-      }
-      return neighborhood;
-    };
+    const static Neighborhood<dim> priority = priority_neighbors<dim>();
 
     const size_t range_begin = output.size();
 
@@ -113,22 +70,12 @@ namespace ot
 
       //future: Maybe parent should inspect neighbors of children.
 
-      // Restrict parent neighbors to those visible from this child.
+      // Parent neighbors are restricted to those visible from this child.
       // Restrict self neighbors to those that this cell may borrow from.
 
-      const Neighborhood<dim> greedy_neighbors =
-          (parent_neighborhood & combine_on_corner(child_number))
-          | (self_neighborhood & priority);
-
-      // Classify hyperfaces.
-      Neighborhood<dim> hyperfaces_nonhanging_owned;
-      int hyperface_idx = 0;
-      tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
-      {
-        if ((greedy_neighbors & combine_on_hyperface(idx_pack...)).none())
-          hyperfaces_nonhanging_owned.set_flat(hyperface_idx);
-        ++hyperface_idx;
-      });
+      const Neighborhood<dim> unowned =
+          (parent_neighborhood | (self_neighborhood & priority)).spread_out();
+      const Neighborhood<dim> owned = ~unowned;
 
       // Map numerators (node indices) and denominator (degree) to coordinate.
       const auto create_node = [](
@@ -152,7 +99,7 @@ namespace ot
         int hyperface_idx = 0;
         for (int d = 0; d < dim; ++d, stride *= 3)
           hyperface_idx += ((idxs[d] > 0) + (idxs[d] == degree)) * stride;
-        if(hyperfaces_nonhanging_owned.test_flat(hyperface_idx))
+        if(owned.test_flat(hyperface_idx))
         {
           output.push_back(create_node(self_key, idxs, degree));
         }
@@ -165,8 +112,8 @@ namespace ot
   }
 
 
-  // A simplistic policy that uses the same-level and coarser neighborhoods,
-  // and emits the nonhanging and hanging nodes.
+  // A simplistic policy that uses the same-level, coarser, and finer
+  // neighborhoods to emit the nonhanging and hanging nodes.
 
   template <int dim>
   inline
@@ -175,47 +122,51 @@ namespace ot
       const TreeNode<uint32_t, dim> &self_key,
       Neighborhood<dim> self_neighborhood,
       Neighborhood<dim> parent_neighborhood,
-      const int child_number,
+      Neighborhood<dim> children_neighborhood,
       const int degree,
       std::vector<TreeNode<uint32_t, dim>> &output )
   {
     assert(degree == 1);  //this policy only emits vertices
-
-    const static std::array<Neighborhood<dim>, nverts(dim)>
-      preferred_neighbors = vertex_preferred_neighbors<dim>();
-      // Ideally constexpr, but Neighborhood uses std::bitset.
-    const static std::array<Neighborhood<dim>, nverts(dim)>
-      corner_relevant = corner_neighbors<dim>();
 
     const size_t range_begin = output.size();
 
     // Append any vertices who prefer no proper neighbor over the current cell.
     if (self_neighborhood.center_occupied())
     {
-      // Policy for now: Parent's neighbor owns a vertex shared with child,
-      //       ___       but one of the children owns a hanging node.
-      //     _|   |_     Only one vertex on the child could be shared with a
-      //   _|_|___|_|_   parent's neighbor, which it also shares with parent.
+      const static Neighborhood<dim> priority = priority_neighbors<dim>();
+      const Neighborhood<dim> unowned =
+          (parent_neighborhood | (self_neighborhood & priority)).spread_out();
+      const Neighborhood<dim> owned = ~unowned;
+      const Neighborhood<dim> split = children_neighborhood.spread_out();
 
-      //future: Maybe parent should inspect neighbors of children.
-
-      const bool skip_shared_vertex =
-        (parent_neighborhood & corner_relevant[child_number]).any();
-
-      // Except for the shared vertex, proceed as with same-level neighbors.
-      for (int vertex = 0; vertex < nverts(dim); ++vertex)
+      // Map numerators (node indices) and denominator (span) to coordinate.
+      const auto create_node = [](
+          TreeNode<uint32_t, dim> octant, std::array<int, dim> idxs, int span)
+        -> TreeNode<uint32_t, dim>
       {
-        if (skip_shared_vertex and (vertex == child_number))
-          continue;
-        if ((self_neighborhood & preferred_neighbors[vertex]).none())
+        periodic::PCoord<uint32_t, dim> node_pt = {};
+        const uint32_t side = octant.range().side();
+        for (int d = 0; d < dim; ++d)
+          node_pt.coord(d, side * idxs[d] / span);
+        node_pt += octant.range().min();
+        return TreeNode<uint32_t, dim>(node_pt, octant.getLevel());
+      };
+
+      // Emit nodes for owned hyperfaces that either are split or are vertices.
+      const Neighborhood<dim> emit = owned & (split | pure_corners<dim>());
+      tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
+      {
+        std::array<int, dim> idxs = {idx_pack...};  // 0..2 per axis.
+        // Map node index to hyperface index.
+        int stride = 1;
+        int hyperface_idx = 0;
+        for (int d = 0; d < dim; ++d, stride *= 3)
+          hyperface_idx += ((idxs[d] > 0) + (idxs[d] == 2)) * stride;
+        if(emit.test_flat(hyperface_idx))
         {
-          auto vertex_pt = self_key.range().min();
-          for (int d = 0; d < dim; ++d)
-            if (bool(vertex & (1 << d)))
-              vertex_pt.coord(d, self_key.range().max(d));
-          output.push_back(TreeNode<uint32_t, dim>(vertex_pt, self_key.getLevel()));
+          output.push_back(create_node(self_key, idxs, 2));
         }
-      }
+      });
     }
 
     const size_t range_end = output.size();
@@ -525,7 +476,18 @@ namespace ot
 
 namespace ot
 {
+  namespace detail
+  {
+    template <int dim>
+    inline std::array<Neighborhood<dim>, dim> neighbors_not_down();
+
+    template <int dim>
+    inline std::array<Neighborhood<dim>, dim> neighbors_not_up();
+  }
+
+
   // node_set()
+  // parent_neighborhood and children_neighborhood are made relative to current.
   template <int dim, typename Policy>
   std::vector<TreeNode<uint32_t, dim>> node_set(
       const std::vector<TreeNode<uint32_t, dim>> &octant_keys,
@@ -533,6 +495,20 @@ namespace ot
       const int degree,
       Policy &&policy)
   {
+    const static std::array<Neighborhood<dim>, dim>
+        directions[2] = { detail::neighbors_not_up<dim>(),
+                          detail::neighbors_not_down<dim>() };
+    const auto combine_on_corner = [&](int corner) -> Neighborhood<dim>
+    {
+      //                            1 1 1     0 1 1      0 1 1
+      // NorthEast = North & East = 1 1 1  &  0 1 1  ==  0 1 1
+      //                            0 0 0     0 1 1      0 0 0
+      auto neighborhood = Neighborhood<dim>::full();
+      for (int axis = 0; axis < dim; ++axis)
+        neighborhood &= directions[((corner >> axis) & 1)][axis];
+      return neighborhood;
+    };
+
     using Coordinate = periodic::PCoord<uint32_t, dim>;
     std::vector<Coordinate>        parents_by_level(m_uiMaxDepth + 1);
     std::vector<Neighborhood<dim>> neighborhoods_by_level(m_uiMaxDepth + 1);
@@ -547,12 +523,37 @@ namespace ot
 
       const auto self_neighborhood = neighborhoods[i];
 
+      // Examine stack of parents.
       auto parent_neighborhood = Neighborhood<dim>::empty();
       if (TreeNode<uint32_t, dim>(
             parents_by_level[key_level - 1], key_level - 1).isAncestor(key))
+      {
         parent_neighborhood = neighborhoods_by_level[key_level - 1];
+        parent_neighborhood &= combine_on_corner(child_number);
+      }
 
-      policy(key, self_neighborhood, parent_neighborhood, child_number, degree, nodes);
+      // Look ahead (by no more than nchild(dim)) for any neighbors of children.
+      auto children_neighborhood = Neighborhood<dim>::empty();
+      for (size_t j = i + 1; j < end; ++j)
+      {
+        const auto child_key = octant_keys[j];
+        if (not key.isAncestor(child_key))
+          break;
+        if (child_key.getLevel() > key.getLevel() + 1)
+          break;
+        const auto child_neighborhood = neighborhoods[j];
+
+        if (self_neighborhood.center_occupied())
+        {
+          assert(child_key.getLevel() == key.getLevel() + 1);
+          assert(not child_neighborhood.center_occupied());
+        }
+
+        children_neighborhood |=
+            child_neighborhood & combine_on_corner(child_key.getMortonIndex());
+      }
+
+      policy(key, self_neighborhood, parent_neighborhood, children_neighborhood, degree, nodes);
 
       if (i + 1 < end and key.isAncestor(octant_keys[i + 1]))
       {
@@ -592,111 +593,19 @@ namespace ot
     // Prioritization: Lexicographic predecessors.
     constexpr int N = Neighborhood<dim>::n_neighbors();
     return Neighborhood<dim>::where([N](int i) { return i < N/2; });
+    //future: lexicographic successors
   }
 
   template <int dim>
-  inline std::array<Neighborhood<dim>, nverts(dim)> corner_neighbors()
+  inline Neighborhood<dim> pure_corners()
   {
-    constexpr int V = nverts(dim);
-    std::array<Neighborhood<dim>, V> neighborhoods = {};
-    neighborhoods.fill(Neighborhood<dim>::full());
-    //future: static variable
-
-    for (int v = 0; v < V; ++v)
-      for (int axis = 0; axis < dim; ++axis)
-        if (bool(v & (1 << axis)))//up
-          neighborhoods[v] &= Neighborhood<dim>::not_down(axis);
-        else//down
-          neighborhoods[v] &= Neighborhood<dim>::not_up(axis);
-
-    return neighborhoods;
+    // {0, 2}^dim, since 1 is for sides.
+    Neighborhood<dim> result = Neighborhood<dim>::full();
+    for (int axis = 0; axis < dim; ++axis)
+      result &= ~Neighborhood<dim>::center_slab_mask(axis);
+    return result;
   }
-
-
-  template <int dim>
-  std::array<Neighborhood<dim>, nverts(dim)> vertex_preferred_neighbors()
-  {
-    //     Relevant           Priority              Preferred
-    //  o|o|_   _|o|o      _|_|_    _|_|_        _|_|_    _|_|_
-    //  o|x|_   _|x|o      o|x|_    o|x|_        o|x|_    _|x|_
-    //  _|_|_   _|_|_      o|o|o    o|o|o        _|_|_    _|_|_
-    //                  &                    =
-    //  _|_|_   _|_|_      _|_|_    _|_|_        _|_|_    _|_|_
-    //  o|x|_   _|x|o      o|x|_    o|x|_        o|x|_    _|x|_
-    //  o|o|_   _|o|o      o|o|o    o|o|o        o|o|_    _|o|o
-    constexpr int V = nverts(dim);
-    std::array<Neighborhood<dim>, V> preferred_neighbors =
-      corner_neighbors<dim>();
-
-    Neighborhood<dim> priority = priority_neighbors<dim>();
-    for (int vertex = 0; vertex < V; ++vertex)
-      preferred_neighbors[vertex] &= priority;
-
-    return preferred_neighbors;
-  }
-
-
-#ifdef DOCTEST_LIBRARY_INCLUDED
-  DOCTEST_TEST_CASE("vertex_preferred_neighbors 2D")
-  {
-    const std::array<Neighborhood<2>, nverts(2)> preferred =
-        vertex_preferred_neighbors<2>();
-
-    CHECK( std::to_string(preferred[0])
-        == std::string("0 0 0\n"
-                       "1 0 0\n"
-                       "1 1 0") );
-
-    CHECK( std::to_string(preferred[1])
-        == std::string("0 0 0\n"
-                       "0 0 0\n"
-                       "0 1 1") );
-
-    CHECK( std::to_string(preferred[2])
-        == std::string("0 0 0\n"
-                       "1 0 0\n"
-                       "0 0 0") );
-
-    CHECK( std::to_string(preferred[3])
-        == std::string("0 0 0\n"
-                       "0 0 0\n"
-                       "0 0 0") );
-  }
-
-  DOCTEST_TEST_CASE("vertex_preferred_neighbors 3D")
-  {
-    const std::array<Neighborhood<3>, nverts(3)> preferred =
-        vertex_preferred_neighbors<3>();
-
-    CHECK( ("\n\n" + std::to_string(preferred[0]))
-        == std::string("\n\n" "0 0 0  0 0 0  0 0 0\n"
-                              "1 1 0  1 0 0  0 0 0\n"
-                              "1 1 0  1 1 0  0 0 0") );
-
-    CHECK( ("\n\n" + std::to_string(preferred[1]))
-        == std::string("\n\n" "0 0 0  0 0 0  0 0 0\n"
-                              "0 1 1  0 0 0  0 0 0\n"
-                              "0 1 1  0 1 1  0 0 0") );
-
-    // ...
-
-    CHECK( ("\n\n" + std::to_string(preferred[6]))
-        == std::string("\n\n" "0 0 0  0 0 0  0 0 0\n"
-                              "0 0 0  1 0 0  0 0 0\n"
-                              "0 0 0  0 0 0  0 0 0") );
-
-    CHECK( ("\n\n" + std::to_string(preferred[7]))
-        == std::string("\n\n" "0 0 0  0 0 0  0 0 0\n"
-                              "0 0 0  0 0 0  0 0 0\n"
-                              "0 0 0  0 0 0  0 0 0") );
-  }
-#endif//DOCTEST_LIBRARY_INCLUDED
-
-
 }
-
-
-
 
 
 

@@ -67,7 +67,7 @@ namespace ot
   namespace detail
   {
     template <int dim, int side>
-    inline std::bitset<intPow(side, dim)> hyperplane(int axis, int pos = 0)
+    inline std::bitset<intPow(side, dim)> hyperplane(int axis, int pos)
     {
       std::bitset<intPow(side, dim)> bitset;
       bitset[0] = true;
