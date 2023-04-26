@@ -200,7 +200,7 @@ namespace ot
         other.keys.cbegin(), other.keys.cend() );
 
     this->neighborhoods.insert( this->neighborhoods.begin(),
-        other.neighborhoods.cbegin(), other.neighborhoods.cbegin() );
+        other.neighborhoods.cbegin(), other.neighborhoods.cend() );
   }
 
   // NeighborSetDict::reduce()
