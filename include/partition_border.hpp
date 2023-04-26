@@ -67,7 +67,20 @@ namespace ot
       const LeafSet<dim, AnySet> &any_set,
       Emit &&emit);
 
+  // where_border_or_overlap()
+  template <int dim, typename AnySet, typename Emit>  // void emit(const TreeNode *tn)
+  void where_border_or_overlap(
+      LeafListView<dim> all_list,
+      const LeafSet<dim, AnySet> &any_set,
+      Emit &&emit);
+
   // border_any() (leaf to set)
+  template <int dim, typename AnySet>
+  bool border_any(
+      TreeNode<uint32_t, dim> octant,
+      const LeafSet<dim, AnySet> &any_set);
+
+  // border_or_overlap_any() (leaf to set)
   template <int dim, typename AnySet>
   bool border_any(
       TreeNode<uint32_t, dim> octant,
@@ -265,6 +278,58 @@ namespace ot
 
       _DestroyHcurve();
     }
+
+    DOCTEST_TEST_CASE("sfc_partition")
+    {
+      constexpr int dim = 2;
+      using Octant = TreeNode<uint32_t, dim>;
+      _InitializeHcurve(dim);
+
+      // Partition definitions.
+      const Octant root = {};
+      const LeafVector<dim> parts[2] = {
+        LeafVector<dim>::sorted({
+          morton_lineage(root, {0, 0}),
+          morton_lineage(root, {0, 1}),
+          morton_lineage(root, {0, 2}),
+          morton_lineage(root, {0, 3}),
+          morton_lineage(root, {1, 0}),
+          morton_lineage(root, {1, 1}),
+          morton_lineage(root, {1, 2}),
+          morton_lineage(root, {1, 3})
+        }),
+        LeafVector<dim>::sorted({
+          morton_lineage(root, {2, 0}),
+          morton_lineage(root, {2, 1}),
+          morton_lineage(root, {2, 2}),
+          morton_lineage(root, {2, 3}),
+          morton_lineage(root, {3, 0}),
+          morton_lineage(root, {3, 1}),
+          morton_lineage(root, {3, 2}),
+          morton_lineage(root, {3, 3})
+        })
+      };
+
+      const bool is_active = true;
+      const std::vector<int> active_list = {0, 1};
+      const PartitionFrontBack<uint32_t, dim> endpoints = {
+        {parts[0].vec.front(), parts[1].vec.front()},
+        {parts[0].vec.back(), parts[1].vec.back()}
+      };
+
+      for (int rank: {0, 1})
+      {
+        LocalAdjacencyList adjacency_list =
+          sfc_partition<dim>(rank, is_active, active_list, endpoints);
+
+        CHECK( adjacency_list.local_rank == rank );
+        CHECK( adjacency_list.neighbor_ranks.size() == 1 );
+        if (adjacency_list.neighbor_ranks.size() == 1)
+          CHECK( adjacency_list.neighbor_ranks[0] != rank );
+      }
+
+      _DestroyHcurve();
+    }
   }
 
 }
@@ -292,48 +357,30 @@ namespace ot
       return { local_rank, std::move(neighbor_ranks) };
     }
 
-    std::vector<TreeNode<uint32_t, dim>> partitions_coarsened;
-    partitions_coarsened.reserve(active_list.size());
-
-    // Agglomerating each partition's range into a single octant,
-    // so we can narrow down the final search space.
-    for (size_t active_idx = 0; active_idx < active_list.size(); ++active_idx)
+    // active_view: Interleave partition front and back octants.
+    std::vector<TreeNode<uint32_t, dim>> range_list;
+    range_list.reserve(endpoints.m_fronts.size() * 2);
+    for (int r: active_list)
     {
-      const auto front = endpoints.m_fronts[active_list[active_idx]];
-      const auto back = endpoints.m_backs[active_list[active_idx]];
-      const TreeNode<uint32_t, dim> common =
-        front.getAncestor(front.getCommonAncestorDepth(back));
-
-      partitions_coarsened.push_back(common);
+      range_list.push_back(endpoints.m_fronts[r]);
+      range_list.push_back(endpoints.m_backs[r]);
     }
+    const LeafRangeListView<dim> active_view =
+        vec_leaf_range_list_view<dim>(range_list);
 
     // Construct local partition range.
     const LeafRange<dim> local_range = LeafRange<dim>::make(
         endpoints.m_fronts[local_rank], endpoints.m_backs[local_rank]);
 
-    // Initial search: (coarse) list-on-range.
-    LeafListView<dim> view_partitions_coarsened(
-        &(*partitions_coarsened.begin()), &(*partitions_coarsened.end()) );
-    std::vector<int> active_candidates;
-    active_candidates.reserve(500);
-    const auto *view_begin = &(*partitions_coarsened.begin());
-    where_border(view_partitions_coarsened, local_range, [&](const auto *oct) {
-        active_candidates.push_back(oct - view_begin);
-    });
-
-    // Improve search: range-on-range for each remote candidate.
-    for (int active_candidate : active_candidates)
+    // Search: subset of range-on-range.
+    where_ranges_border_or_overlap( active_view, local_range,
+        [&](const TreeNode<uint32_t, dim> *range_first)
     {
-      const int candidate_rank = active_list[active_candidate];
-      if (candidate_rank == local_rank)
-        continue;
-
-      const LeafRange<dim> remote_range = LeafRange<dim>::make(
-          endpoints.m_fronts[candidate_rank], endpoints.m_backs[candidate_rank]);
-
-      if (border_or_overlap_any<dim>(remote_range, local_range))
-        neighbor_ranks.push_back(candidate_rank);
-    }
+      const size_t active_idx = (range_first - active_view.begin()) / 2;
+      const int remote_rank = active_list[active_idx];
+      if (remote_rank != local_rank)
+        neighbor_ranks.push_back(remote_rank);
+    });
 
     return { local_rank, std::move(neighbor_ranks) };
   }
@@ -349,23 +396,118 @@ namespace ot
   {
     const AnySet &any_set = any_set_.cast();
 
-    // Main result is that, by pruning, we can skip many accesses to all_list.
-    if (border_any<dim>(all_list.root(), any_set))
+    if (all_list.is_singleton())  //TODO allow duplicates
     {
-      if (all_list.is_singleton())
+      if (border_any<dim>(all_list.root(), any_set))
         emit(all_list.begin());
-      else
+    }
+    // Main result is that, by pruning, we can skip many accesses to all_list.
+    else if (border_or_overlap_any<dim>(all_list.root(), any_set))
+    {
+      // future: Subtrees of all_list: jump-start searches in any_set by parent.
+      for (sfc::SubIndex s(0); s < nchild(dim); ++s)
       {
-        // future: Subtrees of all_list: jump-start searches in any_set by parent.
-        for (sfc::SubIndex s(0); s < nchild(dim); ++s)
-        {
-          const LeafListView<dim> sublist = all_list.subdivide(s);
-          if (sublist.any())
-            where_border<dim>(sublist, any_set, std::forward<Emit>(emit));
-        }
+        const LeafListView<dim> sublist = all_list.subdivide(s);
+        if (sublist.any())
+          where_border<dim>(sublist, any_set, std::forward<Emit>(emit));
       }
     }
   }
+
+  // where_border_or_overlap()
+  template <int dim, typename AnySet, typename Emit>  // void emit(const TreeNode *tn)
+  void where_border_or_overlap(
+      LeafListView<dim> all_list,
+      const LeafSet<dim, AnySet> &any_set_,
+      Emit &&emit)
+  {
+    const AnySet &any_set = any_set_.cast();
+
+    if (all_list.is_singleton())  //TODO allow duplicates
+    {
+      if (border_or_overlap_any<dim>(all_list.root(), any_set))
+        emit(all_list.begin());
+    }
+    // Main result is that, by pruning, we can skip many accesses to all_list.
+    else if (border_or_overlap_any<dim>(all_list.root(), any_set))
+    {
+      // future: Subtrees of all_list: jump-start searches in any_set by parent.
+      for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+      {
+        const LeafListView<dim> sublist = all_list.subdivide(s);
+        if (sublist.any())
+          where_border_or_overlap<dim>(sublist, any_set, std::forward<Emit>(emit));
+      }
+    }
+  }
+
+
+  // where_ranges_border()
+  template <int dim, typename AnySet, typename Emit>  // void emit(const TreeNode *tn)
+  void where_ranges_border(
+      LeafRangeListView<dim> all_list,
+      const LeafSet<dim, AnySet> &any_set_,
+      Emit &&emit)
+  {
+    const AnySet &any_set = any_set_.cast();
+
+    if (all_list.is_single_range())
+    {
+      if (border_any<dim>(all_list.range(), any_set))
+        emit(all_list.begin());
+    }
+    // Main result is that, by pruning, we can skip many accesses to all_list.
+    else if (border_or_overlap_any<dim>(all_list.root(), any_set))
+    {
+      // future: Subtrees of all_list: jump-start searches in any_set by parent.
+      const TreeNode<uint32_t, dim> *prev_end = nullptr;
+      for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+      {
+        LeafRangeListView<dim> sublist = all_list.subdivide(s);
+        if (prev_end != nullptr and sublist.begin() < prev_end)  //redundant
+          sublist = sublist.shrink_begin();
+        prev_end = sublist.end();
+        if (sublist.any())
+          where_ranges_border<dim>(sublist, any_set, std::forward<Emit>(emit));
+      }
+    }
+  }
+
+  // where_ranges_border_or_overlap()
+  template <int dim, typename AnySet, typename Emit>  // void emit(const TreeNode *tn)
+  void where_ranges_border_or_overlap(
+      LeafRangeListView<dim> all_list,
+      const LeafSet<dim, AnySet> &any_set_,
+      Emit &&emit)
+  {
+    const AnySet &any_set = any_set_.cast();
+
+    if (all_list.is_single_range())
+    {
+      if (border_or_overlap_any<dim>(all_list.range(), any_set))
+        emit(all_list.begin());
+    }
+    // Main result is that, by pruning, we can skip many accesses to all_list.
+    else if (border_or_overlap_any<dim>(all_list.root(), any_set))
+    {
+      // future: Subtrees of all_list: jump-start searches in any_set by parent.
+      const TreeNode<uint32_t, dim> *prev_end = nullptr;
+      for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+      {
+        LeafRangeListView<dim> sublist = all_list.subdivide(s);
+        if (prev_end != nullptr and sublist.begin() < prev_end)  //redundant
+          sublist = sublist.shrink_begin();
+        prev_end = sublist.end();
+        if (sublist.any())
+          where_ranges_border_or_overlap<dim>(sublist, any_set, std::forward<Emit>(emit));
+      }
+    }
+  }
+
+
+
+
+
 
 
   namespace detail
@@ -378,7 +520,7 @@ namespace ot
     }
   }
 
-  template <int dim, typename AnySet>
+  template <int dim, bool overlaps_ok, typename AnySet>
   bool border_any_impl(
       TreeNode<uint32_t, dim> octant,
       const LeafSet<dim, AnySet> &any_set_)
@@ -388,7 +530,8 @@ namespace ot
 
     // Assume that any_set.root() has descendants adjacent to octant.
 
-    if (adjacent(any_set.root(), octant) and any_set.is_singleton())
+    if ((adjacent(any_set.root(), octant) or overlaps_ok)
+        and any_set.is_singleton())
       return true;
 
     // Split any_set into descendants and recurse.
@@ -398,7 +541,7 @@ namespace ot
       if (segment_subset.any() and
           descendants_adjacent_to_leaf(segment_subset.root(), octant))
       {
-        if (border_any_impl<dim>(octant, segment_subset))
+        if (border_any_impl<dim, overlaps_ok>(octant, segment_subset))
           return true;
         // future: return where. Save on related searches by skipping prefix.
       }
@@ -414,7 +557,20 @@ namespace ot
     using namespace detail;
     const AnySet &any_set = any_set_.cast();
     if (descendants_adjacent_to_leaf(any_set.root(), octant))
-      return border_any_impl<dim>(octant, any_set);
+      return border_any_impl<dim, false>(octant, any_set);
+    else
+      return false;
+  }
+
+  template <int dim, typename AnySet>
+  bool border_or_overlap_any(
+      TreeNode<uint32_t, dim> octant,
+      const LeafSet<dim, AnySet> &any_set_)
+  {
+    using namespace detail;
+    const AnySet &any_set = any_set_.cast();
+    if (descendants_adjacent_to_leaf(any_set.root(), octant))
+      return border_any_impl<dim, true>(octant, any_set);
     else
       return false;
   }
