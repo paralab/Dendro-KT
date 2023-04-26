@@ -760,21 +760,6 @@ namespace par {
       int ndofs = 1);
 
   /**
-   * @title Debugging MPI programs with the GNU debugger
-   * @author Tom Fogal, University of Utah
-   * @author Masado Ishii
-   * @date 2014-02-19
-   * @modified 2019-10-30
-   * @brief Utility for using gdb + mpi, based on notes by Tom Fogal.
-   * @pre Building and running on Unix systems.
-   * @usage Add waitForDebugger(comm, rank) right after MPI_Init().
-   * @usage (If using mpich):   mpirun -np 2 -env USE_MPI_DEBUGGER 1 ./my_program
-   * @usage pid=$(pgrep my_program | head -n 1) ; gdb -q -ex "attach ${pid}" -ex "set variable goAhead=1" -ex "finish"
-   */
-  void waitForDebugger(MPI_Comm comm, int commRank);
-
-
-  /**
    * @brief Print a distributed list of treeNodes.
    * @param tnList Pointer to the list of treeNodes.
    * @param listSz Size of the list.
