@@ -51,7 +51,7 @@ namespace ot
     std::vector<int> neighbor_ranks;
   };
 
-  // sfc_partition(): Returns partition indices where local borders or overlaps.
+  // sfc_partition(): Returns partition indices bordered by local. (No overlap)
   template <unsigned dim>
   LocalAdjacencyList sfc_partition(
       int local_rank,
@@ -146,6 +146,37 @@ namespace ot
       else
         for (sfc::ChildNum c(0); c < nchild(dim); ++c)
           uniform_refine_morton(region.getChildMorton(c), depth - 1, emit);
+    }
+
+    DOCTEST_TEST_CASE("adjacent")
+    {
+      CHECK_FALSE( adjacent(morton_lineage<2>({}), morton_lineage<2>({})) );
+      CHECK_FALSE( adjacent(morton_lineage<2>({}), morton_lineage<2>({0})) );
+      CHECK_FALSE( adjacent(morton_lineage<2>({}), morton_lineage<2>({1})) );
+      CHECK_FALSE( adjacent(morton_lineage<2>({}), morton_lineage<2>({2})) );
+      CHECK_FALSE( adjacent(morton_lineage<2>({}), morton_lineage<2>({3})) );
+      CHECK_FALSE( adjacent(morton_lineage<2>({0}), morton_lineage<2>({0})) );
+
+      CHECK( adjacent(morton_lineage<2>({0}), morton_lineage<2>({1})) );
+      CHECK( adjacent(morton_lineage<2>({0}), morton_lineage<2>({2})) );
+      CHECK( adjacent(morton_lineage<2>({0}), morton_lineage<2>({3})) );
+
+      CHECK( adjacent(morton_lineage<2>({1}), morton_lineage<2>({0})) );
+      CHECK( adjacent(morton_lineage<2>({1}), morton_lineage<2>({2})) );
+      CHECK( adjacent(morton_lineage<2>({1}), morton_lineage<2>({3})) );
+
+      CHECK( adjacent(morton_lineage<2>({2}), morton_lineage<2>({0})) );
+      CHECK( adjacent(morton_lineage<2>({2}), morton_lineage<2>({1})) );
+      CHECK( adjacent(morton_lineage<2>({2}), morton_lineage<2>({3})) );
+
+      CHECK( adjacent(morton_lineage<2>({3}), morton_lineage<2>({0})) );
+      CHECK( adjacent(morton_lineage<2>({3}), morton_lineage<2>({1})) );
+      CHECK( adjacent(morton_lineage<2>({3}), morton_lineage<2>({2})) );
+
+      CHECK( adjacent(morton_lineage<2>({0, 1}),
+                      morton_lineage<2>({1, 0})) );
+      CHECK_FALSE( adjacent(morton_lineage<2>({0, 1}),
+                            morton_lineage<2>({1, 1})) );
     }
 
     DOCTEST_TEST_CASE("border_any with leaf")
@@ -330,6 +361,44 @@ namespace ot
 
       _DestroyHcurve();
     }
+
+
+    DOCTEST_TEST_CASE("sfc_partition do not overlap")
+    {
+      constexpr int dim = 2;
+      using Octant = TreeNode<uint32_t, dim>;
+      _InitializeHcurve(dim);
+
+      // Two identical partitions consisting of a single leaf.
+      const Octant root = {};
+      const LeafVector<dim> part =
+        LeafVector<dim>::sorted({
+          morton_lineage(root, {0, 3}),
+        });
+      const PartitionFrontBack<uint32_t, dim> endpoints = {
+        {part.vec.front(), part.vec.front()},
+        {part.vec.back(), part.vec.back()}
+      };
+
+      const Octant single = part.vec[0];
+      CHECK_FALSE( border_any<dim>(
+            LeafRange<dim>::make(single, single),
+            LeafRange<dim>::make(single, single)) );
+
+      const bool is_active = true;
+      const std::vector<int> active_list = {0, 1};
+
+      for (int rank: {0, 1})
+      {
+        LocalAdjacencyList adjacency_list =
+          sfc_partition<dim>(rank, is_active, active_list, endpoints);
+
+        CHECK( adjacency_list.local_rank == rank );
+        CHECK( adjacency_list.neighbor_ranks.size() == 0 );
+      }
+
+      _DestroyHcurve();
+    }
   }
 
 }
@@ -373,7 +442,7 @@ namespace ot
         endpoints.m_fronts[local_rank], endpoints.m_backs[local_rank]);
 
     // Search: subset of range-on-range.
-    where_ranges_border_or_overlap( active_view, local_range,
+    where_ranges_border( active_view, local_range,
         [&](const TreeNode<uint32_t, dim> *range_first)
     {
       const size_t active_idx = (range_first - active_view.begin()) / 2;
@@ -456,6 +525,12 @@ namespace ot
       if (border_any<dim>(all_list.range(), any_set))
         emit(all_list.begin());
     }
+    else if (all_list.is_singleton())
+    {
+      if (border_any<dim>(all_list.range(), any_set))
+        for (const auto *ptr = all_list.begin(); ptr != all_list.end(); ptr += 2)
+          emit(ptr);
+    }
     // Main result is that, by pruning, we can skip many accesses to all_list.
     else if (border_or_overlap_any<dim>(all_list.root(), any_set))
     {
@@ -507,9 +582,6 @@ namespace ot
 
 
 
-
-
-
   namespace detail
   {
     template <unsigned dim>
@@ -528,11 +600,24 @@ namespace ot
     using namespace detail;
     const AnySet &any_set = any_set_.cast();
 
-    // Assume that any_set.root() has descendants adjacent to octant.
+    // Assume that any_set.any().
+    // Assume that any_set.root() has descendants satisfying search criteria.
 
-    if ((adjacent(any_set.root(), octant) or overlaps_ok)
-        and any_set.is_singleton())
-      return true;
+    if (not overlaps_ok)
+    {
+      // This would violate precondition.
+      assert(not octant.isAncestorInclusive(any_set.root()));
+    }
+
+    if (any_set.is_singleton())
+    {
+      return overlaps_ok or not any_set.root().isAncestor(octant);
+    }
+    else
+    {
+      if (overlaps_ok and octant.isAncestorInclusive(any_set.root()))
+        return true;
+    }
 
     // Split any_set into descendants and recurse.
     for (sfc::SubIndex s(0); s < nchild(dim); ++s)
@@ -556,6 +641,8 @@ namespace ot
   {
     using namespace detail;
     const AnySet &any_set = any_set_.cast();
+    if (any_set.none())
+      return false;
     if (descendants_adjacent_to_leaf(any_set.root(), octant))
       return border_any_impl<dim, false>(octant, any_set);
     else
@@ -569,7 +656,10 @@ namespace ot
   {
     using namespace detail;
     const AnySet &any_set = any_set_.cast();
-    if (descendants_adjacent_to_leaf(any_set.root(), octant))
+    if (any_set.none())
+      return false;
+    if (octant.isAncestorInclusive(any_set.root()) or
+        descendants_adjacent_to_leaf(any_set.root(), octant))
       return border_any_impl<dim, true>(octant, any_set);
     else
       return false;
@@ -583,6 +673,7 @@ namespace ot
     using namespace detail;
     const PSet &P = P_.cast();
     const QSet &Q = Q_.cast();
+    // Assume neither is none.
     // Assume adjacent or descendants are.
 
     if (adjacent(P.root(), Q.root()) or overlaps_ok)
@@ -640,8 +731,11 @@ namespace ot
     using namespace detail;
     const PSet &P = P_.cast();
     const QSet &Q = Q_.cast();
-    if (descendants_adjacent_to_leaf(P.root(), Q.root())
-        or descendants_adjacent_to_leaf(Q.root(), P.root()))
+    if (P.none() or Q.none())
+      return false;
+    if (adjacent(P.root(), Q.root())
+        or P.root().isAncestorInclusive(Q.root())
+        or Q.root().isAncestorInclusive(P.root()))
     {
       return border_any_impl<dim, false>(P, Q);
     }
@@ -657,8 +751,11 @@ namespace ot
     using namespace detail;
     const PSet &P = P_.cast();
     const QSet &Q = Q_.cast();
-    if (descendants_adjacent_to_leaf(P.root(), Q.root())
-        or descendants_adjacent_to_leaf(Q.root(), P.root()))
+    if (P.none() or Q.none())
+      return false;
+    if (adjacent(P.root(), Q.root())
+        or P.root().isAncestorInclusive(Q.root())
+        or Q.root().isAncestorInclusive(P.root()))
     {
       return border_any_impl<dim, true>(P, Q);
     }
@@ -673,26 +770,11 @@ namespace ot
       const TreeNode<uint32_t, dim> &a,
       const TreeNode<uint32_t, dim> &b)
   {
-    //       [----]      [----]  [----]  [----]  [----]  [----]     [----]
-    //  [--]          [--]       [--]     [--]     [--]       [--]         [--]
-
     const auto a_range = a.range();
     const auto b_range = b.range();
-
-    // Closed bounds overlap on each axis.
-    bool closed_overlap = true;
-    for (int d = 0; d < dim; ++d)
-      closed_overlap &=
-           (a_range.closedContains(d, b_range.min(d)))
-        or (b_range.closedContains(d, a_range.min(d)));
-
-    bool open_overlap = true;
-    for (int d = 0; d < dim; ++d)
-      open_overlap &=
-           (a_range.openContains(d, b_range.min(d)))
-        or (b_range.openContains(d, a_range.min(d)));
-
-    return closed_overlap and not open_overlap;
+    const periodic::IntersectionMagnitude intersection =
+        periodic::intersect_magnitude(a_range, b_range);
+    return intersection.nonempty and intersection.dimension < dim;
   }
 
 

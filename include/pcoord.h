@@ -120,6 +120,30 @@ namespace periodic
       inline bool closedContains(const PCoord<T, dim> &pcoord) const;
   };
 
+  struct IntersectionMagnitude
+  {
+    int dimension;
+    bool nonempty;
+  };
+
+  template <typename T, int dim>
+  inline IntersectionMagnitude intersect_magnitude(
+      const PRange<T, dim> &a, const PRange<T, dim> &b)
+  {
+    int dimension = 0;
+    for (int d = 0; d < dim; ++d)
+    {
+      if (a.max(d) == b.min(d) or b.max(d) == a.min(d))
+        continue;
+
+      if (b.min(d) < a.min(d) + a.side() and a.min(d) < b.min(d) + b.side())
+        ++dimension;
+      else
+        return IntersectionMagnitude{ {}, false };  // Plane of separation
+    }
+    return IntersectionMagnitude{ dimension, true };
+  }
+
 }
 
 
