@@ -32,6 +32,7 @@
 #define DendroUIntLSpecifier %u
 #endif
 
+using DendroLLU = long long unsigned;
 
 #define DendroScalar double
 #define DendroComplex std::complex<double>

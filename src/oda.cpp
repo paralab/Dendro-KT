@@ -263,7 +263,10 @@ namespace ot
       const bool allActive = par::mpi_and(isActive, comm);
       MPI_Comm activeComm = comm;
       if (not allActive)
+      {
         MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
+        m_active_comm_owned = true;
+      }
 
       m_dist_tree = &distTree;
       m_dist_tree_lifetime = distTree.live_ptr();
@@ -932,10 +935,8 @@ namespace ot
     DA<dim>::~DA()
     {
       m_uiMPIContexts.clear();
-      if (m_uiActiveComm != MPI_COMM_NULL and m_uiActiveComm != MPI_COMM_WORLD and m_uiActiveComm != MPI_COMM_SELF)
+      if (m_active_comm_owned)
         MPI_Comm_free(&m_uiActiveComm);
-      if (m_uiGlobalComm != MPI_COMM_NULL and m_uiGlobalComm != MPI_COMM_WORLD and m_uiActiveComm != MPI_COMM_SELF)
-        MPI_Comm_free(&m_uiGlobalComm);
     }
 
 

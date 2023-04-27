@@ -155,7 +155,7 @@ namespace dollar
   //
   // DollarStat::mpi_reduce_mean()
   //
-  DollarStat DollarStat::mpi_reduce_mean()
+  DollarStat DollarStat::mpi_reduce_mean() const
   {
     using Map = std::map<URI, info>;
     const auto reducer_sum = [](Map &to_map, const Map &from_map) {
@@ -186,7 +186,7 @@ namespace dollar
   //
   // DollarStat::mpi_reduce_min()
   //
-  DollarStat DollarStat::mpi_reduce_min()
+  DollarStat DollarStat::mpi_reduce_min() const
   {
     using Map = std::map<URI, info>;
     const auto reducer_min = [](Map &to_map, const Map &from_map) {
@@ -213,7 +213,7 @@ namespace dollar
   //
   // DollarStat::mpi_reduce_max()
   //
-  DollarStat DollarStat::mpi_reduce_max()
+  DollarStat DollarStat::mpi_reduce_max() const
   {
     using Map = std::map<URI, info>;
     const auto reducer_max = [](Map &to_map, const Map &from_map) {

@@ -14,6 +14,7 @@ inline void link_neighbors_to_nodes_tests() {};
 #include "include/corner_set.hpp"
 #include "include/neighborhood.hpp"
 #include "include/neighbor_sets.hpp"
+#include "include/sfc_search.h"
 #include "include/nested_for.hpp"
 
 #include <vector>
@@ -483,6 +484,136 @@ namespace ot
 
     template <int dim>
     inline std::array<Neighborhood<dim>, dim> neighbors_not_up();
+  }
+
+
+  // for_leaf_neighborhoods()
+  // parent_neighborhood and children_neighborhood are made relative to current.
+  // self_neighborhood only has center filled if that is the case in dict.
+  template <int dim, typename Emit>
+  void for_leaf_neighborhoods(
+      const NeighborSetDict<dim> &dict,
+      const std::vector<TreeNode<uint32_t, dim>> &leaf_queries,
+      Emit &&emit)
+  {
+    const static std::array<Neighborhood<dim>, dim>
+        directions[2] = { detail::neighbors_not_up<dim>(),
+                          detail::neighbors_not_down<dim>() };
+    const auto combine_on_corner = [&](int corner) -> Neighborhood<dim>
+    {
+      //                            1 1 1     0 1 1      0 1 1
+      // NorthEast = North & East = 1 1 1  &  0 1 1  ==  0 1 1
+      //                            0 0 0     0 1 1      0 0 0
+      auto neighborhood = Neighborhood<dim>::full();
+      for (int axis = 0; axis < dim; ++axis)
+        neighborhood &= directions[((corner >> axis) & 1)][axis];
+      return neighborhood;
+    };
+
+    using Coordinate = periodic::PCoord<uint32_t, dim>;
+    std::vector<Coordinate>        parents_by_level(m_uiMaxDepth + 1);
+    std::vector<Neighborhood<dim>> neighborhoods_by_level(m_uiMaxDepth + 1);
+
+    // The dictionary contains linearized multi-level data, where parent and
+    // child entries can be far separated. Because of this, we must visit the
+    // parent of a query key before emitting. In theory, two binary searches
+    // per query would be enough (one search for the query key and one search
+    // for the parent). But, if we expect the queries to be dense in a sublist
+    // of the dictionary, it's better to make a single pass over the sublist.
+
+    const size_t dict_size = dict.keys.size();
+    const size_t n_queries = leaf_queries.size();
+    if (n_queries == 0)
+      return;
+
+    // Find range in which queries can be filled.
+    const size_t entries_begin = sfc_binary_search<uint32_t, dim>(
+        leaf_queries.front(), dict.keys.data(),
+        0, dict_size, RankType::exclusive);
+    const size_t entries_end = sfc_binary_search<uint32_t, dim>(
+        leaf_queries.back(), dict.keys.data(),
+        entries_begin, dict_size, RankType::inclusive);
+
+    // Linear search up to entries_begin. This initializes the parent stack.
+    size_t entry_idx = 0;
+    const TreeNode<uint32_t, dim> initial_query_key = leaf_queries[0];
+    for (entry_idx = 0; entry_idx < entries_begin; ++entry_idx)
+    {
+      const auto entry_key = dict.keys[entry_idx];
+      if (entry_key.isAncestor(initial_query_key))
+      {
+        const int level = entry_key.getLevel();
+        parents_by_level[level] = entry_key.coords();
+        neighborhoods_by_level[level] = dict.neighborhoods[entry_idx];
+      }
+    }
+
+    // For each query, linear search until reach rank of query_key in entries.
+    for (size_t query_idx = 0; query_idx < n_queries; ++query_idx)
+    {
+      const TreeNode<uint32_t, dim> query_key = leaf_queries[query_idx];
+
+      // Linear search, updating parent stack.
+      while (entry_idx < entries_end
+          and sfc_compare<uint32_t, dim>(
+            dict.keys[entry_idx], query_key, {}).first < 0)
+      {
+        const TreeNode<uint32_t, dim> entry_key = dict.keys[entry_idx];
+        if (entry_key.isAncestor(query_key))
+        {
+          const int level = entry_key.getLevel();
+          parents_by_level[level] = entry_key.coords();
+          neighborhoods_by_level[level] = dict.neighborhoods[entry_idx];
+        }
+        ++entry_idx;
+      }
+
+      // At this point, the current entry is either
+      // - equal to query_key .......... fill self and children neighborhoods
+      // - a child of query_key ........ fill just children neighborhood
+      // - unrelated to query_key ...... no further fill
+      // - nonexistent (past the end) .. no further fill
+
+      const int query_level = query_key.getLevel();
+      const int query_corner = query_key.getMortonIndex();
+
+      // Parent neighborhood
+      auto parent_neighborhood = Neighborhood<dim>::empty();
+      const TreeNode<uint32_t, dim>
+          maybe_parent(parents_by_level[query_level - 1], query_level - 1);
+      if (maybe_parent.isAncestor(query_key))
+      {
+        parent_neighborhood =
+            neighborhoods_by_level[query_level - 1]
+            & combine_on_corner(query_corner);
+      }
+
+      // Self neighborhood
+      auto self_neighborhood = Neighborhood<dim>::empty();
+      if (entry_idx < entries_end and dict.keys[entry_idx] == query_key)
+      {
+        self_neighborhood = dict.neighborhoods[entry_idx];
+        ++entry_idx;
+      }
+
+      // Children neighborhood
+      auto children_neighborhood = Neighborhood<dim>::empty();
+      const size_t child_limit_idx = std::min(dict_size, entry_idx + nchild(dim));
+      while (entry_idx < child_limit_idx
+          and query_key.isAncestor(dict.keys[entry_idx]))
+      {
+        const auto child_key = dict.keys[entry_idx];
+        const auto child_neighborhood = dict.neighborhoods[entry_idx];
+        assert(child_key.getLevel() == query_key.getLevel() + 1);
+        assert(not child_neighborhood.center_occupied());
+        children_neighborhood |=
+            child_neighborhood & combine_on_corner(child_key.getMortonIndex());
+        ++entry_idx;
+      }
+
+      emit(query_idx, query_key,
+          self_neighborhood, parent_neighborhood, children_neighborhood);
+    }
   }
 
 

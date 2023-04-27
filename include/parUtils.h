@@ -305,6 +305,12 @@ namespace par {
   template <typename T>
     int Mpi_Imrecv(T* buf, int count, MPI_Message *message, MPI_Request* request);
 
+  inline bool Mpi_Test(MPI_Request* request);
+
+  inline int Mpi_Waitany(int count, MPI_Request *requests);
+
+  inline void Mpi_Waitall(int count, MPI_Request *requests);
+
   /**
    * @author Rahul S. Sampath
    */

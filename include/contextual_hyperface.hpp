@@ -60,6 +60,7 @@ namespace ot
     public:
       constexpr Hyperface4D(uint8_t coordinate);
       constexpr uint8_t coordinate() const;
+      constexpr int dimension() const;
       constexpr Hyperface4D mirrored(int child_num) const;
       constexpr SplitHyperface4D encode_split(bool is_split) const;
 
@@ -250,6 +251,18 @@ namespace ot
   {
     return m_coordinate;
   }
+
+  // Hyperface4D::dimension()
+  constexpr int Hyperface4D::dimension() const
+  {
+    // The dimension is the number of odd coordinates.
+    // This is true regardless of child number.
+    uint8_t count = m_coordinate & 0b01010101u;
+    count += count >> 4;
+    count = ((count & 0b1100u) >> 2) + (count & 0b0011u);
+    return count;
+  }
+
 
   // Hyperface4D::mirrored()
   constexpr Hyperface4D Hyperface4D::mirrored(int child_num) const

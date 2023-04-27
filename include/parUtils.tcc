@@ -96,6 +96,27 @@ namespace par {
   }
 
 
+  // Conveniences added by Masado Ishii
+  inline bool Mpi_Test(MPI_Request* request)
+  {
+    int flag;
+    MPI_Test(request, &flag, MPI_STATUS_IGNORE);
+    return bool(flag);
+  }
+
+  inline int Mpi_Waitany(int count, MPI_Request *requests)
+  {
+    int index;
+    MPI_Waitany(count, requests, &index, MPI_STATUS_IGNORE);
+    return index;
+  }
+
+  inline void Mpi_Waitall(int count, MPI_Request *requests)
+  {
+    MPI_Waitall(count, requests, MPI_STATUSES_IGNORE);
+  }
+
+
   template<typename T, typename S>
   inline int Mpi_Sendrecv(const T *sendBuf, int sendCount, int dest, int sendTag,
                           S *recvBuf, int recvCount, int source, int recvTag,

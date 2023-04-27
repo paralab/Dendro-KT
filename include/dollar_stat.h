@@ -26,9 +26,9 @@ namespace dollar
       DollarStat(MPI_Comm comm);
 
       // Note that only the root=0 has the final reduced data.
-      DollarStat mpi_reduce_mean();
-      DollarStat mpi_reduce_min();
-      DollarStat mpi_reduce_max();
+      DollarStat mpi_reduce_mean() const;
+      DollarStat mpi_reduce_min() const;
+      DollarStat mpi_reduce_max() const;
 
       void print(std::ostream &out = std::cout);
 

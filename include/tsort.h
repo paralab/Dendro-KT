@@ -254,8 +254,6 @@ struct PartitionFrontBack
   std::vector<TreeNode<T, dim>> m_fronts;
   std::vector<TreeNode<T, dim>> m_backs;
 
-  PartitionFront<T, dim> fronts() const { return { m_fronts }; }
-
   static PartitionFrontBack allocate(size_t size)
   {
     return {std::vector<TreeNode<T, dim>>(size),

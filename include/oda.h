@@ -233,6 +233,7 @@ class DA
 
     /**@brief: active mpi communicator (subset of the) m_uiGlobalComm*/
     MPI_Comm m_uiActiveComm;
+    bool m_active_comm_owned = false;
     
     /**@brief: true if current DA is active, part of the active comm.*/
     bool m_uiIsActive;
