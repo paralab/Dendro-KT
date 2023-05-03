@@ -13,6 +13,7 @@
 #include "include/leaf_sets.hpp"
 #include "include/partition_border.hpp"
 #include "include/contextual_hyperface.hpp"
+#include "include/da_p2p.hpp"
 
 namespace lib_tests
 {
@@ -25,6 +26,7 @@ namespace lib_tests
     link_leaf_sets_tests();
     link_partition_border_tests();
     link_contextual_hyperface_tests();
+    link_da_p2p_tests();
   }
 }
 
