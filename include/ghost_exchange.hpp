@@ -44,9 +44,9 @@ namespace par
   {
     public:
       template <typename T>
-      inline GhostPullRequest(MPI_Comm comm, T *ghost, const RemoteMap &map);  // infer local
+      inline GhostPullRequest(MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs);  // infer local
       template <typename T>
-      inline GhostPullRequest(MPI_Comm comm, T *ghost, const RemoteMap &map, const T *local);
+      inline GhostPullRequest(MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs, const T *local);
       inline void wait_on_recv();   // Blocks until ghost is ready.
       inline void wait_on_stage();  // Blocks until local can be overwritten.
       inline void wait_on_send();   // Blocks until request can be deallocated.
@@ -73,9 +73,9 @@ namespace par
   {
     public:
       inline GhostPushRequestTyped(
-          MPI_Comm comm, T *local, const RemoteMap &map, const T *ghost, Operation op);
+          MPI_Comm comm, T *local, const RemoteMap &map, int ndofs, const T *ghost, Operation op);
       inline GhostPushRequestTyped(
-          MPI_Comm comm, const RemoteMap &map, T *ghost, Operation op);  // infer local
+          MPI_Comm comm, const RemoteMap &map, int ndofs, T *ghost, Operation op);  // infer local
       inline void wait_on_recv();
       inline void wait_on_send();
       inline void wait_all();
@@ -87,6 +87,7 @@ namespace par
       MpiRequestVec m_send_reqs;
       MpiRequestVec m_recv_reqs;
       const RemoteMap *m_map;
+      int m_ndofs;
       Operation m_op;
       std::vector<T> m_buffer;
       T *m_dest;
@@ -95,21 +96,21 @@ namespace par
 
   // ghost_pull()
   template <typename T>
-  inline GhostPullRequest ghost_pull(MPI_Comm comm, T *ghost, const RemoteMap &map, const T *local);
+  inline GhostPullRequest ghost_pull(MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs, const T *local);
 
   // ghost_pull()
   template <typename T>
-  inline GhostPullRequest ghost_pull(MPI_Comm comm, T *ghost, const RemoteMap &map);  // infer local.
+  inline GhostPullRequest ghost_pull(MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs);  // infer local.
 
   // ghost_push()
   template <typename T, class Operation>
   inline GhostPushRequestTyped<T, Operation> ghost_push(
-      MPI_Comm comm, T *local, const RemoteMap &map, const T *ghost, Operation op);
+      MPI_Comm comm, T *local, const RemoteMap &map, int ndofs, const T *ghost, Operation op);
 
   // ghost_push()
   template <typename T, class Operation>
   inline GhostPushRequestTyped<T, Operation> ghost_push(
-      MPI_Comm comm, const RemoteMap &map, T *ghost, Operation op);  // infer local.
+      MPI_Comm comm, const RemoteMap &map, int ndofs, T *ghost, Operation op);  // infer local.
 
 
   // RemoteMapData
@@ -238,7 +239,7 @@ namespace par
         vec.at(i) = this_mpi_rank;
       /// GhostPullRequest &&pull = ghost_pull(comm, vec.data(), map);
       /// pull.wait_all();
-      ghost_pull(comm, vec.data(), map).wait_all();
+      ghost_pull(comm, vec.data(), map, 1).wait_all();
 
       for (size_t i = map.local_begin(), end = map.local_end(); i < end; ++i)
         CHECK( vec.at(i) == this_mpi_rank );
@@ -464,32 +465,32 @@ namespace par
 
   // ghost_pull()
   template <typename T>
-  GhostPullRequest ghost_pull(MPI_Comm comm, T *ghost, const RemoteMap &map, const T *local)
+  GhostPullRequest ghost_pull(MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs, const T *local)
   {
-    return { comm, ghost, map, local };
+    return { comm, ghost, map, ndofs, local };
   }
 
   // ghost_pull()
   template <typename T>
-  GhostPullRequest ghost_pull(MPI_Comm comm, T *ghost, const RemoteMap &map)
+  GhostPullRequest ghost_pull(MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs)
   {
-    return { comm, ghost, map };
+    return { comm, ghost, map, ndofs };
   }
 
   // ghost_push()
   template <typename T, class Operation>
   GhostPushRequestTyped<T, Operation> ghost_push(
-      MPI_Comm comm, T *local, const RemoteMap &map, const T *ghost, Operation op)
+      MPI_Comm comm, T *local, const RemoteMap &map, int ndofs, const T *ghost, Operation op)
   {
-    return { comm, local, map, ghost, std::move(op) };
+    return { comm, local, map, ndofs, ghost, std::move(op) };
   }
 
   // ghost_push()
   template <typename T, class Operation>
   GhostPushRequestTyped<T, Operation> ghost_push(
-      MPI_Comm comm, const RemoteMap &map, T *ghost, Operation op)
+      MPI_Comm comm, const RemoteMap &map, int ndofs, T *ghost, Operation op)
   {
-    return { comm, map, ghost, std::move(op) };
+    return { comm, map, ndofs, ghost, std::move(op) };
   }
 
   // -------------------------------------------------------------------
@@ -497,14 +498,14 @@ namespace par
   // GhostPullRequest::GhostPullRequest()
   template <typename T>
   GhostPullRequest::GhostPullRequest(
-      MPI_Comm comm, T *ghost, const RemoteMap &map)
-  : GhostPullRequest(comm, ghost, map, ghost + map.local_begin())
+      MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs)
+  : GhostPullRequest(comm, ghost, map, ndofs, ghost + ndofs * map.local_begin())
   { }
 
   // GhostPullRequest::GhostPullRequest()
   template <typename T>
   GhostPullRequest::GhostPullRequest(
-      MPI_Comm comm, T *ghost, const RemoteMap &map, const T *local)
+      MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs, const T *local)
     : m_send_reqs(map.n_links()), m_recv_reqs(map.n_links())
   {
     //future: Message pools. Reuse previously allocated pool if done sending.
@@ -517,8 +518,8 @@ namespace par
     // Receive ghost.
     for (int i = 0; i < n_links; ++i)
     {
-      const size_t begin = map.ghost_begin(i);
-      const size_t end = map.ghost_end(i);
+      const size_t begin = ndofs * map.ghost_begin(i);
+      const size_t end = ndofs * map.ghost_end(i);
       const size_t count = end - begin;
       if (count > 0)
         Mpi_Irecv( ghost + begin, count,
@@ -526,7 +527,7 @@ namespace par
     }
 
     // Allocate buffer to stage local data.
-    const size_t stage_total = map.local_binding_total();
+    const size_t stage_total = ndofs * map.local_binding_total();
     T *local_stage = new T[stage_total];
     m_buffer = std::shared_ptr<void>(local_stage);  // store for deletion.
 
@@ -534,10 +535,13 @@ namespace par
     size_t stage_offset = 0;
     for (int i = 0; i < n_links; ++i)
     {
-      const size_t count = map.local_bindings(i);
+      const size_t count = ndofs * map.local_bindings(i);
       map.for_bound_local_id(i, [=](size_t bound_idx, size_t local_id)
       {
-          local_stage[stage_offset + bound_idx] = local[local_id];
+          bound_idx *= ndofs;
+          local_id *= ndofs;
+          for (int dof = 0; dof < ndofs; ++dof)
+            local_stage[stage_offset + bound_idx + dof] = local[local_id + dof];
       });
 
       if (count > 0)
@@ -550,17 +554,18 @@ namespace par
   // GhostPushRequestTyped::GhostPushRequestTyped()
   template <typename T, class Operation>
   GhostPushRequestTyped<T, Operation>::GhostPushRequestTyped(
-      MPI_Comm comm, const RemoteMap &map, T *ghost, Operation op)
+      MPI_Comm comm, const RemoteMap &map, int ndofs, T *ghost, Operation op)
     : GhostPushRequestTyped(
-        comm, ghost + map.local_begin(), map, ghost, std::move(op))
+        comm, ghost + ndofs * map.local_begin(), map, ndofs, ghost, std::move(op))
   { }
 
   // GhostPushRequestTyped::GhostPushRequestTyped()
   template <typename T, class Operation>
   GhostPushRequestTyped<T, Operation>::GhostPushRequestTyped(
-      MPI_Comm comm, T *local, const RemoteMap &map, const T *ghost, Operation op)
+      MPI_Comm comm, T *local, const RemoteMap &map, int ndofs, const T *ghost, Operation op)
     : m_send_reqs(map.n_links()), m_recv_reqs(map.n_links()),
       m_map(&map),
+      m_ndofs(ndofs),
       m_op(std::move(op)),
       m_dest(local)
   {
@@ -570,7 +575,7 @@ namespace par
     const int n_links = map.n_links();
 
     // Allocate buffer to receive staged local data.
-    const size_t stage_total = map.local_binding_total();
+    const size_t stage_total = ndofs * map.local_binding_total();
     m_buffer.resize(stage_total);
     T *local_stage = m_buffer.data();
 
@@ -578,7 +583,7 @@ namespace par
     size_t stage_offset = 0;
     for (int i = 0; i < n_links; ++i)
     {
-      const size_t count = map.local_bindings(i);
+      const size_t count = ndofs * map.local_bindings(i);
       if (count > 0)
         Mpi_Irecv( local_stage + stage_offset, count,
             map.mpi_rank(i), {}, comm, &m_recv_reqs[i]);
@@ -588,8 +593,8 @@ namespace par
     // Send ghost.
     for (int i = 0; i < n_links; ++i)
     {
-      const size_t begin = map.ghost_begin(i);
-      const size_t end = map.ghost_end(i);
+      const size_t begin = ndofs * map.ghost_begin(i);
+      const size_t end = ndofs * map.ghost_end(i);
       const size_t count = end - begin;
       if (count > 0)
         Mpi_Isend( ghost + begin, count,
@@ -602,6 +607,7 @@ namespace par
   void GhostPushRequestTyped<T, Operation>::destage()
   {
     const RemoteMap &map = *m_map;
+    const int ndofs = m_ndofs;
     const T *local_stage = m_buffer.data();
     T *local = m_dest;
 
@@ -611,12 +617,17 @@ namespace par
     size_t stage_offset = 0;
     for (int i = 0; i < n_links; ++i)
     {
-      const size_t count = map.local_bindings(i);
+      const size_t count = ndofs * map.local_bindings(i);
       map.for_bound_local_id(i, [=, op=std::move(m_op)](
             size_t bound_idx, size_t local_id)
       {
-        T staged_value = local_stage[stage_offset + bound_idx];
-        local[local_id] = op(local[local_id], staged_value);
+        bound_idx *= ndofs;
+        local_id *= ndofs;
+        for (int dof = 0; dof < ndofs; ++dof)
+        {
+          const T staged_value = local_stage[stage_offset + bound_idx + dof];
+          local[local_id + dof] = op(local[local_id + dof], staged_value);
+        }
       });
       stage_offset += count;
     }

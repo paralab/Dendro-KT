@@ -544,8 +544,8 @@ namespace ot
 
               std::vector<int> old_ghost_read, old_ghost_write;
               std::vector<int> new_ghost_read, new_ghost_write;
-              /// for (int ndofs: {1, 2})
-              for (int ndofs: {1})
+              const int unit = intPow(100, par::mpi_comm_rank(comm));
+              for (int ndofs: {1, 2})
               {
                 old_da.createVector(old_ghost_read, false, true, ndofs);
                 old_da.createVector(old_ghost_write, false, true, ndofs);
@@ -553,7 +553,8 @@ namespace ot
                 new_da.createVector(new_ghost_write, false, true, ndofs);
                 for (auto *v: {&old_ghost_read, &old_ghost_write,
                                &new_ghost_read, &new_ghost_write})
-                  std::iota(v->begin(), v->end(), 0);
+                  std::generate(v->begin(), v->end(),
+                      [=, i=0]() mutable { return unit * (i++); });
 
                 old_da.readFromGhostBegin(old_ghost_read.data(), ndofs);
                 old_da.readFromGhostEnd(old_ghost_read.data(), ndofs);
@@ -1460,7 +1461,7 @@ namespace ot
 
       auto it_inserted =
           mutate()->pull_requests.emplace(vec,
-            par::ghost_pull(m_da.active_comm(), vec, data()->remote_map));
+            par::ghost_pull(m_da.active_comm(), vec, data()->remote_map, dof));
 
       const bool inserted = it_inserted.second;
       assert(inserted);  // otherwise, a request on vec is in progress.
@@ -1501,7 +1502,7 @@ namespace ot
       auto it_inserted =
           mutate()->push_requests.emplace(vec,
             new auto (par::ghost_push(
-              m_da.active_comm(), data()->remote_map, vec, add)));
+              m_da.active_comm(), data()->remote_map, dof, vec, add)));
 
       const bool inserted = it_inserted.second;
       assert(inserted);  // otherwise, a request on vec is in progress.
