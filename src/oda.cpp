@@ -601,7 +601,7 @@ namespace ot
         // The global ordering is:
         //   node1 < node2 iff element(node1) < element(node2) OR
         //                     element(node1) == element(node2) AND
-        //                        (isElementExterior(node1) AND isElementInterior(node2) OR
+        //                        (isElementInterior(node1) AND isElementExterior(node2) OR
         //                         isElementExterior(node1) AND isElementExterior(node2) AND SFC(node1) < SFC(node2) OR
         //                         isElementInterior(node1) AND isElementInterior(node2) AND lex(node1) < lex(node2))
         // For this ordering, the element-interior nodes need
