@@ -194,6 +194,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/partition_border.hpp
                   include/contextual_hyperface.hpp
                   include/da_p2p.hpp
+                  include/ghost_exchange.hpp
                   IO/zlib/inc/zlib.h
                   IO/vtk/include/oct2vtk.h
                   IO/vtk/include/checkPoint.h
