@@ -48,7 +48,6 @@ namespace par
       template <typename T>
       inline GhostPullRequest(MPI_Comm comm, T *ghost, const RemoteMap &map, int ndofs, const T *local);
       inline void wait_on_recv();   // Blocks until ghost is ready.
-      inline void wait_on_stage();  // Blocks until local can be overwritten.
       inline void wait_on_send();   // Blocks until request can be deallocated.
       inline void wait_all();
 
@@ -64,8 +63,13 @@ namespace par
     public:
       virtual void wait_on_recv() = 0;
       virtual void wait_on_send() = 0;
-      virtual void wait_all() = 0;
+      virtual void update_local() = 0;
+      virtual void wait_all_and_update() = 0;
+      virtual const void * staged_data() const = 0;
   };
+
+  template <typename T>
+  class RemoteStage;
 
   // GhostPushRequestTyped
   template <typename T, class Operation>
@@ -78,10 +82,18 @@ namespace par
           MPI_Comm comm, const RemoteMap &map, int ndofs, T *ghost, Operation op);  // infer local
       inline void wait_on_recv();
       inline void wait_on_send();
-      inline void wait_all();
+      inline void update_local();
+      inline void wait_all_and_update();
+      inline const void * staged_data() const;
 
     private:
-      inline void destage();
+      inline GhostPushRequestTyped(
+          MPI_Comm comm, T *local, const RemoteMap &map, int ndofs,
+          const T *ghost, Operation op, std::vector<T> &&buffer);
+      inline GhostPushRequestTyped(
+          MPI_Comm comm, const RemoteMap &map, int ndofs,
+          T *ghost, Operation op, std::vector<T> &&buffer);  // infer local
+      friend RemoteStage<T>;
 
     private:
       MpiRequestVec m_send_reqs;
@@ -92,6 +104,33 @@ namespace par
       std::vector<T> m_buffer;
       T *m_dest;
   };
+
+
+  // RemoteStage: To get pointer to staging buffer *before* calling ghost_push.
+  template <typename T>
+  class RemoteStage
+  {
+    public:
+      RemoteStage(const RemoteMap &map, int ndofs);
+
+      const T * staged_data() const;
+
+      size_t size() const;
+
+      // ghost_push() ensures same pointer to staged data in GhostPushRequest.
+      template <class Operation>
+      inline GhostPushRequestTyped<T, Operation> ghost_push(
+          MPI_Comm comm, T *local, const T *ghost, Operation op) &&;
+      template <class Operation>
+      inline GhostPushRequestTyped<T, Operation> ghost_push(
+          MPI_Comm comm, T *ghost, Operation op) &&;  // infer local
+
+    private:
+      const RemoteMap *m_map;
+      int m_ndofs;
+      std::vector<T> m_buffer;
+  };
+
 
 
   // ghost_pull()
@@ -495,6 +534,48 @@ namespace par
 
   // -------------------------------------------------------------------
 
+  // RemoteStage::RemoteStage()
+  template <typename T>
+  RemoteStage<T>::RemoteStage(const RemoteMap &map, int ndofs)
+  : m_map(&map), m_ndofs(ndofs), m_buffer(ndofs * map.local_binding_total())
+  { }
+
+  // RemoteStage::staged_data()
+  template <typename T>
+  const T * RemoteStage<T>::staged_data() const
+  {
+    return m_buffer.data();
+  }
+
+  // RemoteStage::size()
+  template <typename T>
+  size_t RemoteStage<T>::size() const
+  {
+    return m_buffer.size();
+  }
+
+  // RemoteStage::ghost_push()
+  template <typename T>
+  template <class Operation>
+  inline GhostPushRequestTyped<T, Operation> RemoteStage<T>::ghost_push(
+      MPI_Comm comm, T *local, const T *ghost, Operation op) &&
+  {
+    return GhostPushRequestTyped<T, Operation>(
+        comm, local, *m_map, m_ndofs, ghost, std::move(op), std::move(m_buffer));
+  }
+
+  // RemoteStage::ghost_push()
+  template <typename T>
+  template <class Operation>
+  inline GhostPushRequestTyped<T, Operation> RemoteStage<T>::ghost_push(
+      MPI_Comm comm, T *ghost, Operation op) &&  // infer local
+  {
+    return GhostPushRequestTyped<T, Operation>(
+        comm, *m_map, m_ndofs, ghost, std::move(op), std::move(m_buffer));
+  }
+
+  // -------------------------------------------------------------------
+
   // GhostPullRequest::GhostPullRequest()
   template <typename T>
   GhostPullRequest::GhostPullRequest(
@@ -558,25 +639,57 @@ namespace par
     : GhostPushRequestTyped(
         comm, ghost + ndofs * map.local_begin(), map, ndofs, ghost, std::move(op))
   { }
+  // |
+  // v
 
   // GhostPushRequestTyped::GhostPushRequestTyped()
   template <typename T, class Operation>
   GhostPushRequestTyped<T, Operation>::GhostPushRequestTyped(
-      MPI_Comm comm, T *local, const RemoteMap &map, int ndofs, const T *ghost, Operation op)
-    : m_send_reqs(map.n_links()), m_recv_reqs(map.n_links()),
+      MPI_Comm comm, T *local, const RemoteMap &map, int ndofs, const T *ghost,
+      Operation op)
+    :
+      GhostPushRequestTyped(
+        comm, local, map, ndofs, ghost, std::move(op),
+        std::vector<T>(ndofs * map.local_binding_total()) )
+  {
+    // ^-- Allocates buffer to receive staged local data. --^
+  }
+
+  // Private
+
+  // GhostPushRequestTyped::GhostPushRequestTyped()
+  template <typename T, class Operation>
+  GhostPushRequestTyped<T, Operation>::GhostPushRequestTyped(
+      MPI_Comm comm, const RemoteMap &map, int ndofs, T *ghost,
+      Operation op, std::vector<T> &&buffer)
+    :
+      GhostPushRequestTyped(
+        comm, ghost + ndofs * map.local_begin(), map, ndofs, ghost, std::move(op),
+        std::move(buffer))
+  { }
+  // |
+  // v
+
+  // GhostPushRequestTyped::GhostPushRequestTyped()
+  template <typename T, class Operation>
+  GhostPushRequestTyped<T, Operation>::GhostPushRequestTyped(
+      MPI_Comm comm, T *local, const RemoteMap &map, int ndofs, const T *ghost,
+      Operation op, std::vector<T> &&buffer)
+    :
+      m_send_reqs(map.n_links()), m_recv_reqs(map.n_links()),
       m_map(&map),
       m_ndofs(ndofs),
       m_op(std::move(op)),
+      m_buffer(std::move(buffer)),
       m_dest(local)
   {
-    if (map.n_active_bound_links() > 0) { assert(local != nullptr); }
     if (map.n_active_ghost_links() > 0)     { assert(ghost != nullptr); }
 
     const int n_links = map.n_links();
 
-    // Allocate buffer to receive staged local data.
+    // Buffer to receive staged local data.
     const size_t stage_total = ndofs * map.local_binding_total();
-    m_buffer.resize(stage_total);
+    assert(m_buffer.size() == stage_total);
     T *local_stage = m_buffer.data();
 
     // Receive into staged local data.
@@ -602,14 +715,16 @@ namespace par
     }
   }
 
-  // GhostPushRequestTyped::destage()
+  // GhostPushRequestTyped::update_local()
   template <typename T, class Operation>
-  void GhostPushRequestTyped<T, Operation>::destage()
+  void GhostPushRequestTyped<T, Operation>::update_local()
   {
     const RemoteMap &map = *m_map;
     const int ndofs = m_ndofs;
     const T *local_stage = m_buffer.data();
     T *local = m_dest;
+
+    if (map.n_active_bound_links() > 0) { assert(local != nullptr); }
 
     const int n_links = map.n_links();
 
@@ -625,8 +740,10 @@ namespace par
         local_id *= ndofs;
         for (int dof = 0; dof < ndofs; ++dof)
         {
-          const T staged_value = local_stage[stage_offset + bound_idx + dof];
-          local[local_id + dof] = op(local[local_id + dof], staged_value);
+          // Ensure that op is passed const references.
+          const T &staged_reference = local_stage[stage_offset + bound_idx + dof];
+          const T &local_reference = local[local_id + dof];
+          local[local_id + dof] = op(local_reference, staged_reference);
         }
       });
       stage_offset += count;
@@ -639,12 +756,6 @@ namespace par
     m_recv_reqs.wait_all();
   }
 
-  // GhostPullRequest::wait_on_stage()
-  void GhostPullRequest::wait_on_stage()
-  {
-    // Input vector was copied to an internal buffer, so return immediately.
-  }
-
   // GhostPullRequest::wait_on_send()
   void GhostPullRequest::wait_on_send()
   {
@@ -655,7 +766,6 @@ namespace par
   void GhostPullRequest::wait_all()
   {
     this->wait_on_recv();
-    this->wait_on_stage();
     this->wait_on_send();
   }
 
@@ -664,7 +774,6 @@ namespace par
   void GhostPushRequestTyped<T, Operation>::wait_on_recv()
   {
     m_recv_reqs.wait_all();
-    this->destage();
   }
 
   // GhostPushRequestTyped<T, Operation>::wait_on_send()
@@ -674,12 +783,20 @@ namespace par
     m_send_reqs.wait_all();
   }
 
-  // GhostPushRequestTyped<T, Operation>::wait_all()
+  // GhostPushRequestTyped<T, Operation>::wait_all_and_update()
   template <typename T, class Operation>
-  void GhostPushRequestTyped<T, Operation>::wait_all()
+  void GhostPushRequestTyped<T, Operation>::wait_all_and_update()
   {
     this->wait_on_recv();
+    this->update_local();
     this->wait_on_send();
+  }
+
+  // GhostPushRequestTyped<T, Operation>::staged_data()
+  template <typename T, class Operation>
+  const void *  GhostPushRequestTyped<T, Operation>::staged_data() const
+  {
+    return m_buffer.data();
   }
 
   // -------------------------------------------------------------------

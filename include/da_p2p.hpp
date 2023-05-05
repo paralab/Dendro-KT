@@ -151,9 +151,9 @@ namespace ot
       par::RemoteMap remote_map;
 
       // State
-      std::unordered_map<void *, par::GhostPullRequest>
+      std::unordered_map<const void *, par::GhostPullRequest>
         pull_requests;
-      std::unordered_map<void *, std::unique_ptr<par::GhostPushRequest>>
+      std::unordered_map<const void *, std::unique_ptr<par::GhostPushRequest>>
         push_requests;
     };
 
@@ -277,6 +277,8 @@ namespace ot
         template <typename T>
         void destroyVector(std::vector<T> &local) const;
 
+        // -----------------------------------------
+
         template <typename T>
         void readFromGhostBegin(
             T *vec,
@@ -287,8 +289,10 @@ namespace ot
             T *vec,
             unsigned int dof = 1) const;
 
+        // -----------------------------------------
+
         template <typename T>
-        void writeToGhostsBegin(
+        void writeToGhostsBegin(    // useAccumulation=true.
             T *vec,
             unsigned int dof = 1,
             const char * isDirtyOut = nullptr) const;
@@ -296,9 +300,31 @@ namespace ot
         template <typename T>
         void writeToGhostsEnd(
             T *vec,
+            unsigned int dof,
+            bool useAccumulation,   // useAccumulation=false here is deprecated.
+            const char * isDirtyOut) const;
+
+        template <typename T>
+        void writeToGhostsEnd(      // useAccumulation=true.
+            T *vec,
             unsigned int dof = 1,
-            bool useAccumulation = true,
             const char * isDirtyOut = nullptr) const;
+
+        // -----------------------------------------
+
+        template <typename T>
+        void overwriteToGhostsBegin(       // useAccumulation=false.
+            T *vec,
+            unsigned int dof = 1,
+            const char * isDirtyOut = nullptr) const;
+
+        template <typename T>
+        void overwriteToGhostsEnd(         // useAccumulation=false.
+            T *vec,
+            unsigned int dof = 1,
+            const char * isDirtyOut = nullptr) const;
+
+        // -----------------------------------------
 
         template <typename T>
         void nodalVecToGhostedNodal(
@@ -377,6 +403,14 @@ namespace ot
 
         // -----------------------------------------------------------
 
+      private:
+        template <typename T, class Operation>
+        void writeToGhostsBegin_impl(
+            T *vec, unsigned int dof, const char * isDirtyOut, Operation op) const;
+
+        template <typename T>
+        void writeToGhostsEnd_impl(
+            T *vec, unsigned int dof, const char * isDirtyOut) const;
 
       private:
         WrapperData<dim> *mutate() const { assert(m_data != nullptr); return &(*m_data); }
@@ -532,9 +566,7 @@ namespace ot
             SFC_Tree<uint32_t, dim>::distTreeSort(grid, sfc_tol, comm);
             DistTree<uint32_t, dim> dtree(grid, comm);
 
-            /// quadTreeToGnuplot(dtree.getTreePartFiltered(), max_depth, "new_da_tree", comm);
-
-            /// for (int degree: {1, 2, 3})
+            /// for (int degree: {1, 2, 3})  // node ordering different for 2+.
             for (int degree: {1})
             {
               DA<dim> old_da(dtree, comm, degree);
@@ -570,22 +602,23 @@ namespace ot
               }
 
               // isDirtyOut   //future: Deprecate this feature
-              for (int ndofs: {1})
+              for (int ndofs: {1, 2})
               {
                 old_da.createVector(old_ghost_write, false, true, ndofs);
                 new_da.createVector(new_ghost_write, false, true, ndofs);
                 for (auto *v: {&old_ghost_write, &new_ghost_write})
-                  std::iota(v->begin(), v->end(), 0);
+                  std::generate(v->begin(), v->end(),
+                      [=, i=0]() mutable { return unit * (i++); });
 
                 std::vector<char> write_odd(old_ghost_write.size(), false);
                 for (size_t i = 1; i < write_odd.size(); i += 2)
                   write_odd[i] = true;
 
-                /// old_da.writeToGhostsBegin(old_ghost_write.data(), ndofs, write_odd.data());
-                /// old_da.writeToGhostsEnd(old_ghost_write.data(), ndofs, write_odd.data());
-                /// new_da.writeToGhostsBegin(new_ghost_write.data(), ndofs, write_odd.data());
-                /// new_da.writeToGhostsEnd(new_ghost_write.data(), ndofs, write_odd.data());
-                /// CHECK( new_ghost_write == old_ghost_write );
+                old_da.writeToGhostsBegin(old_ghost_write.data(), ndofs, write_odd.data());
+                old_da.writeToGhostsEnd(old_ghost_write.data(), ndofs, true, write_odd.data());
+                new_da.writeToGhostsBegin(new_ghost_write.data(), ndofs, write_odd.data());
+                new_da.writeToGhostsEnd(new_ghost_write.data(), ndofs, write_odd.data());
+                CHECK( new_ghost_write == old_ghost_write );
               }
             }
           }
@@ -1481,6 +1514,7 @@ namespace ot
       mutate()->pull_requests.erase(it);
     }
 
+
     // DA_Wrapper::writeToGhostBegin()
     template <int dim>
     template <typename T>
@@ -1489,23 +1523,83 @@ namespace ot
         unsigned int dof,
         const char * isDirtyOut) const
     {
+      const auto add = [](const auto &x, const auto &y){ return x + y; };
+      this->writeToGhostsBegin_impl(vec, dof, isDirtyOut, add);
+    }
+
+    // DA_Wrapper::overwriteToGhostBegin()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::overwriteToGhostsBegin(
+        T *vec,
+        unsigned int dof,
+        const char * isDirtyOut) const
+    {
+      const auto replace = [](const auto &x, const auto &y) { return y; };
+      this->writeToGhostsBegin_impl(vec, dof, isDirtyOut, replace);
+    }
+
+    // DA_Wrapper::writeToGhostBegin_impl()
+    template <int dim>
+    template <typename T, class Operation>
+    void DA_Wrapper<dim>::writeToGhostsBegin_impl(
+        T *vec,
+        unsigned int dof,
+        const char * isDirtyOut,
+        Operation op) const
+    {
       //debug
       const int n_send = data()->remote_map.n_active_ghost_links();
       const int n_recv = data()->remote_map.n_active_bound_links();
       const MPI_Comm comm = m_da.active_comm();
       assert( par::mpi_sum(n_send, comm) == par::mpi_sum(n_recv, comm) );
 
-      if (isDirtyOut != nullptr)
-        throw std::logic_error("Not implemented: write ghost with isDirtyOut");
+      const auto nop = [](const auto &x, const auto &y) { return x; };
 
-      const auto add = [](auto x, auto y){ return x + y; };
-      auto it_inserted =
-          mutate()->push_requests.emplace(vec,
-            new auto (par::ghost_push(
-              m_da.active_comm(), data()->remote_map, dof, vec, add)));
+      if (isDirtyOut == nullptr)
+      {
+        auto *payload_req = new auto (par::ghost_push(               //rval ctor
+            m_da.active_comm(), data()->remote_map, dof, vec, op));
+        const bool inserted =
+            mutate()->push_requests.emplace(vec, payload_req).second;
 
-      const bool inserted = it_inserted.second;
-      assert(inserted);  // otherwise, a request on vec is in progress.
+        assert(inserted);  // otherwise, a request on vec is in progress.
+      }
+      else
+      {
+        // Store pointers to where flags and payload will be received.
+        par::RemoteStage<char> flags_buffer(data()->remote_map, 1);  // per node
+        par::RemoteStage<T> payload_buffer(data()->remote_map, dof);
+        const char *staged_flag = flags_buffer.staged_data();
+        const T *staged_payload = payload_buffer.staged_data();
+        const size_t stage_size = payload_buffer.size();
+
+        // This lambda only combines (x, y) if the corresponding flag is True.
+        // To calculate offset and lookup flag, capture staging pointers.
+        const auto combine_if =
+          [=, dof=dof, op=std::move(op)](const T &x, const T &y)
+        {
+          const size_t offset = &y - staged_payload;
+          assert(offset < stage_size);  // otherwise: probably a copy, not ref.
+          const size_t node_offset = offset / dof;
+          return (bool(staged_flag[node_offset])? op(x, y) : x);
+        };
+
+        // Push flags.
+        auto *flag_req = new auto (
+            std::move(flags_buffer)
+              .ghost_push(m_da.active_comm(), (char*){}, isDirtyOut, nop));
+        mutate()->push_requests.emplace(isDirtyOut, flag_req);
+
+        // Push payload.
+        auto *payload_req = new auto (
+            std::move(payload_buffer)
+              .ghost_push(m_da.active_comm(), vec, combine_if));
+        const bool inserted =
+            mutate()->push_requests.emplace(vec, payload_req).second;
+
+        assert(inserted);  // otherwise, a request on vec is in progress.
+      }
     }
 
     // DA_Wrapper::writeToGhostEnd()
@@ -1517,14 +1611,72 @@ namespace ot
         bool useAccumulation,
         const char * isDirtyOut) const
     {
-      if (isDirtyOut != nullptr)
-        throw std::logic_error("Not implemented: write ghost with isDirtyOut");
+      if (useAccumulation == false)
+        throw std::invalid_argument("useAccumulation=false is deprecated. "
+            "Try overwriteToGhostsBegin() / overwriteToGhostsEnd().");
 
-      auto it = mutate()->push_requests.find(vec);
-      assert(it != mutate()->push_requests.end());
-      par::GhostPushRequest *request = &(*it->second);
-      request->wait_all();
-      mutate()->push_requests.erase(it);
+      this->writeToGhostsEnd(vec, dof, isDirtyOut);
+    }
+
+    // DA_Wrapper::writeToGhostEnd()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::writeToGhostsEnd(
+        T *vec,
+        unsigned int dof,
+        const char * isDirtyOut) const
+    {
+      this->writeToGhostsEnd_impl(vec, dof, isDirtyOut);
+    }
+
+    // DA_Wrapper::overwriteToGhostEnd()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::overwriteToGhostsEnd(
+        T *vec,
+        unsigned int dof,
+        const char * isDirtyOut) const
+    {
+      this->writeToGhostsEnd_impl(vec, dof, isDirtyOut);
+    }
+
+    // DA_Wrapper::writeToGhostEnd_impl()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::writeToGhostsEnd_impl(
+        T *vec,
+        unsigned int dof,
+        const char * isDirtyOut) const
+    {
+      // Extract GhostPushRequest for payload.  //future: extract()
+      auto payload_it = mutate()->push_requests.find(vec);
+      assert(payload_it != mutate()->push_requests.end());
+      std::unique_ptr<par::GhostPushRequest> payload_req = std::move(payload_it->second);
+      mutate()->push_requests.erase(payload_it);
+
+      if (isDirtyOut != nullptr)
+      {
+        // Extract GhostPushRequest for flags.  //future: extract()
+        auto flag_it = mutate()->push_requests.find(isDirtyOut);
+        assert(flag_it != mutate()->push_requests.end());
+        std::unique_ptr<par::GhostPushRequest> flag_req = std::move(flag_it->second);
+        mutate()->push_requests.erase(flag_it);
+
+        flag_req->wait_on_recv();
+
+        payload_req->wait_on_recv();
+        payload_req->update_local();
+        payload_req->wait_on_send();
+
+        // Do not update local flags.
+        flag_req->wait_on_send();
+      }
+      else
+      {
+        payload_req->wait_on_recv();
+        payload_req->update_local();
+        payload_req->wait_on_send();
+      }
     }
 
 
