@@ -20,7 +20,7 @@ inline void link_da_p2p_tests() {};
 #include "include/neighbors_to_nodes.hpp"
 #include "include/partition_border.hpp"
 #include "include/contextual_hyperface.hpp"
-/// #include "include/ghost_exchange.hpp"
+#include "include/ghost_exchange.hpp"
 
 /// #include "include/debug.hpp"
 
@@ -76,7 +76,7 @@ namespace ot
         // The DA should not have changing state, except when the topology changes.
         // Asynchronous communication state and vector data should both be owned
         // by the caller, outside the DA.
-        /// RemoteMap remote_map(int degree) const;
+        par::RemoteMap remote_map(int degree) const;
 
       private:
         size_t n_pre_ghost_nodes(int degree) const;
@@ -96,8 +96,8 @@ namespace ot
         // ---------------------------------------------------------------------
         // Details to produce and traverse point sets.
         // ---------------------------------------------------------------------
-        size_t m_pre_ghost_octants = {};
-        size_t m_post_ghost_octants = {};
+
+          //future: consult m_cell_map for counts of pre and post ghost octants.
 
         // Example
         //     ghosted octants     oct,       oct,    oct,           oct
@@ -107,8 +107,16 @@ namespace ot
         std::vector<size_t> m_ghosted_hyperface_ranges;
 
         std::vector<TreeNode<uint32_t, dim>> m_ghosted_octants;
-        std::vector<TreeNode<uint32_t, dim>> m_scatter_octants;
-        std::vector<size_t> m_scatter_octant_ids;//referring to local ids
+        /// std::vector<TreeNode<uint32_t, dim>> m_scatter_octants;
+        /// std::vector<size_t> m_scatter_octant_ids;//referring to local ids
+        //future: consult m_cell_map
+        // ---------------------------------------------------------------------
+
+        // ---------------------------------------------------------------------
+        // Maps needed for ghost exchanges.
+        // ---------------------------------------------------------------------
+        par::RemoteMap m_face_map = par::RemoteMapBuilder(0).finish();
+        par::RemoteMap m_cell_map = par::RemoteMapBuilder(0).finish();
         // ---------------------------------------------------------------------
 
         // ---------------------------------------------------------------------
@@ -138,13 +146,15 @@ namespace ot
     template <int dim>
     struct WrapperData
     {
-      PointSet<dim> m_points;
-      ScatterMap m_sm;
-      GatherMap m_gm;
+      PointSet<dim> points;
 
-        /// size_t n_local_elements();
-        /// DendroLLU n_global_elements();
-        /// DendroLLU global_element_offset();
+      par::RemoteMap remote_map;
+
+      // State
+      std::unordered_map<void *, par::GhostPullRequest>
+        pull_requests;
+      std::unordered_map<void *, std::unique_ptr<par::GhostPushRequest>>
+        push_requests;
     };
 
     template <int dim>
@@ -200,12 +210,12 @@ namespace ot
 
         inline bool isActive() const { return data()->n_local_elements() > 0; }
 
-        size_t getTotalSendSz() const { return data()->m_sm.m_map.size(); }
-        size_t getTotalRecvSz() const { return data()->m_gm.m_totalCount - data()->m_gm.m_locCount; }
-        int getNumDestNeighbors() const { return data()->m_sm.m_sendProc.size(); }
-        int getNumSrcNeighbors()  const { return data()->m_gm.m_recvProc.size(); }
-        int getNumOutboundRanks() const { return data()->m_sm.m_sendProc.size(); }
-        int getNumInboundRanks()  const { return data()->m_gm.m_recvProc.size(); }
+        size_t getTotalSendSz() const { return data()->sm.m_map.size(); }
+        size_t getTotalRecvSz() const { return data()->gm.m_totalCount - data()->gm.m_locCount; }
+        int getNumDestNeighbors() const { return data()->sm.m_sendProc.size(); }
+        int getNumSrcNeighbors()  const { return data()->gm.m_recvProc.size(); }
+        int getNumOutboundRanks() const { return data()->sm.m_sendProc.size(); }
+        int getNumInboundRanks()  const { return data()->gm.m_recvProc.size(); }
 
         inline unsigned int getNumNodesPerElement() const { return compute_npe<dim>(degree()); }
 
@@ -248,18 +258,18 @@ namespace ot
         /// inline const std::vector<int> & elements_per_node() const;//ghosted
 
         template <typename T>
-        int createVector(
-            T *&local,
-            bool isElemental = false,
-            bool isGhosted = false,
-            unsigned int dof = 1) const;
+        void createVector(
+             T *&local,
+             bool isElemental = false,
+             bool isGhosted = false,
+             unsigned int dof = 1) const;
 
         template <typename T>
-        int createVector(
-            std::vector<T> &local,
-            bool isElemental = false,
-            bool isGhosted = false,
-            unsigned int dof = 1) const;
+        void createVector(
+             std::vector<T> &local,
+             bool isElemental = false,
+             bool isGhosted = false,
+             unsigned int dof = 1) const;
 
         template <typename T>
         void destroyVector(T *&local) const;
@@ -369,10 +379,11 @@ namespace ot
 
 
       private:
+        WrapperData<dim> *mutate() const { assert(m_data != nullptr); return &(*m_data); }
         WrapperData<dim> *data() { assert(m_data != nullptr); return &(*m_data); }
         const WrapperData<dim> *data() const { assert(m_data != nullptr); return &(*m_data); }
 
-        int degree() const { return data()->m_points.degree; }
+        int degree() const { return data()->points.degree; }
 
       private:
         DA<dim> m_da;
@@ -428,16 +439,12 @@ namespace ot
 
     DOCTEST_MPI_TEST_CASE("Number of nodes", 3)
     {
-      /// dbg::wait_for_debugger(test_comm);
       constexpr int dim = 2;
       _InitializeHcurve(dim);
       const double sfc_tol = 0.3;
 
-      std::stringstream ss;
-
       const auto next_comm_size = make_next_comm_size(test_nb_procs);
       for (int np = 1; np <= test_nb_procs; np = next_comm_size(np))
-      /// for (int np = 1; np <= 2; np = next_comm_size(np))
       {
         MPI_Comm comm;
         MPI_Comm_split(test_comm, test_rank < np, 0, &comm);
@@ -455,7 +462,66 @@ namespace ot
         {
           INFO("grid_pattern=", std::string(grid_pattern == central? "central" : "edges"));
           for (int max_depth = 2; max_depth <= 5; ++max_depth)
-          /// for (int max_depth = 2; max_depth <= 2; ++max_depth)
+          {
+            // Grid.
+            std::vector<TreeNode<uint32_t, dim>> grid;
+            if (is_root and grid_pattern == central)
+              grid = grid_pattern_central<dim>(max_depth);
+            else if (is_root and grid_pattern == edges)
+              grid = grid_pattern_edges<dim>(max_depth);
+            SFC_Tree<uint32_t, dim>::distTreeSort(grid, sfc_tol, comm);
+            DistTree<uint32_t, dim> dtree(grid, comm);
+
+            for (int degree: {1, 2, 3})
+            {
+              DA<dim> old_da(dtree, comm, degree);
+              DA_P2P<dim> new_da(dtree, comm, degree);
+
+              INFO("max_depth=", max_depth, "  degree=", degree);
+
+              CHECK( new_da.getLocalNodalSz() == old_da.getLocalNodalSz() );
+              CHECK( new_da.getTotalNodalSz() == old_da.getTotalNodalSz() );
+
+              CHECK( (new_da.getTotalNodalSz() - new_da.getLocalNodalSz())
+                  == (old_da.getTotalNodalSz() - old_da.getLocalNodalSz()) );
+                // ^ May fail for hilbert curve ordering; then, make other test.
+
+              CHECK( new_da.getGlobalNodeSz() == old_da.getGlobalNodeSz() );
+            }
+          }
+        }
+        MPI_Comm_free(&comm);
+      }
+
+      _DestroyHcurve();
+    }
+
+    DOCTEST_MPI_TEST_CASE("Consistent ghost exchange", 3)
+    {
+      dbg::wait_for_debugger(test_comm);
+      constexpr int dim = 2;
+      _InitializeHcurve(dim);
+      const double sfc_tol = 0.3;
+
+      const auto next_comm_size = make_next_comm_size(test_nb_procs);
+      for (int np = 1; np <= test_nb_procs; np = next_comm_size(np))
+      {
+        MPI_Comm comm;
+        MPI_Comm_split(test_comm, test_rank < np, 0, &comm);
+        if (test_rank >= np)
+        {
+          MPI_Comm_free(&comm);
+          continue;
+        }
+
+        INFO("mpi_size=", np, "  mpi_rank=", par::mpi_comm_rank(comm));
+        const bool is_root = par::mpi_comm_rank(comm) == 0;
+
+        enum Pattern { central, edges };
+        for (Pattern grid_pattern : {central, edges})
+        {
+          INFO("grid_pattern=", std::string(grid_pattern == central? "central" : "edges"));
+          for (int max_depth = 2; max_depth <= 5; ++max_depth)
           {
             // Grid.
             std::vector<TreeNode<uint32_t, dim>> grid;
@@ -468,20 +534,58 @@ namespace ot
 
             /// quadTreeToGnuplot(dtree.getTreePartFiltered(), max_depth, "new_da_tree", comm);
 
-            for (int degree: {1, 2, 3})
-            /// for (int degree: {1})
+            /// for (int degree: {1, 2, 3})
+            for (int degree: {1})
             {
               DA<dim> old_da(dtree, comm, degree);
               DA_P2P<dim> new_da(dtree, comm, degree);
 
               INFO("max_depth=", max_depth, "  degree=", degree);
 
-              CHECK( new_da.getLocalNodalSz() == old_da.getLocalNodalSz() );
-              CHECK( (new_da.getTotalNodalSz() - new_da.getLocalNodalSz())
-                  == (old_da.getTotalNodalSz() - old_da.getLocalNodalSz()) );
-                // ^ May fail for hilbert curve ordering; then, make other test.
+              std::vector<int> old_ghost_read, old_ghost_write;
+              std::vector<int> new_ghost_read, new_ghost_write;
+              /// for (int ndofs: {1, 2})
+              for (int ndofs: {1})
+              {
+                old_da.createVector(old_ghost_read, false, true, ndofs);
+                old_da.createVector(old_ghost_write, false, true, ndofs);
+                new_da.createVector(new_ghost_read, false, true, ndofs);
+                new_da.createVector(new_ghost_write, false, true, ndofs);
+                for (auto *v: {&old_ghost_read, &old_ghost_write,
+                               &new_ghost_read, &new_ghost_write})
+                  std::iota(v->begin(), v->end(), 0);
 
-              CHECK( new_da.getGlobalNodeSz() == old_da.getGlobalNodeSz() );
+                old_da.readFromGhostBegin(old_ghost_read.data(), ndofs);
+                old_da.readFromGhostEnd(old_ghost_read.data(), ndofs);
+                old_da.writeToGhostsBegin(old_ghost_write.data(), ndofs);
+                old_da.writeToGhostsEnd(old_ghost_write.data(), ndofs);
+                new_da.readFromGhostBegin(new_ghost_read.data(), ndofs);
+                new_da.readFromGhostEnd(new_ghost_read.data(), ndofs);
+                new_da.writeToGhostsBegin(new_ghost_write.data(), ndofs);
+                new_da.writeToGhostsEnd(new_ghost_write.data(), ndofs);
+
+                CHECK( new_ghost_read == old_ghost_read );
+                CHECK( new_ghost_write == old_ghost_write );
+              }
+
+              // isDirtyOut   //future: Deprecate this feature
+              for (int ndofs: {1})
+              {
+                old_da.createVector(old_ghost_write, false, true, ndofs);
+                new_da.createVector(new_ghost_write, false, true, ndofs);
+                for (auto *v: {&old_ghost_write, &new_ghost_write})
+                  std::iota(v->begin(), v->end(), 0);
+
+                std::vector<char> write_odd(old_ghost_write.size(), false);
+                for (size_t i = 1; i < write_odd.size(); i += 2)
+                  write_odd[i] = true;
+
+                /// old_da.writeToGhostsBegin(old_ghost_write.data(), ndofs, write_odd.data());
+                /// old_da.writeToGhostsEnd(old_ghost_write.data(), ndofs, write_odd.data());
+                /// new_da.writeToGhostsBegin(new_ghost_write.data(), ndofs, write_odd.data());
+                /// new_da.writeToGhostsEnd(new_ghost_write.data(), ndofs, write_odd.data());
+                /// CHECK( new_ghost_write == old_ghost_write );
+              }
             }
           }
         }
@@ -572,6 +676,16 @@ namespace ot
 {
   namespace da_p2p
   {
+    namespace detail
+    {
+      // nodes_internal_to_face()
+      constexpr int nodes_internal_to_face(int degree, int dimension)
+      {
+        return intPow(degree - 1, dimension);
+      }
+    }
+
+
     // DA::DA()
     template <int dim>
     DA<dim>::DA(const DistTree<uint32_t, dim> &dist_tree)
@@ -742,6 +856,74 @@ namespace ot
       // Updated neighborhoods of all border octants, to emit scatter/gather.
       border_dict.reduce();
 
+      // Updated neighborhoods of all local octants, to emit local hyperfaces.
+      //   future: Only update from recv_neighbors
+      total_dict.concat(border_dict);
+      total_dict.reduce();
+
+      std::vector<uint8_t> local_hyperfaces;
+      std::vector<size_t> local_hyperface_ranges;
+
+      // Local hyperfaces: Emit faces "owned" (with "split" status):
+      //   neighbor_sets(local_octants ∪ (∪.p recv_octants[p]))@local_octants
+      size_t dbg_count = 0;
+      size_t count_local_hyperfaces = 0;
+
+      // Another way to write the following, if it's a single loop.
+      //   for (const auto &scope: ForLeafNeighborhoods<dim>(total_dict, local_octants))
+
+      ForLeafNeighborhoods<dim> loop(total_dict, local_octants);
+      for (auto it = loop.begin(), end = loop.end(); it != end; ++it)
+      {
+        const auto &scope = *it;
+        const size_t leaf_index = scope.query_idx;
+        const Octant key = scope.query_key;
+        Neighborhood<dim> self_nbh = scope.self_neighborhood;
+        Neighborhood<dim> parent_nbh = scope.parent_neighborhood;
+        Neighborhood<dim> children_nbh = scope.children_neighborhood;
+
+          // local_hyperface_ranges is indexed adjacent to local_octants
+        assert(leaf_index == dbg_count);
+        ++dbg_count;
+
+        /// self_nbh |= Neighborhood<dim>::solitary();  // it is from local_octants
+        assert(self_nbh.center_occupied());
+
+        const auto priority = priority_neighbors<dim>();
+        const auto owned = ~((self_nbh & priority) | parent_nbh).spread_out();
+        const auto split = children_nbh.spread_out();
+
+        local_hyperface_ranges.push_back(count_local_hyperfaces);
+
+        // Select hyperfaces to emit.
+        tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
+        {
+          std::array<int, dim> idxs = {idx_pack...};  // 0..2 per axis.
+
+          // Compute index to lookup bits.
+          int hyperface_idx = 0;
+          for (int d = 0, stride = 1; d < dim; ++d, stride *= 3)
+            hyperface_idx += idxs[d] * stride;
+          //future: ^ Fold expression (c++17)
+
+          // Test.
+          if(owned.test_flat(hyperface_idx))
+          {
+            int hyperface_coord = 0;
+            for (int d = 0, stride = 1; d < dim; ++d, stride *= 4)
+              hyperface_coord += idxs[d] * stride;
+            SplitHyperface4D hyperface = Hyperface4D(hyperface_coord)
+                .mirrored(key.getMortonIndex())
+                .encode_split(split.test_flat(hyperface_idx));
+            local_hyperfaces.push_back(hyperface.encoding());
+            ++count_local_hyperfaces;
+          }
+        });
+      }
+      // Push end of last range.
+      local_hyperface_ranges.push_back(count_local_hyperfaces);
+
+
       //
       // let
       //   t: octant;
@@ -769,25 +951,74 @@ namespace ot
       // r.recv_octants[p] = p.send_octants[r]
       // r.border_octants = ∪.p (send_octants[p] ∪ recv_octants[p])
 
+      par::RemoteMapBuilder cell_map(adjacency_list.local_rank);
+      par::RemoteMapBuilder face_map(adjacency_list.local_rank);
+      cell_map.set_local_count(local_octants.size());
+      face_map.set_local_count(count_local_hyperfaces);
+
       // Scattermap[p]: Emit faces "owned" and "shared" (with "split" status):
       //   neighbor_sets(border_octants)@send_octants[p]   -> "owned", "split"
       //   neighbor_sets(recv_octants[p])@send_octants[p]  -> "shared" to p
       for (int i = 0; i < n_remote_parts; ++i)
       {
+        const int remote_rank = adjacency_list.neighbor_ranks[i];
+        const std::vector<size_t> &send_ids = send_octant_ids[i];
 
-        // Need a way to iterate through
-        // - octants in send_octants[i]
-        // - with greedy and split neighborhoods from border_dict
-        // - with observer neighborhoods from remote_border_dicts[i]
+        ForLeafNeighborhoods<dim> border(border_dict, send_octants[i]);
+        ForLeafNeighborhoods<dim> recv(recv_neighbors[i], send_octants[i]);
+        for (auto border_it =  border.begin(), recv_it  = recv.begin(),
+                  border_end = border.end(),   recv_end = recv.end();
+                  border_it != border_end and  recv_it != recv_end;
+                  ++border_it, ++recv_it)
+        {
+          // Expect to loop over every leaf in the query set (send_octants).
+          assert(border_it.query_idx() == recv_it.query_idx());
+          const size_t query_idx = border_it.query_idx();
+
+          const auto border_scope = *border_it;
+          const auto recv_scope = *recv_it;
+          const Octant key = border_scope.query_key;
+          assert(key == recv_scope.query_key);
+
+          assert(border_scope.self_neighborhood.center_occupied());
+          const auto priority = priority_neighbors<dim>();
+          const auto owned = ~((border_scope.self_neighborhood & priority)
+                               | border_scope.parent_neighborhood).spread_out();
+          const auto split = border_scope.children_neighborhood.spread_out();
+          const auto shared = (recv_scope.self_neighborhood
+                               | recv_scope.children_neighborhood).spread_out();
+          const auto emit = owned & shared;
+
+          if (emit.none())
+            continue;
+
+          const size_t octant_id = send_ids[query_idx];
+          cell_map.bind_local_id(remote_rank, octant_id);
+
+          // Search local_hyperfaces for exact indices to bind to remote.
+          size_t count_hyperfaces = 0;
+          const size_t oct_faces_begin = local_hyperface_ranges[octant_id];
+          const size_t oct_faces_end = local_hyperface_ranges[octant_id + 1];
+          for (size_t id = oct_faces_begin; id < oct_faces_end; ++id)
+          {
+            const Hyperface4D face = SplitHyperface4D(local_hyperfaces[id])
+                                     .decode()
+                                     .mirrored(key.getMortonIndex());
+            if (emit.test_flat(face.flat()))
+            {
+              face_map.bind_local_id(remote_rank, id);
+              ++count_hyperfaces;
+            }
+          }
+          assert(count_hyperfaces == emit.count());
+        }
       }
 
       std::vector<uint8_t> pre_ghost_hyperfaces;
       std::vector<uint8_t> post_ghost_hyperfaces;
-      std::vector<size_t> pre_ghost_hyperface_offsets;
-      std::vector<size_t> post_ghost_hyperface_offsets;
+      std::vector<size_t> pre_ghost_hyperface_ranges;
+      std::vector<size_t> post_ghost_hyperface_ranges;
       std::vector<Octant> ghosted_octants;
-
-      /// par::RemoteMapBuilder map_builder(adjacency_list.local_rank);
 
       // Gathermap[p]: Emit faces "owned" and "shared" (with "split" status):
       //   neighbor_sets(border_octants)@recv_octants[p]   -> "owned", "split"
@@ -796,13 +1027,16 @@ namespace ot
       {
         const int remote_rank = adjacency_list.neighbor_ranks[i];
         const bool pre_ghost = remote_rank < adjacency_list.local_rank;
+        const size_t initial_count = (pre_ghost?
+            0 :  pre_ghost_hyperfaces.size() + local_hyperfaces.size());
         std::vector<uint8_t> &hyperfaces = (pre_ghost?
             pre_ghost_hyperfaces
             : post_ghost_hyperfaces);
-        std::vector<size_t> &hyperface_offsets = (pre_ghost?
-            pre_ghost_hyperface_offsets
-            : post_ghost_hyperface_offsets);
+        std::vector<size_t> &hyperface_ranges = (pre_ghost?
+            pre_ghost_hyperface_ranges
+            : post_ghost_hyperface_ranges);
 
+        size_t count_cells = 0;
         size_t count_hyperfaces = 0;
 
         ForLeafNeighborhoods<dim> border(border_dict, recv_octants[i]);
@@ -829,12 +1063,17 @@ namespace ot
                                | send_scope.children_neighborhood).spread_out();
           const auto emit = owned & shared;
 
-          // future: Only list ghosted octants where there are ghosted faces.
-          hyperface_offsets.push_back(hyperfaces.size());
-          ghosted_octants.push_back(key);
-
+          // Only list ghosted octants where there are ghosted faces.
           if (emit.none())
             continue;
+
+          hyperface_ranges.push_back(initial_count + hyperfaces.size());
+          ghosted_octants.push_back(key);
+          ++count_cells;
+
+#warning "Does not match old DA node ordering that involved SFC-sorting points."
+          // The nodal ordering differs on ownership for incomplete trees,
+          // as well as intra-element order for degree>=2 complete trees.
 
           // Select hyperfaces to emit.
           tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
@@ -848,7 +1087,7 @@ namespace ot
             //future: ^ Fold expression (c++17)
 
             // Test.
-            if(emit.test_flat(hyperface_idx))
+            if (emit.test_flat(hyperface_idx))
             {
               int hyperface_coord = 0;
               for (int d = 0, stride = 1; d < dim; ++d, stride *= 4)  // 2b/face
@@ -860,87 +1099,29 @@ namespace ot
               ++count_hyperfaces;
             }
           });
+        }
 
-          /// map_builder.increase_ghost_count(remote_rank, count_ghost);
+        if (count_cells > 0)
+        {
+          cell_map.increase_ghost_count(remote_rank, count_cells);
+          face_map.increase_ghost_count(remote_rank, count_hyperfaces);
         }
       }
 
-      const size_t pre_ghost_octants = pre_ghost_hyperface_offsets.size();
-      const size_t post_ghost_octants = post_ghost_hyperface_offsets.size();
-      m_pre_ghost_octants = pre_ghost_octants;
-      m_post_ghost_octants = post_ghost_octants;
+      m_cell_map = cell_map.finish();
+      m_face_map = face_map.finish();
+
+      const size_t pre_ghost_octants = pre_ghost_hyperface_ranges.size();
+      const size_t post_ghost_octants = post_ghost_hyperface_ranges.size();
+      // Push end of last range.
+      pre_ghost_hyperface_ranges.push_back(pre_ghost_hyperfaces.size());
+      post_ghost_hyperface_ranges.push_back( pre_ghost_hyperfaces.size()
+                                           + local_hyperfaces.size()
+                                           + post_ghost_hyperfaces.size());
 
       ghosted_octants.insert(ghosted_octants.begin() + pre_ghost_octants,
           local_octants.cbegin(), local_octants.cend());
       m_ghosted_octants = std::move(ghosted_octants);
-
-      // Updated neighborhoods of all local octants, to emit local hyperfaces.
-      //   future: Only update from recv_neighbors
-      total_dict.concat(border_dict);
-      total_dict.reduce();
-
-      std::vector<uint8_t> local_hyperfaces;
-      std::vector<size_t> local_hyperface_offsets;
-
-      // Local hyperfaces: Emit faces "owned" (with "split" status):
-      //   neighbor_sets(local_octants ∪ (∪.p recv_octants[p]))@local_octants
-      size_t dbg_count = 0;
-      size_t count_hyperfaces = pre_ghost_hyperfaces.size();
-
-      // Another way to write the following, if it's a single loop.
-      //   for (const auto &scope: ForLeafNeighborhoods<dim>(total_dict, local_octants))
-
-      ForLeafNeighborhoods<dim> loop(total_dict, local_octants);
-      for (auto it = loop.begin(), end = loop.end(); it != end; ++it)
-      {
-        const auto &scope = *it;
-        const size_t leaf_index = scope.query_idx;
-        const Octant key = scope.query_key;
-        Neighborhood<dim> self_nbh = scope.self_neighborhood;
-        Neighborhood<dim> parent_nbh = scope.parent_neighborhood;
-        Neighborhood<dim> children_nbh = scope.children_neighborhood;
-
-          // local_hyperface_offsets is indexed adjacent to local_octants
-        assert(leaf_index == dbg_count);
-        ++dbg_count;
-
-        /// self_nbh |= Neighborhood<dim>::solitary();  // it is from local_octants
-        assert(self_nbh.center_occupied());
-
-        const auto priority = priority_neighbors<dim>();
-        const auto owned = ~((self_nbh & priority) | parent_nbh).spread_out();
-        const auto split = children_nbh.spread_out();
-
-        local_hyperface_offsets.push_back(count_hyperfaces);
-
-        // Select hyperfaces to emit.
-        tmp::nested_for<dim>(0, 3, [&](auto...idx_pack)
-        {
-          std::array<int, dim> idxs = {idx_pack...};  // 0..2 per axis.
-
-          // Compute index to lookup bits.
-          int hyperface_idx = 0;
-          for (int d = 0, stride = 1; d < dim; ++d, stride *= 3)
-            hyperface_idx += idxs[d] * stride;
-          //future: ^ Fold expression (c++17)
-
-          // Test.
-          if(owned.test_flat(hyperface_idx))
-          {
-            int hyperface_coord = 0;
-            for (int d = 0, stride = 1; d < dim; ++d, stride *= 4)
-              hyperface_coord += idxs[d] * stride;
-            SplitHyperface4D hyperface = Hyperface4D(hyperface_coord)
-                .mirrored(key.getMortonIndex())
-                .encode_split(split.test_flat(hyperface_idx));
-            local_hyperfaces.push_back(hyperface.encoding());
-            ++count_hyperfaces;
-          }
-        });
-      }
-
-      for (size_t &i: post_ghost_hyperface_offsets)
-        i += count_hyperfaces;
 
       // ghosted_hyperfaces
       std::vector<uint8_t> ghosted_hyperfaces;
@@ -953,14 +1134,16 @@ namespace ot
 
       // ghosted_hyperface_ranges
       std::vector<size_t> ghosted_hyperface_ranges;
+      for (auto &r: local_hyperface_ranges)
+        r += pre_ghost_hyperfaces.size();
+      // Exclude repeated end-of-prev == begin-of-next
       ghosted_hyperface_ranges.insert(ghosted_hyperface_ranges.end(),
-          pre_ghost_hyperface_offsets.cbegin(), pre_ghost_hyperface_offsets.cend());
+          pre_ghost_hyperface_ranges.cbegin(), pre_ghost_hyperface_ranges.cend() - 1);
       ghosted_hyperface_ranges.insert(ghosted_hyperface_ranges.end(),
-          local_hyperface_offsets.cbegin(), local_hyperface_offsets.cend());
+          local_hyperface_ranges.cbegin(), local_hyperface_ranges.cend() - 1);
       ghosted_hyperface_ranges.insert(ghosted_hyperface_ranges.end(),
-          post_ghost_hyperface_offsets.cbegin(), post_ghost_hyperface_offsets.cend());
-      ghosted_hyperface_ranges.push_back(count_hyperfaces);
-
+          post_ghost_hyperface_ranges.cbegin(), post_ghost_hyperface_ranges.cend());
+      // Keep end of last range in post_ghost_hyperface ranges.
 
       SplitDimCount<size_t, dim> hf_count_local = {};
       SplitDimCount<size_t, dim> hf_count_pre_ghost = {};
@@ -1120,6 +1303,51 @@ namespace ot
       return { degree, std::move(points) };
     }
 
+    // DA::remote_map()
+    template <int dim>
+    par::RemoteMap DA<dim>::remote_map(int degree) const
+    {
+      // Derive a new remote map from the base map: lookup faces, apply degree.
+      const par::RemoteMap &map = m_face_map;
+      par::RemoteMapBuilder builder(map.this_mpi_rank());
+      builder.set_local_count(this->n_local_nodes(degree));
+      for (int link = 0, n = map.n_links(); link < n; ++link)
+      {
+        const int remote_rank = map.mpi_rank(link);
+
+        size_t count_ghost = 0;
+        for (size_t i = map.ghost_begin(link),
+                    e = map.ghost_end(link); i < e; ++i)
+        {
+          const int dimension = SplitHyperface4D(m_ghosted_hyperfaces[i])
+                                .decode().dimension();
+          count_ghost += detail::nodes_internal_to_face(degree, dimension);
+        }
+        builder.increase_ghost_count(remote_rank, count_ghost);
+
+        size_t local_face_id = 0;
+        size_t local_node_id = 0;
+        const uint8_t *local_hyperfaces = &m_ghosted_hyperfaces[map.local_begin()];
+        map.for_bound_local_id(link, [&](size_t, size_t bound_local_id)
+        {
+          for (; local_face_id < bound_local_id; ++local_face_id)
+          {
+            const int dimension = SplitHyperface4D(local_hyperfaces[local_face_id])
+                                  .decode().dimension();
+            local_node_id += detail::nodes_internal_to_face(degree, dimension);
+          }
+
+          const int dimension = SplitHyperface4D(local_hyperfaces[bound_local_id])
+                                .decode().dimension();
+          const int n_nodes_on_face = detail::nodes_internal_to_face(degree, dimension);
+          for (int node = 0; node < n_nodes_on_face; ++node)
+            builder.bind_local_id(remote_rank, local_node_id + node);
+        });
+      }
+
+      return builder.finish();
+    }
+
 
     // Private
 
@@ -1148,12 +1376,12 @@ namespace ot
     {
       T count = 0;
       for (int d = 0; d <= dim; ++d)
-        count += hyperfaces[d] * intPow(degree - 1, d);
+        count += hyperfaces[d] * detail::nodes_internal_to_face(degree, d);
       return count;
     }
 
 
-
+    // DA_Wrapper::DA_Wrapper
     template <int dim>
     DA_Wrapper<dim>::DA_Wrapper(
         const DistTree<uint32_t, dim> &inDistTree,
@@ -1166,18 +1394,14 @@ namespace ot
       m_da(inDistTree)
     {
       const int degree = order;
-
-      //TODO
-      ScatterMap scatter_map;
-      GatherMap gather_map;
-
       m_data = std::unique_ptr<WrapperData<dim>>(new WrapperData<dim>({
         m_da.point_set(degree),
-        scatter_map,
-        gather_map
+        m_da.remote_map(degree),
+        {}, {}
       }));
     }
 
+    // DA_Wrapper::DA_Wrapper
     template <int dim>
     DA_Wrapper<dim>::DA_Wrapper(
       const DistTree<uint32_t, dim> &inDistTree,
@@ -1188,6 +1412,121 @@ namespace ot
     :
       DA_Wrapper<dim>(inDistTree, 0, comm, order, {}, sfc_tol)  // delegate
     {}
+
+
+    // DA_Wrapper::createVector()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::createVector(
+         std::vector<T> &local,
+         bool isElemental,
+         bool isGhosted,
+         unsigned int dof) const
+    {
+      assert(not isElemental);  //future: support elemental vectors
+      local.resize(dof * (isGhosted? this->getTotalNodalSz()
+                                   : this->getLocalNodalSz()));
+    }
+
+    // DA_Wrapper::destroyVector()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::destroyVector(T *&local) const
+    {
+      delete local;
+      local = nullptr;
+    }
+
+    // DA_Wrapper::destroyVector()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::destroyVector(std::vector<T> &local) const
+    {
+      local.clear();
+    }
+
+    // DA_Wrapper::readFromGhostBegin()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::readFromGhostBegin(
+        T *vec,
+        unsigned int dof) const
+    {
+      //debug
+      const int n_send = data()->remote_map.n_active_bound_links();
+      const int n_recv = data()->remote_map.n_active_ghost_links();
+      const MPI_Comm comm = m_da.active_comm();
+      assert( par::mpi_sum(n_send, comm) == par::mpi_sum(n_recv, comm) );
+
+      auto it_inserted =
+          mutate()->pull_requests.emplace(vec,
+            par::ghost_pull(m_da.active_comm(), vec, data()->remote_map));
+
+      const bool inserted = it_inserted.second;
+      assert(inserted);  // otherwise, a request on vec is in progress.
+    }
+
+    // DA_Wrapper::readFromGhostEnd()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::readFromGhostEnd(
+        T *vec,
+        unsigned int dof) const
+    {
+      auto it = mutate()->pull_requests.find(vec);
+      assert(it != mutate()->pull_requests.end());
+      par::GhostPullRequest &request = it->second;
+      request.wait_all();
+      mutate()->pull_requests.erase(it);
+    }
+
+    // DA_Wrapper::writeToGhostBegin()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::writeToGhostsBegin(
+        T *vec,
+        unsigned int dof,
+        const char * isDirtyOut) const
+    {
+      //debug
+      const int n_send = data()->remote_map.n_active_ghost_links();
+      const int n_recv = data()->remote_map.n_active_bound_links();
+      const MPI_Comm comm = m_da.active_comm();
+      assert( par::mpi_sum(n_send, comm) == par::mpi_sum(n_recv, comm) );
+
+      if (isDirtyOut != nullptr)
+        throw std::logic_error("Not implemented: write ghost with isDirtyOut");
+
+      const auto add = [](auto x, auto y){ return x + y; };
+      auto it_inserted =
+          mutate()->push_requests.emplace(vec,
+            new auto (par::ghost_push(
+              m_da.active_comm(), data()->remote_map, vec, add)));
+
+      const bool inserted = it_inserted.second;
+      assert(inserted);  // otherwise, a request on vec is in progress.
+    }
+
+    // DA_Wrapper::writeToGhostEnd()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::writeToGhostsEnd(
+        T *vec,
+        unsigned int dof,
+        bool useAccumulation,
+        const char * isDirtyOut) const
+    {
+      if (isDirtyOut != nullptr)
+        throw std::logic_error("Not implemented: write ghost with isDirtyOut");
+
+      auto it = mutate()->push_requests.find(vec);
+      assert(it != mutate()->push_requests.end());
+      par::GhostPushRequest *request = &(*it->second);
+      request->wait_all();
+      mutate()->push_requests.erase(it);
+    }
+
+
 
   }//namespace da_p2p
 

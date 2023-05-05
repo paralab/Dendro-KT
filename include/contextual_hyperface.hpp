@@ -60,6 +60,7 @@ namespace ot
     public:
       constexpr Hyperface4D(uint8_t coordinate);
       constexpr uint8_t coordinate() const;
+      constexpr int flat() const;
       constexpr int dimension() const;
       constexpr Hyperface4D mirrored(int child_num) const;
       constexpr SplitHyperface4D encode_split(bool is_split) const;
@@ -250,6 +251,21 @@ namespace ot
   constexpr uint8_t Hyperface4D::coordinate() const
   {
     return m_coordinate;
+  }
+
+  // Hyperface4D::flat()
+  constexpr int Hyperface4D::flat() const
+  {
+    uint8_t index = 0;
+    uint8_t stride = 1;
+    uint8_t coord = m_coordinate;
+    for (int d = 0; d < 4; ++d)
+    {
+      index += (coord & 3u) * stride;
+      coord >>= 2;
+      stride *= 3;
+    }
+    return index;
   }
 
   // Hyperface4D::dimension()
