@@ -648,6 +648,14 @@ namespace ot
               const TreeNode<uint32_t, dim> tiny_cell(nodes[i].coords(), m_uiMaxDepth);
               CHECK( border_or_overlap_any<dim>(tiny_cell, leaf_set) );
             }
+
+            // Since the point set is predicted communication-free,
+            // check that the prediction matches truth by ghost_pull(points).
+            std::vector<TreeNode<uint32_t, dim>> actual_nodes(
+                nodes, nodes + n_nodes);
+            new_da.readFromGhostBegin(actual_nodes.data(), 1);
+            new_da.readFromGhostEnd(actual_nodes.data(), 1);
+            CHECK( std::equal(nodes, nodes + n_nodes, actual_nodes.cbegin()) );
           }
 
           // getBoundaryNodeIndices()
