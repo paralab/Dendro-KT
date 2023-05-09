@@ -44,6 +44,10 @@ void printArray_2D(const T *a, int length1, int length2)
     std::cout << std::endl;
 }
 
+class RefElement;
+
+const RefElement * memo_ref_element(int dim, int degree);
+
 class RefElement
 {
 

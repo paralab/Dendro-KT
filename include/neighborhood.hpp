@@ -58,8 +58,12 @@ namespace ot
     inline Neighborhood shifted_up(int axis) const;
     inline Neighborhood shifted_down(int axis) const;
 
-    // Union with center_slab shifted up and down on each axis.
+    // Union with center_slab shifted BOTH up and down on each axis.
     inline Neighborhood spread_out() const;
+
+    // Union with center slab shifted EITHER up or down on each axis.
+    // It is up if the bit in corner is 1, down if the bit is 0.
+    inline Neighborhood spread_out_directed(int corner) const;
   };
 
 
@@ -282,6 +286,24 @@ namespace ot
       const int stride = intPow(3, axis);
       result.block |= slab.block >> stride; // Spread down.
       result.block |= slab.block << stride; // Spread up.
+    }
+    return result;
+  }
+
+
+  // spread_out_directed()
+  template <int dim>
+  Neighborhood<dim> Neighborhood<dim>::spread_out_directed(int corner) const
+  {
+    Neighborhood<dim> result = *this;
+    for (int axis = 0; axis < dim; ++axis)
+    {
+      const auto slab = result.center_slab(axis);
+      const int stride = intPow(3, axis);
+      if ((corner >> axis) & 1)
+        result.block |= slab.block << stride; // Spread up.
+      else
+        result.block |= slab.block >> stride; // Spread down.
     }
     return result;
   }

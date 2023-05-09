@@ -82,7 +82,7 @@ namespace ot
 
   // border_or_overlap_any() (leaf to set)
   template <int dim, typename AnySet>
-  bool border_any(
+  bool border_or_overlap_any(
       TreeNode<uint32_t, dim> octant,
       const LeafSet<dim, AnySet> &any_set);
 

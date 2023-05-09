@@ -27,12 +27,12 @@ inline void permuteDims(unsigned int nDims,
 
 
 /** @brief Uses the level to identify the node on an element, then compute coords. */
-template <typename T, unsigned int dim>
-void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOrder, double * physCoords)
+template <typename T, unsigned int dim, typename F = double>
+void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOrder, F * physCoords)
 {
-  const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
-  const double elemSz = double(1u << m_uiMaxDepth - octCoords.getLevel())
-                        / double(1u << m_uiMaxDepth);
+  const F domainScale = 1.0 / F(1u << m_uiMaxDepth);
+  const F elemSz = F(1u << m_uiMaxDepth - octCoords.getLevel())
+                        / F(1u << m_uiMaxDepth);
 
   // Get coordinates of a host element (lower left).
   ot::TreeNode<T, dim> element = octCoords.getAncestor(octCoords.getLevel());
@@ -50,12 +50,12 @@ void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOr
 
 
 /** @brief Get physical coordinates and physical size of an element. */
-template <typename T, unsigned int dim>
-void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, double * physCoords, double & physSize)
+template <typename T, unsigned int dim, typename F = double>
+void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, F * physCoords, F & physSize)
 {
-  const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
-  const double elemSz = double(1u << m_uiMaxDepth - octCoords.getLevel())
-                        / double(1u << m_uiMaxDepth);
+  const F domainScale = 1.0 / F(1u << m_uiMaxDepth);
+  const F elemSz = F(1u << m_uiMaxDepth - octCoords.getLevel())
+                        / F(1u << m_uiMaxDepth);
 
   // Compute physical coords.
   for (int d = 0; d < dim; d++)

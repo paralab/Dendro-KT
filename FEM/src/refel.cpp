@@ -12,6 +12,21 @@
 
 #include "refel.h"
 
+#include <map>
+
+const RefElement * memo_ref_element(int dim, int degree)
+{
+  // {dimension, degree} -> RefElement
+  static std::map<std::pair<int, int>, RefElement> memo;
+
+  auto it = memo.find({dim, degree});
+  if (it == memo.end())
+    it = memo.insert(it, {{dim, degree}, RefElement(dim, degree)});
+
+  return &it->second;
+}
+
+
 
 RefElement::RefElement()// default constructor
 {

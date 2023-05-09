@@ -15,6 +15,7 @@ inline void link_da_p2p_tests() {};
 #include "include/distTree.h"
 #include "include/oda.h"
 #include "include/parUtils.h"
+#include "include/tnUtils.h"
 
 #include "include/leaf_sets.hpp"
 #include "include/neighbors_to_nodes.hpp"
@@ -37,7 +38,8 @@ namespace ot
     struct PointSet
     {
       int degree = 0;
-      std::vector<TreeNode<uint32_t, dim>> points = {};
+      std::vector<TreeNode<uint32_t, dim>> ghosted_points = {};
+      std::vector<size_t> local_boundary_indices = {};
     };
 
     template <typename T, int dim>
@@ -63,6 +65,10 @@ namespace ot
         MPI_Comm global_comm() const;
         MPI_Comm active_comm() const;
 
+        size_t n_local_cells() const;
+        DendroLLU n_global_cells() const;
+        DendroLLU global_cell_offset() const;
+
         size_t n_local_nodes(int degree) const;
         DendroLLU n_global_nodes(int degree) const;
         DendroLLU global_node_offset(int degree) const;
@@ -71,12 +77,16 @@ namespace ot
         size_t local_nodes_begin(int degree) const;
         size_t local_nodes_end(int degree) const;
 
+        size_t n_local_cell_owned_nodes(int degree, size_t local_cell_id) const;
+
         PointSet<dim> point_set(int degree) const;
+
+        const par::RemoteMap & remote_cell_map() const;
 
         // The DA should not have changing state, except when the topology changes.
         // Asynchronous communication state and vector data should both be owned
         // by the caller, outside the DA.
-        par::RemoteMap remote_map(int degree) const;
+        par::RemoteMap remote_node_map(int degree) const;
 
       private:
         size_t n_pre_ghost_nodes(int degree) const;
@@ -106,6 +116,8 @@ namespace ot
         std::vector<uint8_t> m_ghosted_hyperfaces;
         std::vector<size_t> m_ghosted_hyperface_ranges;
 
+        std::set<size_t> m_ghosted_hyperface_bdry_ids;
+
         std::vector<TreeNode<uint32_t, dim>> m_ghosted_octants;
         /// std::vector<TreeNode<uint32_t, dim>> m_scatter_octants;
         /// std::vector<size_t> m_scatter_octant_ids;//referring to local ids
@@ -130,11 +142,18 @@ namespace ot
         SplitDimCount<DendroLLU, dim> m_prefix_sum = {};
         SplitDimCount<DendroLLU, dim> m_reduction = {};
         // ---------------------------------------------------------------------
+
+        // ---------------------------------------------------------------------
+        // Reductions on the number of cells.
+        // ---------------------------------------------------------------------
+        DendroLLU m_cell_prefix_sum = {};
+        DendroLLU m_cell_reduction = {};
+        // ---------------------------------------------------------------------
     };
 
 
     template <int dim>
-    constexpr int compute_npe(int degree) { return intPow(dim, degree); }
+    constexpr int compute_npe(int degree) { return intPow(degree + 1, dim); }
 
     template <int dim>
     const TreeNode<uint32_t, dim> & dummy_octant()
@@ -143,10 +162,14 @@ namespace ot
       return dummy;
     }
 
+
     template <int dim>
     struct WrapperData
     {
       PointSet<dim> points;
+
+      std::vector<DendroIntL> ghosted_global_ids;
+      std::vector<DendroIntL> ghosted_global_owning_elements;
 
       par::RemoteMap remote_map;
 
@@ -175,16 +198,16 @@ namespace ot
           MPI_Comm comm,
           unsigned int order,
           size_t, //ignored
-          double sfc_tol);
+          double);  // ignored
 
         DA_Wrapper(
           const DistTree<uint32_t, dim> &inDistTree,
           MPI_Comm comm,
           unsigned int order,
           size_t = {}, //ignored
-          double sfc_tol = 0.3);
+          double = {});  // ignored
 
-        inline size_t getLocalElementSz() const { return data()->n_local_elements(); }
+        inline size_t getLocalElementSz() const { return m_da.n_local_cells(); }
 
         inline size_t getLocalNodalSz() const { return m_da.n_local_nodes(degree()); }
 
@@ -202,20 +225,21 @@ namespace ot
 
         inline RankI getGlobalRankBegin() const { return m_da.global_node_offset(degree()); }
 
-        inline DendroIntL getGlobalElementSz() const { return data()->n_global_elements(); }
+        inline DendroIntL getGlobalElementSz() const { return m_da.n_global_cells(); }
 
-        inline DendroIntL getGlobalElementBegin() const { return m_da.global_element_offset(); }
+        inline DendroIntL getGlobalElementBegin() const { return m_da.global_cell_offset(); }
 
-        inline const std::vector<RankI> & getNodeLocalToGlobalMap();//ghosted //TODO
+        inline const std::vector<RankI> & getNodeLocalToGlobalMap() const;//ghosted
 
-        inline bool isActive() const { return data()->n_local_elements() > 0; }
+        inline bool isActive() const { return m_da.n_local_cells() > 0; }
 
-        size_t getTotalSendSz() const { return data()->sm.m_map.size(); }
-        size_t getTotalRecvSz() const { return data()->gm.m_totalCount - data()->gm.m_locCount; }
-        int getNumDestNeighbors() const { return data()->sm.m_sendProc.size(); }
-        int getNumSrcNeighbors()  const { return data()->gm.m_recvProc.size(); }
-        int getNumOutboundRanks() const { return data()->sm.m_sendProc.size(); }
-        int getNumInboundRanks()  const { return data()->gm.m_recvProc.size(); }
+        int getNumDestNeighbors() const { return data()->remote_map.n_active_bound_links(); }
+        int getNumSrcNeighbors()  const { return data()->remote_map.n_active_ghost_links(); }
+        int getNumOutboundRanks() const { return data()->remote_map.n_active_bound_links(); }
+        int getNumInboundRanks()  const { return data()->remote_map.n_active_ghost_links(); }
+        size_t getTotalSendSz() const { return data()->remote_map.local_binding_total(); }
+        size_t getTotalRecvSz() const { return data()->remote_map.total_count()
+                                             - data()->remote_map.local_count(); }
 
         inline unsigned int getNumNodesPerElement() const { return compute_npe<dim>(degree()); }
 
@@ -241,19 +265,19 @@ namespace ot
             par::mpi_comm_rank(m_da.active_comm()) : getRankAll();
         }
 
-        inline const TreeNode<uint32_t, dim> * getTNCoords() const;//TODO
+        inline const TreeNode<uint32_t, dim> * getTNCoords() const;
 
-        inline const DendroIntL * getNodeOwnerElements() const;//TODO
+        inline const DendroIntL * getNodeOwnerElements() const;
 
         inline const TreeNode<uint32_t, dim> * getTreePartFront() const { return &dummy_octant<dim>(); }
 
         inline const TreeNode<uint32_t, dim> * getTreePartBack() const { return &dummy_octant<dim>(); }
 
-        inline const RefElement * getReferenceElement() const;//TODO
+        inline const RefElement * getReferenceElement() const;
 
-        inline void getBoundaryNodeIndices(std::vector<size_t> &bdyIndex) const;//TODO
+        /// inline void getBoundaryNodeIndices(std::vector<size_t> &bdyIndex) const;
 
-        inline const std::vector<size_t> & getBoundaryNodeIndices() const;//TODO
+        inline const std::vector<size_t> & getBoundaryNodeIndices() const;
 
         /// inline const std::vector<int> & elements_per_node() const;//ghosted
 
@@ -382,10 +406,10 @@ namespace ot
             unsigned int dof = 1);
 
 
-        void computeTreeNodeOwnerProc(
-            const TreeNode<uint32_t, dim> * pNodes,
-            unsigned int n,
-            int* ownerRanks) const;
+        /// void computeTreeNodeOwnerProc(
+        ///     const TreeNode<uint32_t, dim> * pNodes,
+        ///     unsigned int n,
+        ///     int* ownerRanks) const;
 
 
 #ifdef BUILD_WITH_PETSC
@@ -402,6 +426,11 @@ namespace ot
 
 
         // -----------------------------------------------------------
+
+      public:
+        struct ConstNodeRange;
+        ConstNodeRange ghosted_nodes() const;
+        ConstNodeRange local_nodes() const;
 
       private:
         template <typename T, class Operation>
@@ -513,6 +542,20 @@ namespace ot
 
               INFO("max_depth=", max_depth, "  degree=", degree);
 
+              CHECK( new_da.getReferenceElement()->getOrder()
+                  == old_da.getReferenceElement()->getOrder() );
+              CHECK( new_da.getReferenceElement()->getDim()
+                  == old_da.getReferenceElement()->getDim() );
+              CHECK( new_da.getReferenceElement()->get1DNumInterpolationPoints()
+                  == old_da.getReferenceElement()->get1DNumInterpolationPoints() );
+
+              CHECK( new_da.getNumNodesPerElement() == old_da.getNumNodesPerElement() );
+              CHECK( new_da.getElementOrder() == old_da.getElementOrder() );
+
+              CHECK( new_da.getLocalElementSz() == old_da.getLocalElementSz() );
+              CHECK( new_da.getGlobalElementSz() == old_da.getGlobalElementSz() );
+              CHECK( new_da.getGlobalElementBegin() == old_da.getGlobalElementBegin() );
+
               CHECK( new_da.getLocalNodalSz() == old_da.getLocalNodalSz() );
               CHECK( new_da.getTotalNodalSz() == old_da.getTotalNodalSz() );
 
@@ -521,6 +564,9 @@ namespace ot
                 // ^ May fail for hilbert curve ordering; then, make other test.
 
               CHECK( new_da.getGlobalNodeSz() == old_da.getGlobalNodeSz() );
+              CHECK( new_da.getGlobalRankBegin() == old_da.getGlobalRankBegin() );
+
+              // future: compare some kind of matvec
             }
           }
         }
@@ -529,6 +575,106 @@ namespace ot
 
       _DestroyHcurve();
     }
+
+    DOCTEST_MPI_TEST_CASE("Self consistency on small adaptive grids", 3)
+    {
+      dbg::wait_for_debugger(test_comm);
+      constexpr int dim = 2;
+      _InitializeHcurve(dim);
+      const double sfc_tol = 0.3;
+      MPI_Comm comm = test_comm;
+      const bool is_root = par::mpi_comm_rank(comm) == 0;
+
+      enum Pattern { central, edges };
+      for (Pattern grid_pattern : {central, edges})
+      {
+        INFO("grid_pattern=", std::string(grid_pattern == central? "central" : "edges"));
+        std::vector<TreeNode<uint32_t, dim>> grid;
+        const int max_depth = 3;
+        if (is_root and grid_pattern == central)
+          grid = grid_pattern_central<dim>(max_depth);
+        else if (is_root and grid_pattern == edges)
+          grid = grid_pattern_edges<dim>(max_depth);
+        SFC_Tree<uint32_t, dim>::distTreeSort(grid, sfc_tol, comm);
+        DistTree<uint32_t, dim> dtree(grid, comm);
+
+        for (int degree: {1, 2, 3})
+        {
+          INFO("max_depth=", max_depth, "  degree=", degree);
+          DA_P2P<dim> new_da(dtree, comm, degree);
+
+          // getNodeLocalToGlobalMap()
+          {
+            const std::vector<DendroIntL> &ghosted_to_global =
+                new_da.getNodeLocalToGlobalMap();
+            CHECK( ghosted_to_global.size() == new_da.getTotalNodalSz() );
+            CHECK( std::is_sorted(ghosted_to_global.begin(),
+                                  ghosted_to_global.end()) );
+          }
+
+          // ghost exchange properties
+          {
+            const size_t total_send_sz = new_da.getTotalSendSz();
+            const size_t total_recv_sz = new_da.getTotalRecvSz();
+            const int n_dest_neighbors = new_da.getNumDestNeighbors();
+            const int n_src_neighbors  = new_da.getNumSrcNeighbors();
+            const int n_outbound_ranks = new_da.getNumOutboundRanks();
+            const int n_inbound_ranks  = new_da.getNumInboundRanks();
+
+            CHECK( n_dest_neighbors == n_outbound_ranks );
+            CHECK( n_src_neighbors == n_inbound_ranks );
+            CHECK( par::mpi_sum(n_outbound_ranks, comm)
+                == par::mpi_sum(n_inbound_ranks, comm) );
+            CHECK( par::mpi_sum(total_send_sz, comm)
+                == par::mpi_sum(total_recv_sz, comm) );
+          }
+
+          // getNodeOwnerElements()
+          {
+            const DendroIntL *node_owners = new_da.getNodeOwnerElements();
+            const size_t n_nodes = new_da.getTotalNodalSz();
+            REQUIRE( node_owners != nullptr );
+            CHECK( std::is_sorted(node_owners, node_owners + n_nodes) );
+          }
+
+          // getTNCoords()
+          {
+            const TreeNode<uint32_t, dim> *nodes = new_da.getTNCoords();
+            const size_t n_nodes = new_da.getTotalNodalSz();
+            const auto leaf_set = vec_leaf_list_view<dim>(dtree.getTreePartFiltered());
+            REQUIRE( nodes != nullptr );
+            for (size_t i = 0; i < n_nodes; ++i)
+            {
+              const TreeNode<uint32_t, dim> tiny_cell(nodes[i].coords(), m_uiMaxDepth);
+              CHECK( border_or_overlap_any<dim>(tiny_cell, leaf_set) );
+            }
+          }
+
+          // getBoundaryNodeIndices()
+          {
+            const TreeNode<uint32_t, dim> *nodes = new_da.getTNCoords();
+            REQUIRE( nodes != nullptr );
+            const TreeNode<uint32_t, dim> *local_nodes =
+                nodes + new_da.getLocalNodeBegin();
+
+            const std::vector<size_t> local_boundary_node_indices =
+                new_da.getBoundaryNodeIndices();
+            const size_t local_size = new_da.getLocalNodalSz();
+            CHECK( local_boundary_node_indices.size() <= local_size );
+            CHECK( par::mpi_sum(local_boundary_node_indices.size(), comm) > 0 );
+            for (size_t x: local_boundary_node_indices)
+            {
+              CHECK( x < local_size );
+              CHECK( local_nodes[x].getIsOnTreeBdry() );
+            }
+          }
+        }
+      }
+
+      _DestroyHcurve();
+    }
+
+
 
     DOCTEST_MPI_TEST_CASE("Consistent ghost exchange", 3)
     {
@@ -743,9 +889,13 @@ namespace ot
       }
       assert(active_comm == m_active_comm);
 
-      // TODO check whether all defaults are good from here.
       if (not active)
+      {
+        //future: make the ranges arrays start with {0} and append range_end.
+        // Then the default initialization can apply to both active and inactive.
+        m_ghosted_hyperface_ranges = { 0 };
         return;
+      }
 
       // Rest of algorithm discovers and assigns ownership of octant hyperfaces.
 
@@ -897,6 +1047,7 @@ namespace ot
 
       std::vector<uint8_t> local_hyperfaces;
       std::vector<size_t> local_hyperface_ranges;
+      std::vector<size_t> local_boundary_hyperfaces;
 
       // Local hyperfaces: Emit faces "owned" (with "split" status):
       //   neighbor_sets(local_octants ∪ (∪.p recv_octants[p]))@local_octants
@@ -912,6 +1063,7 @@ namespace ot
         const auto &scope = *it;
         const size_t leaf_index = scope.query_idx;
         const Octant key = scope.query_key;
+        const int corner = key.getMortonIndex();
         Neighborhood<dim> self_nbh = scope.self_neighborhood;
         Neighborhood<dim> parent_nbh = scope.parent_neighborhood;
         Neighborhood<dim> children_nbh = scope.children_neighborhood;
@@ -924,8 +1076,13 @@ namespace ot
         assert(self_nbh.center_occupied());
 
         const auto priority = priority_neighbors<dim>();
-        const auto owned = ~((self_nbh & priority) | parent_nbh).spread_out();
-        const auto split = children_nbh.spread_out();
+        const auto owned    = ~((self_nbh & priority) | parent_nbh).spread_out();
+        const auto split    = children_nbh.spread_out();
+
+        const Neighborhood<dim> covered =
+            parent_nbh.spread_out_directed(~corner) | self_nbh | children_nbh;
+        const Neighborhood<dim> boundary = (~covered).spread_out();
+        assert(not (owned & boundary).any() or key.getIsOnTreeBdry());
 
         local_hyperface_ranges.push_back(count_local_hyperfaces);
 
@@ -947,9 +1104,11 @@ namespace ot
             for (int d = 0, stride = 1; d < dim; ++d, stride *= 4)
               hyperface_coord += idxs[d] * stride;
             SplitHyperface4D hyperface = Hyperface4D(hyperface_coord)
-                .mirrored(key.getMortonIndex())
+                .mirrored(corner)
                 .encode_split(split.test_flat(hyperface_idx));
             local_hyperfaces.push_back(hyperface.encoding());
+            if (boundary.test_flat(hyperface_idx))
+              local_boundary_hyperfaces.push_back(count_local_hyperfaces);
             ++count_local_hyperfaces;
           }
         });
@@ -1052,6 +1211,8 @@ namespace ot
       std::vector<uint8_t> post_ghost_hyperfaces;
       std::vector<size_t> pre_ghost_hyperface_ranges;
       std::vector<size_t> post_ghost_hyperface_ranges;
+      std::vector<size_t> ghosted_boundary_hyperfaces;
+      size_t count_pre_ghost_boundary_hyperfaces = 0;
       std::vector<Octant> ghosted_octants;
 
       // Gathermap[p]: Emit faces "owned" and "shared" (with "split" status):
@@ -1086,13 +1247,19 @@ namespace ot
           const auto border_scope = *border_it;
           const auto send_scope = *send_it;
           const Octant key = border_scope.query_key;
+          const int corner = key.getMortonIndex();
           assert(key == send_scope.query_key);
 
           assert(border_scope.self_neighborhood.center_occupied());
+
+          const Neighborhood<dim> self_nbh = border_scope.self_neighborhood;
+          const Neighborhood<dim> parent_nbh = border_scope.parent_neighborhood;
+          const Neighborhood<dim> children_nbh = border_scope.children_neighborhood;
+
           const auto priority = priority_neighbors<dim>();
-          const auto owned = ~((border_scope.self_neighborhood & priority)
-                               | border_scope.parent_neighborhood).spread_out();
-          const auto split = border_scope.children_neighborhood.spread_out();
+          const auto owned    = ~((self_nbh & priority) | parent_nbh).spread_out();
+          const auto split    = children_nbh.spread_out();
+
           const auto shared = (send_scope.self_neighborhood
                                | send_scope.children_neighborhood).spread_out();
           const auto emit = owned & shared;
@@ -1100,6 +1267,11 @@ namespace ot
           // Only list ghosted octants where there are ghosted faces.
           if (emit.none())
             continue;
+
+          const Neighborhood<dim> covered =
+              parent_nbh.spread_out_directed(~corner) | self_nbh | children_nbh;
+          const Neighborhood<dim> boundary = (~covered).spread_out();
+          assert(not (emit & boundary).any() or key.getIsOnTreeBdry());
 
           hyperface_ranges.push_back(initial_count + hyperfaces.size());
           ghosted_octants.push_back(key);
@@ -1127,9 +1299,11 @@ namespace ot
               for (int d = 0, stride = 1; d < dim; ++d, stride *= 4)  // 2b/face
                 hyperface_coord += idxs[d] * stride;
               SplitHyperface4D hyperface = Hyperface4D(hyperface_coord)
-                  .mirrored(key.getMortonIndex())
+                  .mirrored(corner)
                   .encode_split(split.test_flat(hyperface_idx));
               hyperfaces.push_back(hyperface.encoding());
+              if (boundary.test_flat(hyperface_idx))
+                ghosted_boundary_hyperfaces.push_back(initial_count + hyperfaces.size());
               ++count_hyperfaces;
             }
           });
@@ -1152,6 +1326,9 @@ namespace ot
       post_ghost_hyperface_ranges.push_back( pre_ghost_hyperfaces.size()
                                            + local_hyperfaces.size()
                                            + post_ghost_hyperfaces.size());
+
+      assert(pre_ghost_octants == m_cell_map.local_begin());
+      assert(local_octants.size() == m_cell_map.local_count());
 
       ghosted_octants.insert(ghosted_octants.begin() + pre_ghost_octants,
           local_octants.cbegin(), local_octants.cend());
@@ -1178,6 +1355,17 @@ namespace ot
       ghosted_hyperface_ranges.insert(ghosted_hyperface_ranges.end(),
           post_ghost_hyperface_ranges.cbegin(), post_ghost_hyperface_ranges.cend());
       // Keep end of last range in post_ghost_hyperface ranges.
+
+      // ghosted_hyperface_bdry_ids
+      std::set<size_t> ghosted_hyperface_bdry_ids;
+      for (auto &r: local_boundary_hyperfaces)
+        r += pre_ghost_hyperfaces.size();
+      ghosted_hyperface_bdry_ids.insert(ghosted_boundary_hyperfaces.cbegin(),
+                                        ghosted_boundary_hyperfaces.cend());
+      ghosted_hyperface_bdry_ids.insert(local_boundary_hyperfaces.cbegin(),
+                                        local_boundary_hyperfaces.cend());
+      m_ghosted_hyperface_bdry_ids = std::move(ghosted_hyperface_bdry_ids);
+
 
       SplitDimCount<size_t, dim> hf_count_local = {};
       SplitDimCount<size_t, dim> hf_count_pre_ghost = {};
@@ -1240,12 +1428,17 @@ namespace ot
           hf_count_local.m_counts.cbegin(),
           hf_count_local.m_counts.cend(),
           combined.m_counts.begin());
-      par::Mpi_Scan(
-          combined.m_counts.data(), m_prefix_sum.m_counts.data(),
+      par::Mpi_Exscan(
+          combined.m_counts.data(), m_prefix_sum.m_counts.data(), //initially 0
           combined.m_counts.size(), MPI_SUM, active_comm);
       par::Mpi_Allreduce(
           combined.m_counts.data(), m_reduction.m_counts.data(),
           combined.m_counts.size(), MPI_SUM, active_comm);
+
+      // Mpi scan and reduce cell count.
+      DendroLLU cell_count = local_octants.size();
+      par::Mpi_Exscan(&cell_count, &m_cell_prefix_sum, 1, MPI_SUM, active_comm);
+      par::Mpi_Allreduce(&cell_count, &m_cell_reduction, 1, MPI_SUM, active_comm);
 
       // Wait for all outstanding requests.
       par::Mpi_Waitall(n_remote_parts, (*send_size_requests).data());
@@ -1274,6 +1467,28 @@ namespace ot
     MPI_Comm DA<dim>::active_comm() const
     {
       return m_active_comm;
+    }
+
+
+    // DA::n_local_cells()
+    template <int dim>
+    size_t DA<dim>::n_local_cells() const
+    {
+      return m_cell_map.local_count();
+    }
+
+    // DA::n_global_cells()
+    template <int dim>
+    DendroLLU DA<dim>::n_global_cells() const
+    {
+      return m_cell_reduction;
+    }
+
+    // DA::global_cell_offset()
+    template <int dim>
+    DendroLLU DA<dim>::global_cell_offset() const
+    {
+      return m_cell_prefix_sum;
     }
 
     // DA::n_local_nodes()
@@ -1326,20 +1541,150 @@ namespace ot
       return n_pre_ghost_nodes(degree) + n_local_nodes(degree);
     }
 
+    // DA::n_local_cell_owned_nodes()
+    template <int dim>
+    size_t DA<dim>::n_local_cell_owned_nodes(int degree, size_t local_cell_id) const
+    {
+      const size_t ghosted_cell_id = m_cell_map.local_begin() + local_cell_id;
+      const size_t face_begin = m_ghosted_hyperface_ranges[ghosted_cell_id];
+      const size_t face_end   = m_ghosted_hyperface_ranges[ghosted_cell_id + 1];
+      SplitDimCount<size_t, dim> owned_faces = {};
+      for (size_t i = face_begin; i < face_end; ++i)
+      {
+        const SplitHyperface4D hf = {m_ghosted_hyperfaces[i]};
+        size_t *count = (hf.is_split()?
+            owned_faces.split() : owned_faces.unsplit());
+        ++count[hf.decode().dimension()];  // independent of child number.
+      }
+
+      // future: option for extra nodes on split faces.
+      if (degree == 1)
+        return owned_faces.unsplit()[0] + owned_faces.split()[0];
+      else
+        return dimension_sum(owned_faces.unsplit(), degree)
+              + dimension_sum(owned_faces.split(), degree);
+    }
+
     // DA::point_set()
     template <int dim>
     PointSet<dim> DA<dim>::point_set(int degree) const
     {
-      std::vector<TreeNode<uint32_t, dim>> points;
-#warning "Not implemented: DA::point_set()"
-      //TODO
+      const size_t total_nodes = this->n_total_nodes(degree);
+      const size_t local_nodes = this->n_local_nodes(degree);
 
-      return { degree, std::move(points) };
+      std::vector<TreeNode<uint32_t, dim>> ghosted_points;
+      std::vector<size_t> local_boundary_indices;
+      ghosted_points.reserve(total_nodes);
+      local_boundary_indices.reserve(
+          2 * dim * std::pow(local_nodes, double(dim - 1)/dim));
+
+      const size_t ghosted_octants = this->remote_cell_map().total_count();
+      const size_t local_cell_begin = this->remote_cell_map().local_begin();
+      const size_t local_cell_end = this->remote_cell_map().local_end();
+      const size_t local_nodes_begin = this->local_nodes_begin(degree);
+      for (size_t oct = 0; oct < ghosted_octants; ++oct)
+      {
+        const bool owned_octant =
+            (local_cell_begin <= oct and oct < local_cell_end);
+
+        // Octant and owned face range.
+        const TreeNode<uint32_t, dim> octant = m_ghosted_octants[oct];
+        const size_t face_begin = m_ghosted_hyperface_ranges[oct];
+        const size_t face_end   = m_ghosted_hyperface_ranges[oct + 1];
+
+        // Write out nodes owned by this octant.
+        for (size_t i = face_begin; i < face_end; ++i)
+        {
+          const SplitHyperface4D encoded = {m_ghosted_hyperfaces[i]};
+          const bool split = encoded.is_split();
+          const Hyperface4D face =
+              encoded.decode().mirrored(octant.getMortonIndex());
+          const int dimension = face.dimension();
+          const size_t internal_nodes = detail::nodes_internal_to_face(degree, dimension);
+
+          const bool is_boundary_face =
+              m_ghosted_hyperface_bdry_ids.find(i)
+              != m_ghosted_hyperface_bdry_ids.end();
+          const bool local_boundary_face = owned_octant and is_boundary_face;
+
+          // Prepare ranges of nested for loop. Restricted axes on the face
+          // are mapped to single iterations on outermost loop levels.
+          int axis[dim];
+          int begin[dim];
+          int end[dim];
+          int free = 0;
+          int fixed = dim - 1;
+          for (int d = 0; d < dim; ++d)
+          {
+            const int coordinate = face.coordinate(d);
+            if (coordinate == 1)
+            {
+              axis[d] = free;
+              begin[free] = 1;
+              end[free] = degree;
+              ++free;
+            }
+            else
+            {
+              axis[d] = fixed;
+              const int fixed_value = (coordinate == 0 ? 0 : degree);
+              begin[fixed] = fixed_value;
+              end[fixed] = fixed_value + 1;
+              --fixed;
+            }
+          }
+
+          // Map numerators (node indices) and denominator (degree) to coordinate.
+          const auto create_node = [is_boundary_face](
+              TreeNode<uint32_t, dim> octant, std::array<int, dim> idxs, int degree)
+            -> TreeNode<uint32_t, dim>
+          {
+            periodic::PCoord<uint32_t, dim> node_pt = {};
+            const uint32_t side = octant.range().side();
+            for (int d = 0; d < dim; ++d)
+              node_pt.coord(d, side * idxs[d] / degree);
+            node_pt += octant.range().min();
+            TreeNode<uint32_t, dim> result(node_pt, octant.getLevel());
+            result.setIsOnTreeBdry(is_boundary_face);
+            return result;
+          };
+
+          // dim-nested for loop.
+          tmp::nested_for_rect<dim>(begin, end, [&](auto...idx_pack)
+          {
+            if (local_boundary_face)
+            {
+              assert(ghosted_points.size() >= local_nodes_begin);
+              local_boundary_indices.push_back(
+                  ghosted_points.size() - local_nodes_begin);
+            }
+
+            std::array<int, dim> loop_idxs = {idx_pack...};  // 0..degree per axis.
+            std::array<int, dim> idxs;
+            for (int d = 0; d < dim; ++d)
+              idxs[d] = loop_idxs[axis[d]];
+            ghosted_points.push_back(create_node(octant, idxs, degree));
+          });
+
+          //future: option for extra nodes on split faces
+        }
+      }
+
+      assert(ghosted_points.size() == total_nodes);
+
+      return { degree, std::move(ghosted_points), std::move(local_boundary_indices) };
     }
 
-    // DA::remote_map()
+    // DA::remote_cell_map()
     template <int dim>
-    par::RemoteMap DA<dim>::remote_map(int degree) const
+    const par::RemoteMap & DA<dim>::remote_cell_map() const
+    {
+      return m_cell_map;
+    }
+
+    // DA::remote_node_map()
+    template <int dim>
+    par::RemoteMap DA<dim>::remote_node_map(int degree) const
     {
       // Derive a new remote map from the base map: lookup faces, apply degree.
       const par::RemoteMap &map = m_face_map;
@@ -1423,15 +1768,71 @@ namespace ot
         MPI_Comm comm,
         unsigned int order,
         size_t, //ignored
-        double sfc_tol)
+        double) //ignored
     :
       m_da(inDistTree)
     {
       const int degree = order;
+
+      /// // Cell map.
+      /// par::RemoteMap cell_map = m_da.remote_cell_map();
+      /// const size_t total_cells = cell_map.total_count();
+      /// const size_t local_cells = cell_map.local_count();
+      /// const size_t local_cell_begin = cell_map.local_begin();
+      /// const size_t local_cell_end = cell_map.local_end();
+      /// // Cell ids at cells.
+      /// std::vector<DendroIntL> global_cell_ids(cell_map.total_count());
+      /// std::iota(&global_cell_ids[local_cell_begin],
+      ///           &global_cell_ids[local_cell_end],
+      ///           m_da.global_cell_offset());
+      /// par::GhostPullRequest pull_cell_ids =
+      ///     ghost_pull(comm, global_cell_ids.data(), cell_map, 1);
+
+      // Node map.
+      par::RemoteMap node_map = m_da.remote_node_map(degree);
+      const size_t total_nodes = m_da.n_total_nodes(degree);
+      const size_t local_nodes = m_da.n_local_nodes(degree);
+      const size_t local_node_begin = m_da.local_nodes_begin(degree);
+      const size_t local_node_end = m_da.local_nodes_end(degree);
+
+      // Node ids at nodes.
+      std::vector<DendroIntL> global_ids(total_nodes);
+      std::iota(&global_ids[local_node_begin],
+                &global_ids[local_node_end],
+                m_da.global_node_offset(degree));
+      par::GhostPullRequest pull_ids =
+          par::ghost_pull(comm, global_ids.data(), node_map, 1);
+
+      // Cell ids at nodes.
+      const DendroIntL global_cell_offset = m_da.global_cell_offset();
+      const size_t local_cells = m_da.n_local_cells();
+      std::vector<DendroIntL> global_owner_ids;
+      global_owner_ids.reserve(total_nodes);
+      global_owner_ids.resize(local_node_begin);
+      for (size_t i = 0; i < local_cells; ++i)
+      {
+        const size_t cell_owned_nodes = m_da.n_local_cell_owned_nodes(degree, i);
+        global_owner_ids.insert(
+            global_owner_ids.end(), cell_owned_nodes, i + global_cell_offset);
+      }
+      global_owner_ids.resize(total_nodes);
+      par::GhostPullRequest pull_owners =
+          par::ghost_pull(comm, global_owner_ids.data(), node_map, 1);
+
+      // Point set.
+      PointSet<dim> points = m_da.point_set(degree);
+
+      // Wait for ghost exchanges to complete.
+      pull_ids.wait_all();
+      pull_owners.wait_all();
+
+      // Finish initializing data class members.
       m_data = std::unique_ptr<WrapperData<dim>>(new WrapperData<dim>({
-        m_da.point_set(degree),
-        m_da.remote_map(degree),
-        {}, {}
+        std::move(points),
+        std::move(global_ids),
+        std::move(global_owner_ids),
+        std::move(node_map),
+        {}, {}  // empty request containers
       }));
     }
 
@@ -1442,9 +1843,9 @@ namespace ot
       MPI_Comm comm,
       unsigned int order,
       size_t, //ignored
-      double sfc_tol)
+      double) //ignored
     :
-      DA_Wrapper<dim>(inDistTree, 0, comm, order, {}, sfc_tol)  // delegate
+      DA_Wrapper<dim>(inDistTree, 0, comm, order, {}, {})  // delegate
     {}
 
 
@@ -1678,6 +2079,271 @@ namespace ot
         payload_req->wait_on_send();
       }
     }
+
+
+    //future: Create nodes on the fly, instead of using pointer to array.
+
+    // struct DA_Wrapper::ConstNodeRange
+    template <int dim>
+    struct DA_Wrapper<dim>::ConstNodeRange
+    {
+      const TreeNode<uint32_t, dim> *begin() const { return m_begin; }
+      const TreeNode<uint32_t, dim> *end()   const { return m_end; }
+      const TreeNode<uint32_t, dim> *m_begin;
+      const TreeNode<uint32_t, dim> *m_end;
+    };
+
+    // DA_Wrapper<dim>::ghosted_nodes()
+    template <int dim>
+    typename DA_Wrapper<dim>::ConstNodeRange DA_Wrapper<dim>::ghosted_nodes() const
+    {
+      const TreeNode<uint32_t, dim> *nodes = this->getTNCoords();
+      return { nodes, nodes + this->getTotalNodalSz() };
+    }
+
+    // DA_Wrapper<dim>::local_nodes()
+    template <int dim>
+    typename DA_Wrapper<dim>::ConstNodeRange DA_Wrapper<dim>::local_nodes() const
+    {
+      const TreeNode<uint32_t, dim> *nodes = this->getTNCoords();
+      return { nodes + this->getLocalNodeBegin(),
+               nodes + this->getLocalNodeEnd() };
+    }
+
+
+    // DA_Wrapper<dim>::getNodeLocalToGlobalMap()
+    template <int dim>
+    const std::vector<RankI> & DA_Wrapper<dim>::getNodeLocalToGlobalMap() const
+    {
+      return data()->ghosted_global_ids;
+    }
+
+    // DA_Wrapper<dim>::getTNCoords()
+    template <int dim>
+    const TreeNode<uint32_t, dim> * DA_Wrapper<dim>::getTNCoords() const
+    {
+      return data()->points.ghosted_points.data();
+    }
+
+    // DA_Wrapper<dim>::getNodeOwnerElements()
+    template <int dim>
+    const DendroIntL * DA_Wrapper<dim>::getNodeOwnerElements() const
+    {
+      return data()->ghosted_global_owning_elements.data();
+    }
+
+    // DA_Wrapper<dim>::getReferenceElement()
+    template <int dim>
+    const RefElement * DA_Wrapper<dim>::getReferenceElement() const
+    {
+      // Memoization avoids re-constructing RefElement for every DA.
+      return memo_ref_element(dim, degree());
+    }
+
+    /// // DA_Wrapper<dim>::getBoundaryNodeIndices()
+    /// template <int dim>
+    /// void DA_Wrapper<dim>::getBoundaryNodeIndices(std::vector<size_t> &bdyIndex) const
+    /// {
+    ///   bdyIndex = this->getBoundaryNodeIndices();  // copy
+    /// }
+
+    // DA_Wrapper<dim>::getBoundaryNodeIndices()
+    template <int dim>
+    const std::vector<size_t> & DA_Wrapper<dim>::getBoundaryNodeIndices() const
+    {
+      return data()->points.local_boundary_indices;
+    }
+
+
+    // DA_Wrapper<dim>::nodalVecToGhostedNodal()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::nodalVecToGhostedNodal(
+        const T *in,
+        T *&out,
+        bool isAllocated,
+        unsigned int dof) const
+    {
+      if (not this->isActive())
+        return;
+
+      if (not isAllocated)
+        this->createVector<T>(out, false, true, dof);
+
+      // Assumes layout [abc][abc][...], so just need single shift.
+      const size_t local_size = this->getLocalNodalSz();
+      const size_t local_begin = this->getLocalNodeBegin();
+      std::copy_n(in, dof * local_size, out + dof * local_begin);
+    }
+
+    // DA_Wrapper<dim>::ghostedNodalToNodalVec()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::ghostedNodalToNodalVec(
+        const T *gVec,
+        T *&local,
+        bool isAllocated,
+        unsigned int dof) const
+    {
+      if (not this->isActive())
+        return;
+
+      if (not isAllocated)
+        this->createVector(local, false, false, dof);
+
+      // Assumes layout [abc][abc][...], so just need single shift.
+      const size_t local_size = this->getLocalNodalSz();
+      const size_t local_begin = this->getLocalNodeBegin();
+      std::copy_n(gVec + dof * local_begin, dof * local_size, local);
+    }
+
+    // DA_Wrapper<dim>::nodalVecToGhostedNodal()
+    template <int dim>
+    template<typename T>
+    void DA_Wrapper<dim>::nodalVecToGhostedNodal(
+        const std::vector<T> &in,
+        std::vector<T> &out,
+        bool isAllocated,
+        unsigned int dof) const
+    {
+      if (not this->isActive())
+        return;
+
+      if (not isAllocated)
+        this->createVector<T>(out, false, true, dof);
+
+      this->nodalVecToGhostedNodal(
+          in.data(), out.data(), true, dof);
+    }
+
+    // DA_Wrapper<dim>::ghostedNodalToNodalVec()
+    template <int dim>
+    template<typename T>
+    void DA_Wrapper<dim>::ghostedNodalToNodalVec(
+        const std::vector<T> gVec,
+        std::vector<T> &local,
+        bool isAllocated,
+        unsigned int dof) const
+    {
+      if (not this->isActive())
+        return;
+
+      if (not isAllocated)
+        this->createVector(local, false, false, dof);
+
+      this->ghostedNodalToNodalVec(gVec.data(), local.data(), true, dof);
+    }
+
+    // DA_Wrapper<dim>::setVectorByFunction()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::setVectorByFunction(
+        T *dest,
+        std::function<void( const T *, T *)> func,
+        bool isElemental,
+        bool isGhosted,
+        unsigned int dof) const
+    {
+      if (isElemental)
+      {
+        throw std::logic_error("Elemental version not implemented!");
+      }
+
+      constexpr int maximum_dimension = 4;
+      std::array<T, maximum_dimension> point = {};
+      const int degree = this->degree();
+
+      auto nodes = (isGhosted? this->ghosted_nodes() : this->local_nodes());
+      for (const TreeNode<uint32_t, dim> &node: nodes)
+      {
+        treeNode2Physical(node, degree, point.data());
+        func(point.data(), dest);
+        dest += dof;
+      }
+    }
+
+    // DA_Wrapper<dim>::setVectorByScalar()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::setVectorByScalar(
+        T *dest,
+        const T *value,
+        bool isElemental,
+        bool isGhosted,
+        unsigned int dof,
+        unsigned int initDof) const
+    {
+      if (isElemental)
+      {
+        throw std::logic_error("Elemental version not implemented!");
+      }
+
+      const size_t n_nodes = (isGhosted? this->getTotalNodalSz()
+                                       : this->getLocalNodalSz());
+      if (initDof == 1)
+      {
+        const T scalar_value = *value;
+        for (size_t i = 0; i < n_nodes; ++i)
+        {
+          dest[0] = scalar_value;
+          dest += dof;
+        }
+      }
+      else
+      {
+        for (size_t i = 0; i < n_nodes; ++i)
+        {
+          for (int var = 0; var < initDof; ++var)
+            dest[var] = value[var];
+          dest += dof;
+        }
+      }
+    }
+
+    // DA_Wrapper<dim>::vecTopvtu()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::vecTopvtu(
+        T *local,
+        const char *fPrefix,
+        char **nodalVarNames,
+        bool isElemental,
+        bool isGhosted,
+        unsigned int dof)
+    {
+      throw std::logic_error("Not implemented");
+    }
+
+    /// // DA_Wrapper<dim>::computeTreeNodeOwnerProc()
+    /// template <int dim>
+    /// void DA_Wrapper<dim>::computeTreeNodeOwnerProc(
+    ///     const TreeNode<uint32_t, dim> * pNodes,
+    ///     unsigned int n,
+    ///     int* ownerRanks) const
+    /// {
+    ///   // This seems to have been requested, for IBM.
+    ///   // Possibly assumptions about it are broken.
+    ///   // Ideally remove this until wew know what it's for.
+    ///   throw std::logic_error("Not implemented");
+    /// }
+
+
+    //future: these should go in a module that depends on Petsc and this one.
+#ifdef BUILD_WITH_PETSC
+        /// PetscErrorCode petscCreateVector(Vec &local, bool isElemental, bool isGhosted, unsigned int dof) const;
+        /// PetscErrorCode createMatrix(Mat &M, MatType mtype, unsigned int dof = 1) const;
+
+        /// template <typename T>
+        /// void petscSetVectorByFunction(Vec &local, std::function<void(const T *, T *)> func, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
+
+        /// void petscVecTopvtu(const Vec &local, const char *fPrefix, char **nodalVarNames = NULL, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1);
+
+        /// PetscErrorCode petscDestroyVec(Vec & vec) const;
+#endif
+
+
+
+
 
 
 
