@@ -13,6 +13,8 @@
 
 #include "test/octree/gaussian.hpp"
 
+#include "test_doctests/constructors.hpp"
+
 #include <vector>
 
 
@@ -34,14 +36,7 @@ struct SfcTableScope
   ~SfcTableScope() { _DestroyHcurve(); }
 };
 
-template <class Class>
-struct Constructors       // Callable object wrapping constructor overloads
-{
-  template <typename ... T>
-  Class operator()(T && ... ts) const {
-    return Class(std::forward<T>(ts)...);
-  }
-};
+using test::Constructors;
 
 
 TEST_CASE("Insertion sort == Tree sort with 1000 normally-distributed octants")
