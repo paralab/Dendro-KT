@@ -111,11 +111,11 @@ namespace par
   class RemoteStage
   {
     public:
-      RemoteStage(const RemoteMap &map, int ndofs);
+      inline RemoteStage(const RemoteMap &map, int ndofs);
 
-      const T * staged_data() const;
+      inline const T * staged_data() const;
 
-      size_t size() const;
+      inline size_t size() const;
 
       // ghost_push() ensures same pointer to staged data in GhostPushRequest.
       template <class Operation>
@@ -158,8 +158,8 @@ namespace par
     public:
       // Indexing: Local is between pre-links and post-links.
       // [0 .. n_pre_links) {n_pre_links} n_pre_links+1+[0 .. n_post_links)
-      int local_index()        const { return n_pre_links; }
-      int link_index(int link) const { return (link >= n_pre_links) + link; }
+      inline int local_index()        const { return n_pre_links; }
+      inline int link_index(int link) const { return (link >= n_pre_links) + link; }
 
     public:
       int this_mpi_rank;
@@ -200,8 +200,8 @@ namespace par
 
     private:
       friend class RemoteMapBuilder;
-      RemoteMap(RemoteMapData internals);
-      const RemoteMapData & data() const;
+      inline RemoteMap(RemoteMapData internals);
+      inline const RemoteMapData & data() const;
       RemoteMapData m_data;
   };
 
