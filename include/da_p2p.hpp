@@ -385,12 +385,25 @@ namespace ot
             unsigned int dof = 1) const;
 
         template <typename T>
+        void nodalVecToGhostedNodal(
+            const T *in,
+            T * &&out,     //rvalue ref
+            bool isAllocated,
+            unsigned int dof = 1) const;
+
+        template <typename T>
         void ghostedNodalToNodalVec(
             const T *gVec,
             T *&local,
             bool isAllocated = false,
             unsigned int dof = 1) const;
 
+        template <typename T>
+        void ghostedNodalToNodalVec(
+                const T *gVec,
+                T *&&local,           //rvalue ref
+                bool isAllocated,
+                unsigned int dof = 1) const;
 
         template<typename T>
         void nodalVecToGhostedNodal(
@@ -438,20 +451,6 @@ namespace ot
         ///     unsigned int n,
         ///     int* ownerRanks) const;
 
-
-#ifdef BUILD_WITH_PETSC
-        /// PetscErrorCode petscCreateVector(Vec &local, bool isElemental, bool isGhosted, unsigned int dof) const;
-        /// PetscErrorCode createMatrix(Mat &M, MatType mtype, unsigned int dof = 1) const;
-
-        /// template <typename T>
-        /// void petscSetVectorByFunction(Vec &local, std::function<void(const T *, T *)> func, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
-
-        /// void petscVecTopvtu(const Vec &local, const char *fPrefix, char **nodalVarNames = NULL, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1);
-
-        /// PetscErrorCode petscDestroyVec(Vec & vec) const;
-#endif
-
-
         // -----------------------------------------------------------
 
       public:
@@ -492,16 +491,25 @@ namespace ot
 
 
   template <typename DA_Type, typename T>
-  ConstRange<T> ghost_range(const DA_Type &da, int ndofs, const T *a);
+  inline ConstRange<T> ghost_range(const DA_Type &da, int ndofs, const T *a);
 
   template <typename DA_Type, typename T>
-  ConstRange<T> local_range(const DA_Type &da, int ndofs, const T *a);
+  inline ConstRange<T> local_range(const DA_Type &da, int ndofs, const T *a);
 
   template <typename DA_Type, typename T>
-  Range<T> ghost_range(const DA_Type &da, int ndofs, T *a);
+  inline Range<T> ghost_range(const DA_Type &da, int ndofs, T *a);
 
   template <typename DA_Type, typename T>
-  Range<T> local_range(const DA_Type &da, int ndofs, T *a);
+  inline Range<T> local_range(const DA_Type &da, int ndofs, T *a);
+
+
+  template <typename DA_Type, unsigned dim>
+  inline std::vector<DA_Type> multiLevelDA(
+      const DistTree<uint32_t, dim> &dtree,
+      MPI_Comm comm,
+      unsigned order,
+      size_t grain = 100,
+      double sfc_tol = 0.3);
 
 
   template <int dim>
@@ -1932,6 +1940,22 @@ namespace ot
                                    : this->getLocalNodalSz()));
     }
 
+    // DA_Wrapper::createVector()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::createVector(
+         T* &local,
+         bool isElemental,
+         bool isGhosted,
+         unsigned int dof) const
+    {
+      assert(not isElemental);  //future: support elemental vectors
+      const size_t size =
+          dof * (isGhosted? this->getTotalNodalSz()
+                          : this->getLocalNodalSz());
+      local = (size > 0? new T[size] : nullptr);
+    }
+
     // DA_Wrapper::destroyVector()
     template <int dim>
     template <typename T>
@@ -2246,6 +2270,19 @@ namespace ot
     template <typename T>
     void DA_Wrapper<dim>::nodalVecToGhostedNodal(
         const T *in,
+        T *&&out,   // rvalue ref
+        bool isAllocated,
+        unsigned int dof) const
+    {
+      assert(isAllocated);
+      this->nodalVecToGhostedNodal(in, out, true, dof);
+    }
+
+    // DA_Wrapper<dim>::nodalVecToGhostedNodal()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::nodalVecToGhostedNodal(
+        const T *in,
         T *&out,
         bool isAllocated,
         unsigned int dof) const
@@ -2261,6 +2298,20 @@ namespace ot
       const size_t local_begin = this->getLocalNodeBegin();
       std::copy_n(in, dof * local_size, out + dof * local_begin);
     }
+
+    // DA_Wrapper<dim>::ghostedNodalToNodalVec()
+    template <int dim>
+    template <typename T>
+    void DA_Wrapper<dim>::ghostedNodalToNodalVec(
+        const T *gVec,
+        T *&&local,           //rvalue ref
+        bool isAllocated,
+        unsigned int dof) const
+    {
+      assert(isAllocated);  // can't pass a new pointer back.
+      this->ghostedNodalToNodalVec(gVec, local, true, dof);
+    }
+
 
     // DA_Wrapper<dim>::ghostedNodalToNodalVec()
     template <int dim>
@@ -2414,25 +2465,6 @@ namespace ot
     /// }
 
 
-    //future: these should go in a module that depends on Petsc and this one.
-#ifdef BUILD_WITH_PETSC
-        /// PetscErrorCode petscCreateVector(Vec &local, bool isElemental, bool isGhosted, unsigned int dof) const;
-        /// PetscErrorCode createMatrix(Mat &M, MatType mtype, unsigned int dof = 1) const;
-
-        /// template <typename T>
-        /// void petscSetVectorByFunction(Vec &local, std::function<void(const T *, T *)> func, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1) const;
-
-        /// void petscVecTopvtu(const Vec &local, const char *fPrefix, char **nodalVarNames = NULL, bool isElemental = false, bool isGhosted = false, unsigned int dof = 1);
-
-        /// PetscErrorCode petscDestroyVec(Vec & vec) const;
-#endif
-
-
-
-
-
-
-
   }//namespace da_p2p
 
 
@@ -2467,8 +2499,119 @@ namespace ot
   }
 
 
+  // multiLevelDA()
+  template <typename DA_Type, unsigned dim>
+  std::vector<DA_Type> multiLevelDA(
+      const DistTree<uint32_t, dim> &dtree,
+      MPI_Comm comm,
+      unsigned order,
+      size_t grain,
+      double sfc_tol)
+  {
+    const int numStrata = dtree.getNumStrata();
+    std::vector<DA_Type> outDAPerStratum;
+    outDAPerStratum.reserve(numStrata);
+    for (int l = 0; l < numStrata; ++l)
+      outDAPerStratum.emplace_back(dtree, l, comm, order, grain, sfc_tol);
+    return outDAPerStratum;
+  }
+
+
+
+
+
+
+
 
 }//namespace ot
+
+
+
+#ifdef BUILD_WITH_PETSC
+    //future: these should go in a module that depends on Petsc and this one.
+template <typename DA_Type>
+inline PetscErrorCode petscCreateVector(
+    const DA_Type &da,
+    Vec &local,
+    bool isElemental,
+    bool isGhosted,
+    unsigned int dof)
+{
+  PetscErrorCode status = 0;
+
+  if (not da.isActive())
+  {
+    local = NULL;
+    return status;
+  }
+
+  MPI_Comm active_comm = da.getCommActive();
+  const size_t size = 
+      dof * (isGhosted? da.getTotalNodalSz()
+                      : da.getLocalNodalSz());
+
+  VecCreate(active_comm, &local);
+  status = VecSetSizes(local, size, PETSC_DECIDE);
+
+  if (da.getNpesAll() > 1)
+    VecSetType(local, VECMPI);
+  else
+    VecSetType(local, VECSEQ);
+
+  return status;
+}
+
+template <typename DA_Type>
+inline PetscErrorCode createMatrix(
+    const DA_Type &da,
+    Mat &M,
+    MatType mtype,
+    unsigned int dof)
+{
+  throw std::logic_error("Not implemented");
+}
+
+template <typename T, typename DA_Type>
+inline void petscSetVectorByFunction(
+    const DA_Type &da,
+    Vec &local,
+    std::function<void(const T *, T *)> func,
+    bool isElemental,
+    bool isGhosted,
+    unsigned int dof)
+{
+  PetscScalar * arry = nullptr;
+  VecGetArray(local, &arry);
+  da.setVectorByFunction(arry, func, isElemental, isGhosted, dof);
+  VecRestoreArray(local, &arry);
+}
+
+template <typename DA_Type>
+inline void petscVecTopvtu(
+    const DA_Type &da,
+    const Vec &local,
+    const char *fPrefix,
+    char **nodalVarNames,
+    bool isElemental,
+    bool isGhosted,
+    unsigned int dof)
+{
+  const PetscScalar *arry = nullptr;
+  VecGetArrayRead(local, &arry);
+  da.vecTopvtu(arry, fPrefix, nodalVarNames, isElemental, isGhosted, dof);
+  VecRestoreArrayRead(local, &arry);
+}
+
+template <typename DA_Type>
+inline PetscErrorCode petscDestroyVec(const DA_Type &da, Vec & vec)
+{
+  VecDestroy(&vec);
+  vec = NULL;
+  return 0;
+}
+#endif
+
+
 
 
 #endif//DENDRO_KT_DA_P2P_HPP
