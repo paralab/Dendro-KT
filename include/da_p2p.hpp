@@ -13,7 +13,6 @@ inline void link_da_p2p_tests() {};
 #include "include/treeNode.h"
 #include "include/tsort.h"
 #include "include/distTree.h"
-#include "include/oda.h"
 #include "include/parUtils.h"
 #include "include/tnUtils.h"
 
@@ -517,15 +516,65 @@ namespace ot
 }
 
 
+
+#ifdef BUILD_WITH_PETSC
+
+#include "petsc.h"
+#include "petscvec.h"
+#include "petscmat.h"
+#include "petscdmda.h"
+
+template <typename DA_Type>
+inline PetscErrorCode petscCreateVector(
+    const DA_Type &da,
+    Vec &local,
+    bool isElemental,
+    bool isGhosted,
+    unsigned int dof);
+
+template <typename DA_Type>
+inline PetscErrorCode createMatrix(
+    const DA_Type &da,
+    Mat &M,
+    MatType mtype,
+    unsigned int dof = 1);
+
+template <typename T, typename DA_Type>
+inline void petscSetVectorByFunction(
+    const DA_Type &da,
+    Vec &local,
+    std::function<void(const T *, T *)> func,
+    bool isElemental = false,
+    bool isGhosted = false,
+    unsigned int dof = 1);
+
+template <typename DA_Type>
+inline void petscVecTopvtu(
+    const DA_Type &da,
+    const Vec &local,
+    const char *fPrefix,
+    char **nodalVarNames = NULL,
+    bool isElemental = false,
+    bool isGhosted = false,
+    unsigned int dof = 1);
+
+template <typename DA_Type>
+inline PetscErrorCode petscDestroyVec(const DA_Type &da, Vec & vec);
+
+#endif
+
+
+
+
+
 // =============================================================================
 // Tests
 // =============================================================================
 #ifdef DOCTEST_LIBRARY_INCLUDED
 namespace ot
 {
-  DOCTEST_TEST_SUITE("Compare old and new DA")
+  DOCTEST_TEST_SUITE("DA_P2P")
   {
-
     // Helper routines
     template <int dim>
     std::vector<ot::TreeNode<uint32_t, dim>>  grid_pattern_central(int max_depth);
@@ -550,82 +599,6 @@ namespace ot
         else
           return np + 1;
       };
-    }
-
-    DOCTEST_MPI_TEST_CASE("Number of nodes", 3)
-    {
-      constexpr int dim = 2;
-      _InitializeHcurve(dim);
-      const double sfc_tol = 0.3;
-
-      const auto next_comm_size = make_next_comm_size(test_nb_procs);
-      for (int np = 1; np <= test_nb_procs; np = next_comm_size(np))
-      {
-        MPI_Comm comm;
-        MPI_Comm_split(test_comm, test_rank < np, 0, &comm);
-        if (test_rank >= np)
-        {
-          MPI_Comm_free(&comm);
-          continue;
-        }
-
-        INFO("mpi_size=", np, "  mpi_rank=", par::mpi_comm_rank(comm));
-        const bool is_root = par::mpi_comm_rank(comm) == 0;
-
-        enum Pattern { central, edges };
-        for (Pattern grid_pattern : {central, edges})
-        {
-          INFO("grid_pattern=", std::string(grid_pattern == central? "central" : "edges"));
-          for (int max_depth = 2; max_depth <= 5; ++max_depth)
-          {
-            // Grid.
-            std::vector<TreeNode<uint32_t, dim>> grid;
-            if (is_root and grid_pattern == central)
-              grid = grid_pattern_central<dim>(max_depth);
-            else if (is_root and grid_pattern == edges)
-              grid = grid_pattern_edges<dim>(max_depth);
-            SFC_Tree<uint32_t, dim>::distTreeSort(grid, sfc_tol, comm);
-            DistTree<uint32_t, dim> dtree(grid, comm);
-
-            for (int degree: {1, 2, 3})
-            {
-              DA<dim> old_da(dtree, comm, degree);
-              DA_P2P<dim> new_da(dtree, comm, degree);
-
-              INFO("max_depth=", max_depth, "  degree=", degree);
-
-              CHECK( new_da.getReferenceElement()->getOrder()
-                  == old_da.getReferenceElement()->getOrder() );
-              CHECK( new_da.getReferenceElement()->getDim()
-                  == old_da.getReferenceElement()->getDim() );
-              CHECK( new_da.getReferenceElement()->get1DNumInterpolationPoints()
-                  == old_da.getReferenceElement()->get1DNumInterpolationPoints() );
-
-              CHECK( new_da.getNumNodesPerElement() == old_da.getNumNodesPerElement() );
-              CHECK( new_da.getElementOrder() == old_da.getElementOrder() );
-
-              CHECK( new_da.getLocalElementSz() == old_da.getLocalElementSz() );
-              CHECK( new_da.getGlobalElementSz() == old_da.getGlobalElementSz() );
-              CHECK( new_da.getGlobalElementBegin() == old_da.getGlobalElementBegin() );
-
-              CHECK( new_da.getLocalNodalSz() == old_da.getLocalNodalSz() );
-              CHECK( new_da.getTotalNodalSz() == old_da.getTotalNodalSz() );
-
-              CHECK( (new_da.getTotalNodalSz() - new_da.getLocalNodalSz())
-                  == (old_da.getTotalNodalSz() - old_da.getLocalNodalSz()) );
-                // ^ May fail for hilbert curve ordering; then, make other test.
-
-              CHECK( new_da.getGlobalNodeSz() == old_da.getGlobalNodeSz() );
-              CHECK( new_da.getGlobalRankBegin() == old_da.getGlobalRankBegin() );
-
-              // future: compare some kind of matvec
-            }
-          }
-        }
-        MPI_Comm_free(&comm);
-      }
-
-      _DestroyHcurve();
     }
 
     DOCTEST_MPI_TEST_CASE("Self consistency on small adaptive grids", 3)
@@ -734,108 +707,6 @@ namespace ot
       _DestroyHcurve();
     }
 
-
-
-    DOCTEST_MPI_TEST_CASE("Consistent ghost exchange", 3)
-    {
-      dbg::wait_for_debugger(test_comm);
-      constexpr int dim = 2;
-      _InitializeHcurve(dim);
-      const double sfc_tol = 0.3;
-
-      const auto next_comm_size = make_next_comm_size(test_nb_procs);
-      for (int np = 1; np <= test_nb_procs; np = next_comm_size(np))
-      {
-        MPI_Comm comm;
-        MPI_Comm_split(test_comm, test_rank < np, 0, &comm);
-        if (test_rank >= np)
-        {
-          MPI_Comm_free(&comm);
-          continue;
-        }
-
-        INFO("mpi_size=", np, "  mpi_rank=", par::mpi_comm_rank(comm));
-        const bool is_root = par::mpi_comm_rank(comm) == 0;
-
-        enum Pattern { central, edges };
-        for (Pattern grid_pattern : {central, edges})
-        {
-          INFO("grid_pattern=", std::string(grid_pattern == central? "central" : "edges"));
-          for (int max_depth = 2; max_depth <= 5; ++max_depth)
-          {
-            // Grid.
-            std::vector<TreeNode<uint32_t, dim>> grid;
-            if (is_root and grid_pattern == central)
-              grid = grid_pattern_central<dim>(max_depth);
-            else if (is_root and grid_pattern == edges)
-              grid = grid_pattern_edges<dim>(max_depth);
-            SFC_Tree<uint32_t, dim>::distTreeSort(grid, sfc_tol, comm);
-            DistTree<uint32_t, dim> dtree(grid, comm);
-
-            /// for (int degree: {1, 2, 3})  // node ordering different for 2+.
-            for (int degree: {1})
-            {
-              DA<dim> old_da(dtree, comm, degree);
-              DA_P2P<dim> new_da(dtree, comm, degree);
-
-              INFO("max_depth=", max_depth, "  degree=", degree);
-
-              std::vector<int> old_ghost_read, old_ghost_write;
-              std::vector<int> new_ghost_read, new_ghost_write;
-              const int unit = intPow(100, par::mpi_comm_rank(comm));
-              for (int ndofs: {1, 2})
-              {
-                old_da.createVector(old_ghost_read, false, true, ndofs);
-                old_da.createVector(old_ghost_write, false, true, ndofs);
-                new_da.createVector(new_ghost_read, false, true, ndofs);
-                new_da.createVector(new_ghost_write, false, true, ndofs);
-                for (auto *v: {&old_ghost_read, &old_ghost_write,
-                               &new_ghost_read, &new_ghost_write})
-                  std::generate(v->begin(), v->end(),
-                      [=, i=0]() mutable { return unit * (i++); });
-
-                old_da.readFromGhostBegin(old_ghost_read.data(), ndofs);
-                old_da.readFromGhostEnd(old_ghost_read.data(), ndofs);
-                old_da.writeToGhostsBegin(old_ghost_write.data(), ndofs);
-                old_da.writeToGhostsEnd(old_ghost_write.data(), ndofs);
-                new_da.readFromGhostBegin(new_ghost_read.data(), ndofs);
-                new_da.readFromGhostEnd(new_ghost_read.data(), ndofs);
-                new_da.writeToGhostsBegin(new_ghost_write.data(), ndofs);
-                new_da.writeToGhostsEnd(new_ghost_write.data(), ndofs);
-
-                CHECK( new_ghost_read == old_ghost_read );
-                CHECK( new_ghost_write == old_ghost_write );
-              }
-
-              // isDirtyOut   //future: Deprecate this feature
-              for (int ndofs: {1, 2})
-              {
-                old_da.createVector(old_ghost_write, false, true, ndofs);
-                new_da.createVector(new_ghost_write, false, true, ndofs);
-                for (auto *v: {&old_ghost_write, &new_ghost_write})
-                  std::generate(v->begin(), v->end(),
-                      [=, i=0]() mutable { return unit * (i++); });
-
-                std::vector<char> write_odd(old_ghost_write.size(), false);
-                for (size_t i = 1; i < write_odd.size(); i += 2)
-                  write_odd[i] = true;
-
-                old_da.writeToGhostsBegin(old_ghost_write.data(), ndofs, write_odd.data());
-                old_da.writeToGhostsEnd(old_ghost_write.data(), ndofs, true, write_odd.data());
-                new_da.writeToGhostsBegin(new_ghost_write.data(), ndofs, write_odd.data());
-                new_da.writeToGhostsEnd(new_ghost_write.data(), ndofs, write_odd.data());
-                CHECK( new_ghost_write == old_ghost_write );
-              }
-            }
-          }
-        }
-        MPI_Comm_free(&comm);
-      }
-
-      _DestroyHcurve();
-    }
-
-
     // =======================================
     //  Case 1 _ _ _ _      Case 2  _ _ _ _
     //        |_|_|_|_|            |+|+|+|+|
@@ -904,7 +775,13 @@ namespace ot
       }
       return grid;
     }
+
+
+
   }
+
+
+
 }
 #endif//DOCTEST_LIBRARY_INCLUDED
 

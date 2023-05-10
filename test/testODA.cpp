@@ -256,8 +256,8 @@ void testSubdomain(MPI_Comm comm)
 {
   _InitializeHcurve(dim);
 
-  ot::DA<dim> dummy;
-  ot::constructRegularSubdomainDA<dim>(dummy, endL, {1, 3, 2}, order, comm, 0.3);
+  ot::slow_da::DA<dim> dummy;
+  ot::slow_da::constructRegularSubdomainDA<dim>(dummy, endL, {1, 3, 2}, order, comm, 0.3);
 
   _DestroyHcurve();
 }

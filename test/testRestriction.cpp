@@ -386,8 +386,8 @@ int main(int argc, char * argv[])
   // Coarse, surrogate, and fine DA
   ot::MultiDA<dim> octMultiDA;
   ot::MultiDA<dim> surrMultiDA;
-  ot::DA<dim>::multiLevelDA(octMultiDA, dtree, comm, eleOrder, 100, sfc_tol);
-  ot::DA<dim>::multiLevelDA(surrMultiDA, surrogateDTree, comm, eleOrder, 100, sfc_tol);
+  octMultiDA  = ot::multiLevelDA<ot::DA<dim>>(dtree, comm, eleOrder, 100, sfc_tol);
+  surrMultiDA = ot::multiLevelDA<ot::DA<dim>>(surrogateDTree, comm, eleOrder, 100, sfc_tol);
 
   const ConstMeshPointers<dim> coarseMesh(&dtree, &octMultiDA, 1);
   const ConstMeshPointers<dim> fineMesh(&dtree, &octMultiDA, 0);

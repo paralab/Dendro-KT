@@ -424,11 +424,6 @@ add_executable(tstRefineSubda ${SRC_FILES})
 target_include_directories(tstRefineSubda PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstRefineSubda dendroKT ${MPI_LIBRARIES} m)
 
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeNodeOwner.cpp)
-add_executable(tstTreeNodeOwner ${SRC_FILES})
-target_include_directories(tstTreeNodeOwner PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstTreeNodeOwner dendroKT ${MPI_LIBRARIES} m)
-
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testBoundaryRefined.cpp)
 add_executable(tstBoundaryRefined ${SRC_FILES})
 target_include_directories(tstBoundaryRefined PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)

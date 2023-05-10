@@ -47,8 +47,7 @@ void generateRefinementFlags(const ot::DA<DIM> *octDA,const std::vector<TREENODE
   std::fill(refineFlags.begin(), refineFlags.end(), ot::OCT_FLAGS::Refine::OCT_REFINE);
 }
 static void PrintBoundaryNodes(ot::DA<DIM> * octDA, const std::string & filename){
-  std::vector<std::size_t> bdy_index;
-  octDA->getBoundaryNodeIndices(bdy_index);
+  std::vector<std::size_t> bdy_index = octDA->getBoundaryNodeIndices();
   double coords[DIM];
   if(octDA->getRankAll() == 0){
     std::ofstream fout(filename);

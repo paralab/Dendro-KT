@@ -124,7 +124,7 @@ int main(int argc, char * argv[])
 
   AllOnes matrix(da, octlist(dtree), ndofs);
   Mat petsc_mat;
-  da->createMatrix(petsc_mat, MATAIJ, ndofs);
+  createMatrix(*da, petsc_mat, MATAIJ, ndofs);
   for (int iteration = 0; iteration < iterations; ++iteration)
     matrix.getAssembledMatrix(&petsc_mat, MATAIJ);
 

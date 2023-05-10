@@ -80,8 +80,9 @@ int main(int argc, char * argv[])
       const DistTree<uint32_t, dim> dtree(grid_copy, comm);
       dollar::unclobber();
 
-      DA<dim> da(degrees[pattern][i]);
+      using OldDA = slow_da::DA<dim>;
       using NewDA = da_p2p::DA_Wrapper<dim>;
+      OldDA da(degrees[pattern][i]);
       NewDA new_da;
 
       long long unsigned n_cells = 0;

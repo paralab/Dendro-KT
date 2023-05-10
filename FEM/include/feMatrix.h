@@ -402,7 +402,7 @@ void feMatrix<LeafT, dim>::collectMatrixEntries(AssembleElemental assemble_e)
 
   if (m_oda.isActive())
   {
-    using CoordT = typename ot::DA<dim>::C;
+    using CoordT = uint32_t;
     using ot::RankI;
 
 #ifdef BUILD_WITH_PETSC

@@ -86,8 +86,8 @@ int main(int argc, char * argv[])
   const unsigned int order = 2;
 
   std::vector<ot::DA<dim>> multiDA, surrogateMultiDA;
-  ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, order);
-  ot::DA<dim>::multiLevelDA(surrogateMultiDA, surrogateDTree, comm, order);
+  multiDA          = ot::multiLevelDA<ot::DA<dim>>(dtree, comm, order);
+  surrogateMultiDA = ot::multiLevelDA<ot::DA<dim>>(surrogateDTree, comm, order);
 
   const int numStrata = multiDA.size();
   for (int l = 0; l < numStrata; ++l)

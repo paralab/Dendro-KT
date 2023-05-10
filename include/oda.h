@@ -9,6 +9,8 @@
 #ifndef DENDRO_KT_ODA_H
 #define DENDRO_KT_ODA_H
 
+#include "include/da_p2p.hpp"
+
 #include "asyncExchangeContex.h"
 #include "dendro.h"
 #include "mpi.h"
@@ -73,11 +75,27 @@ namespace DA_FLAGS
                 DA_COARSEN   = OCT_FLAGS::OCT_COARSEN };
 }
 
+
+
 template <unsigned int dim>
-class DA;
+class DA : public ::ot::da_p2p::DA_Wrapper<dim>  // for template<unsigned>
+{
+  using da_p2p::DA_Wrapper<dim>::DA_Wrapper;
+};
 
 template <unsigned int dim>
 using MultiDA = std::vector<DA<dim>>;
+
+
+
+
+
+
+namespace slow_da
+{
+
+  template <unsigned int dim>
+  class DA;
 
 /**
  * @brief Construct a DA representing the nodes of a hypercuboid with grid
@@ -122,6 +140,9 @@ void constructRegularSubdomainDAHierarchy(
                                  MPI_Comm comm,
                                  size_t grainSz = 100,
                                  double sfc_tol = 0.3);
+}//end of namespace slow_da
+
+
 
 /**
  * @brief Transfer data to an identically-structured but differently-partitioned grid, e.g. surrogate.
@@ -135,6 +156,9 @@ void constructRegularSubdomainDAHierarchy(
 template <unsigned int dim, typename DofT>
 void distShiftNodes(const DA<dim> &srcDA, const DofT *srcLocal, const DA<dim> &destDA, DofT *destLocal, unsigned int ndofs = 1);
 
+
+namespace slow_da
+{
 
 template <unsigned int dim>
 class DA
@@ -673,6 +697,7 @@ class DA
         #endif
 };
 
+}//end of namespace slow_da
 
 } // end of namespace ot.
 

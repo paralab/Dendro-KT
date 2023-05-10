@@ -69,6 +69,9 @@ namespace ot
     }//namespace ot::util
 
 
+    namespace slow_da
+    {
+
     template <unsigned int dim>
     void constructRegularSubdomainDAHierarchy(
                                      std::vector<DA<dim>> &newMultiSubDA,
@@ -171,6 +174,7 @@ namespace ot
       return constructRegularSubdomainDA<dim>(newSubDA, unusedTree, level, extentPowers, eleOrder, comm, sfc_tol);
     }
 
+    }//end namespace slow_da
 
 
 
@@ -229,6 +233,9 @@ namespace ot
 
 
 
+
+    namespace slow_da
+    {
 
     template <unsigned int dim>
     template <typename T>
@@ -831,6 +838,7 @@ namespace ot
 
 #endif
 
+    }//end of namespace slow_da
 
 
 }

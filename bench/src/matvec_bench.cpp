@@ -119,8 +119,13 @@ namespace bench
             // In this pass all we do is execute matvec in a loop.
 
             // Construct regular grid DA for regular grid benchmark.
-            std::vector<ot::TreeNode<unsigned, dim>> treePart;
-            ot::DA<dim> *octDA = new ot::DA<dim>(comm, eleOrder, numPts, loadFlexibility, treePart);
+            std::vector<ot::TreeNode<unsigned, dim>> treePart_;
+            ot::util::constructRegularGrid<uint32_t, dim>(comm, numPts, loadFlexibility, treePart_);
+            ot::DistTree<uint32_t, dim> dtree(treePart_, comm);
+            const std::vector<ot::TreeNode<unsigned, dim>> &treePart =
+                dtree.getTreePartFiltered();
+
+            ot::DA<dim> *octDA = new ot::DA<dim>(dtree, comm, eleOrder, numPts, loadFlexibility);
             assert(treePart.size() > 0);
 
             const unsigned int DOF = 1;   // matvec only supports dof==1 right now.

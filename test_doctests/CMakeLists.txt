@@ -40,6 +40,10 @@ add_executable(doctest_binary_search binary_search.cpp main.cpp)
 target_include_directories(doctest_binary_search PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_binary_search dendroKT ${MPI_LIBRARIES} m)
 
+add_executable(doctest_compare_da compare_da.cpp main.cpp)
+target_include_directories(doctest_compare_da PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_compare_da dendroKT ${MPI_LIBRARIES} m)
+
 add_executable(doctest_da_p2p_matvec da_p2p_matvec.cpp main.cpp)
 target_include_directories(doctest_da_p2p_matvec PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_da_p2p_matvec dendroKT ${MPI_LIBRARIES} m)

@@ -152,9 +152,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     // There are three vectors that happen to have the same sizes but are logically separate.
     Vec ux, frhs, Mfrhs;
-    octDA->petscCreateVector(ux, false, false, 1);
-    octDA->petscCreateVector(frhs, false, false, 1);
-    octDA->petscCreateVector(Mfrhs, false, false, 1);
+    petscCreateVector(*octDA, ux, false, false, 1);
+    petscCreateVector(*octDA, frhs, false, false, 1);
+    petscCreateVector(*octDA, Mfrhs, false, false, 1);
 
     PoissonEq::PoissonMat<dim> poissonMat(octDA, &treePart,1);
     poissonMat.setProblemDimensions(domain_min,domain_max);
@@ -162,9 +162,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
     PoissonEq::PoissonVec<dim> poissonVec(octDA, &treePart,1);
     poissonVec.setProblemDimensions(domain_min,domain_max);
 
-    octDA->petscSetVectorByFunction(ux, f_init, false, false, 1);
-    octDA->petscSetVectorByFunction(Mfrhs, f_init, false, false, 1);
-    octDA->petscSetVectorByFunction(frhs, f_rhs, false, false, 1);
+    petscSetVectorByFunction(*octDA, ux, f_init, false, false, 1);
+    petscSetVectorByFunction(*octDA, Mfrhs, f_init, false, false, 1);
+    petscSetVectorByFunction(*octDA, frhs, f_rhs, false, false, 1);
 
     poissonVec.computeVec(frhs, Mfrhs, 1.0);
 
@@ -192,7 +192,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
     // Now that we have an approximate solution, test convergence by evaluating the residual.
     Vec residual;
-    octDA->petscCreateVector(residual, false, false, 1);
+    petscCreateVector(*octDA, residual, false, false, 1);
     poissonMat.matVec(ux, residual);
     VecAXPY(residual, -1.0, Mfrhs);
     PetscScalar normr, normb;
@@ -206,10 +206,10 @@ int main_ (Parameters &pm, MPI_Comm comm)
     // TODO
     // octDA->vecTopvtu(...);
 
-    octDA->petscDestroyVec(ux);
-    octDA->petscDestroyVec(frhs);
-    octDA->petscDestroyVec(Mfrhs);
-    octDA->petscDestroyVec(residual);
+    petscDestroyVec(*octDA, ux);
+    petscDestroyVec(*octDA, frhs);
+    petscDestroyVec(*octDA, Mfrhs);
+    petscDestroyVec(*octDA, residual);
 
 #endif
 

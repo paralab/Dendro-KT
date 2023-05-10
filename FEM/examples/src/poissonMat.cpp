@@ -356,8 +356,7 @@ template <unsigned int dim>
 bool PoissonMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
 {
     // apply boundary conditions.
-    std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    const std::vector<size_t> &bdyIndex = m_uiOctDA->getBoundaryNodeIndices();
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -369,8 +368,7 @@ template <unsigned int dim>
 bool PoissonMat<dim>::postMatVec(const VECType* in,VECType* out,double scale) {
 
     // apply boundary conditions.
-    std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    const std::vector<size_t> &bdyIndex = m_uiOctDA->getBoundaryNodeIndices();
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;

@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "newDA->getElementSz() == %lu\n", newDA->getLocalElementSz());
 
     Vec funcVec;
-    newDA->petscCreateVector(funcVec, false, false, 1);
+    petscCreateVector(*newDA, funcVec, false, false, 1);
     std::function<void(const double *, double *)> functionPointer = [&](const double *x, double *var) {
         double product = 1.0;
         for (int d = 0; d < DIM; ++d)
@@ -84,21 +84,21 @@ int main(int argc, char *argv[]) {
 
         /// var[0] = 1;
     };
-    newDA->petscSetVectorByFunction(funcVec, functionPointer, false, false, 1);
+    petscSetVectorByFunction(*newDA, funcVec, functionPointer, false, false, 1);
 
 
 
     Mat J;
 
     Vec result, matVecResult;
-    newDA->petscCreateVector(result, false, false, 1);
-    newDA->petscCreateVector(matVecResult, false, false, 1);
+    petscCreateVector(*newDA, result, false, false, 1);
+    petscCreateVector(*newDA, matVecResult, false, false, 1);
 
     const TREENODE * localCoords = newDA->getTNCoords() + newDA->getLocalNodeBegin();
 
     /// for(int counter = 7; counter < 8; counter++) {
     for(int counter = 0; counter < newDA->getLocalElementSz(); counter++) {
-        newDA->createMatrix(J, MATAIJ);
+        createMatrix(*newDA, J, MATAIJ);
         matrix<DIM> mat(newDA, treePart, counter);
         mat.getAssembledMatrix(&J, MATAIJ);
         MatAssemblyBegin(J, MAT_FINAL_ASSEMBLY);

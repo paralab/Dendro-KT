@@ -166,12 +166,12 @@ public:
 #ifdef BUILD_WITH_PETSC
       if (m_petscStateInitd)
       {
-        (*m_multiDA)[0].petscDestroyVec(m_stratumWorkR[0]);
+        petscDestroyVec((*m_multiDA)[0], m_stratumWorkR[0]);
         for (int ii = 1; ii < m_numStrata; ++ii)
         {
-          (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkRhs[ii]);
-          (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkX[ii]);
-          (*m_multiDA)[ii].petscDestroyVec(m_stratumWorkR[ii]);
+          petscDestroyVec((*m_multiDA)[ii], m_stratumWorkRhs[ii]);
+          petscDestroyVec((*m_multiDA)[ii], m_stratumWorkX[ii]);
+          petscDestroyVec((*m_multiDA)[ii], m_stratumWorkR[ii]);
         }
 
         delete [] m_stratumWorkRhs;
@@ -870,7 +870,7 @@ void prolongation(const GridPointers<dim> &coarseGrid, const VECType *coarseCrxL
   VECType *fineGhostedPtr = fineGhosted.data();
   VECType *coarseGhostedPtr = coarseGhosted.data();
 
-  using TN = ot::TreeNode<typename ot::DA<dim>::C, dim>;
+  using TN = ot::TreeNode<uint32_t, dim>;
 
   coarseGrid.da->template nodalVecToGhostedNodal<VECType>(coarseCrxLocal, coarseGhostedPtr, true, ndofs);
 
@@ -1038,12 +1038,12 @@ KSP gmgMat<dim, LeafClass>::petscCreateGMG(MPI_Comm comm)
     m_stratumWorkX = new Vec[m_numStrata];
     m_stratumWorkR = new Vec[m_numStrata];
 
-    (*m_multiDA)[0].petscCreateVector(m_stratumWorkR[0], false, false, m_ndofs);
+    petscCreateVector((*m_multiDA)[0], m_stratumWorkR[0], false, false, m_ndofs);
     for (int ii = 1; ii < m_numStrata; ++ii)
     {
-      (*m_multiDA)[ii].petscCreateVector(m_stratumWorkRhs[ii], false, false, m_ndofs);
-      (*m_multiDA)[ii].petscCreateVector(m_stratumWorkX[ii], false, false, m_ndofs);
-      (*m_multiDA)[ii].petscCreateVector(m_stratumWorkR[ii], false, false, m_ndofs);
+      petscCreateVector((*m_multiDA)[ii], m_stratumWorkRhs[ii], false, false, m_ndofs);
+      petscCreateVector((*m_multiDA)[ii], m_stratumWorkX[ii], false, false, m_ndofs);
+      petscCreateVector((*m_multiDA)[ii], m_stratumWorkR[ii], false, false, m_ndofs);
     }
 
     m_petscStateInitd = true;

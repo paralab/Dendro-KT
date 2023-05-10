@@ -22,13 +22,12 @@ int main(int argc, char * argv[])
   /// int level = 2;
   int level = 5;
 
-  ot::DA<DIM> octDA;
+  ot::slow_da::DA<DIM> octDA;
   std::array<unsigned int, DIM> a = {3,3};
   std::vector<ot::TreeNode<unsigned int, DIM>> treePart;
-  ot::constructRegularSubdomainDA<DIM>(octDA, treePart, level, a, eleOrder, MPI_COMM_WORLD);
+  ot::slow_da::constructRegularSubdomainDA<DIM>(octDA, treePart, level, a, eleOrder, MPI_COMM_WORLD);
 
-  std::vector<size_t> bdyIndex;
-  octDA.getBoundaryNodeIndices(bdyIndex);
+  std::vector<size_t> bdyIndex = octDA.getBoundaryNodeIndices();
 
   std::cout << "octDA local num elements == " << octDA.getLocalElementSz() << "\n";
   std::cout << "octDA local num nodes == " << octDA.getLocalNodalSz() << "\n";

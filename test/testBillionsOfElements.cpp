@@ -44,9 +44,9 @@ int main(int argc, char * argv[])
   const unsigned int l = 8;
   const std::array<unsigned int, dim> extentPow{l, l, l, l};  // (2^8)^4 == 256^4
   const unsigned int eleOrder = 1;
-  ot::DA<dim> subda;
+  ot::slow_da::DA<dim> subda;
 
-  ot::constructRegularSubdomainDA<dim>(subda, l, extentPow, eleOrder, comm);
+  ot::slow_da::constructRegularSubdomainDA<dim>(subda, l, extentPow, eleOrder, comm);
 
   _DestroyHcurve();
 

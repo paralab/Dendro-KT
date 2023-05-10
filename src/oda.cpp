@@ -19,6 +19,10 @@
 
 namespace ot
 {
+
+  namespace slow_da
+  {
+
     template <unsigned int dim>
     DA<dim>::DA(unsigned int order) : m_refel{dim,order} {
         // Does nothing except set order!
@@ -1215,6 +1219,8 @@ namespace ot
 template class DA<2u>;
 template class DA<3u>;
 template class DA<4u>;
+
+  }//end of namespace slow_da
 
 }
 

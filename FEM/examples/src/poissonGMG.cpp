@@ -359,8 +359,8 @@ int main_ (Parameters &pm, MPI_Comm comm)
     if (!rProc && outputStatus)
       std::cout << "Creating multilevel ODA with " << dtree.getNumStrata() << " strata.\n" << std::flush;
 
-    ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, eOrder, 100, partition_tol);
-    ot::DA<dim>::multiLevelDA(surrMultiDA, surrDTree, comm, eOrder, 100, partition_tol);
+    multiDA     = ot::multiLevelDA<ot::DA<dim>>(dtree, comm, eOrder, 100, partition_tol);
+    surrMultiDA = ot::multiLevelDA<ot::DA<dim>>(surrDTree, comm, eOrder, 100, partition_tol);
 
     ot::DA<dim> & fineDA = multiDA[0];
 
@@ -465,9 +465,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
       //
 
       Vec ux, frhs, Mfrhs;
-      fineDA.petscCreateVector(ux, false, false, 1);
-      fineDA.petscCreateVector(frhs, false, false, 1);
-      fineDA.petscCreateVector(Mfrhs, false, false, 1);
+      petscCreateVector(fineDA, ux, false, false, 1);
+      petscCreateVector(fineDA, frhs, false, false, 1);
+      petscCreateVector(fineDA, Mfrhs, false, false, 1);
 
       /// PoissonEq::PoissonMat<dim> poissonMat(octDA,1);
       /// poissonMat.setProblemDimensions(domain_min,domain_max);
@@ -475,9 +475,9 @@ int main_ (Parameters &pm, MPI_Comm comm)
       PoissonEq::PoissonVec<dim> poissonVec(&fineDA, &dtree.getTreePartFiltered(0), 1);
       poissonVec.setProblemDimensions(domain_min,domain_max);
 
-      fineDA.petscSetVectorByFunction(ux, f_init, false, false, 1);
-      fineDA.petscSetVectorByFunction(Mfrhs, f_init, false, false, 1);
-      fineDA.petscSetVectorByFunction(frhs, f_rhs, false, false, 1);
+      petscSetVectorByFunction(fineDA, ux, f_init, false, false, 1);
+      petscSetVectorByFunction(fineDA, Mfrhs, f_init, false, false, 1);
+      petscSetVectorByFunction(fineDA, frhs, f_rhs, false, false, 1);
 
       if (!rProc && outputStatus)
         std::cout << "Computing RHS.\n" << std::flush;
@@ -516,7 +516,7 @@ int main_ (Parameters &pm, MPI_Comm comm)
 
       // Now that we have an approximate solution, test convergence by evaluating the residual.
       Vec residual;
-      fineDA.petscCreateVector(residual, false, false, 1);
+      petscCreateVector(fineDA, residual, false, false, 1);
       poissonGMG.matVec(ux, residual);
       VecAXPY(residual, -1.0, Mfrhs);
       PetscScalar normr, normb;
@@ -530,10 +530,10 @@ int main_ (Parameters &pm, MPI_Comm comm)
       // TODO
       // octDA->vecTopvtu(...);
 
-      fineDA.petscDestroyVec(ux);
-      fineDA.petscDestroyVec(frhs);
-      fineDA.petscDestroyVec(Mfrhs);
-      fineDA.petscDestroyVec(residual);
+      petscDestroyVec(fineDA, ux);
+      petscDestroyVec(fineDA, frhs);
+      petscDestroyVec(fineDA, Mfrhs);
+      petscDestroyVec(fineDA, residual);
 
 #endif
     }

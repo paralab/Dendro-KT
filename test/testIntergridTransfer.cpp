@@ -187,8 +187,8 @@ bool testUniform2(int argc, char * argv[])
   if (!rProc && outputStatus)
     std::cout << "Creating multilevel ODA.\n" << std::flush;
   ot::MultiDA<dim> multiDA, surrMultiDA;
-  ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, eOrder, 100, partition_tol);
-  ot::DA<dim>::multiLevelDA(surrMultiDA, surrDTree, comm, eOrder, 100, partition_tol);
+  multiDA = ot::multiLevelDA<ot::DA<dim>>(dtree, comm, eOrder, 100, partition_tol);
+  surrMultiDA = ot::multiLevelDA<ot::DA<dim>>(surrDTree, comm, eOrder, 100, partition_tol);
 
   // Reference to the fine grid and coarse grid, and create vectors.
   ot::DA<dim> & fineDA = multiDA[0];
@@ -406,8 +406,8 @@ bool testMultiDA(int argc, char * argv[])
 
   // Create DA for all levels.
   std::vector<ot::DA<dim>> multiDA, surrogateMultiDA;
-  ot::DA<dim>::multiLevelDA(multiDA, dtree, comm, eleOrder);
-  ot::DA<dim>::multiLevelDA(surrogateMultiDA, surrogateDTree, comm, eleOrder);
+  multiDA = ot::multiLevelDA<ot::DA<dim>>(dtree, comm, eleOrder);
+  surrogateMultiDA = ot::multiLevelDA<ot::DA<dim>>(surrogateDTree, comm, eleOrder);
 
   std::vector<DofT> fineVec, coarseVec, surrogateVec;
   multiDA[0].createVector(fineVec, false, false, ndofs);

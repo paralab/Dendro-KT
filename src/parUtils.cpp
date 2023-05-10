@@ -20,6 +20,27 @@ namespace par {
 
   int DBG_rProc, DBG_nProc;
 
+  int sortEvent;
+  int concatEvent;
+  int remdupEvent;
+  int partwEvent;
+  int searchEvent;
+  int parScatterEvent;
+  int a2avWaitEvent;
+  int all2AllvSparseEvent;
+  int all2AllvDenseEvent;
+  int allGatherEvent;
+  int reduceEvent;
+  int sendRecvEvent;
+  int allReduceEvent;
+  int all2AllEvent;
+  int allGathervEvent;
+  int gatherEvent;
+  int scanEvent;
+  int bcastEvent;
+  int splitComm2wayEvent;
+  int splitCommEvent;
+
   unsigned int splitCommBinary( MPI_Comm orig_comm, MPI_Comm *new_comm) {
     int npes, rank;
 
