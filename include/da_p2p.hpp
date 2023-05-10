@@ -26,12 +26,37 @@ inline void link_da_p2p_tests() {};
 /// #include "include/debug.hpp"
 
 #include <vector>
+#include <unordered_map>  // for WrapperData
 
 // =============================================================================
 // Interfaces
 // =============================================================================
 namespace ot
 {
+  template <typename T>
+  struct ConstRange
+  {
+    const T *begin() const { return m_begin; }
+    const T *end()   const { return m_end; }
+    size_t   size()  const { return m_end - m_begin; }
+
+    const T *m_begin;
+    const T *m_end;
+  };
+
+  template <typename T>
+  struct Range
+  {
+    T *begin() const { return m_begin; }
+    T *end()   const { return m_end; }
+    size_t   size()  const { return m_end - m_begin; }
+    operator ConstRange<T>() const { return { m_begin, m_end }; }
+
+    T *m_begin;
+    T *m_end;
+  };
+
+
   namespace da_p2p
   {
     template <int dim>
@@ -53,6 +78,7 @@ namespace ot
       std::array<T, (dim + 1) * 2> m_counts;
     };
 
+
     //future: rename as Topology or something, since it's aware of the octree.
     template <int dim>
     class DA
@@ -68,6 +94,8 @@ namespace ot
         size_t n_local_cells() const;
         DendroLLU n_global_cells() const;
         DendroLLU global_cell_offset() const;
+        ConstRange<TreeNode<uint32_t, dim>> local_cell_list() const;
+        ConstRange<TreeNode<uint32_t, dim>> ghosted_cell_list() const;
 
         size_t n_local_nodes(int degree) const;
         DendroLLU n_global_nodes(int degree) const;
@@ -161,7 +189,6 @@ namespace ot
       static TreeNode<uint32_t, dim> dummy;
       return dummy;
     }
-
 
     template <int dim>
     struct WrapperData
@@ -432,6 +459,9 @@ namespace ot
         ConstNodeRange ghosted_nodes() const;
         ConstNodeRange local_nodes() const;
 
+        ConstRange<TreeNode<uint32_t, dim>> local_cell_list() const;
+        ConstRange<TreeNode<uint32_t, dim>> ghosted_cell_list() const;
+
       private:
         template <typename T, class Operation>
         void writeToGhostsBegin_impl(
@@ -459,6 +489,20 @@ namespace ot
 
     // future: separate loops for dependent, independent, and boundary elements.
   }
+
+
+  template <typename DA_Type, typename T>
+  ConstRange<T> ghost_range(const DA_Type &da, int ndofs, const T *a);
+
+  template <typename DA_Type, typename T>
+  ConstRange<T> local_range(const DA_Type &da, int ndofs, const T *a);
+
+  template <typename DA_Type, typename T>
+  Range<T> ghost_range(const DA_Type &da, int ndofs, T *a);
+
+  template <typename DA_Type, typename T>
+  Range<T> local_range(const DA_Type &da, int ndofs, T *a);
+
 
   template <int dim>
   using DA_P2P = da_p2p::DA_Wrapper<dim>;
@@ -1735,6 +1779,23 @@ namespace ot
       return builder.finish();
     }
 
+    // DA<dim>::local_cell_list()
+    template <int dim>
+    ConstRange<TreeNode<uint32_t, dim>> DA<dim>::local_cell_list() const
+    {
+      const TreeNode<uint32_t, dim> *ptr = m_ghosted_octants.data();
+      return { ptr + this->remote_cell_map().local_begin(),
+               ptr + this->remote_cell_map().local_end() };
+    }
+
+    // DA<dim>::ghosted_cell_list()
+    template <int dim>
+    ConstRange<TreeNode<uint32_t, dim>> DA<dim>::ghosted_cell_list() const
+    {
+      const TreeNode<uint32_t, dim> *ptr = m_ghosted_octants.data();
+      return { ptr, ptr + this->remote_cell_map().total_count() };
+    }
+
 
     // Private
 
@@ -2097,6 +2158,8 @@ namespace ot
     {
       const TreeNode<uint32_t, dim> *begin() const { return m_begin; }
       const TreeNode<uint32_t, dim> *end()   const { return m_end; }
+      size_t size() const { return m_end - m_begin; }
+
       const TreeNode<uint32_t, dim> *m_begin;
       const TreeNode<uint32_t, dim> *m_end;
     };
@@ -2117,6 +2180,21 @@ namespace ot
       return { nodes + this->getLocalNodeBegin(),
                nodes + this->getLocalNodeEnd() };
     }
+
+    // DA_Wrapper<dim>::local_cell_list()
+    template <int dim>
+    ConstRange<TreeNode<uint32_t, dim>> DA_Wrapper<dim>::local_cell_list() const
+    {
+      return m_da.local_cell_list();
+    }
+
+    // DA_Wrapper<dim>::ghosted_cell_list()
+    template <int dim>
+    ConstRange<TreeNode<uint32_t, dim>> DA_Wrapper<dim>::ghosted_cell_list() const
+    {
+      return m_da.ghosted_cell_list();
+    }
+
 
 
     // DA_Wrapper<dim>::getNodeLocalToGlobalMap()
@@ -2356,6 +2434,39 @@ namespace ot
 
 
   }//namespace da_p2p
+
+
+  // ghost_range() (const)
+  template <typename DA_Type, typename T>
+  ConstRange<T> ghost_range(const DA_Type &da, int ndofs, const T *a)
+  {
+    return { a, a + da.getTotalNodalSz() * ndofs };
+  }
+
+  // local_range() (const)
+  template <typename DA_Type, typename T>
+  ConstRange<T> local_range(const DA_Type &da, int ndofs, const T *a)
+  {
+    return { a + da.getLocalNodeBegin() * ndofs,
+             a + da.getLocalNodeEnd() * ndofs };
+  }
+
+  // ghost_range()
+  template <typename DA_Type, typename T>
+  Range<T> ghost_range(const DA_Type &da, int ndofs, T *a)
+  {
+    return { a, a + da.getTotalNodalSz() * ndofs };
+  }
+
+  // local_range()
+  template <typename DA_Type, typename T>
+  Range<T> local_range(const DA_Type &da, int ndofs, T *a)
+  {
+    return { a + da.getLocalNodeBegin() * ndofs,
+             a + da.getLocalNodeEnd() * ndofs };
+  }
+
+
 
 }//namespace ot
 

@@ -265,7 +265,7 @@ namespace ot
       if (not allActive)
       {
         MPI_Comm_split(comm, (isActive ? 1 : MPI_UNDEFINED), rProc, &activeComm);
-        m_active_comm_owned = true;
+        m_active_comm_owned = isActive;
       }
 
       m_dist_tree = &distTree;
