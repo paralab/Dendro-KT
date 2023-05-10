@@ -9,7 +9,7 @@
 #include "include/treeNode.h"
 #include "include/tsort.h"
 #include "include/oda.h"
-#include "include/neighbors_to_nodes.hpp"
+#include "include/da_p2p.hpp"
 
 #include <vector>
 #include <string>
@@ -17,30 +17,20 @@
 
 #include <mpi.h>
 
+#include "include/debug.hpp"
 
 template <int dim>
-std::vector<ot::TreeNode<uint32_t, dim>>  grid_pattern_central(int max_depth);
+std::vector<ot::TreeNode<uint32_t, dim>>  grid_pattern_central(int max_depth, MPI_Comm comm);
 template <int dim>
-std::vector<ot::TreeNode<uint32_t, dim>>  grid_pattern_edges(int max_depth);
+std::vector<ot::TreeNode<uint32_t, dim>>  grid_pattern_edges(int max_depth, MPI_Comm comm);
 
-
-template <int dim>
-struct ProxyNewDA
-{
-  void construct(
-      const std::vector<ot::TreeNode<uint32_t, dim>> &grid,
-      int degree);
-
-  size_t n_owned_nodes() const;
-  long long unsigned n_global_nodes() const;
-
-  std::vector<ot::TreeNode<uint32_t, dim>> nodal_points;
-};
 
 
 int main(int argc, char * argv[])
 {
   MPI_Init(&argc, &argv);
+  MPI_Comm comm = MPI_COMM_WORLD;
+  dbg::wait_for_debugger(comm);
   DendroScopeBegin();
   constexpr int dim = 3;
   _InitializeHcurve(dim);
@@ -50,7 +40,9 @@ int main(int argc, char * argv[])
   std::stringstream logging;
 
   std::random_device rd;
-  std::mt19937 g(rd());
+  unsigned int seed = (par::mpi_comm_rank(comm) == 0? rd() : 0);
+  MPI_Bcast(&seed, 1, MPI_UNSIGNED, 0, comm);
+  std::mt19937 g(seed);
 
   enum Algorithm { old_da, new_push_face_neighbors };
   std::vector<Algorithm> algorithm_choice;
@@ -77,17 +69,20 @@ int main(int argc, char * argv[])
           + " depth=" + std::to_string(depths[pattern][i]);
       std::cerr << "Begin:  " << parameters << "\n";
       DOLLAR(parameters);
+      dollar::clobber();
       const std::vector<TreeNode<uint32_t, dim>> grid =
-          pattern == central ? grid_pattern_central<dim>(depths[pattern][i])
-          :                    grid_pattern_edges<dim>(depths[pattern][i]);
+          pattern == central ? grid_pattern_central<dim>(depths[pattern][i], comm)
+          :                    grid_pattern_edges<dim>(depths[pattern][i], comm);
+      dollar::unclobber();
 
       auto grid_copy = grid;
       dollar::clobber();
-      const DistTree<uint32_t, dim> dtree(grid_copy, MPI_COMM_WORLD);
+      const DistTree<uint32_t, dim> dtree(grid_copy, comm);
       dollar::unclobber();
 
       DA<dim> da(degrees[pattern][i]);
-      ProxyNewDA<dim> proxy_new_da;
+      using NewDA = da_p2p::DA_Wrapper<dim>;
+      NewDA new_da;
 
       long long unsigned n_cells = 0;
       long long unsigned n_nodes_old = 0;
@@ -98,6 +93,7 @@ int main(int argc, char * argv[])
       algorithm_choice.insert(algorithm_choice.end(), runs[pattern][i], new_push_face_neighbors);
       std::shuffle(algorithm_choice.begin(), algorithm_choice.end(), g);
 
+      size_t choice_idx = 0;
       for (Algorithm alg: algorithm_choice)
       {
         switch (alg)
@@ -106,7 +102,7 @@ int main(int argc, char * argv[])
           {
             DOLLAR("old_da");
             dollar::clobber();
-            da.construct(dtree, MPI_COMM_WORLD, degrees[pattern][i], {}, 0.3);
+            da.construct(dtree, comm, degrees[pattern][i], {}, 0.3);
             dollar::unclobber();
             volatile auto _ = da.getLocalNodalSz();
           }
@@ -117,12 +113,13 @@ int main(int argc, char * argv[])
           case new_push_face_neighbors:
           {
             DOLLAR("new_push_face_neighbors");
-            proxy_new_da.construct(grid, degrees[pattern][i]);
-            volatile auto _ = proxy_new_da.n_owned_nodes();
+            new_da = NewDA(dtree, comm, degrees[pattern][i]);
+            volatile auto _ = new_da.getLocalNodalSz();
           }
-          n_nodes_new = proxy_new_da.n_global_nodes();
+          n_nodes_new = new_da.getGlobalNodeSz();
           break;
         }
+        ++choice_idx;
       }
 
       logging << parameters
@@ -138,8 +135,15 @@ int main(int argc, char * argv[])
 
   std::cout << logging.str() << "\n";
 
-  dollar::DollarStat dollar_stat(MPI_COMM_WORLD);
-  dollar_stat.tsv(std::cout);
+  const dollar::DollarStat dollar_stat(comm);
+  const dollar::DollarStat stat_mean = dollar_stat.mpi_reduce_mean();
+  /// const dollar::DollarStat stat_min = dollar_stat.mpi_reduce_min();
+  /// const dollar::DollarStat stat_max = dollar_stat.mpi_reduce_max();
+  if (par::mpi_comm_rank(comm) == 0)
+  {
+    std::cout << "\nMean\n";
+    stat_mean.tsv(std::cout);
+  }
 
   if (false)
   {
@@ -147,7 +151,7 @@ int main(int argc, char * argv[])
     std::cout << "--------- \t ------------" << "\n";
     for (int max_depth : {20, 30})
       std::cout << "  " << max_depth << "        \t "
-                << grid_pattern_central<dim>(max_depth).size() << "\n";
+                << grid_pattern_central<dim>(max_depth, comm).size() << "\n";
 
     std::cout << "\n";
 
@@ -155,7 +159,7 @@ int main(int argc, char * argv[])
     std::cout << "--------- \t ------------" << "\n";
     for (int max_depth : {4, 7, 11})
       std::cout << "  " << max_depth << "        \t "
-                << grid_pattern_edges<dim>(max_depth).size() << "\n";
+                << grid_pattern_edges<dim>(max_depth, comm).size() << "\n";
   }
 
 
@@ -164,44 +168,6 @@ int main(int argc, char * argv[])
   MPI_Finalize();
   return 0;
 }
-
-
-// construct()
-template <int dim>
-void ProxyNewDA<dim>::construct(
-    const std::vector<ot::TreeNode<uint32_t, dim>> &grid,
-    int degree)
-{
-  using namespace ot;
-
-  // Neighbors.
-  const auto neighbor_sets_pair = neighbor_sets(grid);
-  const std::vector<TreeNode<uint32_t, dim>> &octant_keys = neighbor_sets_pair.first;
-  const std::vector<Neighborhood<dim>> &neighborhoods = neighbor_sets_pair.second;
-
-  /// DOLLAR("node_set()");
-
-  // Nodes.
-  this->nodal_points = node_set<dim>(
-          octant_keys, neighborhoods, degree,
-          neighborhood_to_nonhanging<dim>);
-}
-
-
-template <int dim>
-size_t ProxyNewDA<dim>::n_owned_nodes( ) const
-{
-  return nodal_points.size();
-}
-
-template <int dim>
-long long unsigned ProxyNewDA<dim>::n_global_nodes( ) const
-{
-  return n_owned_nodes();//future: use global number if have comm
-}
-
-
-
 
 
 // =======================================
@@ -219,10 +185,12 @@ long long unsigned ProxyNewDA<dim>::n_global_nodes( ) const
 //
 template <int dim>
 std::vector<ot::TreeNode<uint32_t, dim>>
-  grid_pattern_central(int max_depth)
+  grid_pattern_central(int max_depth, MPI_Comm comm)
 {
   using namespace ot;
-  std::vector<TreeNode<uint32_t, dim>> grid = { TreeNode<uint32_t, dim>() };
+  std::vector<TreeNode<uint32_t, dim>> grid;
+  if (par::mpi_comm_rank(comm) == 0)
+    grid = { TreeNode<uint32_t, dim>() };
   std::vector<TreeNode<uint32_t, dim>> queue;
   for (int level = 1; level <= max_depth; ++level)
   {
@@ -239,6 +207,7 @@ std::vector<ot::TreeNode<uint32_t, dim>>
     }
     std::swap(grid, queue);
   }
+  SFC_Tree<uint32_t, dim>::distTreeSort(grid, 0.3, comm);
   return grid;
 }
 
@@ -247,10 +216,12 @@ std::vector<ot::TreeNode<uint32_t, dim>>
 //
 template <int dim>
 std::vector<ot::TreeNode<uint32_t, dim>>
-  grid_pattern_edges(int max_depth)
+  grid_pattern_edges(int max_depth, MPI_Comm comm)
 {
   using namespace ot;
-  std::vector<TreeNode<uint32_t, dim>> grid = { TreeNode<uint32_t, dim>() };
+  std::vector<TreeNode<uint32_t, dim>> grid;
+  if (par::mpi_comm_rank(comm) == 0)
+    grid = { TreeNode<uint32_t, dim>() };
   std::vector<TreeNode<uint32_t, dim>> queue;
   for (int level = 1; level <= max_depth; ++level)
   {
@@ -270,6 +241,7 @@ std::vector<ot::TreeNode<uint32_t, dim>>
     }
     std::swap(grid, queue);
   }
+  SFC_Tree<uint32_t, dim>::distTreeSort(grid, 0.3, comm);
   return grid;
 }
 
