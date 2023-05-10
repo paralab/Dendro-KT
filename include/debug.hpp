@@ -20,6 +20,9 @@ namespace dbg
   {
     std::stringstream ss;
 
+    std::string str() const;
+    std::string flush();
+
     template <typename T>
     buf & operator<<(T &&t);
   };
@@ -59,6 +62,18 @@ namespace dbg
 {
   //
   // struct buf
+  std::string buf::str() const
+  {
+    return this->ss.str();
+  }
+
+  std::string buf::flush()
+  {
+    std::string result = std::move(this->ss).str();
+    this->ss.str({});
+    return result;
+  }
+
   template <typename T>
   buf & buf::operator<<(T &&t)
   {
@@ -67,9 +82,7 @@ namespace dbg
 
   inline std::ostream & operator<<(std::ostream &out, buf &b)
   {
-    out << b.ss.str();
-    b.ss.str({});
-    return out;
+    return out << b.flush();
   }
 
   inline std::ostream & operator<<(std::ostream &out, buf &&b)
@@ -138,7 +151,7 @@ namespace dbg
                      << "-ex 'inferior " << (i + 1) << "' "
                      << "-ex 'attach " << collect_pid[i] << "' "
                      << "-ex 'set variable proceed=1' "
-                     << "-ex 'continue &' ";
+                     << "-ex 'finish &' ";
             }
             stream << "\\\n      -ex 'inferior 1' "
                    << "-ex 'finish'\n";
