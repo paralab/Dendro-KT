@@ -49,7 +49,7 @@ if(NOT CMAKE_BUILD_TYPE)
             "Choose the type of build, options are: Debug Release " FORCE)
 endif()
 
-if ((CMAKE_BUILD_TYPE STREQUAL "Release") AND (NOT ENABLE_DOCTEST_IN_RELEASE))
+if (((CMAKE_BUILD_TYPE STREQUAL "Release") OR (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")) AND (NOT ENABLE_DOCTEST_IN_RELEASE))
     add_definitions(-DDOCTEST_CONFIG_DISABLE)
 endif()
 

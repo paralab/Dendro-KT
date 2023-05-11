@@ -263,6 +263,7 @@ inline TreeNode<T,dim> TreeNode<T,dim>::getFirstChildMorton() const {
 
 template <typename T, unsigned int dim>
 inline TreeNode<T,dim> TreeNode<T,dim>::getChildMorton(unsigned char child) const {
+  assert(m_uiLevel < m_uiMaxDepth);
   TreeNode<T,dim> m = *this;
   m.m_uiLevel++;
   m.setMortonIndex(child);

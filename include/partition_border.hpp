@@ -534,14 +534,11 @@ namespace ot
     // Main result is that, by pruning, we can skip many accesses to all_list.
     else if (border_or_overlap_any<dim>(all_list.root(), any_set))
     {
-      // future: Subtrees of all_list: jump-start searches in any_set by parent.
-      const TreeNode<uint32_t, dim> *prev_end = nullptr;
-      for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+      for (int i = 0, n = nchild(dim); i < n; ++i)
       {
-        LeafRangeListView<dim> sublist = all_list.subdivide(s);
-        if (prev_end != nullptr and sublist.begin() < prev_end)  //redundant
-          sublist = sublist.shrink_begin();
-        prev_end = sublist.end();
+        // Length-wise segment, not child.
+        // This ensures the recursion makes progress.
+        LeafRangeListView<dim> sublist = all_list.fair_segment(i, n);
         if (sublist.any())
           where_ranges_border<dim>(sublist, any_set, std::forward<Emit>(emit));
       }

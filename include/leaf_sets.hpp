@@ -126,6 +126,9 @@ namespace ot
       bool is_singleton_of(const TreeNode<uint32_t, dim> &member) const;
       // If this->is_singleton(), then this->is_singleton_of(this->root()).
 
+      bool operator==(const LeafListView &other) const;
+      bool operator!=(const LeafListView &other) const;
+
       LeafListView subdivide(sfc::SubIndex s) const;
       LeafListView child(sfc::ChildNum c) const;
 
@@ -163,6 +166,9 @@ namespace ot
       bool is_singleton() const;
       bool is_singleton_of(const TreeNode<uint32_t, dim> &member) const;
       // If this->is_singleton(), then this->is_singleton_of(this->root()).
+
+      bool operator==(const LeafRange &other) const;
+      bool operator!=(const LeafRange &other) const;
 
       LeafRange subdivide(sfc::SubIndex s) const;
       LeafRange child(sfc::ChildNum c) const;
@@ -207,8 +213,19 @@ namespace ot
       bool is_singleton_of(const TreeNode<uint32_t, dim> &member) const;
       // If this->is_singleton(), then this->is_singleton_of(this->root()).
 
-      LeafRangeListView subdivide(sfc::SubIndex s) const;
-      LeafRangeListView child(sfc::ChildNum c) const;
+      bool operator==(const LeafRangeListView &other) const;
+      bool operator!=(const LeafRangeListView &other) const;
+
+      //future: Split a range, expose partial_front() and partial_back(),
+      //        let user decide which way to shift the front and back.
+      /// LeafRangeListView subdivide(sfc::SubIndex s) const;
+      /// LeafRangeListView child(sfc::ChildNum c) const;
+
+      // Specific to LeafRangeListView (experimental)
+
+      // Partitions the list of ranges into `count` approximately equal segments,
+      // and returns the `pick`-th segment (starting from 0).
+      LeafRangeListView fair_segment(int pick, int count) const;
 
       // Specific to LeafRangeListView
       const TreeNode<uint32_t, dim> *begin() const;
@@ -307,8 +324,10 @@ namespace ot
       CHECK( neighbor_range.subdivide(sfc::SubIndex(0)).root().getLevel() == 1 );
 
       LeafRangeListView<dim> range_list = {};
-      CHECK( range_list.subdivide(sfc::SubIndex(0)).none() );
-      CHECK( range_list.subdivide(sfc::SubIndex(0)).root().getLevel() == 1 );
+      /// CHECK( range_list.subdivide(sfc::SubIndex(0)).none() );
+      /// CHECK( range_list.subdivide(sfc::SubIndex(0)).root().getLevel() == 1 );
+      CHECK( range_list.fair_segment(0, 2).none() );
+      CHECK( range_list.fair_segment(1, 2).none() );
 
       _DestroyHcurve();
     }
@@ -378,33 +397,75 @@ namespace ot
       CHECK( leaf_range.child(sfc::ChildNum(2)).root().getLevel() == 4 );
       CHECK( leaf_range.child(sfc::ChildNum(3)).none() );
 
-      // LeafRangeListView
-      const std::array<TreeNode<uint32_t, dim>, 4> sample = {
-        morton_lineage(root, {1, 3, 3, 3}),
-        morton_lineage(root, {1, 3, 3, 3}),
-        morton_lineage(root, {2, 0, 0, 0}),
-        morton_lineage(root, {2, 0, 0, 0})
+      /// // LeafRangeListView
+      /// const std::array<TreeNode<uint32_t, dim>, 4> sample = {
+      ///   morton_lineage(root, {1, 3, 3, 3}),
+      ///   morton_lineage(root, {1, 3, 3, 3}),
+      ///   morton_lineage(root, {2, 0, 0, 0}),
+      ///   morton_lineage(root, {2, 0, 0, 0})
+      /// };
+
+      /// LeafRangeListView<dim> range_list_one( &sample[1], &sample[3] );
+      /// REQUIRE( range_list_one.any() );
+      /// REQUIRE_FALSE( range_list_one.is_singleton() );
+      /// CHECK( range_list_one.child(sfc::ChildNum(0)).none() );
+      /// CHECK( range_list_one.child(sfc::ChildNum(1)).is_singleton() );
+      /// CHECK( range_list_one.child(sfc::ChildNum(1)).root().getLevel() == 4 );
+      /// CHECK( range_list_one.child(sfc::ChildNum(2)).is_singleton() );
+      /// CHECK( range_list_one.child(sfc::ChildNum(2)).root().getLevel() == 4 );
+      /// CHECK( range_list_one.child(sfc::ChildNum(3)).none() );
+
+      /// LeafRangeListView<dim> range_list_two( &sample[0], &sample[4] );
+      /// REQUIRE( range_list_two.any() );
+      /// REQUIRE_FALSE( range_list_two.is_singleton() );
+      /// CHECK( range_list_two.child(sfc::ChildNum(0)).none() );
+      /// CHECK( range_list_two.child(sfc::ChildNum(1)).is_singleton() );
+      /// CHECK( range_list_two.child(sfc::ChildNum(1)).root().getLevel() == 4 );
+      /// CHECK( range_list_two.child(sfc::ChildNum(2)).is_singleton() );
+      /// CHECK( range_list_two.child(sfc::ChildNum(2)).root().getLevel() == 4 );
+      /// CHECK( range_list_two.child(sfc::ChildNum(3)).none() );
+
+      _DestroyHcurve();
+    }
+
+    DOCTEST_TEST_CASE("LeafRangeListVew subdivision reduces set")
+    {
+      constexpr int dim = 2;
+      _InitializeHcurve(dim);
+
+      // neat_ranges
+      std::vector<TreeNode<uint32_t, dim>> neat_ranges = {
+        morton_lineage<dim>({0, 0}),  morton_lineage<dim>({0, 1}),
+        morton_lineage<dim>({1, 0}),  morton_lineage<dim>({1, 1}),
+        morton_lineage<dim>({2, 0}),  morton_lineage<dim>({2, 1}),
+        morton_lineage<dim>({3, 0}),  morton_lineage<dim>({3, 1})
       };
+      const LeafRangeListView<dim> neat_range_list_view(
+          &(*neat_ranges.begin()), &(*neat_ranges.end()));
 
-      LeafRangeListView<dim> range_list_one( &sample[1], &sample[3] );
-      REQUIRE( range_list_one.any() );
-      REQUIRE_FALSE( range_list_one.is_singleton() );
-      CHECK( range_list_one.child(sfc::ChildNum(0)).none() );
-      CHECK( range_list_one.child(sfc::ChildNum(1)).is_singleton() );
-      CHECK( range_list_one.child(sfc::ChildNum(1)).root().getLevel() == 4 );
-      CHECK( range_list_one.child(sfc::ChildNum(2)).is_singleton() );
-      CHECK( range_list_one.child(sfc::ChildNum(2)).root().getLevel() == 4 );
-      CHECK( range_list_one.child(sfc::ChildNum(3)).none() );
+      for (ot::sfc::ChildNum child(0); child < ot::nchild(dim); ++child)
+      {
+        /// CHECK( neat_range_list_view.child(child) != neat_range_list_view );
+        CHECK( neat_range_list_view.fair_segment(child, ot::nchild(dim))
+            != neat_range_list_view );
+      }
 
-      LeafRangeListView<dim> range_list_two( &sample[0], &sample[4] );
-      REQUIRE( range_list_two.any() );
-      REQUIRE_FALSE( range_list_two.is_singleton() );
-      CHECK( range_list_two.child(sfc::ChildNum(0)).none() );
-      CHECK( range_list_two.child(sfc::ChildNum(1)).is_singleton() );
-      CHECK( range_list_two.child(sfc::ChildNum(1)).root().getLevel() == 4 );
-      CHECK( range_list_two.child(sfc::ChildNum(2)).is_singleton() );
-      CHECK( range_list_two.child(sfc::ChildNum(2)).root().getLevel() == 4 );
-      CHECK( range_list_two.child(sfc::ChildNum(3)).none() );
+      // trans_ranges
+      std::vector<TreeNode<uint32_t, dim>> trans_ranges = {
+        morton_lineage<dim>({0, 0}),  morton_lineage<dim>({1, 0}),
+        morton_lineage<dim>({1, 1}),  morton_lineage<dim>({2, 0}),
+      };
+      const LeafRangeListView<dim> trans_range_list_view(
+          &(*trans_ranges.begin()), &(*trans_ranges.end()));
+
+      for (ot::sfc::ChildNum child(0); child < ot::nchild(dim); ++child)
+      {
+        INFO("child == ", int(child));
+        /// CHECK( trans_range_list_view.child(child) != trans_range_list_view );
+        CHECK( trans_range_list_view.fair_segment(child, ot::nchild(dim))
+            != trans_range_list_view );
+      }
+
 
       _DestroyHcurve();
     }
@@ -486,6 +547,20 @@ namespace ot
   bool LeafListView<dim>::is_singleton_of(const TreeNode<uint32_t, dim> &member) const
   {
     return is_singleton() and *m_begin == member;
+  }
+
+  // LeafListView::operator==()
+  template <int dim>
+  bool LeafListView<dim>::operator==(const LeafListView &other) const
+  {
+    return std::tie(m_begin, m_end) == std::tie(other.m_begin, other.m_end);
+  }
+
+  // LeafListView::operator!=()
+  template <int dim>
+  bool LeafListView<dim>::operator!=(const LeafListView &other) const
+  {
+    return not (*this == other);
   }
 
   // LeafListView::child()
@@ -646,45 +721,70 @@ namespace ot
       return m_sublist.is_singleton_of(member);
   }
 
-  // LeafRangeListView::child()
+  // LeafRangeListView::operator==()
   template <int dim>
-  LeafRangeListView<dim> LeafRangeListView<dim>::child(sfc::ChildNum c) const
+  bool LeafRangeListView<dim>::operator==(const LeafRangeListView &other) const
   {
-    if (this->is_subrange())
-    {
-      LeafRange<dim> new_range = m_subrange.child(c);
-      return LeafRangeListView(AsRange{}, m_sublist, new_range);
-    }
-    else
-    {
-      LeafListView<dim> new_list = m_sublist.child(c);
-
-      const TreeNode<uint32_t, dim> *begin = new_list.begin();
-      const TreeNode<uint32_t, dim> *end = new_list.end();
-
-      // The search usually cuts a range, but we need the whole range.
-      bool adjusted = false;
-      if ((begin - m_sublist.begin()) % 2 != 0)
-      {
-        --begin;
-        adjusted = true;
-      }
-      if ((end - m_sublist.begin()) % 2 != 0)
-      {
-        ++end;
-        adjusted = true;
-      }
-
-      return LeafRangeListView(
-          begin, end, (adjusted? this->m_scope : new_list.scope()));
-    }
+    return std::tie(m_sublist, m_subrange)
+        == std::tie(other.m_sublist, other.m_subrange);
   }
 
-  // LeafRangeListView::subdivide()
+  // LeafRangeListView::operator!=()
   template <int dim>
-  LeafRangeListView<dim> LeafRangeListView<dim>::subdivide(sfc::SubIndex s) const
+  bool LeafRangeListView<dim>::operator!=(const LeafRangeListView &other) const
   {
-    return this->child(this->sfc().child_num(s));
+    return not (*this == other);
+  }
+
+  /// // LeafRangeListView::child()
+  /// template <int dim>
+  /// LeafRangeListView<dim> LeafRangeListView<dim>::child(sfc::ChildNum c) const
+  /// {
+  ///   if (this->is_subrange())
+  ///   {
+  ///     LeafRange<dim> new_range = m_subrange.child(c);
+  ///     return LeafRangeListView(AsRange{}, m_sublist, new_range);
+  ///   }
+  ///   else
+  ///   {
+  ///     LeafListView<dim> new_list = m_sublist.child(c);
+
+  ///     const TreeNode<uint32_t, dim> *begin = new_list.begin();
+  ///     const TreeNode<uint32_t, dim> *end = new_list.end();
+
+  ///     // The search usually cuts a range, but we need the whole range.
+  ///     bool adjusted = false;
+  ///     if ((begin - m_sublist.begin()) % 2 != 0)
+  ///     {
+  ///       --begin;
+  ///       adjusted = true;
+  ///     }
+  ///     if ((end - m_sublist.begin()) % 2 != 0)
+  ///     {
+  ///       ++end;
+  ///       adjusted = true;
+  ///     }
+
+  ///     return LeafRangeListView(
+  ///         begin, end, (adjusted? this->m_scope : new_list.scope()));
+  ///   }
+  /// }
+
+  /// // LeafRangeListView::subdivide()
+  /// template <int dim>
+  /// LeafRangeListView<dim> LeafRangeListView<dim>::subdivide(sfc::SubIndex s) const
+  /// {
+  ///   return this->child(this->sfc().child_num(s));
+  /// }
+
+  // LeafRangeListView::fair_segment()
+  template <int dim>
+  LeafRangeListView<dim> LeafRangeListView<dim>::fair_segment(int pick, int count) const
+  {
+    const size_t total_length = (this->end() - this->begin()) / 2;
+    const auto *begin = (total_length * pick / count) * 2     + this->begin();
+    const auto *end = (total_length * (pick + 1) / count) * 2 + this->begin();
+    return LeafRangeListView(begin, end, this->scope());
   }
 
   // LeafRangeListView::begin()
@@ -800,6 +900,22 @@ namespace ot
   bool LeafRange<dim>::is_singleton_of(const TreeNode<uint32_t, dim> &member) const
   {
     return is_singleton() and m_first == member;
+  }
+
+  // LeafRange::operator==()
+  template <int dim>
+  bool LeafRange<dim>::operator==(const LeafRange &other) const
+  {
+    return this->none() and other.none()
+        or std::tie(m_first, m_last, m_nonempty)
+        == std::tie(other.m_first, other.m_last, other.m_nonempty);
+  }
+
+  // LeafRange::operator!=()
+  template <int dim>
+  bool LeafRange<dim>::operator!=(const LeafRange &other) const
+  {
+    return not (*this == other);
   }
 
   // LeafRange::child()
