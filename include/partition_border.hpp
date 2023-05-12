@@ -103,6 +103,12 @@ namespace ot
   bool adjacent(
       const TreeNode<uint32_t, dim> &a,
       const TreeNode<uint32_t, dim> &b);
+
+  // adjacent_or_overlap()
+  template <unsigned dim>
+  bool adjacent_or_overlap(
+      const TreeNode<uint32_t, dim> &a,
+      const TreeNode<uint32_t, dim> &b);
 }
 
 
@@ -621,7 +627,10 @@ namespace ot
     {
       const AnySet segment_subset = any_set.subdivide(s);
       if (segment_subset.any() and
-          descendants_adjacent_to_leaf(segment_subset.root(), octant))
+          (descendants_adjacent_to_leaf(segment_subset.root(), octant)
+           or overlaps_ok and
+              octant.isAncestorInclusive(segment_subset.root())
+          ))
       {
         if (border_any_impl<dim, overlaps_ok>(octant, segment_subset))
           return true;
@@ -677,10 +686,7 @@ namespace ot
       if (P.is_singleton() and Q.is_singleton())
         return true;
 
-    const auto may_border = [](const auto &R, const auto &S) {
-      return descendants_adjacent_to_leaf(R, S)
-          or descendants_adjacent_to_leaf(S, R);
-    };
+    //TODO In singletons case: border_or_overlap_any() when overlaps_ok
 
     // Split the non-singleton(s) and recurse.
     if (P.is_singleton())
@@ -695,13 +701,13 @@ namespace ot
       std::array<PSet, nchild(dim)> p_sub;
       std::array<QSet, nchild(dim)> q_sub;
       for (sfc::SubIndex pc(0); pc < nchild(dim); ++pc)
-        if (may_border(P.scope().subdivide(pc).m_root, Q.root()))
+        if (adjacent_or_overlap(P.scope().subdivide(pc).m_root, Q.root()))
         {
           p_sub[pc] = P.subdivide(pc);
           p_init[pc] = p_sub[pc].any();
         }
       for (sfc::SubIndex qc(0); qc < nchild(dim); ++qc)
-        if (may_border(Q.scope().subdivide(qc).m_root, P.root()))
+        if (adjacent_or_overlap(Q.scope().subdivide(qc).m_root, P.root()))
         {
           q_sub[qc] = Q.subdivide(qc);
           q_init[qc] = q_sub[qc].any();
@@ -711,7 +717,7 @@ namespace ot
         if (p_init[pc])
           for (sfc::SubIndex qc(0); qc < nchild(dim); ++qc)
             if (q_init[qc])
-              if (may_border(p_sub[pc].root(), q_sub[qc].root()))
+              if (adjacent_or_overlap(p_sub[pc].root(), q_sub[qc].root()))
                 if (border_any_impl<dim, overlaps_ok>(p_sub[pc], q_sub[qc]))
                   return true;
     }
@@ -772,6 +778,17 @@ namespace ot
     const periodic::IntersectionMagnitude intersection =
         periodic::intersect_magnitude(a_range, b_range);
     return intersection.nonempty and intersection.dimension < dim;
+  }
+
+  // adjacent_or_overlap()
+  template <unsigned dim>
+  bool adjacent_or_overlap(
+      const TreeNode<uint32_t, dim> &a,
+      const TreeNode<uint32_t, dim> &b)
+  {
+    return a.isAncestorInclusive(b)
+        or b.isAncestorInclusive(a)
+        or adjacent(a, b);
   }
 
 
