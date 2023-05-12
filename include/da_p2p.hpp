@@ -1217,32 +1217,22 @@ namespace ot
         const int remote_rank = adjacency_list.neighbor_ranks[i];
         const std::vector<size_t> &send_ids = send_octant_ids[i];
 
-        ForLeafNeighborhoods<dim> border(border_dict, send_octants[i]);
         ForLeafNeighborhoods<dim> recv(recv_neighbors[i], send_octants[i]);
-        for (auto border_it =  border.begin(), recv_it  = recv.begin(),
-                  border_end = border.end(),   recv_end = recv.end();
-                  border_it != border_end and  recv_it != recv_end;
-                  ++border_it, ++recv_it)
+        for (auto recv_it  = recv.begin(),
+                  recv_end = recv.end();
+                  recv_it != recv_end;
+                  ++recv_it)
         {
           // Expect to loop over every leaf in the query set (send_octants).
-          assert(border_it.query_idx() == recv_it.query_idx());
-          const size_t query_idx = border_it.query_idx();
+          const size_t query_idx = recv_it.query_idx();
 
-          const auto border_scope = *border_it;
           const auto recv_scope = *recv_it;
-          const Octant key = border_scope.query_key;
-          assert(key == recv_scope.query_key);
+          const Octant key = recv_scope.query_key;
 
-          assert(border_scope.self_neighborhood.center_occupied());
-          const auto priority = priority_neighbors<dim>();
-          const auto owned = ~((border_scope.self_neighborhood & priority)
-                               | border_scope.parent_neighborhood).spread_out();
-          const auto split = border_scope.children_neighborhood.spread_out();
           const auto shared = (recv_scope.self_neighborhood
                                | recv_scope.children_neighborhood).spread_out();
-          const auto emit = owned & shared;
 
-          if (emit.none())
+          if (shared.none())
             continue;
 
           const size_t octant_id = send_ids[query_idx];
@@ -1257,13 +1247,13 @@ namespace ot
             const Hyperface4D face = SplitHyperface4D(local_hyperfaces[id])
                                      .decode()
                                      .mirrored(key.getMortonIndex());
-            if (emit.test_flat(face.flat()))
+            if (shared.test_flat(face.flat()))
             {
               face_map.bind_local_id(remote_rank, id);
               ++count_hyperfaces;
             }
           }
-          assert(count_hyperfaces == emit.count());
+          assert(count_hyperfaces <= shared.count());
         }
       }
 
