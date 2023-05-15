@@ -13,6 +13,7 @@ inline void link_partition_border_tests() {};
 #include "include/treeNode.h"
 #include "include/tsort.h"
 #include "leaf_sets.hpp"
+#include "include/subdivision_search.hpp"
 
 // =============================================================================
 // Interfaces
@@ -433,29 +434,31 @@ namespace ot
     }
 
     // active_view: Interleave partition front and back octants.
-    std::vector<TreeNode<uint32_t, dim>> range_list;
-    range_list.reserve(endpoints.m_fronts.size() * 2);
+    std::vector<TreeNode<uint32_t, dim>> ranges;
+    ranges.reserve(endpoints.m_fronts.size() * 2);
     for (int r: active_list)
     {
-      range_list.push_back(endpoints.m_fronts[r]);
-      range_list.push_back(endpoints.m_backs[r]);
+      ranges.push_back(endpoints.m_fronts[r]);
+      ranges.push_back(endpoints.m_backs[r]);
     }
-    const LeafRangeListView<dim> active_view =
-        vec_leaf_range_list_view<dim>(range_list);
 
     // Construct local partition range.
     const LeafRange<dim> local_range = LeafRange<dim>::make(
         endpoints.m_fronts[local_rank], endpoints.m_backs[local_rank]);
 
     // Search: subset of range-on-range.
-    where_ranges_border( active_view, local_range,
-        [&](const TreeNode<uint32_t, dim> *range_first)
-    {
-      const size_t active_idx = (range_first - active_view.begin()) / 2;
-      const int remote_rank = active_list[active_idx];
-      if (remote_rank != local_rank)
-        neighbor_ranks.push_back(remote_rank);
-    });
+
+    using namespace adjacency;
+    const AdjLeafRangeList<dim> range_list = leaf_range_list<dim>(ranges);
+    const auto M = adjacency::meets_without_overlap<dim>();
+    M.where_meet(range_list, leaf_range(local_range),
+        [&](size_t item_idx, const AdjLeafRange<dim> &item)
+        {
+          const size_t active_idx = item_idx;
+          const int remote_rank = active_list[active_idx];
+          if (remote_rank != local_rank)
+            neighbor_ranks.push_back(remote_rank);
+        });
 
     return { local_rank, std::move(neighbor_ranks) };
   }

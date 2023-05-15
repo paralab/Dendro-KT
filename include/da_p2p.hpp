@@ -22,6 +22,7 @@ inline void link_da_p2p_tests() {};
 #include "include/partition_border.hpp"
 #include "include/contextual_hyperface.hpp"
 #include "include/ghost_exchange.hpp"
+#include "include/subdivision_search.hpp"
 
 /// #include "include/debug.hpp"
 
@@ -693,12 +694,14 @@ namespace ot
           {
             const TreeNode<uint32_t, dim> *nodes = new_da.getTNCoords();
             const size_t n_nodes = new_da.getTotalNodalSz();
-            const auto leaf_set = vec_leaf_list_view<dim>(dtree.getTreePartFiltered());
             REQUIRE( nodes != nullptr );
             for (size_t i = 0; i < n_nodes; ++i)
             {
               const TreeNode<uint32_t, dim> tiny_cell(nodes[i].coords(), m_uiMaxDepth);
-              CHECK( border_or_overlap_any<dim>(tiny_cell, leaf_set) );
+              const auto M = adjacency::meets_without_overlap<dim>();
+              CHECK( M.meets_set(
+                    adjacency::HangingLeaf<dim>{tiny_cell},
+                    adjacency::leaf_list<dim>(dtree.getTreePartFiltered())) );
             }
 
             // Since the point set is predicted communication-free,
@@ -1016,17 +1019,20 @@ namespace ot
       for (size_t i = 0; i < n_remote_parts; ++i)
       {
         const int remote_rank = adjacency_list.neighbor_ranks[i];
-        const LeafRange<dim> remote_range = adjacent_ranges[i];
         send_octants[i].reserve(100);
 
         // future: Search in pre-selected border octants, instead of whole list.
         std::vector<size_t> &send_octant_ids_i = send_octant_ids[i];
         std::vector<Octant> &send_octants_i = send_octants[i];
-        const Octant *octants_ptr = local_octants.data();
-        where_border(vec_leaf_list_view<dim>(local_octants), remote_range,
-            [&](const Octant *owned_oct) {
-                send_octants_i.push_back(*owned_oct);
-                send_octant_ids_i.push_back(owned_oct - octants_ptr);
+
+        using namespace adjacency;
+        const AdjLeafList<dim> local_list = leaf_list<dim>(local_octants);
+        const AdjLeafRange<dim> remote_range = leaf_range<dim>(adjacent_ranges[i]);
+        const auto M = adjacency::meets_without_overlap<dim>();
+        M.where_meet(local_list, remote_range,
+            [&](size_t item_idx, const HangingLeaf<dim> &item) {
+              send_octants_i.push_back(*item);
+              send_octant_ids_i.push_back(item_idx);
             });
 
         send_sizes[i] = send_octants[i].size();  // pointer stability

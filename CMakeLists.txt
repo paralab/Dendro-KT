@@ -192,6 +192,7 @@ set(DENDRO_KT_INC include/dendro.h
                   include/neighbors_to_nodes.hpp
                   include/leaf_sets.hpp
                   include/partition_border.hpp
+                  include/subdivision_search.hpp
                   include/contextual_hyperface.hpp
                   include/da_p2p.hpp
                   include/ghost_exchange.hpp
