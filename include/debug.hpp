@@ -29,6 +29,69 @@ namespace dbg
   inline std::ostream & operator<<(std::ostream &out, buf &b);
   inline std::ostream & operator<<(std::ostream &out, buf &&b);
 
+
+  /** bool_str() */
+  inline const char *bool_str(bool b)
+  {
+    return b? "true" : "false";
+  }
+
+
+  /**
+   * @title nest_print
+   * @usage (Block scope) auto nest = dbg::nest_print(__func__, ); nest << "message\n";
+   * @brief Indentation for primitive nested logging.
+   */
+  template <int channel>
+  struct NestPrint
+  {
+    public:
+      template <typename...X>
+      NestPrint(std::ostream &out, X&&...x);
+
+      template <typename...X>
+      NestPrint(X&&...x);
+
+      template <typename X>
+      std::ostream & operator<<(X &&x);
+
+      std::ostream & operator~();
+
+    private:
+      void spacing(std::ostream &out);
+
+      struct auto_depth
+      {
+        static int &depth()
+        {
+          static int depth = 0;
+          return depth;
+        }
+
+        auto_depth() { ++depth(); }
+        ~auto_depth() { --depth(); }
+        int operator()() const { return depth(); }
+      };
+
+    public:
+      auto_depth depth;
+      std::ostream &out;
+  };
+
+  template <int channel = 0, typename...X>
+  NestPrint<channel> nest_print(X&&...x)
+  {
+    return NestPrint<channel>(std::forward<X>(x)...);
+  }
+
+  struct Print : public NestPrint<0>
+  {
+    Print(std::string file, long line, std::ostream &out = std::cout)
+      : NestPrint<0>(out, "[", file, ":", line, "] ")
+    { }
+  };
+
+
   /**
    * @title Debugging MPI programs with the GNU debugger
    * @author Tom Fogal, University of Utah
@@ -88,6 +151,47 @@ namespace dbg
   inline std::ostream & operator<<(std::ostream &out, buf &&b)
   {
     return out << b;
+  }
+  // ///
+
+
+  //
+  // struct NestPrint
+  template <int channel>
+  template <typename...X>
+  NestPrint<channel>::NestPrint(std::ostream &out, X&&...x)
+  : out(out)
+  {
+    this->spacing(out);
+    out << "> ";
+    int _[] ={(out << std::forward<X>(x), 0)...};
+  }
+
+  template <int channel>
+  template <typename...X>
+  NestPrint<channel>::NestPrint(X&&...x)
+  : NestPrint(std::cout, std::forward<X>(x)...)
+  { }
+
+  template <int channel>
+  template <typename X>
+  std::ostream & NestPrint<channel>::operator<<(X &&x)
+  {
+    this->spacing(out);
+    out << "| ";
+    return out << x;
+  }
+
+  template <int channel>
+  std::ostream & NestPrint<channel>::operator~()
+  {
+    return out;
+  }
+
+  template <int channel>
+  void NestPrint<channel>::spacing(std::ostream &out)
+  {
+    out << std::string(2 * depth(), ' ');
   }
   // ///
 

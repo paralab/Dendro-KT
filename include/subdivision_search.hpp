@@ -11,6 +11,7 @@
 inline void link_subdivision_search_tests() {};
 
 #include "include/treeNode.h"
+#include "include/leaf_sets.hpp"
 
 namespace ot
 {
@@ -42,6 +43,7 @@ namespace ot
     return a.isAncestorInclusive(b);
   }
 
+
   namespace adjacency
   {
     template <int dim> struct BoundingBox;
@@ -67,6 +69,7 @@ namespace ot
       //   [Iterable of ListType] list_split() const;
       //   bool is_single_item() const;
       //   typename ListType::item_type item() const;
+      //   size_t item_idx() const;
 
       // Down-cast.
       ListType       & cast()       { return static_cast<ListType &>(*this); }
@@ -123,6 +126,31 @@ namespace ot
       // covers() is an absolute test that should only be applied to an atom.
       // The bounding box is not enough to determine if an atom covers b.
       return false;
+    }
+
+
+    template <unsigned dim>
+    constexpr bool adjoins(
+        const TreeNode<uint32_t, dim> &a,
+        BoundingBox<int(dim)> b)
+    {
+      return adjoins(a, b.octant);
+    }
+
+    template <unsigned dim>
+    constexpr bool overlaps(
+        const TreeNode<uint32_t, dim> &a,
+        BoundingBox<int(dim)> b)
+    {
+      return overlaps(a, b.octant);
+    }
+
+    template <unsigned dim>
+    constexpr bool covers(
+        const TreeNode<uint32_t, dim> &a,
+        BoundingBox<int(dim)> b)
+    {
+      return covers(a, b.octant);
     }
     // =========================================================================
 
@@ -189,10 +217,21 @@ namespace ot
           }
         }
 
+        // meets_set()
+        template <typename MaybeSet, typename SetType, bool presume = false>
+        static bool meets_set(
+            const MaybeSet &maybe, const Set<dim, SetType> &set_, Presume<presume> = {})
+        {
+          // The correct overload for set is chosen as a better match than (void *).
+          // https://stackoverflow.com/a/1333121
+          return meets_set_impl(&maybe, maybe, set_, Presume<presume>());
+        }
 
         // meets(atom|box, set): Divide set until find an atom::atom meeting.
         template <typename X, typename SetType, bool presume = false>
-        static bool meets_set(const X &x, const Set<dim, SetType> &set_, Presume<presume> = {})
+        static bool meets_set_impl(
+            const void *,
+            const X &x, const Set<dim, SetType> &set_, Presume<presume> = {})
         {
           const SetType &set = set_.cast();
           // Preconditions: set nonempty and x meets bound(set)
@@ -228,7 +267,9 @@ namespace ot
 
         // meets(set, set): Divide both sets until reach (atom, set) case.
         template <typename PType, typename QType, bool presume = false>
-        static bool meets_set(const Set<dim, PType> &P_, const Set<dim, QType> &Q_, Presume<presume> = {})
+        static bool meets_set_impl(
+            const Set<dim, PType> *,
+            const PType &P_, const Set<dim, QType> &Q_, Presume<presume> = {})
         {
           const PType &P = P_.cast();
           const QType &Q = Q_.cast();
@@ -239,13 +280,13 @@ namespace ot
               return false;
           }
 
-          if (is_single_atom(P))
-            if (is_single_atom(Q))              // base
+          if (P.is_single_atom())
+            if (Q.is_single_atom())              // base
               return meets(P.atom(), Q.atom());
             else                                // base
               return meets_set(P.atom(), Q);
           else
-            if (is_single_atom(Q))              // base
+            if (Q.is_single_atom())              // base
               return meets_set(Q.atom(), P);
             else
               if (P.bounds().size() >= Q.bounds().size())     // recurse
@@ -299,7 +340,7 @@ namespace ot
           {
             const auto &item = list.item();
             if (meets_set(item, set, Presume<true>()))
-              emit(item);
+              emit(list.item_idx(), item);
           }
           // recurse
           else
@@ -346,6 +387,274 @@ namespace ot
     //         - But p(y) cannot be a proper ancestor of B, for then y would be
     //           an ancestor of B, overlapping x and z.
     //   QED
+    // =========================================================================
+
+
+
+    // =========================================================================
+    // 
+    // =========================================================================
+
+    template <int dim>
+    struct HangingLeaf
+    {
+      public:
+        static TreeNode<uint32_t, dim> bound(
+            const TreeNode<uint32_t, dim> &a,
+            const TreeNode<uint32_t, dim> &b)
+        {
+          return common_ancestor(a.getParent(), b.getParent());
+        }
+
+        TreeNode<uint32_t, dim> operator*() const { return this->oct; }
+
+      public:
+        TreeNode<uint32_t, dim> oct;
+    };
+
+      template <int dim>
+      bool adjoins(HangingLeaf<dim> a, HangingLeaf<dim> b)
+      { return adjoins(a.oct, b.oct)
+        or (a.oct.getLevel() < b.oct.getLevel() and adjoins(a.oct, b.oct.getParent()))
+        or (a.oct.getLevel() > b.oct.getLevel() and adjoins(a.oct.getParent(), b.oct)); }
+
+      template <int dim>
+      bool adjoins(HangingLeaf<dim> a, adjacency::BoundingBox<dim> b)
+      { return adjoins(a.oct, b.octant)
+        or (a.oct.getLevel() > b.octant.getLevel() and adjoins(a.oct.getParent(), b.octant)); }
+
+      template <int dim>
+      bool overlaps(HangingLeaf<dim> a, HangingLeaf<dim> b)
+      { return overlaps(a.oct, b.oct); }
+
+      template <int dim>
+      bool overlaps(HangingLeaf<dim> a, adjacency::BoundingBox<dim> b)
+      { return overlaps(a.oct, b.octant); }
+
+      template <int dim>
+      bool covers(HangingLeaf<dim> a, adjacency::BoundingBox<dim> b)
+      { return covers(a.oct, b.octant); }
+
+
+
+    template <int dim>
+    class AdjLeafList : public List<dim, AdjLeafList<dim>>,
+                        public Set<dim, AdjLeafList<dim>>
+    {
+      public:
+        // AdjLeafList()
+        AdjLeafList(const TreeNode<uint32_t, dim> *begin,
+                    const TreeNode<uint32_t, dim> *end)
+          : m_init_begin(begin), m_view(begin, end)
+        { }
+
+        bool none() const                { return m_view.none(); }
+        bool any() const                 { return m_view.any(); }
+
+        // bounds()
+        BoundingBox<dim> bounds() const
+        {
+          assert(this->any());
+          return {HangingLeaf<dim>::bound(*(m_view.begin()), *(m_view.end() - 1))};
+        }
+
+        // list_split()
+        std::array<AdjLeafList, nchild(dim)> list_split() const
+        {
+          assert(this->any());
+          // Note: LeafListView could have a singleton of multiple equal items,
+          //       which is illegal to subdivide(), making it impossible to
+          //       reach a single item/atom. Such input is not supported.
+          std::array<AdjLeafList, nchild(dim)> result;
+          for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+            result[s] = AdjLeafList(m_init_begin, m_view.subdivide(s));
+          return result;
+        }
+
+        // is_single_item()
+        bool is_single_item() const
+        {
+          // Note: LeafListView could have a singleton of multiple equal items,
+          //       which is illegal to subdivide(), making it impossible to
+          //       reach a single item/atom. Such input is not supported.
+          const bool result = m_view.begin() + 1 == m_view.end();
+          assert(result or not m_view.is_singleton());
+          return result;
+        }
+
+        HangingLeaf<dim> item() const { assert(this->any()); return {*m_view.begin()}; }
+        size_t item_idx() const { assert(this->any()); return m_view.begin() - m_init_begin; }
+
+        const AdjLeafList &reduce(BoundingBox<dim>) const { assert(this->any()); return *this; }  // waste
+        std::array<AdjLeafList, nchild(dim)> set_split() const { assert(this->any()); return list_split(); }
+
+        // is_single_atom()
+        bool is_single_atom() const
+        {
+          // Note: LeafListView could have a singleton of multiple equal items,
+          //       which is illegal to subdivide(), making it impossible to
+          //       reach a single item/atom. Such input is not supported.
+          const bool result = m_view.begin() + 1 == m_view.end();
+          assert(result or not m_view.is_singleton());
+          return result;
+        }
+
+        HangingLeaf<dim> atom() const { assert(this->any()); return {*m_view.begin()}; }
+
+      private:
+        friend std::array<AdjLeafList, nchild(dim)>;
+        AdjLeafList() = default;
+        AdjLeafList(const TreeNode<uint32_t, dim> *begin, LeafListView<dim> view)
+          : m_init_begin(begin), m_view(std::move(view))
+        { }
+
+      public:
+        const TreeNode<uint32_t, dim> *m_init_begin;
+        LeafListView<dim> m_view;  // future: convert LeafListView to here.
+    };
+
+    template <int dim>
+    class AdjLeafRange : public Set<dim, AdjLeafRange<dim>>
+    {
+      public:
+        AdjLeafRange(LeafRange<dim> range)
+          : m_range(range)
+        { }
+
+        bool none() const
+        {
+          return m_range.none();
+        }
+
+        bool any() const
+        {
+          return m_range.any();
+        }
+
+        BoundingBox<dim> bounds() const
+        {
+          assert(this->any());
+          return {HangingLeaf<dim>::bound(m_range.first(), m_range.last())};
+        }
+
+        const AdjLeafRange &reduce(BoundingBox<dim>) const { assert(this->any()); return *this; }  //waste
+
+        // set_split()
+        std::array<AdjLeafRange, nchild(dim)> set_split() const
+        {
+          assert(this->any());
+          std::array<AdjLeafRange, nchild(dim)> result;
+          for (sfc::SubIndex s(0); s < nchild(dim); ++s)
+            result[s] = AdjLeafRange(m_range.subdivide(s));
+          return result;
+        }
+
+        // is_single_atom()
+        bool is_single_atom() const
+        {
+          return m_range.is_singleton();
+        }
+
+        HangingLeaf<dim> atom() const { assert(this->any()); return { m_range.first() }; }
+
+      private:
+        friend std::array<AdjLeafRange, nchild(dim)>;
+        AdjLeafRange() = default;
+      public:
+        LeafRange<dim> m_range;
+    };
+
+    template <int dim>
+    class AdjLeafRangeList : public List<dim, AdjLeafRangeList<dim>>
+    {
+      public:
+        AdjLeafRangeList(
+            const TreeNode<uint32_t, dim> *begin,
+            const TreeNode<uint32_t, dim> *end)
+          : m_init_begin(begin), m_begin_idx(0), m_end_idx((end - begin) / 2)
+        {
+          assert((end - begin) % 2 == 0);
+        }
+
+        bool none() const { return m_begin_idx == m_end_idx; }
+        bool any() const { return not this->none(); }
+
+        // bounds()
+        BoundingBox<dim> bounds() const
+        {
+          assert(this->any());
+          return {HangingLeaf<dim>::bound(
+              m_init_begin[2 * m_begin_idx],
+              m_init_begin[2 * (m_end_idx - 1) + 1])};
+        }
+
+        // list_split()
+        std::array<AdjLeafRangeList, 2> list_split() const
+        {
+          assert(this->any());
+          const size_t length = m_end_idx - m_begin_idx;
+          const size_t half = length / 2;
+          return {
+            AdjLeafRangeList(m_init_begin, m_begin_idx, m_begin_idx + half),
+            AdjLeafRangeList(m_init_begin, m_begin_idx + half, m_end_idx)
+          };
+        }
+
+        // is_single_item()
+        bool is_single_item() const { return m_begin_idx + 1 == m_end_idx; }
+
+        // item()
+        AdjLeafRange<dim> item() const
+        {
+          assert(this->any());
+          return AdjLeafRange<dim>(
+              LeafRange<dim>::make(
+                m_init_begin[2 * m_begin_idx],
+                m_init_begin[2 * m_begin_idx + 1]));
+        }
+
+        // item_idx()
+        size_t item_idx() const
+        {
+          assert(this->any());
+          return m_begin_idx;
+        }
+
+      private:
+        friend std::array<AdjLeafRangeList, 2>;
+        AdjLeafRangeList() = default;
+        AdjLeafRangeList( const TreeNode<uint32_t, dim> *init_begin,
+                          size_t begin_idx,
+                          size_t end_idx )
+          : m_init_begin(init_begin), m_begin_idx(begin_idx), m_end_idx(end_idx)
+        { }
+
+      public:
+        const TreeNode<uint32_t, dim> *m_init_begin;
+        size_t m_begin_idx;
+        size_t m_end_idx;
+        /// LeafListView<dim> m_view;  // future: convert LeafListView to here.
+    };
+
+    template <unsigned dim>
+    AdjLeafList<dim> leaf_list(const std::vector<TreeNode<uint32_t, dim>> &v)
+    {
+      return AdjLeafList<dim>(&(*v.cbegin()), &(*v.cend()));
+    }
+
+    template <int dim>
+    AdjLeafRange<dim> leaf_range(LeafRange<dim> range)
+    {
+      return AdjLeafRange<dim>(range);
+    }
+
+    template <unsigned dim>
+    AdjLeafRangeList<dim> leaf_range_list(const std::vector<TreeNode<uint32_t, dim>> &v)
+    {
+      return AdjLeafRangeList<dim>(&(*v.cbegin()), &(*v.cend()));
+    }
+    // =========================================================================
+
 
   }//namespace adjacency
 
@@ -365,162 +674,6 @@ namespace ot
 {
   DOCTEST_TEST_SUITE("Subdivision search")
   {
-    namespace normal_search
-    {
-      template <int dim>
-      struct Leaf
-      {
-        TreeNode<uint32_t, dim> me;
-      };
-
-      template <int dim>
-      bool adjoins(Leaf<dim> a, Leaf<dim> b)
-      { return adjoins(a.me, b.me); }
-
-      template <int dim>
-      bool adjoins(Leaf<dim> a, adjacency::BoundingBox<dim> b)
-      { return adjoins(a.me, b.octant); }
-
-      template <int dim>
-      bool overlaps(Leaf<dim> a, Leaf<dim> b)
-      { return overlaps(a.me, b.me); }
-
-      template <int dim>
-      bool overlaps(Leaf<dim> a, adjacency::BoundingBox<dim> b)
-      { return overlaps(a.me, b.octant); }
-
-      template <int dim>
-      bool covers(Leaf<dim> a, adjacency::BoundingBox<dim> b)
-      { return covers(a.me, b.octant); }
-
-
-      template <int dim>
-      struct NormalList: public ::ot::adjacency::List<dim, NormalList<dim>>,
-                                ::ot::adjacency::Set<dim, NormalList<dim>>
-      {
-        public:
-          NormalList(const LeafListView<dim> &view) : m_view(view) { }
-          bool none() const                { return m_view.none(); }
-          bool any() const                 { return m_view.any(); }
-          adjacency::BoundingBox<dim> bounds() const  { return { m_view.scope().m_root }; }
-          std::array<NormalList, 2> list_split() const
-          {
-            const TreeNode<uint32_t, dim> *ptr = m_view.begin();
-            const size_t length = m_view.end() - m_view.begin();
-            const size_t half = length / 2;
-            return {LeafListView<dim>{ptr, ptr + half},
-                    LeafListView<dim>{ptr + half, ptr + length}};
-          }
-
-          bool is_single_item() const { return m_view.begin() + 1 == m_view.end(); }
-          Leaf<dim> item() const { return {*m_view.begin()}; }
-
-          const NormalList &reduce(adjacency::BoundingBox<dim>) const { return *this; }  // waste
-          std::array<NormalList, 2> set_split() const { return list_split(); }
-          bool is_single_atom() const { return m_view.begin() + 1 == m_view.end(); }
-          Leaf<dim> atom() const { return {*m_view.begin()}; }
-
-        public:
-          LeafListView<dim> m_view;
-      };
-    }
-
-    namespace hanging_search
-    {
-      template <int dim>
-      struct Leaf
-      {
-        TreeNode<uint32_t, dim> me;
-      };
-
-      template <int dim>
-      bool adjoins(Leaf<dim> a, Leaf<dim> b)
-      { return adjoins(a.me, b.me)
-        or (a.me.getLevel() + 1 == b.me.getLevel() and adjoins(a.me, b.me.getParent()))
-        or (a.me.getLevel() == b.me.getLevel() + 1 and adjoins(a.me.getParent(), b.me)); }
-
-      template <int dim>
-      bool adjoins(Leaf<dim> a, adjacency::BoundingBox<dim> b)
-      { return adjoins(a.me, b.octant)
-        or (a.me.getLevel() > b.octant.getLevel() and adjoins(a.me.getParent(), b.octant)); }
-
-      template <int dim>
-      bool overlaps(Leaf<dim> a, Leaf<dim> b)
-      { return overlaps(a.me, b.me); }
-
-      template <int dim>
-      bool overlaps(Leaf<dim> a, adjacency::BoundingBox<dim> b)
-      { return overlaps(a.me, b.octant); }
-
-      template <int dim>
-      bool covers(Leaf<dim> a, adjacency::BoundingBox<dim> b)
-      { return covers(a.me, b.octant); }
-
-
-      template <int dim>
-      struct HangList: public ::ot::adjacency::List<dim, HangList<dim>>,
-                                ::ot::adjacency::Set<dim, HangList<dim>>
-      {
-        public:
-          HangList(const LeafListView<dim> &view) : m_view(view) { }
-          bool none() const                { return m_view.none(); }
-          bool any() const                 { return m_view.any(); }
-          adjacency::BoundingBox<dim> bounds() const
-          {
-            const TreeNode<uint32_t, dim> p_first = m_view.begin()->getParent();
-            const TreeNode<uint32_t, dim> p_last = (m_view.end() - 1)->getParent();
-            return { common_ancestor(p_first, p_last) };
-          }
-          std::array<HangList, 2> list_split() const
-          {
-            const TreeNode<uint32_t, dim> *ptr = m_view.begin();
-            const size_t length = m_view.end() - m_view.begin();
-            const size_t half = length / 2;
-            return {LeafListView<dim>{ptr, ptr + half},
-                    LeafListView<dim>{ptr + half, ptr + length}};
-          }
-
-          bool is_single_item() const { return m_view.begin() + 1 == m_view.end(); }
-          Leaf<dim> item() const { return {*m_view.begin()}; }
-
-          const HangList &reduce(adjacency::BoundingBox<dim>) const { return *this; }  // waste
-          std::array<HangList, 2> set_split() const { return list_split(); }
-          bool is_single_atom() const { return m_view.begin() + 1 == m_view.end(); }
-          Leaf<dim> atom() const { return {*m_view.begin()}; }
-
-        public:
-          LeafListView<dim> m_view;
-      };
-    }
-
-
-    DOCTEST_TEST_CASE("basic ranges")
-    {
-      constexpr int dim = 2;
-      using Octant = TreeNode<uint32_t, dim>;
-      _InitializeHcurve(dim);
-
-      const std::vector<Octant> red = {
-        morton_lineage<dim>({0, 3, 3, 0}),
-        morton_lineage<dim>({0, 3, 3, 1}),
-        morton_lineage<dim>({0, 3, 3, 2}),
-        morton_lineage<dim>({0, 3, 3, 3, 0}),
-        morton_lineage<dim>({0, 3, 3, 3, 1}),
-      };
-
-      const std::vector<Octant> blue = {
-        morton_lineage<dim>({0, 3, 3, 3, 2}),
-        morton_lineage<dim>({0, 3, 3, 3, 3}),
-      };
-
-      normal_search::NormalList<dim> red_list  = {vec_leaf_list_view<dim>(red)};
-      normal_search::NormalList<dim> blue_list = {vec_leaf_list_view<dim>(blue)};
-      size_t count = 0;
-      const auto M = adjacency::meets_without_overlap<dim>();
-      M.where_meet(red_list, blue_list, [&](auto) { ++count; });
-      CHECK( count == 3 );
-    }
-
     DOCTEST_TEST_CASE("weird hanging case")
     {
       constexpr int dim = 2;
@@ -540,11 +693,13 @@ namespace ot
         morton_lineage<dim>({0, 3, 3, 3, 3}),
       };
 
-      hanging_search::HangList<dim> red_list  = {vec_leaf_list_view<dim>(red)};
-      hanging_search::HangList<dim> blue_list = {vec_leaf_list_view<dim>(blue)};
+      using namespace adjacency;
+      AdjLeafList<dim> red_list = leaf_list<dim>(red);
+      AdjLeafList<dim> blue_list = leaf_list<dim>(blue);
       size_t count = 0;
-      const auto M = adjacency::meets_without_overlap<dim>();
-      M.where_meet(red_list, blue_list, [&](auto) { ++count; });
+      const auto M = meets_without_overlap<dim>();
+      M.where_meet(red_list, blue_list, [&](size_t idx, auto) { ++count; });
+      CHECK_FALSE( count == 3 );
       CHECK( count == 5 );
 
       _DestroyHcurve();

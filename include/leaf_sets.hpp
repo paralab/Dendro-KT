@@ -173,6 +173,10 @@ namespace ot
       LeafRange subdivide(sfc::SubIndex s) const;
       LeafRange child(sfc::ChildNum c) const;
 
+      // Specific to LeafRange (experimental)
+      TreeNode<uint32_t, dim> first() const { return m_first; }
+      TreeNode<uint32_t, dim> last() const { return m_last; }
+
     private:
       LeafRange( TreeNode<uint32_t, dim> first,
                  TreeNode<uint32_t, dim> last,
