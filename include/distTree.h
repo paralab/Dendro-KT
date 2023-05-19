@@ -271,7 +271,7 @@ namespace ot
       // Member variables.
       //
       MPI_Comm m_comm;
-      CoalesceOption m_coalesceSiblings;
+      CoalesceOption m_coalesceSiblings = Coalesce;
       ::ibm::DomainDecider m_domainDecider;
       std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> m_domainDeciderTN_asCell;
       std::function<::ibm::Partition(const TreeNode<T, dim> &treeNodeElem)> m_domainDeciderTN_asPoint;

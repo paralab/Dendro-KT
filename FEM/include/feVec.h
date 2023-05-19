@@ -27,8 +27,6 @@ protected:
     /**@brief: pointer to OCT DA*/
     ot::DA<dim>* m_uiOctDA;
 
-    const std::vector<ot::TreeNode<unsigned int, dim>> *m_octList;
-
     /// /**@brief: type of the DA*/  ///TODO
     /// ot::DAType m_uiDaType;
 
@@ -48,8 +46,7 @@ public:
     /**@brief: feVec constructor
      * @par[in] daType: type of the DA
      * */
-    feVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList)
-      : m_octList(octList)
+    feVec(ot::DA<dim>* da)
     {
         m_uiOctDA=da;
     }
@@ -59,6 +56,16 @@ public:
     {
 
     }
+
+    // da()
+    const ot::DA<dim> * da() const { return m_uiOctDA; }
+
+    // octList()
+    const std::vector<ot::TreeNode<unsigned int, dim>> * octList() const {
+      return & da()->dist_tree()->getTreePartFiltered(da()->stratum());
+    }
+
+
     /**
      * @brief Evaluates the RHS of the PDE at specific points (for example evaluation at the quadrature points)
      * @param [out] out : function evaluated at specific points.

@@ -38,7 +38,8 @@ public:
      * @brief constructs an FEM stiffness matrix class.
      * @param[in] da: octree DA
      * */
-    feVector(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof=1);
+     // future: remove the octlist parameter
+    feVector(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *,unsigned int dof=1);
 
     ~feVector();
 
@@ -99,7 +100,7 @@ public:
 };
 
 template <typename T, unsigned int dim>
-feVector<T,dim>::feVector(ot::DA<dim> *da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof) : feVec<dim>(da, octList)
+feVector<T,dim>::feVector(ot::DA<dim> *da, const std::vector<ot::TreeNode<unsigned int, dim>> *,unsigned int dof) : feVec<dim>(da)
 {
     m_uiDof=dof;
     const unsigned int nPe=feVec<dim>::m_uiOctDA->getNumNodesPerElement();
@@ -152,7 +153,7 @@ void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
       std::bind(&feVector<T,dim>::elementalComputeVec, this, _1, _2, _3, _4, _5, _6);
 
   fem::matvec(inGhostedPtr, outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),
-      &(*this->m_octList->cbegin()), this->m_octList->size(),
+      &(*this->octList()->cbegin()), this->octList()->size(),
       *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
       eleOp, scale, m_oda->getReferenceElement());
   //TODO I think refel won't always be provided by oda.
