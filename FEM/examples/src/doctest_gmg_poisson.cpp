@@ -21,13 +21,14 @@
 
 
 // -----------------------------
-// TODO
 // ✔ Define VectorPool member functions
 // ✔ Define smoother (start with Jacobi smoother)
 // ✔ Define restriction (adapt from gmgMat)
 // ✔ Define prolongation (follow restriction, adapt from gmgMat)
 // ✔ Add doctest that restriction and prolongation match
-// _ Finish vcycle() definition
+// ✔ Try postMatVec() at end of restriction, preMatVec() at start of prolongation
+// ✔ Get an appropriate coarse solver (or make the iterative method converge)
+// ✔ Finish vcycle() definition
 // _ Refactor MatVec to wrap a new MatVecGhosted, which can be called in the solver
 // _ future: 4th kind Chebyshev smoother
 // -----------------------------
@@ -45,6 +46,12 @@ template <unsigned int dim, typename NodeT>
 std::ostream & print(const ot::DA<dim> &da,
                      const std::vector<NodeT> &local_vec,
                      std::ostream & out = std::cerr);
+
+template <unsigned int dim, typename NodeT>
+std::ostream & print(const ot::DA<dim> &da,
+                     const NodeT *local_vec,
+                     std::ostream & out = std::cerr);
+
 
 // -----------------------------
 // Structs
@@ -117,7 +124,7 @@ void VectorPool<X>::checkin(std::vector<X> &&vec)
 
 // cgSolver()
 template <unsigned int dim, typename MatMult>
-int cgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, VECType * u, const VECType * rhs, int max_iter, double relResErr);
+int cgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, VECType * u, const VECType * rhs, int max_iter, double relResErr, bool print_progress);
 
 // matvec_base_in()
 template <typename X, unsigned dim>
@@ -130,18 +137,20 @@ ot::MatvecBaseOut<dim, X, true> matvec_base_out_accumulate(
     const ot::DA<dim> *da, int ndofs, int extra_depth = 0);
 
 // restrict_fine_to_coarse()
-template <int dim>
+template <int dim, typename PostRestriction>
 void restrict_fine_to_coarse(
     DA_Pair<dim> fine_da, const VECType *fine_vec_ghosted,
     DA_Pair<dim> coarse_da, VECType *coarse_vec_ghosted,
+    PostRestriction post_restriction,  // on local vector
     int ndofs,
     VectorPool<VECType> &vector_pool);
 
 // prolongate_coarse_to_fine()
-template <int dim>
+template <int dim, typename PreProlongation>
 void prolongate_coarse_to_fine(
     DA_Pair<dim> coarse_da, const VECType *coarse_vec_ghosted,
     DA_Pair<dim> fine_da, VECType *fine_vec_ghosted,
+    PreProlongation pre_prolongation,  // on local vector
     int ndofs,
     VectorPool<VECType> &vector_pool);
 
@@ -203,16 +212,25 @@ MPI_TEST_CASE("(R r_fine, u_coarse) == (r_fine, P u_coarse) on uniform grid", 2)
   das[1].primary->readFromGhostBegin(u_coarse.data(), single_dof);
   das[1].primary->readFromGhostEnd(u_coarse.data(), single_dof);
 
+  // Coarse operator
+  Point<dim> min_corner(-1.0);
+  Point<dim> max_corner(1.0);
+  PoissonEq::PoissonMat<dim> coarse_mat(das[n_grids-1].primary, {}, single_dof);
+  coarse_mat.setProblemDimensions(min_corner, max_corner);
+  coarse_mat.zero_boundary(true);
+
   // restriction (fine-to-coarse) (on ghosted vectors)
   restrict_fine_to_coarse(
       das[0], r_fine.data(),
       das[1], r_coarse.data(),
+      [&](double *vec) { coarse_mat.postMatVec(vec, vec); },
       single_dof, vector_pool);
 
   // prolongation (coarse-to-fine) (on ghosted vectors)
   prolongate_coarse_to_fine(
       das[1], u_coarse.data(),
       das[0], u_fine.data(),
+      [&](double *vec) { coarse_mat.preMatVec(vec, vec); },
       single_dof, vector_pool);
 
   const double Rr_dot_u = dot(
@@ -240,8 +258,11 @@ MPI_TEST_CASE("(R r_fine, u_coarse) == (r_fine, P u_coarse) on uniform grid", 2)
   DendroScopeEnd();
 }
 
+
+#include <fenv.h>
+
 // ========================================================================== //
-MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, should converge to exact solution", 5)
+MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, should converge to exact solution", 1)
 {
   MPI_Comm comm = test_comm;
 
@@ -279,7 +300,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   };
 
   // Mesh (uniform grid)
-  const int refinement_level = 7;
+  const int refinement_level = 5;
   ot::DistTree<uint, dim> base_tree = ot::DistTree<uint, dim>::
       constructSubdomainDistTree(refinement_level, comm, partition_tolerance);
   ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tolerance);
@@ -327,7 +348,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   const auto fe_matrix = [&](const ot::DA<dim> &da) -> PoissonMat *
   {
     auto *mat = new PoissonMat(
-        &da, &da.dist_tree()->getTreePartFiltered(), single_dof);
+        &da, {}, single_dof);
     mat->setProblemDimensions(min_corner, max_corner);
     return mat;
   };
@@ -337,7 +358,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   {
     PoissonEq::PoissonVec<dim> vec(
         const_cast<ot::DA<dim> *>(&da),   // violate const for weird feVec non-const necessity
-        &da.dist_tree()->getTreePartFiltered(),
+        {},
         single_dof);
     vec.setProblemDimensions(min_corner, max_corner);
     return vec;
@@ -411,7 +432,10 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   std::vector<PoissonMat *> mats(n_grids, nullptr);
   mats[0] = &base_mat;
   for (int g = 1; g < n_grids; ++g)
+  {
     mats[g] = fe_matrix(*das[g].primary);
+    mats[g]->zero_boundary(true);
+  }
 
   std::vector<std::vector<double>> a_diag_ghosted(n_grids);
   for (int g = 0; g < n_grids; ++g)
@@ -451,6 +475,88 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     vector_pool.checkin(std::move(Dinv_r));
   };
 
+
+   // ===========================================================================
+  // Try KSPSolve() with Coarse grid system.
+  // ===========================================================================
+
+ const auto *coarse_da = das[n_grids - 1].primary;
+
+  // Assemble the coarse grid matrix (assuming one-time assembly).
+  Mat coarse_mat;
+  coarse_da->createMatrix(coarse_mat, MATAIJ, single_dof);
+  mats[n_grids - 1]->getAssembledMatrix(&coarse_mat, {});
+  MatAssemblyBegin(coarse_mat, MAT_FINAL_ASSEMBLY);
+  MatAssemblyEnd(coarse_mat, MAT_FINAL_ASSEMBLY);
+
+  // Placeholder Vec's to which user array will be bound in coarse grid solve.
+  const MPI_Comm coarse_comm = coarse_da->getCommActive();
+  const size_t coarse_local_size = coarse_da->getLocalNodalSz() * single_dof;
+  const size_t coarse_global_size = coarse_da->getGlobalNodeSz() * single_dof;
+  Vec coarse_u, coarse_rhs;
+  VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_u);
+  VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_rhs);
+
+  std::vector<int> coarse_global_ids_of_local_boundary_nodes(coarse_da->getBoundaryNodeIndices().size());
+  std::copy(coarse_da->getBoundaryNodeIndices().cbegin(),
+            coarse_da->getBoundaryNodeIndices().cend(),
+            coarse_global_ids_of_local_boundary_nodes.begin());
+  for (int &id : coarse_global_ids_of_local_boundary_nodes)
+    id += coarse_da->getGlobalRankBegin();
+  // If ndofs != 1 then need to duplicate and zip.
+
+  MatZeroRows(
+      coarse_mat,
+      coarse_global_ids_of_local_boundary_nodes.size(),
+      coarse_global_ids_of_local_boundary_nodes.data(),
+      1.0,
+      NULL, NULL);
+
+  /// MatView(coarse_mat, PETSC_VIEWER_STDOUT_(coarse_da->getCommActive()));
+
+  // Coarse solver setup with PETSc.
+  KSP coarse_ksp;
+  KSPCreate(coarse_da->getCommActive(), &coarse_ksp);
+  KSPSetOperators(coarse_ksp, coarse_mat, coarse_mat);
+  PC coarse_pc;
+  KSPGetPC(coarse_ksp, &coarse_pc);
+  PCSetType(coarse_pc, PCLU);  // LU factorization (direct solve)
+  KSPSetUp(coarse_ksp);
+
+  // Coarse solver callback routine.
+  const auto coarse_solver = [&](double *u_local, const double *rhs_local) -> int
+  {
+    // Bind u and rhs to Vec
+    VecPlaceArray(coarse_u, u_local);
+    VecPlaceArray(coarse_rhs, rhs_local);
+
+    // Solve.
+    KSPSolve(coarse_ksp, coarse_rhs, coarse_u);
+
+    // Debug for solution magnitude.
+    PetscReal sol_norm = 0.0;
+    VecNorm(coarse_u, NORM_INFINITY, &sol_norm);
+
+    // Unbind from Vec.
+    VecResetArray(coarse_u);
+    VecResetArray(coarse_rhs);
+
+    // Get residual norm and number of iterations.
+    int iterations = 0;
+    PetscReal res_norm = 0.0;
+    KSPGetIterationNumber(coarse_ksp, &iterations);
+    KSPGetResidualNorm(coarse_ksp, &res_norm);
+    std::cout
+      << "iterations=" << iterations
+      << "  res=" << res_norm
+      << "  sol=" << sol_norm << "\n";
+    return iterations;
+  };
+
+
+  const int nu_pre_smooth = 1;
+  const int nu_post_smooth = 1;
+
   // Multigrid v-cycle
   //  Parameters: [in-out] u  initial guess and final solution
   //              [in-out] r  residual of initial guess and of final solution
@@ -474,16 +580,39 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     for (int height = 0; height < n_grids - 1; ++height)
     {
       // pre-smoothing (on ghosted vectors)
-      jacobi(mats[height], u_ghosted[height].data(), r_ghosted[height].data(), damp, a_diag_ghosted[height].data());
+      for (int i = 0; i < nu_pre_smooth; ++i)
+        jacobi(mats[height], u_ghosted[height].data(), r_ghosted[height].data(), damp, a_diag_ghosted[height].data());
 
       // restriction (fine-to-coarse) (on ghosted vectors)
       restrict_fine_to_coarse(
           das[height], r_ghosted[height].data(),
           das[height+1], r_ghosted[height+1].data(),
+          [mat=mats[height+1]](double *vec) { mat->postMatVec(vec, vec); },
           single_dof, vector_pool);
     }
 
     // Coarse solve
+    std::cout << "-------\n";
+    std::cout << "Coarse:\n";
+    std::cout << "-------\n";
+
+    // cgSolver() function currently has no convergence detector, so diverges.
+    /// const int max_iter = das[n_grids-1].primary->getGlobalNodeSz() * single_dof;
+    /// const int coarse_steps = cgSolver(
+    ///     das[n_grids-1].primary, [coarse_mat=mats[n_grids-1]](const double *u, double *v){ coarse_mat->matVec(u, v); },
+    ///     u_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof,
+    ///     r_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof,
+    ///     max_iter, 0.0f, true);
+
+    // Direct method.
+    const int coarse_steps = coarse_solver(
+        u_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof,
+        r_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof);
+
+    std::cout << "-------\n";
+    std::cout << "\n";
+    das[n_grids-1].primary->readFromGhostBegin(u_ghosted[n_grids-1].data(), single_dof);
+    das[n_grids-1].primary->readFromGhostEnd(u_ghosted[n_grids-1].data(), single_dof);
 
     for (int height = n_grids - 1; height > 0; --height)
     {
@@ -491,6 +620,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
       prolongate_coarse_to_fine(
           das[height], u_ghosted[height].data(),
           das[height-1], e_ghosted[height-1].data(),
+          [mat=mats[height]](double *vec) { mat->preMatVec(vec, vec); },
           single_dof, vector_pool);
 
       // Accumulate into u[h-1] and r[h-1]
@@ -504,7 +634,8 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
         r_ghosted[height-1][i] -= e_ghosted[height-1][i];
 
       // post-smoothing (on ghosted vectors)
-      jacobi(mats[height-1], u_ghosted[height-1].data(), r_ghosted[height-1].data(), damp, a_diag_ghosted[height-1].data());
+      for (int i = 0; i < nu_post_smooth; ++i)
+        jacobi(mats[height-1], u_ghosted[height-1].data(), r_ghosted[height-1].data(), damp, a_diag_ghosted[height-1].data());
     }
 
     // Copy u_ghosted, r_ghosted to u, r.
@@ -528,15 +659,41 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
 
   // Solve equation.
   const double tol=1e-14;
-  const unsigned int max_iter=1500;
+  const unsigned int max_iter=300;
+
+  /// feenableexcept(FE_INVALID);
 
   double relative_residual = tol;
+
   /// const int steps = cgSolver(
   ///     &base_da, [&base_mat](const double *u, double *v){ base_mat.matVec(u, v); },
-  ///     &(*u_vec.begin()), &(*rhs_vec.begin()), max_iter, relative_residual);
-  const int steps = cgSolver(
-      &base_da, pc_mat,
-      &(*u_vec.begin()), &(*pc_rhs_vec.begin()), max_iter, relative_residual);
+  ///     &(*u_vec.begin()), &(*rhs_vec.begin()), max_iter, relative_residual, true);
+
+  /// const int steps = cgSolver(
+  ///     &base_da, pc_mat,
+  ///     &(*u_vec.begin()), &(*pc_rhs_vec.begin()), max_iter, relative_residual, true);
+
+  // Multigrid V-Cycle iteration as solver.
+  const int steps = [&, steps=0]() mutable {
+    base_mat.matVec(u_vec.data(), v_vec.data());
+    for (size_t i = 0; i < v_vec.size(); ++i)
+      v_vec[i] = rhs_vec[i] - v_vec[i];
+    double err;
+    fprintf(stdout, "steps==%2d  err==%e\n", steps, err=sol_err_max(u_vec));
+    fprintf(stdout, "\n");
+    while (steps < max_iter and err > 1e-14)
+    {
+      vcycle(u_vec.data(), v_vec.data());
+      base_mat.matVec(u_vec.data(), v_vec.data());
+      for (size_t i = 0; i < v_vec.size(); ++i)
+        v_vec[i] = rhs_vec[i] - v_vec[i];
+      ++steps;
+      fprintf(stdout, "steps==%2d  err==%e\n", steps, err=sol_err_max(u_vec));
+      fprintf(stdout, "\n");
+    }
+    return steps;
+  }();
+
   const double err = sol_err_max(u_vec);
 
   // Multigrid teardown.
@@ -552,6 +709,11 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   // future: base_mat can stay in stack memory, don't need to new/delete
   delete &base_mat;
 
+  VecDestroy(&coarse_u);
+  VecDestroy(&coarse_rhs);
+  KSPDestroy(&coarse_ksp);
+  MatDestroy(&coarse_mat);
+
   if(!rank)
   {
     std::cout << "___________End of poissonEq: " 
@@ -560,21 +722,19 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
               << "Final error==" << err << "\n";
   }
 
-  // Debug
-  /*
-  if (!rank)
-    std::cerr << "\n\nExact solution:\n";
-  print(base_da, u_exact_vec, std::cerr);
-  if (!rank)
-    std::cerr << "\n\nApproximation:\n";
-  print(base_da, u_vec, std::cerr);
-  std::vector<double> err_vec = u_vec;
-  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
-    err_vec[i] -= u_exact_vec[i];
-  if (!rank)
-    std::cerr << "\n\nError:\n";
-  print(base_da, err_vec, std::cerr);
-  */
+  /// // Debug
+  /// if (!rank)
+  ///   std::cerr << "\n\nExact solution:\n";
+  /// print(base_da, u_exact_vec, std::cerr);
+  /// if (!rank)
+  ///   std::cerr << "\n\nApproximation:\n";
+  /// print(base_da, u_vec, std::cerr);
+  /// std::vector<double> err_vec = u_vec;
+  /// for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+  ///   err_vec[i] -= u_exact_vec[i];
+  /// if (!rank)
+  ///   std::cerr << "\n\nError:\n";
+  /// print(base_da, err_vec, std::cerr);
 
   MPI_CHECK(0, err < 1e-10);
 
@@ -600,11 +760,27 @@ std::ostream & print(const ot::DA<dim> &da,
   return return_out;
 }
 
+template <unsigned int dim, typename NodeT>
+std::ostream & print(const ot::DA<dim> &da,
+                     const NodeT *local_vec,
+                     std::ostream & out)
+{
+  MPI_Barrier(MPI_COMM_WORLD);
+  std::ostream & return_out = ot::printNodes(
+      da.getTNCoords() + da.getLocalNodeBegin(),
+      da.getTNCoords() + da.getLocalNodeBegin() + da.getLocalNodalSz(),
+      local_vec,
+      da.getElementOrder(),
+      out);
+  MPI_Barrier(MPI_COMM_WORLD);
+  return return_out;
+}
+
 
 
 // cgSolver()
 template <unsigned int dim, typename MatMult>
-int cgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, VECType * u, const VECType * rhs, int max_iter, double relResErr)
+int cgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, VECType * u, const VECType * rhs, int max_iter, double relResErr, bool print_progress)
 {
   // only single dof per node supported here
 
@@ -636,8 +812,9 @@ int cgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, VECType * u, const 
   int step = 0;
   residual(mat_mult, &r[0], u, rhs);
   VECType rmag = vec_norm_linf(&r[0]);
+  const VECType rmag0 = rmag;
   fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
-  if (rmag < thresh)
+  if (rmag <= thresh)
     return step;
   VECType rProd = vec_dot(&r[0], &r[0]);
 
@@ -659,7 +836,7 @@ int cgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, VECType * u, const 
 
     residual(mat_mult, &r[0], u, rhs);
     rmag = vec_norm_linf(&r[0]);
-    if (rmag < thresh)
+    if (rmag <= thresh)
       break;
     rProd = vec_dot(&r[0], &r[0]);
 
@@ -667,10 +844,10 @@ int cgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, VECType * u, const 
     for (size_t ii = 0; ii < localSz; ++ii)
       p[ii] = r[ii] + beta * p[ii];
 
-    if (step % 10 == 0)
-      fprintf(stdout, "step==%d  res==%e  diff==%e  rProd==%e  pProd==%e  a==%e  b==%e\n", step, rmag, iterLInf, rProd, pProd, alpha, beta);
+    if (print_progress and step % 10 == 0)
+      fprintf(stdout, "step==%d  res==%e  reduce==%e  diff==%e  rProd==%e  pProd==%e  a==%e  b==%e\n", step, rmag, rmag/rmag0, iterLInf, rProd, pProd, alpha, beta);
   }
-  fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+  fprintf(stdout, "step==%d  normb==%e  res==%e  reduce==%e\n", step, normb, rmag, rmag/rmag0);
 
   return step;
 }
@@ -709,10 +886,11 @@ ot::MatvecBaseOut<dim, X, true> matvec_base_out_accumulate(
 
 
 // restrict_fine_to_coarse()
-template <int dim>
+template <int dim, typename PostRestriction>
 void restrict_fine_to_coarse(
     DA_Pair<dim> fine_da, const VECType *fine_vec_ghosted,
     DA_Pair<dim> coarse_da, VECType *coarse_vec_ghosted,
+    PostRestriction post_restriction,
     int ndofs,
     VectorPool<VECType> &vector_pool)
 {
@@ -808,6 +986,9 @@ void restrict_fine_to_coarse(
       *coarse_da.primary,
       coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
       ndofs);
+
+  post_restriction(coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs);
+
   coarse_da.primary->readFromGhostBegin(coarse_vec_ghosted, ndofs);
   coarse_da.primary->readFromGhostEnd(coarse_vec_ghosted, ndofs);
 
@@ -817,10 +998,11 @@ void restrict_fine_to_coarse(
 
 
 // prolongate_coarse_to_fine()
-template <int dim>
+template <int dim, typename PreProlongation>
 void prolongate_coarse_to_fine(
     DA_Pair<dim> coarse_da, const VECType *coarse_vec_ghosted,
     DA_Pair<dim> fine_da, VECType *fine_vec_ghosted,
+    PreProlongation pre_prolongation,  // on local vector
     int ndofs,
     VectorPool<VECType> &vector_pool)
 {
@@ -832,6 +1014,11 @@ void prolongate_coarse_to_fine(
   std::vector<VECType> leafBuffer = vector_pool.checkout(ndofs * nPe);
   leafBuffer.assign(leafBuffer.size(), 42);
 
+  std::vector<VECType> coarse_copy_ghosted = vector_pool.checkout(
+      coarse_da.primary->getTotalNodalSz() * ndofs);
+  std::copy_n(coarse_vec_ghosted, coarse_copy_ghosted.size(), coarse_copy_ghosted.begin());
+  pre_prolongation(coarse_copy_ghosted.data() + coarse_da.primary->getLocalNodeBegin() * ndofs);
+  coarse_vec_ghosted = coarse_copy_ghosted.data();
 
   // Shift in the coarse grid from primary to surrogate.
   ot::distShiftNodes(
@@ -879,6 +1066,7 @@ void prolongate_coarse_to_fine(
 
   vector_pool.checkin(std::move(leafBuffer));
   vector_pool.checkin(std::move(coarse_surr_ghosted));
+  vector_pool.checkin(std::move(coarse_copy_ghosted));
 }
 
 
