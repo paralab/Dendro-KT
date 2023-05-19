@@ -948,9 +948,9 @@ namespace ot
       {
         std::vector<int> element_count(this->getTotalNodalSz(), 0);
 
-        const TreeNode<C, dim> *tn_list = this->dist_tree()->getTreePartFiltered().data();
+        const TreeNode<C, dim> *tn_list = this->dist_tree()->getTreePartFiltered(this->stratum()).data();
         const TreeNode<C, dim> *node_list = this->getTNCoords();
-        const size_t tn_list_sz = this->dist_tree()->getTreePartFiltered().size();
+        const size_t tn_list_sz = this->dist_tree()->getTreePartFiltered(this->stratum()).size();
         const size_t node_list_sz = this->getTotalNodalSz();
         const int single_dof = 1;
         const int degree = this->getElementOrder();

@@ -262,7 +262,7 @@ MPI_TEST_CASE("(R r_fine, u_coarse) == (r_fine, P u_coarse) on uniform grid", 2)
 #include <fenv.h>
 
 // ========================================================================== //
-MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, should converge to exact solution", 1)
+MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, should converge to exact solution", 5)
 {
   MPI_Comm comm = test_comm;
 
@@ -518,9 +518,10 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   KSP coarse_ksp;
   KSPCreate(coarse_da->getCommActive(), &coarse_ksp);
   KSPSetOperators(coarse_ksp, coarse_mat, coarse_mat);
+  KSPSetType(coarse_ksp, KSPPREONLY);  // Do not use iteration.
   PC coarse_pc;
   KSPGetPC(coarse_ksp, &coarse_pc);
-  PCSetType(coarse_pc, PCLU);  // LU factorization (direct solve)
+  PCSetType(coarse_pc, PCGAMG);  // Direct solver choice.
   KSPSetUp(coarse_ksp);
 
   // Coarse solver callback routine.
@@ -546,15 +547,19 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     PetscReal res_norm = 0.0;
     KSPGetIterationNumber(coarse_ksp, &iterations);
     KSPGetResidualNorm(coarse_ksp, &res_norm);
-    std::cout
-      << "iterations=" << iterations
-      << "  res=" << res_norm
-      << "  sol=" << sol_norm << "\n";
+    if (rank == 0)
+    {
+      std::cout
+        << "\t"
+        << "iterations=" << iterations
+        << "  res=" << res_norm
+        << "  sol=" << sol_norm << "\n";
+    }
     return iterations;
   };
 
 
-  const int nu_pre_smooth = 1;
+  const int nu_pre_smooth = 2;
   const int nu_post_smooth = 1;
 
   // Multigrid v-cycle
@@ -592,9 +597,9 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     }
 
     // Coarse solve
-    std::cout << "-------\n";
-    std::cout << "Coarse:\n";
-    std::cout << "-------\n";
+    /// std::cout << "-------\n";
+    /// std::cout << "Coarse:\n";
+    /// std::cout << "-------\n";
 
     // cgSolver() function currently has no convergence detector, so diverges.
     /// const int max_iter = das[n_grids-1].primary->getGlobalNodeSz() * single_dof;
@@ -609,8 +614,8 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
         u_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof,
         r_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof);
 
-    std::cout << "-------\n";
-    std::cout << "\n";
+    /// std::cout << "-------\n";
+    /// std::cout << "\n";
     das[n_grids-1].primary->readFromGhostBegin(u_ghosted[n_grids-1].data(), single_dof);
     das[n_grids-1].primary->readFromGhostEnd(u_ghosted[n_grids-1].data(), single_dof);
 
@@ -679,8 +684,12 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     for (size_t i = 0; i < v_vec.size(); ++i)
       v_vec[i] = rhs_vec[i] - v_vec[i];
     double err;
-    fprintf(stdout, "steps==%2d  err==%e\n", steps, err=sol_err_max(u_vec));
-    fprintf(stdout, "\n");
+    err = sol_err_max(u_vec);
+    if (rank == 0)
+    {
+      fprintf(stdout, "steps==%2d  err==%e\n", steps, err);
+      fprintf(stdout, "\n");
+    }
     while (steps < max_iter and err > 1e-14)
     {
       vcycle(u_vec.data(), v_vec.data());
@@ -688,8 +697,12 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
       for (size_t i = 0; i < v_vec.size(); ++i)
         v_vec[i] = rhs_vec[i] - v_vec[i];
       ++steps;
-      fprintf(stdout, "steps==%2d  err==%e\n", steps, err=sol_err_max(u_vec));
-      fprintf(stdout, "\n");
+      err = sol_err_max(u_vec);
+      if (rank == 0)
+      {
+        fprintf(stdout, "steps==%2d  err==%e\n", steps, err);
+        fprintf(stdout, "\n");
+      }
     }
     return steps;
   }();
