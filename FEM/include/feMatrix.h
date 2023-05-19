@@ -132,6 +132,8 @@ protected:
          **/
 
         //TODO Output channel of preMatVec may be unexpected, should clarify use case.
+        //     In particular, need to know what input is needed for general boundary conditions,
+        //     which would tell us whether we can allow aliasing (in==out)
         bool preMatVec(const VECType* in, VECType* out,double scale=1.0) {
             // If this is asLeaf().preMatVec(), i.e. there is not an override, don't recurse.
             static bool entered = false;

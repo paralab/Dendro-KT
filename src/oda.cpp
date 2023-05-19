@@ -1172,13 +1172,14 @@ namespace ot
             MatSetType(M,mtype);
 
 
-            if(isAij || isAijSeq || isAijPrl || isSuperLU || isSuperLU_Dist) {
-                if(npesAll > 1) {
-                    MatMPIAIJSetPreallocation(M, int{}, nnz_bound.data(), int{} , nnz_bound.data());
-                }else {
-                    MatSeqAIJSetPreallocation(M, int{}, nnz_bound.data());
-                }
-            }
+            /// if(isAij || isAijSeq || isAijPrl || isSuperLU || isSuperLU_Dist) {
+            ///     if(npesAll > 1) {
+            ///         MatMPIAIJSetPreallocation(M, int{}, nnz_bound.data(), int{} , nnz_bound.data());
+            ///     }else {
+            ///         MatSeqAIJSetPreallocation(M, int{}, nnz_bound.data());
+            ///     }
+            /// }
+            MatSetUp(M);
 
         }
 
