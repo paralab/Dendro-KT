@@ -141,6 +141,7 @@ class DA
 {
   public:
     using C = unsigned int;    // Integer coordinate type.
+    static constexpr unsigned template_dim = dim;
 
     /**
      * Returns IN to discard, OUT to keep, and INTERCEPTED to keep and mark as boundary.

@@ -155,6 +155,319 @@ void prolongate_coarse_to_fine(
     VectorPool<VECType> &vector_pool);
 
 
+struct CycleSettings
+{
+  int pre_smooth()     const { return m_pre_smooth; }
+  int post_smooth()    const { return m_post_smooth; }
+  double damp_smooth() const { return m_damp_smooth; }
+
+  void pre_smooth(int pre_smooth)      { m_pre_smooth = pre_smooth; }
+  void post_smooth(int post_smooth)    { m_post_smooth = post_smooth; }
+  void damp_smooth(double damp_smooth) { m_damp_smooth = damp_smooth; }
+
+  int m_pre_smooth = 1;
+  int m_post_smooth = 1;
+  double m_damp_smooth = 1.0;
+};
+
+
+template <typename MatType>
+struct VCycle
+{
+  public:
+    static constexpr int dim()
+    {
+      return std::remove_pointer_t<decltype(std::declval<MatType>().da())>::template_dim;
+    }
+
+  // Temporary data
+  public:
+    // Inputs
+    int n_grids = 1;
+    MatType * *mats = nullptr;
+    CycleSettings settings = {};
+    int ndofs = 1;
+
+    std::vector<const ot::DA<dim()> *> surrogate_das;
+
+    // PETSc
+    Mat coarse_mat;
+    Vec coarse_u, coarse_rhs;
+    KSP coarse_ksp;
+    PC coarse_pc;
+
+    // Memory resources
+    VectorPool<double> vector_pool;
+    std::vector<std::vector<double>> e_ghosted;
+    std::vector<std::vector<double>> r_ghosted;
+    std::vector<std::vector<double>> u_ghosted;
+    std::vector<std::vector<double>> a_diag_ghosted;
+
+  // Public methods
+  public:
+    VCycle(const VCycle &) = delete;
+    VCycle(VCycle &&) = default;
+
+    VCycle(int n_grids,
+        const std::vector<DA_Pair<dim()>> &da_pairs,
+        MatType * *mats, CycleSettings settings, int ndofs)
+      : n_grids(n_grids), mats(mats), settings(settings), ndofs(ndofs),
+        r_ghosted(n_grids),
+        u_ghosted(n_grids),
+        e_ghosted(n_grids),
+        a_diag_ghosted(n_grids)
+    {
+      // Save pointers to surrogate DAs. (Primary DAs already stored in mats).
+      surrogate_das.reserve(n_grids);
+      for (DA_Pair<dim()> pair: da_pairs)
+        surrogate_das.push_back(pair.surrogate);
+      assert(surrogate_das.size() == n_grids);
+      assert(surrogate_das[0] == nullptr);
+
+      // Allocate temporary ghosted vectors.
+      for (int g = 0; g < n_grids; ++g)
+      {
+        const auto *da = mats[g]->da();
+        u_ghosted[g].resize(da->getTotalNodalSz() * ndofs);
+        r_ghosted[g].resize(da->getTotalNodalSz() * ndofs);
+        e_ghosted[g].resize(da->getTotalNodalSz() * ndofs);
+      }
+
+      // Initialilze a_diag_ghosted.
+      for (int g = 0; g < n_grids; ++g)
+      {
+        const auto *da = mats[g]->da();
+        a_diag_ghosted[g].resize(da->getTotalNodalSz() * ndofs);
+        mats[g]->setDiag(a_diag_ghosted[g].data() + da->getLocalNodeBegin() * ndofs);
+        da->readFromGhostBegin(a_diag_ghosted[g].data(), ndofs);
+        da->readFromGhostEnd(a_diag_ghosted[g].data(), ndofs);
+      }
+
+      // ===========================================================================
+      // Try KSPSolve() with Coarse grid system.
+      // ===========================================================================
+      const auto *coarse_da = mats[n_grids - 1]->da();
+
+      // Assemble the coarse grid matrix (assuming one-time assembly).
+      coarse_da->createMatrix(coarse_mat, MATAIJ, ndofs);
+      mats[n_grids - 1]->getAssembledMatrix(&coarse_mat, {});
+      MatAssemblyBegin(coarse_mat, MAT_FINAL_ASSEMBLY);
+      MatAssemblyEnd(coarse_mat, MAT_FINAL_ASSEMBLY);
+
+      // Placeholder Vec's to which user array will be bound in coarse grid solve.
+      const MPI_Comm coarse_comm = coarse_da->getCommActive();
+      const size_t coarse_local_size = coarse_da->getLocalNodalSz() * ndofs;
+      const size_t coarse_global_size = coarse_da->getGlobalNodeSz() * ndofs;
+      VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_u);
+      VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_rhs);
+
+      std::vector<int> coarse_global_ids_of_local_boundary_nodes(coarse_da->getBoundaryNodeIndices().size());
+      std::copy(coarse_da->getBoundaryNodeIndices().cbegin(),
+                coarse_da->getBoundaryNodeIndices().cend(),
+                coarse_global_ids_of_local_boundary_nodes.begin());
+      for (int &id : coarse_global_ids_of_local_boundary_nodes)
+        id += coarse_da->getGlobalRankBegin();
+      // If ndofs != 1 then need to duplicate and zip.
+
+      MatZeroRows(
+          coarse_mat,
+          coarse_global_ids_of_local_boundary_nodes.size(),
+          coarse_global_ids_of_local_boundary_nodes.data(),
+          1.0,
+          NULL, NULL);
+
+      /// MatView(coarse_mat, PETSC_VIEWER_STDOUT_(coarse_da->getCommActive()));
+
+      // Coarse solver setup with PETSc.
+      KSPCreate(coarse_da->getCommActive(), &coarse_ksp);
+      KSPSetOperators(coarse_ksp, coarse_mat, coarse_mat);
+      KSPSetType(coarse_ksp, KSPPREONLY);  // Do not use iteration.
+      KSPGetPC(coarse_ksp, &coarse_pc);
+      PCSetType(coarse_pc, PCGAMG);  // Direct solver choice.
+      KSPSetUp(coarse_ksp);
+    }
+
+    ~VCycle()
+    {
+      VecDestroy(&coarse_u);
+      VecDestroy(&coarse_rhs);
+      KSPDestroy(&coarse_ksp);
+      MatDestroy(&coarse_mat);
+    }
+
+    int coarse_solver(double *u_local, const double *rhs_local)
+    {
+      // Bind u and rhs to Vec
+      VecPlaceArray(coarse_u, u_local);
+      VecPlaceArray(coarse_rhs, rhs_local);
+
+      // Solve.
+      KSPSolve(coarse_ksp, coarse_rhs, coarse_u);
+
+      // Debug for solution magnitude.
+      PetscReal sol_norm = 0.0;
+      VecNorm(coarse_u, NORM_INFINITY, &sol_norm);
+
+      // Unbind from Vec.
+      VecResetArray(coarse_u);
+      VecResetArray(coarse_rhs);
+
+      // Get residual norm and number of iterations.
+      int iterations = 0;
+      PetscReal res_norm = 0.0;
+      KSPGetIterationNumber(coarse_ksp, &iterations);
+      KSPGetResidualNorm(coarse_ksp, &res_norm);
+      const int rank = par::mpi_comm_rank(this->mats[0]->da()->getCommActive());
+      if (rank == 0)
+      {
+        std::cout
+          << "\t"
+          << "iterations=" << iterations
+          << "  res=" << res_norm
+          << "  sol=" << sol_norm << "\n";
+      }
+      return iterations;
+    }
+
+    void pre_smoother(int height, double *u_ghosted, double *r_ghosted)
+    {
+      jacobi(
+          this->mats[height],
+          u_ghosted,
+          r_ghosted,
+          this->settings.damp_smooth(),
+          this->a_diag_ghosted[height].data());
+    }
+
+    void post_smoother(int height, double *u_ghosted, double *r_ghosted)
+    {
+      jacobi(
+          this->mats[height],
+          u_ghosted,
+          r_ghosted,
+          this->settings.damp_smooth(),
+          this->a_diag_ghosted[height].data());
+    }
+
+    void vcycle(double *u_local, double *r_local)
+    {
+      const auto &base_da = *this->mats[0]->da();
+      const int ndofs = this->ndofs;
+      const int n_grids = this->n_grids;
+      const int pre_smooth = this->settings.pre_smooth();
+      const int post_smooth = this->settings.post_smooth();
+      const double damp = this->settings.damp_smooth();
+
+      std::vector<std::vector<double>> &r_ghosted = this->r_ghosted;
+      std::vector<std::vector<double>> &u_ghosted = this->u_ghosted;
+      MatType * *mats = this->mats;
+
+      // Multigrid v-cycle
+      //  Parameters: [in-out] u  initial guess and final guess
+      //              [in-out] r  residual of initial guess and of final guess
+
+      // Copy u, r to u_ghosted, r_ghosted.
+      base_da.nodalVecToGhostedNodal(r_local, r_ghosted[0].data(), ndofs);
+      base_da.nodalVecToGhostedNodal(u_local, u_ghosted[0].data(), ndofs);
+      //
+      base_da.readFromGhostBegin(r_ghosted[0].data(), ndofs);
+      base_da.readFromGhostBegin(u_ghosted[0].data(), ndofs);
+      base_da.readFromGhostEnd(r_ghosted[0].data(), ndofs);
+      base_da.readFromGhostEnd(u_ghosted[0].data(), ndofs);
+
+      // reset initial guess for coarser grids to 0.
+      for (int height = 1; height < n_grids; ++height)
+        u_ghosted[height].assign(u_ghosted[height].size(), 0);
+
+      for (int height = 0; height < n_grids - 1; ++height)
+      {
+        // pre-smoothing (on ghosted vectors)
+        for (int i = 0; i < pre_smooth; ++i)
+          this->pre_smoother(height, u_ghosted[height].data(), r_ghosted[height].data());
+
+        // restriction (fine-to-coarse) (on ghosted vectors)
+        restrict_fine_to_coarse<dim()>(
+            {mats[height]->da(), this->surrogate_das[height]}, r_ghosted[height].data(),
+            {mats[height+1]->da(), this->surrogate_das[height+1]}, r_ghosted[height+1].data(),
+            [mat=mats[height+1]](double *vec) { mat->postMatVec(vec, vec); },
+            ndofs, vector_pool);
+      }
+
+      // Coarse solve
+      // Direct method.
+      const int coarse_steps = this->coarse_solver(
+          u_ghosted[n_grids-1].data() + mats[n_grids-1]->da()->getLocalNodeBegin() * ndofs,
+          r_ghosted[n_grids-1].data() + mats[n_grids-1]->da()->getLocalNodeBegin() * ndofs);
+
+      mats[n_grids-1]->da()->readFromGhostBegin(u_ghosted[n_grids-1].data(), ndofs);
+      mats[n_grids-1]->da()->readFromGhostEnd(u_ghosted[n_grids-1].data(), ndofs);
+
+      for (int height = n_grids - 1; height > 0; --height)
+      {
+        // prolongation (coarse-to-fine) (on ghosted vectors)
+        prolongate_coarse_to_fine<dim()>(
+            {mats[height]->da(), this->surrogate_das[height]}, u_ghosted[height].data(),
+            {mats[height-1]->da(), this->surrogate_das[height-1]}, e_ghosted[height-1].data(),
+            [mat=mats[height]](double *vec) { mat->preMatVec(vec, vec); },
+            ndofs, vector_pool);
+
+        // Accumulate into u[h-1] and r[h-1]
+        for (size_t i = 0; i < mats[height-1]->da()->getTotalNodalSz() * ndofs; ++i)
+          u_ghosted[height-1][i] += e_ghosted[height-1][i];
+        //future: matVecGhosted directly on fresh ghosted data
+        mats[height-1]->matVec(
+            e_ghosted[height-1].data() + mats[height-1]->da()->getLocalNodeBegin() * ndofs,
+            e_ghosted[height-1].data() + mats[height-1]->da()->getLocalNodeBegin() * ndofs);
+        for (size_t i = 0; i < mats[height-1]->da()->getTotalNodalSz() * ndofs; ++i)
+          r_ghosted[height-1][i] -= e_ghosted[height-1][i];
+
+        // post-smoothing (on ghosted vectors)
+        for (int i = 0; i < post_smooth; ++i)
+          this->post_smoother(height - 1, u_ghosted[height-1].data(), r_ghosted[height-1].data());
+      }
+
+      // Copy u_ghosted, r_ghosted to u, r.
+      base_da.ghostedNodalToNodalVec(r_ghosted[0].data(), r_local, ndofs);
+      base_da.ghostedNodalToNodalVec(u_ghosted[0].data(), u_local, ndofs);
+    }
+
+
+  // Private methods
+  private:
+
+    // Jacobi relaxation (one iteration)
+    void jacobi(MatType *mat, double *u_ghost, double *r_ghost, const double damp, const double *diag_ghosted)
+    {
+      const auto *da = mat->da();
+      std::vector<double> Dinv_r = this->vector_pool.checkout(da->getTotalNodalSz() * this->ndofs);
+
+      for (size_t i = 0; i < da->getTotalNodalSz() * this->ndofs; ++i)
+      {
+        const double update = damp / diag_ghosted[i] * r_ghost[i];
+        Dinv_r[i] = update;
+        u_ghost[i] += update;
+      }
+
+      // future: matVecGhosted directly on fresh ghosted data
+      mat->matVec(
+          Dinv_r.data() + da->getLocalNodeBegin() * this->ndofs,
+          Dinv_r.data() + da->getLocalNodeBegin() * this->ndofs);
+      auto & ADinv_r = Dinv_r;
+      da->readFromGhostBegin(ADinv_r.data(), this->ndofs);
+      da->readFromGhostEnd(ADinv_r.data(), this->ndofs);
+
+      for (size_t i = 0; i < da->getTotalNodalSz() * this->ndofs; ++i)
+        r_ghost[i] -= ADinv_r[i];
+
+      this->vector_pool.checkin(std::move(Dinv_r));
+    };
+
+
+
+};//class VCycle
+
+
+
 
 // -----------------------------
 // Main test cases
@@ -400,6 +713,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
       return err_max;
   };
 
+
   // Multigrid setup
   //  future: distCoarsen to coarsen by 1 or more levels
   //  future: coarse_to_fine and fine_to_coarse without surrogates
@@ -419,15 +733,6 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     das[g].surrogate = new ot::DA<dim>(
         surrogate_trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
   }
-  std::vector<std::vector<double>> u_ghosted(n_grids);
-  std::vector<std::vector<double>> r_ghosted(n_grids);
-  std::vector<std::vector<double>> e_ghosted(n_grids);
-  for (int g = 0; g < n_grids; ++g)
-  {
-    u_ghosted[g].resize(das[g].primary->getTotalNodalSz() * single_dof);
-    r_ghosted[g].resize(das[g].primary->getTotalNodalSz() * single_dof);
-    e_ghosted[g].resize(das[g].primary->getTotalNodalSz() * single_dof);
-  }
 
   std::vector<PoissonMat *> mats(n_grids, nullptr);
   mats[0] = &base_mat;
@@ -437,229 +742,25 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     mats[g]->zero_boundary(true);
   }
 
-  std::vector<std::vector<double>> a_diag_ghosted(n_grids);
-  for (int g = 0; g < n_grids; ++g)
-  {
-    a_diag_ghosted[g].resize(das[g].primary->getTotalNodalSz() * single_dof);
-    mats[g]->setDiag(a_diag_ghosted[g].data() + das[g].primary->getLocalNodeBegin() * single_dof);
-    das[g].primary->readFromGhostBegin(a_diag_ghosted[g].data(), single_dof);
-    das[g].primary->readFromGhostEnd(a_diag_ghosted[g].data(), single_dof);
-  }
+  CycleSettings cycle_settings;
+  cycle_settings.pre_smooth(2);
+  cycle_settings.post_smooth(1);
+  cycle_settings.damp_smooth(2.0 / 3.0);
 
-  VectorPool<double> vector_pool;
-
-  // Jacobi relaxation (one iteration)
-  const auto jacobi = [&](PoissonMat *mat, double *u_ghost, double *r_ghost, const double damp, const double *diag_ghosted) -> void
-  {
-    const ot::DA<dim> *da = mat->da();
-    std::vector<double> Dinv_r = vector_pool.checkout(da->getTotalNodalSz() * single_dof);
-
-    for (size_t i = 0; i < da->getTotalNodalSz() * single_dof; ++i)
-    {
-      const double update = damp / diag_ghosted[i] * r_ghost[i];
-      Dinv_r[i] = update;
-      u_ghost[i] += update;
-    }
-
-    // future: matVecGhosted directly on fresh ghosted data
-    mat->matVec(
-        Dinv_r.data() + da->getLocalNodeBegin() * single_dof,
-        Dinv_r.data() + da->getLocalNodeBegin() * single_dof);
-    auto & ADinv_r = Dinv_r;
-    da->readFromGhostBegin(ADinv_r.data(), single_dof);
-    da->readFromGhostEnd(ADinv_r.data(), single_dof);
-
-    for (size_t i = 0; i < da->getTotalNodalSz() * single_dof; ++i)
-      r_ghost[i] -= ADinv_r[i];
-
-    vector_pool.checkin(std::move(Dinv_r));
-  };
-
-
-   // ===========================================================================
-  // Try KSPSolve() with Coarse grid system.
-  // ===========================================================================
-
- const auto *coarse_da = das[n_grids - 1].primary;
-
-  // Assemble the coarse grid matrix (assuming one-time assembly).
-  Mat coarse_mat;
-  coarse_da->createMatrix(coarse_mat, MATAIJ, single_dof);
-  mats[n_grids - 1]->getAssembledMatrix(&coarse_mat, {});
-  MatAssemblyBegin(coarse_mat, MAT_FINAL_ASSEMBLY);
-  MatAssemblyEnd(coarse_mat, MAT_FINAL_ASSEMBLY);
-
-  // Placeholder Vec's to which user array will be bound in coarse grid solve.
-  const MPI_Comm coarse_comm = coarse_da->getCommActive();
-  const size_t coarse_local_size = coarse_da->getLocalNodalSz() * single_dof;
-  const size_t coarse_global_size = coarse_da->getGlobalNodeSz() * single_dof;
-  Vec coarse_u, coarse_rhs;
-  VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_u);
-  VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_rhs);
-
-  std::vector<int> coarse_global_ids_of_local_boundary_nodes(coarse_da->getBoundaryNodeIndices().size());
-  std::copy(coarse_da->getBoundaryNodeIndices().cbegin(),
-            coarse_da->getBoundaryNodeIndices().cend(),
-            coarse_global_ids_of_local_boundary_nodes.begin());
-  for (int &id : coarse_global_ids_of_local_boundary_nodes)
-    id += coarse_da->getGlobalRankBegin();
-  // If ndofs != 1 then need to duplicate and zip.
-
-  MatZeroRows(
-      coarse_mat,
-      coarse_global_ids_of_local_boundary_nodes.size(),
-      coarse_global_ids_of_local_boundary_nodes.data(),
-      1.0,
-      NULL, NULL);
-
-  /// MatView(coarse_mat, PETSC_VIEWER_STDOUT_(coarse_da->getCommActive()));
-
-  // Coarse solver setup with PETSc.
-  KSP coarse_ksp;
-  KSPCreate(coarse_da->getCommActive(), &coarse_ksp);
-  KSPSetOperators(coarse_ksp, coarse_mat, coarse_mat);
-  KSPSetType(coarse_ksp, KSPPREONLY);  // Do not use iteration.
-  PC coarse_pc;
-  KSPGetPC(coarse_ksp, &coarse_pc);
-  PCSetType(coarse_pc, PCGAMG);  // Direct solver choice.
-  KSPSetUp(coarse_ksp);
-
-  // Coarse solver callback routine.
-  const auto coarse_solver = [&](double *u_local, const double *rhs_local) -> int
-  {
-    // Bind u and rhs to Vec
-    VecPlaceArray(coarse_u, u_local);
-    VecPlaceArray(coarse_rhs, rhs_local);
-
-    // Solve.
-    KSPSolve(coarse_ksp, coarse_rhs, coarse_u);
-
-    // Debug for solution magnitude.
-    PetscReal sol_norm = 0.0;
-    VecNorm(coarse_u, NORM_INFINITY, &sol_norm);
-
-    // Unbind from Vec.
-    VecResetArray(coarse_u);
-    VecResetArray(coarse_rhs);
-
-    // Get residual norm and number of iterations.
-    int iterations = 0;
-    PetscReal res_norm = 0.0;
-    KSPGetIterationNumber(coarse_ksp, &iterations);
-    KSPGetResidualNorm(coarse_ksp, &res_norm);
-    if (rank == 0)
-    {
-      std::cout
-        << "\t"
-        << "iterations=" << iterations
-        << "  res=" << res_norm
-        << "  sol=" << sol_norm << "\n";
-    }
-    return iterations;
-  };
-
-
-  const int nu_pre_smooth = 2;
-  const int nu_post_smooth = 1;
-
-  // Multigrid v-cycle
-  //  Parameters: [in-out] u  initial guess and final solution
-  //              [in-out] r  residual of initial guess and of final solution
-  const auto vcycle = [&](double *u, double *r) -> void
-  {
-    // Copy u, r to u_ghosted, r_ghosted.
-    base_da.nodalVecToGhostedNodal(r, r_ghosted[0].data(), single_dof);
-    base_da.nodalVecToGhostedNodal(u, u_ghosted[0].data(), single_dof);
-    //
-    base_da.readFromGhostBegin(r_ghosted[0].data(), single_dof);
-    base_da.readFromGhostBegin(u_ghosted[0].data(), single_dof);
-    base_da.readFromGhostEnd(r_ghosted[0].data(), single_dof);
-    base_da.readFromGhostEnd(u_ghosted[0].data(), single_dof);
-
-    const double damp = 2.0/3.0;
-
-    // reset initial guess for coarser grids to 0.
-    for (int height = 1; height < n_grids; ++height)
-      u_ghosted[height].assign(u_ghosted[height].size(), 0);
-
-    for (int height = 0; height < n_grids - 1; ++height)
-    {
-      // pre-smoothing (on ghosted vectors)
-      for (int i = 0; i < nu_pre_smooth; ++i)
-        jacobi(mats[height], u_ghosted[height].data(), r_ghosted[height].data(), damp, a_diag_ghosted[height].data());
-
-      // restriction (fine-to-coarse) (on ghosted vectors)
-      restrict_fine_to_coarse(
-          das[height], r_ghosted[height].data(),
-          das[height+1], r_ghosted[height+1].data(),
-          [mat=mats[height+1]](double *vec) { mat->postMatVec(vec, vec); },
-          single_dof, vector_pool);
-    }
-
-    // Coarse solve
-    /// std::cout << "-------\n";
-    /// std::cout << "Coarse:\n";
-    /// std::cout << "-------\n";
-
-    // cgSolver() function currently has no convergence detector, so diverges.
-    /// const int max_iter = das[n_grids-1].primary->getGlobalNodeSz() * single_dof;
-    /// const int coarse_steps = cgSolver(
-    ///     das[n_grids-1].primary, [coarse_mat=mats[n_grids-1]](const double *u, double *v){ coarse_mat->matVec(u, v); },
-    ///     u_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof,
-    ///     r_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof,
-    ///     max_iter, 0.0f, true);
-
-    // Direct method.
-    const int coarse_steps = coarse_solver(
-        u_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof,
-        r_ghosted[n_grids-1].data() + das[n_grids-1].primary->getLocalNodeBegin() * single_dof);
-
-    /// std::cout << "-------\n";
-    /// std::cout << "\n";
-    das[n_grids-1].primary->readFromGhostBegin(u_ghosted[n_grids-1].data(), single_dof);
-    das[n_grids-1].primary->readFromGhostEnd(u_ghosted[n_grids-1].data(), single_dof);
-
-    for (int height = n_grids - 1; height > 0; --height)
-    {
-      // prolongation (coarse-to-fine) (on ghosted vectors)
-      prolongate_coarse_to_fine(
-          das[height], u_ghosted[height].data(),
-          das[height-1], e_ghosted[height-1].data(),
-          [mat=mats[height]](double *vec) { mat->preMatVec(vec, vec); },
-          single_dof, vector_pool);
-
-      // Accumulate into u[h-1] and r[h-1]
-      for (size_t i = 0; i < das[height-1].primary->getTotalNodalSz() * single_dof; ++i)
-        u_ghosted[height-1][i] += e_ghosted[height-1][i];
-      //future: matVecGhosted directly on fresh ghosted data
-      mats[height-1]->matVec(
-          e_ghosted[height-1].data() + das[height-1].primary->getLocalNodeBegin() * single_dof,
-          e_ghosted[height-1].data() + das[height-1].primary->getLocalNodeBegin() * single_dof);
-      for (size_t i = 0; i < das[height-1].primary->getTotalNodalSz() * single_dof; ++i)
-        r_ghosted[height-1][i] -= e_ghosted[height-1][i];
-
-      // post-smoothing (on ghosted vectors)
-      for (int i = 0; i < nu_post_smooth; ++i)
-        jacobi(mats[height-1], u_ghosted[height-1].data(), r_ghosted[height-1].data(), damp, a_diag_ghosted[height-1].data());
-    }
-
-    // Copy u_ghosted, r_ghosted to u, r.
-    base_da.ghostedNodalToNodalVec(r_ghosted[0].data(), r, single_dof);
-    base_da.ghostedNodalToNodalVec(u_ghosted[0].data(), u, single_dof);
-  };
+  VCycle<PoissonMat> vcycle(n_grids, das, mats.data(), cycle_settings, single_dof);
 
   // Preconditioned right-hand side.
   std::vector<double> pc_rhs_vec = rhs_vec;
   std::vector<double> v_temporary = pc_rhs_vec;
   pc_rhs_vec.assign(pc_rhs_vec.size(), 0);  // reset to zero
-  vcycle(pc_rhs_vec.data(), v_temporary.data());
+  vcycle.vcycle(pc_rhs_vec.data(), v_temporary.data());
 
   // Preconditioned matrix multiplication.
-  const auto pc_mat = [&base_mat, &vcycle, &v_temporary](const double *u, double *v) -> void {
+  const auto pc_mat = [&vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
     base_mat.matVec(u, v_temporary.data());
 
     std::fill_n(v, v_temporary.size(), 0); // reset to zero
-    vcycle(v, v_temporary.data());
+    vcycle.vcycle(v, v_temporary.data());
   };
 
   // Solve equation.
@@ -692,7 +793,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     }
     while (steps < max_iter and err > 1e-14)
     {
-      vcycle(u_vec.data(), v_vec.data());
+      vcycle.vcycle(u_vec.data(), v_vec.data());
       base_mat.matVec(u_vec.data(), v_vec.data());
       for (size_t i = 0; i < v_vec.size(); ++i)
         v_vec[i] = rhs_vec[i] - v_vec[i];
@@ -721,11 +822,6 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
 
   // future: base_mat can stay in stack memory, don't need to new/delete
   delete &base_mat;
-
-  VecDestroy(&coarse_u);
-  VecDestroy(&coarse_rhs);
-  KSPDestroy(&coarse_ksp);
-  MatDestroy(&coarse_mat);
 
   if(!rank)
   {
@@ -1083,5 +1179,5 @@ void prolongate_coarse_to_fine(
 }
 
 
-
+// =============================================================================
 
