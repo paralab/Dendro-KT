@@ -49,7 +49,7 @@ namespace ot
 
       // Member functions.
       //
-      DistTree();
+      DistTree(CoalesceOption coalesceSiblings = Coalesce);
       DistTree(std::vector<TreeNode<T, dim>> &treePart, MPI_Comm comm, CoalesceOption coalesceSiblings = Coalesce);
       DistTree(const DistTree &other) { *this = other; }
       DistTree(DistTree &&other) { *this = std::move(other); }
@@ -340,8 +340,9 @@ namespace ot
   // DistTree() - default constructor
   //
   template <typename T, unsigned int dim>
-  DistTree<T, dim>::DistTree()
+  DistTree<T, dim>::DistTree(CoalesceOption coalesceSiblings)
   : m_comm(MPI_COMM_NULL),
+    m_coalesceSiblings(coalesceSiblings),
     m_gridStrata(m_uiMaxDepth+1),
     m_tpFrontStrata(m_uiMaxDepth+1),
     m_tpBackStrata(m_uiMaxDepth+1),

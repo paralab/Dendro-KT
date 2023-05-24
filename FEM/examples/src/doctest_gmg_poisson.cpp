@@ -796,7 +796,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   //  future: distCoarsen to coarsen by 1 or more levels
   //  future: coarse_to_fine and fine_to_coarse without surrogates
   //  future: Can do 2:1-balance all-at-once instead of iteratively.
-  const int n_grids = 2;
+  const int n_grids = 3;
   ot::DistTree<uint, dim> &trees = base_tree;
   ot::DistTree<uint, dim> surrogate_trees;
   surrogate_trees = trees.generateGridHierarchyUp(true, n_grids, partition_tolerance);
@@ -811,13 +811,6 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     das[g].surrogate = new ot::DA<dim>(
         surrogate_trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
   }
-
-  ot::quadTreeToGnuplot(trees.getTreePartFiltered(0), 10, "base", comm);
-  ot::quadTreeToGnuplot(surrogate_trees.getTreePartFiltered(1), 10, "surr", comm);
-  ot::quadTreeToGnuplot(trees.getTreePartFiltered(1), 10, "coarse", comm);
-
-  ot::quadTreeToGnuplot(surrogate_trees.getTreePartFiltered(n_grids-1), 10, "lastSurr", comm);
-  ot::quadTreeToGnuplot(trees.getTreePartFiltered(n_grids-1), 10, "coarsest", comm);
 
   std::vector<PoissonMat *> mats(n_grids, nullptr);
   mats[0] = &base_mat;

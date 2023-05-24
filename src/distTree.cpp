@@ -372,7 +372,7 @@ namespace ot
                                                              unsigned int lev,
                                                              double loadFlexibility)
   {
-    DistTree<T, dim> surrogateCoarseByFine;
+    DistTree<T, dim> surrogateCoarseByFine(NoCoalesce);
 
     // Determine the number of grids in the desired grid hierarchy.
     int targetNumStrata = 1;
