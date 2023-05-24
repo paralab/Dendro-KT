@@ -1765,80 +1765,85 @@ namespace ot
       childSubtreesSFC[child_sfc] = parSubtree.getChildMorton(sfc.child_num(child_sfc));
     }
 
+    const bool parentNonleaf = parSubtree.getLevel() < parentFrame.mySummaryHandle.m_subtreeFinestLevel;
+
     //
     // Accumulate non-hanging node values from child buffers into parent frame.
     //
-    for (const auto &nodeInstance : IterateNodesToChildren<dim>( parSubtree,
-                                                                 &(*myNodes.begin()),
-                                                                 numParentNodes,
-                                                                 this->getCurrentRotation(),
-                                                                 extantChildren ))
+    if (parentNonleaf)
     {
-      const ChildI child_sfc = nodeInstance.getChild_sfc();
-      const size_t nIdx = nodeInstance.getPNodeIdx();
-      const size_t childOffset = childNodeOffsets[child_sfc];
-
-      auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
-      auto &childOutIsDirty = parentFrame.template getChildOutput<1>(child_sfc);
-      if (childOutput.size() > 0)
+      for (const auto &nodeInstance : IterateNodesToChildren<dim>( parSubtree,
+                                                                   &(*myNodes.begin()),
+                                                                   numParentNodes,
+                                                                   this->getCurrentRotation(),
+                                                                   extantChildren ))
       {
-        if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
+        const ChildI child_sfc = nodeInstance.getChild_sfc();
+        const size_t nIdx = nodeInstance.getPNodeIdx();
+        const size_t childOffset = childNodeOffsets[child_sfc];
+
+        auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
+        auto &childOutIsDirty = parentFrame.template getChildOutput<1>(child_sfc);
+        if (childOutput.size() > 0)
         {
-          if (childOutIsDirty[childOffset])
+          if (childFinestLevel[child_sfc] > parSubtree.getLevel() + 1) // Nonleaf
           {
-            // Nodal values.
-            for (int dof = 0; dof < m_ndofs; dof++)
-              if (UseAccumulation)
-                myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * childOffset + dof];
-              else
-                myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * childOffset + dof];
-
-            myOutIsDirty[nIdx] |= bool(childOutIsDirty[childOffset]);
-          }
-
-          childNodeOffsets[child_sfc]++;
-        }
-        else   // Leaf
-        {
-          const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
-                  childSubtreesSFC[child_sfc],
-                  myNodes[nIdx],
-                  m_eleOrder );
-          assert(nodeRank < npe);
-
-          if (childOutIsDirty[nodeRank])
-          {
-            // Don't move nonhanging nodes that are on a hanging face.
-            if (!UseAccumulation || !hangingInChild[child_sfc] || myNodes[nIdx].getLevel() > parSubtree.getLevel())
+            if (childOutIsDirty[childOffset])
             {
               // Nodal values.
               for (int dof = 0; dof < m_ndofs; dof++)
-              {
                 if (UseAccumulation)
-                {
-                  myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
-                }
+                  myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * childOffset + dof];
                 else
-                  myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
-              }
+                  myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * childOffset + dof];
 
-              myOutIsDirty[nIdx] |= bool(childOutIsDirty[nodeRank]);
+              myOutIsDirty[nIdx] |= bool(childOutIsDirty[childOffset]);
             }
 
-            // Zero out the values after they are transferred.
-            // This is necessary so that later linear transforms are not contaminated.
-            std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
-                         m_ndofs, zero );
-            childOutIsDirty[nodeRank] = false;
+            childNodeOffsets[child_sfc]++;
+          }
+          else   // Leaf
+          {
+            const unsigned int nodeRank = TNPoint<unsigned int, dim>::get_lexNodeRank(
+                    childSubtreesSFC[child_sfc],
+                    myNodes[nIdx],
+                    m_eleOrder );
+            assert(nodeRank < npe);
+
+            if (childOutIsDirty[nodeRank])
+            {
+              // Don't move nonhanging nodes that are on a hanging face.
+              if (!UseAccumulation || !hangingInChild[child_sfc] || myNodes[nIdx].getLevel() > parSubtree.getLevel())
+              {
+                // Nodal values.
+                for (int dof = 0; dof < m_ndofs; dof++)
+                {
+                  if (UseAccumulation)
+                  {
+                    myOutNodeValues[m_ndofs * nIdx + dof] += childOutput[m_ndofs * nodeRank + dof];
+                  }
+                  else
+                    myOutNodeValues[m_ndofs * nIdx + dof] = childOutput[m_ndofs * nodeRank + dof];
+                }
+
+                myOutIsDirty[nIdx] |= bool(childOutIsDirty[nodeRank]);
+              }
+
+              // Zero out the values after they are transferred.
+              // This is necessary so that later linear transforms are not contaminated.
+              std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
+                           m_ndofs, zero );
+              childOutIsDirty[nodeRank] = false;
+            }
           }
         }
+        else
+        {
+          // TODO emit warning to log
+          // Warning: Did you forget to overwriteNodeValsOut() ?
+        }
       }
-      else
-      {
-        // TODO emit warning to log
-        // Warning: Did you forget to overwriteNodeValsOut() ?
-      }
-    }
+    }//end if(parentNonleaf)
 
     //
     // Perform any needed transpose-interpolations.
@@ -1846,8 +1851,6 @@ namespace ot
     if (thereAreHangingNodes || (m_visitEmpty && !childrenHaveNodes))
     {
       NodeT * parentNodeVals;
-
-      const bool parentNonleaf = parSubtree.getLevel() < parentFrame.mySummaryHandle.m_subtreeFinestLevel;
 
       // Initialize parent lexicographic buffer (if parent strictly above leaf).
       if (parentNonleaf)
@@ -1902,6 +1905,7 @@ namespace ot
           }
         }
 
+        // myOutNodeValues
         if (parentNonleaf)
         {
           // Accumulate from intermediate parent lex buffer to parent output.
@@ -1922,8 +1926,10 @@ namespace ot
         }
         else
         {
+          // Handled above, during C2P directly (see parentNodeVals definition)
         }
 
+        // myOutIsDirty
         if (parentNonleaf)
         {
           // Accumulate from intermediate parent lex buffer to parent output.
