@@ -10,6 +10,7 @@ The following dependencies are required to compile Dendro-KT:
 * LAPACK (liblapack-dev, liblapacke-dev)
 * PETSc is optional but recommended (versions 3.12+)
 * CMake 2.8+
+* HDF5 (libhdf5-dev)
 
 The following dependencies are shipped with the source code and need no manual intervention:
 * ZLib compression library (used to write \texttt{.vtu} files in binary format with compression enabled)

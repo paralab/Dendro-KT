@@ -39,6 +39,7 @@ option(HILBERT_ORDERING "use the Hilbert space-filling curve to order orthants" 
 option(BUILD_EXAMPLES "build example programs" ON)
 option(USE_2TO1_GLOBAL_SORT "Use global sort instead of two-pass method for 2:1 balancing" OFF)
 option(ENABLE_DOCTEST_IN_RELEASE "Enable doctest tests even in a release build" OFF)
+option(HIGHFIVE_USE_BOOST "Retains the default dependence of HighFive on Boost" OFF)
 
 set(KWAY 128 CACHE INT 128)
 set(NUM_NPES_THRESHOLD 2 CACHE INT 2)
@@ -140,6 +141,7 @@ else()
     add_definitions(-DDENDRO_VTU_ASCII)
 endif()
 
+add_subdirectory(external/HighFive)
 
 
 set(DENDRO_KT_INC include/dendro.h
@@ -248,6 +250,7 @@ target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/zlib/i
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/array/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/FEM/include)
 target_include_directories(dendroKT PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(dendroKT HighFive)
 target_link_libraries(dendroKT ${MPI_LIBRARIES} m)
 
 if(WITH_BLAS_LAPACK)
