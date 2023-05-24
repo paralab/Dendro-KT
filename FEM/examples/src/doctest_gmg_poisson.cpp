@@ -73,7 +73,12 @@ class VectorPool
   public:
     VectorPool() = default;
 
-    ~VectorPool() { std::cerr << "checkouts==" << m_log_checkouts << " \tallocs==" << m_log_allocs << "\n"; }
+    ~VectorPool()
+    {
+      if (this->print())
+        std::cerr << "checkouts==" << m_log_checkouts
+                  << " \tallocs==" << m_log_allocs << "\n";
+    }
 
     void free_all();
     std::vector<X> checkout(size_t size);
@@ -85,10 +90,14 @@ class VectorPool
     VectorPool(const VectorPool &) = delete;
     VectorPool & operator=(const VectorPool &) = delete;
 
+    void print(bool print) { m_print = print; }
+    bool print() const { return m_print; }
+
   private:
     std::multimap<int, std::vector<X>> m_idle;
     long long unsigned m_log_checkouts = 0;
     long long unsigned m_log_allocs = 0;
+    bool m_print = false;
 };
 
 template <typename X>
@@ -155,19 +164,83 @@ void prolongate_coarse_to_fine(
     VectorPool<VECType> &vector_pool);
 
 
+
+// -----------------------------
+// Helper classes
+// -----------------------------
+
+#include <queue>
+
+class ConvergenceRate
+{
+  public:
+    // ConvergenceRate()
+    ConvergenceRate(int max_history)
+      : m_max_history(max_history)
+    {
+      assert(max_history >= 3);
+    }
+
+    // max_history()
+    int max_history() const { return m_max_history; }
+
+    // step_count()
+    int step_count() const { return m_step_count; }
+
+    // observe_step()
+    void observe_step(double value)
+    {
+      if (m_history.size() == this->max_history())
+        m_history.pop_front();
+      m_history.push_back(value);
+      ++m_step_count;
+    }
+
+    // rate()
+    // Real or infinity, not NaN (if last three observations are real numbers).
+    double rate() const
+    {
+      assert(step_count() >= 2);
+      double prev[3] = {
+        (step_count() > 2 ?
+          m_history[m_history.size() - 3] : 0.0),
+        m_history[m_history.size() - 2],
+        m_history[m_history.size() - 1]
+      };
+      if (prev[2] == 0.0 and prev[1] == 0.0)
+        return 0.0;
+      else if (prev[0] == 0.0)
+        return prev[2] / prev[1];
+      else
+        return std::exp(
+            std::log(prev[2]/prev[1])*0.75
+            + std::log(prev[1]/prev[0])*0.25);
+    }
+
+  private:
+    int m_max_history = 2;
+    int m_step_count = 0;
+    std::deque<double> m_history;  //future: fixed-length ring buffer
+};
+
+
+
 struct CycleSettings
 {
   int pre_smooth()     const { return m_pre_smooth; }
   int post_smooth()    const { return m_post_smooth; }
   double damp_smooth() const { return m_damp_smooth; }
+  bool print()         const { return m_print; }
 
   void pre_smooth(int pre_smooth)      { m_pre_smooth = pre_smooth; }
   void post_smooth(int post_smooth)    { m_post_smooth = post_smooth; }
   void damp_smooth(double damp_smooth) { m_damp_smooth = damp_smooth; }
+  void print(bool print)               { m_print = print; }
 
   int m_pre_smooth = 1;
   int m_post_smooth = 1;
   double m_damp_smooth = 1.0;
+  bool m_print = false;
 };
 
 
@@ -242,6 +315,10 @@ struct VCycle
         da->readFromGhostBegin(a_diag_ghosted[g].data(), ndofs);
         da->readFromGhostEnd(a_diag_ghosted[g].data(), ndofs);
       }
+
+      const MPI_Comm fine_comm = mats[0]->da()->getCommActive();
+      if (par::mpi_comm_rank(fine_comm) == 0)
+        vector_pool.print(true);
 
       // ===========================================================================
       // Try KSPSolve() with Coarse grid system.
@@ -318,7 +395,7 @@ struct VCycle
       KSPGetIterationNumber(coarse_ksp, &iterations);
       KSPGetResidualNorm(coarse_ksp, &res_norm);
       const int rank = par::mpi_comm_rank(this->mats[0]->da()->getCommActive());
-      if (rank == 0)
+      if (this->settings.print() and rank == 0)
       {
         std::cout
           << "\t"
@@ -618,6 +695,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
       constructSubdomainDistTree(refinement_level, comm, partition_tolerance);
   ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tolerance);
 
+
   // ghosted_node_coordinate()
   const auto ghosted_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
   {
@@ -734,6 +812,307 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
         surrogate_trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
   }
 
+  ot::quadTreeToGnuplot(trees.getTreePartFiltered(0), 10, "base", comm);
+  ot::quadTreeToGnuplot(surrogate_trees.getTreePartFiltered(1), 10, "surr", comm);
+  ot::quadTreeToGnuplot(trees.getTreePartFiltered(1), 10, "coarse", comm);
+
+  ot::quadTreeToGnuplot(surrogate_trees.getTreePartFiltered(n_grids-1), 10, "lastSurr", comm);
+  ot::quadTreeToGnuplot(trees.getTreePartFiltered(n_grids-1), 10, "coarsest", comm);
+
+  std::vector<PoissonMat *> mats(n_grids, nullptr);
+  mats[0] = &base_mat;
+  for (int g = 1; g < n_grids; ++g)
+  {
+    mats[g] = fe_matrix(*das[g].primary);
+    mats[g]->zero_boundary(true);
+  }
+
+  CycleSettings cycle_settings;
+  cycle_settings.pre_smooth(2);
+  cycle_settings.post_smooth(1);
+  cycle_settings.damp_smooth(2.0 / 3.0);
+  cycle_settings.print(false);
+
+  VCycle<PoissonMat> vcycle(n_grids, das, mats.data(), cycle_settings, single_dof);
+
+  // Preconditioned right-hand side.
+  std::vector<double> pc_rhs_vec = rhs_vec;
+  std::vector<double> v_temporary = pc_rhs_vec;
+  pc_rhs_vec.assign(pc_rhs_vec.size(), 0);  // reset to zero
+  vcycle.vcycle(pc_rhs_vec.data(), v_temporary.data());
+
+  // Preconditioned matrix multiplication.
+  const auto pc_mat = [&vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
+    base_mat.matVec(u, v_temporary.data());
+
+    std::fill_n(v, v_temporary.size(), 0); // reset to zero
+    vcycle.vcycle(v, v_temporary.data());
+  };
+
+  // Solve equation.
+
+  if(rank == 0)
+  {
+    std::cout << "___________Begin poissonEq\n";
+  }
+
+  const double tol=1e-14;
+  const unsigned int max_iter=300;
+
+  /// feenableexcept(FE_INVALID);
+
+  double relative_residual = tol;
+
+  /// const int steps = cgSolver(
+  ///     &base_da, [&base_mat](const double *u, double *v){ base_mat.matVec(u, v); },
+  ///     &(*u_vec.begin()), &(*rhs_vec.begin()), max_iter, relative_residual, true);
+
+  /// const int steps = cgSolver(
+  ///     &base_da, pc_mat,
+  ///     &(*u_vec.begin()), &(*pc_rhs_vec.begin()), max_iter, relative_residual, true);
+
+  // Multigrid V-Cycle iteration as solver.
+  const int steps = [&, steps=0]() mutable {
+    base_mat.matVec(u_vec.data(), v_vec.data());
+    for (size_t i = 0; i < v_vec.size(); ++i)
+      v_vec[i] = rhs_vec[i] - v_vec[i];
+    double err;
+    err = sol_err_max(u_vec);
+    /// if (rank == 0)
+    /// {
+    ///   fprintf(stdout, "steps==%2d  err==%e\n", steps, err);
+    ///   fprintf(stdout, "\n");
+    /// }
+    while (steps < max_iter and err > 1e-14)
+    {
+      vcycle.vcycle(u_vec.data(), v_vec.data());
+      base_mat.matVec(u_vec.data(), v_vec.data());
+      for (size_t i = 0; i < v_vec.size(); ++i)
+        v_vec[i] = rhs_vec[i] - v_vec[i];
+      ++steps;
+      err = sol_err_max(u_vec);
+      /// if (rank == 0)
+      /// {
+      ///   fprintf(stdout, "steps==%2d  err==%e\n", steps, err);
+      ///   fprintf(stdout, "\n");
+      /// }
+    }
+    return steps;
+  }();
+
+  const double err = sol_err_max(u_vec);
+
+  // Multigrid teardown.
+  for (int g = 1; g < n_grids; ++g)
+  {
+    delete das[g].primary;
+    delete das[g].surrogate;
+    delete mats[g];
+  }
+  das.clear();
+  mats.clear();
+
+  // future: base_mat can stay in stack memory, don't need to new/delete
+  delete &base_mat;
+
+  if(!rank)
+  {
+    std::cout << "___________End of poissonEq: "
+              << "Finished "
+              << "in " << steps << " iterations. "
+              << "Final error==" << err << "\n";
+  }
+
+  /// // Debug
+  /// if (!rank)
+  ///   std::cerr << "\n\nExact solution:\n";
+  /// print(base_da, u_exact_vec, std::cerr);
+  /// if (!rank)
+  ///   std::cerr << "\n\nApproximation:\n";
+  /// print(base_da, u_vec, std::cerr);
+  /// std::vector<double> err_vec = u_vec;
+  /// for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+  ///   err_vec[i] -= u_exact_vec[i];
+  /// if (!rank)
+  ///   std::cerr << "\n\nError:\n";
+  /// print(base_da, err_vec, std::cerr);
+
+  MPI_CHECK(0, err < 1e-10);
+
+  _DestroyHcurve();
+  DendroScopeEnd();
+}
+// ========================================================================== //
+
+
+// ========================================================================== //
+MPI_TEST_CASE("Nonuniform Poisson gmg sinusoid", 5)
+{
+  MPI_Comm comm = test_comm;
+  DendroScopeBegin();
+  constexpr int dim = 2;
+  _InitializeHcurve(dim);
+  const int rank = par::mpi_comm_rank(comm);
+  using Oct = Oct<dim>;
+  const double partition_tolerance = 0.1;
+  const int polynomial_degree = 1;
+  constexpr double pi = { M_PI };
+  static_assert(3.0 < pi, "The macro M_PI is not defined as a value > 3!");
+
+  // Domain is a cube from -1 to 1 in each axis.
+  Point<dim> min_corner(-1.0),  max_corner(1.0);
+
+  // Solve "-div(grad(u)) = f"
+  // Sinusoid: f(x) = sin(pi * x)    //future/c++17: std::transform_reduce()
+  const auto f = [](const double *x, double *y = nullptr) {
+    double result = 1.0;
+    for (int d = 0; d < dim; ++d)
+      result *= std::sin(pi * x[d]);
+    if (y != nullptr)
+      *y = result;
+    return result;
+  };
+  // Solution: u(x) = 1/(pi^2) sin(pi * x)
+  const auto u_exact = [] (const double *x) {
+    double result = 1.0 / (dim * pi * pi);
+    for (int d = 0; d < dim; ++d)
+      result *= std::sin(pi * x[d]);
+    return result;
+  };
+  // Dirichlet boundary condition (matching u_exact).
+  const auto u_bdry = [=] (const double *x) {
+    return u_exact(x);
+  };
+
+  // Mesh (nonuniform grid)
+  const double interpolation = 1e-3;
+  /// const int refinement_level = 5;
+  ot::DistTree<uint, dim> base_tree = ot::DistTree<uint, dim>::
+      constructDistTreeByFunc<double>(
+          f, 1, comm, polynomial_degree, interpolation, partition_tolerance);
+  ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tolerance);
+
+  // ghosted_node_coordinate()
+  const auto ghosted_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
+  {
+    const ot::TreeNode<uint, dim> node = da.getTNCoords()[idx];   //integer
+    std::array<double, dim> coordinates;
+    ot::treeNode2Physical(node, polynomial_degree, coordinates.data());  //fixed
+
+    for (int d = 0; d < dim; ++d)
+      coordinates[d] = min_corner.x(d) * (1 - coordinates[d]) // scale and shift
+                     + max_corner.x(d) * coordinates[d];
+
+    return Point<dim>(coordinates);
+  };
+
+  // local_node_coordinate()
+  const auto local_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
+  {
+    return ghosted_node_coordinate(da, idx + da.getLocalNodeBegin());
+  };
+
+  // local_vector()
+  const auto local_vector = [&](const ot::DA<dim> &da, auto type, int dofs)
+  {
+    std::vector<std::remove_cv_t<decltype(type)>> local;
+    const bool ghosted = false;  // local means not ghosted
+    da.createVector(local, false, ghosted, dofs);
+    return local;
+  };
+
+  // Vectors
+  const int single_dof = 1;
+  std::vector<double> u_vec = local_vector(base_da, double{}, single_dof);
+  std::vector<double> v_vec = local_vector(base_da, double{}, single_dof);
+  std::vector<double> f_vec = local_vector(base_da, double{}, single_dof);
+  std::vector<double> rhs_vec = local_vector(base_da, double{}, single_dof);
+
+  using PoissonMat = PoissonEq::PoissonMat<dim>;
+
+  // fe_matrix()
+  //  future: return PoissonMat without dynamic memory, after finish move constructors
+  const auto fe_matrix = [&](const ot::DA<dim> &da) -> PoissonMat *
+  {
+    auto *mat = new PoissonMat(
+        &da, {}, single_dof);
+    mat->setProblemDimensions(min_corner, max_corner);
+    return mat;
+  };
+
+  // fe_vector()
+  const auto fe_vector = [&](const ot::DA<dim> &da) -> PoissonEq::PoissonVec<dim>
+  {
+    PoissonEq::PoissonVec<dim> vec(
+        const_cast<ot::DA<dim> *>(&da),   // violate const for weird feVec non-const necessity
+        {},
+        single_dof);
+    vec.setProblemDimensions(min_corner, max_corner);
+    return vec;
+  };
+
+  // Boundary condition and 0 on interior (needed to subtract A u^bdry from rhs)
+  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+    u_vec[i] = 0;
+  for (size_t bdyIdx : base_da.getBoundaryNodeIndices())
+    u_vec[bdyIdx] = u_bdry(&local_node_coordinate(base_da, bdyIdx).x(0));
+
+  // Evaluate forcing term.
+  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+    f_vec[i] = f(&local_node_coordinate(base_da, i).x(0));
+
+  // Linear system oracles encapsulating the operators.
+  PoissonEq::PoissonMat<dim> &base_mat = *fe_matrix(base_da);  //future: not a pointer
+  PoissonEq::PoissonVec<dim> base_vec = fe_vector(base_da);
+
+  // Compute right hand side, subtracting boundary data.
+  // (See preMatVec, postMatVec, preComputeVec, postComputeVec).
+  base_mat.matVec(u_vec.data(), v_vec.data());
+  base_vec.computeVec(f_vec.data(), rhs_vec.data());
+  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+    rhs_vec[i] -= v_vec[i];
+  base_mat.zero_boundary(true);
+
+  // Precompute exact solution to evaluate error of an approximate solution.
+  std::vector<double> u_exact_vec = local_vector(base_da, double{}, single_dof);
+  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+    u_exact_vec[i] = u_exact(&local_node_coordinate(base_da, i).x(0));
+
+  // Function to check solution error.
+  const auto sol_err_max = [&](const std::vector<double> &u) {
+      double err_max = 0.0;
+      for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+        err_max = fmax(err_max, abs(u[i] - u_exact_vec[i]));
+      err_max = par::mpi_max(err_max, comm);
+      return err_max;
+  };
+
+
+  // Multigrid setup
+  //  future: distCoarsen to coarsen by 1 or more levels
+  //  future: coarse_to_fine and fine_to_coarse without surrogates
+  //  future: Can do 2:1-balance all-at-once instead of iteratively.
+  const int n_grids = 3;
+  ot::DistTree<uint, dim> &trees = base_tree;
+  ot::DistTree<uint, dim> surrogate_trees;
+  surrogate_trees = trees.generateGridHierarchyUp(true, n_grids, partition_tolerance);
+  assert(trees.getNumStrata() == n_grids);
+  /// struct DA_Pair { const ot::DA<dim> *primary; const ot::DA<dim> *surrogate; };
+  std::vector<DA_Pair<dim>> das(n_grids, DA_Pair<dim>{nullptr, nullptr});
+  das[0].primary = &base_da;
+  for (int g = 1; g < n_grids; ++g)
+  {
+    das[g].primary = new ot::DA<dim>(
+        trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
+    das[g].surrogate = new ot::DA<dim>(
+        surrogate_trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
+  }
+
+  /// ot::quadTreeToGnuplot(trees.getTreePartFiltered(0), 10, "base", comm);
+  /// ot::quadTreeToGnuplot(surrogate_trees.getTreePartFiltered(1), 10, "surr", comm);
+  /// ot::quadTreeToGnuplot(trees.getTreePartFiltered(1), 10, "coarse", comm);
+
+
   std::vector<PoissonMat *> mats(n_grids, nullptr);
   mats[0] = &base_mat;
   for (int g = 1; g < n_grids; ++g)
@@ -763,9 +1142,17 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     vcycle.vcycle(v, v_temporary.data());
   };
 
+  if(rank == 0)
+  {
+    std::cout << "___________Begin poissonEq ("
+              << par::mpi_comm_size(comm)
+              << " processes)\n";
+  }
+
   // Solve equation.
   const double tol=1e-14;
   const unsigned int max_iter=300;
+  const int max_vcycles = 100;
 
   /// feenableexcept(FE_INVALID);
 
@@ -781,17 +1168,22 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
 
   // Multigrid V-Cycle iteration as solver.
   const int steps = [&, steps=0]() mutable {
+    ConvergenceRate convergence(3);
+    ConvergenceRate residual_convergence(3);
     base_mat.matVec(u_vec.data(), v_vec.data());
     for (size_t i = 0; i < v_vec.size(); ++i)
       v_vec[i] = rhs_vec[i] - v_vec[i];
     double err;
+    double res;
     err = sol_err_max(u_vec);
+    res = normLInfty(v_vec.data(), v_vec.size(), comm);
+    convergence.observe_step(err);
+    residual_convergence.observe_step(res);
     if (rank == 0)
     {
       fprintf(stdout, "steps==%2d  err==%e\n", steps, err);
-      fprintf(stdout, "\n");
     }
-    while (steps < max_iter and err > 1e-14)
+    while (steps < max_vcycles and err > 1e-14)
     {
       vcycle.vcycle(u_vec.data(), v_vec.data());
       base_mat.matVec(u_vec.data(), v_vec.data());
@@ -799,16 +1191,26 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
         v_vec[i] = rhs_vec[i] - v_vec[i];
       ++steps;
       err = sol_err_max(u_vec);
+      res = normLInfty(v_vec.data(), v_vec.size(), comm);
+      convergence.observe_step(err);
+      residual_convergence.observe_step(res);
+      const double rate = convergence.rate();
+      const double res_rate = residual_convergence.rate();
       if (rank == 0)
       {
-        fprintf(stdout, "steps==%2d  err==%e\n", steps, err);
-        fprintf(stdout, "\n");
+        fprintf(stdout, "steps==%2d  err==%e  rate==(%0.1fx)"
+            "      res==%e  rate==(%0.1fx)\n",
+            steps, err, std::exp(std::abs(std::log(rate))),
+            res, std::exp(std::abs(std::log(res_rate))));
       }
+      if (res_rate > 0.95)
+        break;
     }
     return steps;
   }();
 
   const double err = sol_err_max(u_vec);
+  const double res = normLInfty(v_vec.data(), v_vec.size(), comm);
 
   // Multigrid teardown.
   for (int g = 1; g < n_grids; ++g)
@@ -825,7 +1227,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
 
   if(!rank)
   {
-    std::cout << "___________End of poissonEq: " 
+    std::cout << "___________End of poissonEq: "
               << "Finished "
               << "in " << steps << " iterations. "
               << "Final error==" << err << "\n";
@@ -845,7 +1247,8 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   ///   std::cerr << "\n\nError:\n";
   /// print(base_da, err_vec, std::cerr);
 
-  MPI_CHECK(0, err < 1e-10);
+  MPI_CHECK(0, err < interpolation);
+  MPI_CHECK(0, res < 1e-10);
 
   _DestroyHcurve();
   DendroScopeEnd();
