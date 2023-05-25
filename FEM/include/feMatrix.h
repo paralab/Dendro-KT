@@ -18,32 +18,38 @@
 
 template <typename LeafT, unsigned int dim>
 class feMatrix : public feMat<dim> {
-  //TODO I don't really get why we use LeafT and not just virtual methods.
 
-protected:
+    protected:
          static constexpr unsigned int m_uiDim = dim;
 
          /**@brief number of dof*/
-         unsigned int m_uiDof;
+         unsigned int m_uiDof = -1;
 
          /**@brief element nodal vec in */
-         VECType * m_uiEleVecIn;
+         VECType * m_uiEleVecIn = {};
 
          /***@brief element nodal vecOut */
-         VECType * m_uiEleVecOut;
+         VECType * m_uiEleVecOut = {};
 
          /** elemental coordinates */
-         double * m_uiEleCoords;
+         double * m_uiEleCoords = {};
+
+    protected:
+        // Place in protected access due to polymorphism.
+        feMatrix(const feMatrix &) = delete;
+        feMatrix & operator=(const feMatrix &) = delete;
+        feMatrix(feMatrix &&moved);
+        feMatrix & operator=(feMatrix &&moved);
 
     public:
+        feMatrix() = default;
+
         /**
          * @brief constructs an FEM stiffness matrix class.
          * @param[in] da: octree DA
          * */
          // future: remove the octlist parameter
         feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *, unsigned int dof=1);
-
-        feMatrix(feMatrix &&other);
 
         ~feMatrix();
 
@@ -224,7 +230,7 @@ feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeN
   : feMat<dim>(da)
 {
     m_uiDof=dof;
-    const unsigned int nPe=feMat<dim>::m_uiOctDA->getNumNodesPerElement();
+    const unsigned int nPe=this->m_uiOctDA->getNumNodesPerElement();
     m_uiEleVecIn = new  VECType[m_uiDof*nPe];
     m_uiEleVecOut = new VECType[m_uiDof*nPe];
 
@@ -233,32 +239,32 @@ feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeN
 }
 
 template <typename LeafT, unsigned int dim>
-feMatrix<LeafT, dim>::feMatrix(feMatrix &&other)
-  : feMat<dim>(std::forward<feMat<dim>>(other)),
-    m_uiDof{other.m_uiDof},
-    m_uiEleVecIn{other.m_uiEleVecIn},
-    m_uiEleVecOut{other.m_uiEleVecOut},
-    m_uiEleCoords{other.m_uiEleCoords}
+feMatrix<LeafT, dim>::feMatrix(feMatrix &&moved)
+  : feMat<dim>(std::move(moved))
 {
-  other.m_uiEleVecIn = nullptr;
-  other.m_uiEleVecOut = nullptr;
-  other.m_uiEleCoords = nullptr;
+  std::swap(m_uiDof,       moved.m_uiDof);
+  std::swap(m_uiEleVecIn,  moved.m_uiEleVecIn);
+  std::swap(m_uiEleVecOut, moved.m_uiEleVecOut);
+  std::swap(m_uiEleCoords, moved.m_uiEleCoords);
 }
 
+template <typename LeafT, unsigned int dim>
+feMatrix<LeafT, dim> & feMatrix<LeafT, dim>::operator=(feMatrix &&moved)
+{
+  feMat<dim>::operator=(std::move(moved));
+  std::swap(m_uiDof,       moved.m_uiDof);
+  std::swap(m_uiEleVecIn,  moved.m_uiEleVecIn);
+  std::swap(m_uiEleVecOut, moved.m_uiEleVecOut);
+  std::swap(m_uiEleCoords, moved.m_uiEleCoords);
+  return *this;
+}
 
 template <typename LeafT, unsigned int dim>
 feMatrix<LeafT,dim>::~feMatrix()
 {
-    if (m_uiEleVecIn != nullptr)
-      delete [] m_uiEleVecIn;
-    if (m_uiEleVecOut != nullptr)
-      delete [] m_uiEleVecOut;
-    if (m_uiEleCoords != nullptr)
-      delete [] m_uiEleCoords;
-
-    m_uiEleVecIn=NULL;
-    m_uiEleVecOut=NULL;
-    m_uiEleCoords=NULL;
+    delete [] m_uiEleVecIn;
+    delete [] m_uiEleVecOut;
+    delete [] m_uiEleCoords;
 }
 
 template <typename LeafT, unsigned int dim>

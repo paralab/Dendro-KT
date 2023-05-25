@@ -9,7 +9,7 @@ namespace PoissonEq {
 template <unsigned int dim>
 PoissonVec<dim>::PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof) : feVector<PoissonVec<dim>, dim>(da, octList, dof)
 {
-    const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
+    const unsigned int nPe=this->m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)
       imV[d] = new double[dof*nPe];
 }
@@ -18,16 +18,30 @@ template <unsigned int dim>
 PoissonVec<dim>::~PoissonVec()
 {
     for (unsigned int d = 0; d < dim-1; d++)
-    {
       delete [] imV[d];
-      imV[d] = nullptr;
-    }
 }
+
+
+template <unsigned int dim>
+PoissonVec<dim>::PoissonVec(PoissonVec &&moved)
+  : feVector<PoissonVec<dim>, dim>(std::move(moved))
+{
+  std::swap(imV, moved.imV);
+}
+
+template <unsigned int dim>
+PoissonVec<dim> & PoissonVec<dim>::operator=(PoissonVec &&moved)
+{
+  feVector<PoissonVec<dim>, dim>::operator=(std::move(moved));
+  std::swap(imV, moved.imV);
+  return *this;
+}
+
 
 template <unsigned int dim>
 void PoissonVec<dim>::elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale, bool isElementBoundary)
 {
-    const RefElement* refEl=m_uiOctDA->getReferenceElement();
+    const RefElement* refEl=this->m_uiOctDA->getReferenceElement();
     const double * Q1d=refEl->getQ1d();
     const double * QT1d=refEl->getQT1d();
     const double * Dg=refEl->getDg1d();
@@ -97,7 +111,7 @@ bool PoissonVec<dim>::postComputeVec(const VECType* in,VECType* out, double scal
 {
     // apply boundary conditions.
     std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    this->m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -110,7 +124,7 @@ template <unsigned int dim>
 double PoissonVec<dim>::gridX_to_X(unsigned int d, double x) const
 {
   double Rg=1.0;
-  return (((x)/(Rg))*((m_uiPtMax.x(d)-m_uiPtMin.x(d)))+m_uiPtMin.x(d));
+  return (((x)/(Rg))*((this->m_uiPtMax.x(d)-this->m_uiPtMin.x(d)))+this->m_uiPtMin.x(d));
 }
 
 template <unsigned int dim>

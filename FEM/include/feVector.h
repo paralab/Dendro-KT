@@ -21,19 +21,29 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief number of unknowns */
-    unsigned int m_uiDof;
+    unsigned int m_uiDof = -1;
 
     /**@brief element nodal vec in */
-    VECType * m_uiEleVecIn;
+    VECType * m_uiEleVecIn = nullptr;
 
     /***@brief element nodal vecOut */
-    VECType * m_uiEleVecOut;
+    VECType * m_uiEleVecOut = nullptr;
 
     /** elemental coordinates */
-    double * m_uiEleCoords;
+    double * m_uiEleCoords = nullptr;
+
+
+protected:
+    // Place in protected access due to polymorphism.
+    feVector(const feVector &) = delete;
+    feVector & operator=(const feVector &) = delete;
+    feVector(feVector &&moved);
+    feVector & operator=(feVector &&moved);
 
 
 public:
+    feVector() = default;
+
     /**
      * @brief constructs an FEM stiffness matrix class.
      * @param[in] da: octree DA
@@ -103,7 +113,7 @@ template <typename T, unsigned int dim>
 feVector<T,dim>::feVector(ot::DA<dim> *da, const std::vector<ot::TreeNode<unsigned int, dim>> *,unsigned int dof) : feVec<dim>(da)
 {
     m_uiDof=dof;
-    const unsigned int nPe=feVec<dim>::m_uiOctDA->getNumNodesPerElement();
+    const unsigned int nPe=this->m_uiOctDA->getNumNodesPerElement();
     m_uiEleVecIn = new  VECType[m_uiDof*nPe];
     m_uiEleVecOut = new VECType[m_uiDof*nPe];
 
@@ -115,8 +125,28 @@ feVector<T,dim>::~feVector()
 {
     delete [] m_uiEleVecIn;
     delete [] m_uiEleVecOut;
-
     delete [] m_uiEleCoords;
+}
+
+template <typename T, unsigned int dim>
+feVector<T, dim>::feVector(feVector &&moved)
+  : feVec<dim>(std::move(moved))
+{
+  std::swap(m_uiDof,       moved.m_uiDof);
+  std::swap(m_uiEleVecIn,  moved.m_uiEleVecIn);
+  std::swap(m_uiEleVecOut, moved.m_uiEleVecOut);
+  std::swap(m_uiEleCoords, moved.m_uiEleCoords);
+}
+
+template <typename T, unsigned int dim>
+feVector<T, dim> & feVector<T, dim>::operator=(feVector &&moved)
+{
+  feVec<dim>::operator=(std::move(moved));
+  std::swap(m_uiDof,       moved.m_uiDof);
+  std::swap(m_uiEleVecIn,  moved.m_uiEleVecIn);
+  std::swap(m_uiEleVecOut, moved.m_uiEleVecOut);
+  std::swap(m_uiEleCoords, moved.m_uiEleCoords);
+  return *this;
 }
 
 
@@ -126,7 +156,7 @@ void feVector<T,dim>::computeVec(const VECType* in,VECType* out,double scale)
   using namespace std::placeholders;   // Convenience for std::bind().
 
   // Shorter way to refer to our member DA.
-  ot::DA<dim> * &m_oda = feVec<dim>::m_uiOctDA;
+  ot::DA<dim> * const &m_oda = this->m_uiOctDA;
 
   // Static buffers for ghosting. Check/increase size.
   static std::vector<VECType> inGhosted, outGhosted;

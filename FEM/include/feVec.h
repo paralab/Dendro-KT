@@ -25,37 +25,40 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief: pointer to OCT DA*/
-    ot::DA<dim>* m_uiOctDA;
-
-    /// /**@brief: type of the DA*/  ///TODO
-    /// ot::DAType m_uiDaType;
+    ot::DA<dim>* m_uiOctDA = {};
 
     /**@brief problem domain min point*/
-    Point<dim> m_uiPtMin;
+    Point<dim> m_uiPtMin = Point<dim>(-1.0);
 
     /**@brief problem domain max point*/
-    Point<dim> m_uiPtMax;
+    Point<dim> m_uiPtMax = Point<dim>(1.0);
 
 #ifdef BUILD_WITH_PETSC
     /**@brief: petsc DM*/
     DM m_uiPETSC_DA;
 #endif
 
+protected:
+    // Place in protected access due to polymorphism.
+    feVec(const feVec &) = default;
+    feVec(feVec &&) = default;
+    feVec & operator=(const feVec &) = default;
+    feVec & operator=(feVec &&) = default;
+
 public:
+    feVec() = default;
 
     /**@brief: feVec constructor
      * @par[in] daType: type of the DA
      * */
     feVec(ot::DA<dim>* da)
-    {
-        m_uiOctDA=da;
-    }
+      : m_uiOctDA(da)
+    { }
 
-    /**@brief deconstructor*/
-    ~feVec()
-    {
+    feVec(ot::DA<dim>* da, const Point<dim>& pt_min, const Point<dim>& pt_max)
+      : m_uiOctDA(da), m_uiPtMin(pt_min), m_uiPtMax(pt_max)
+    { }
 
-    }
 
     // da()
     const ot::DA<dim> * da() const { return m_uiOctDA; }

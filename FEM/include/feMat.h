@@ -22,16 +22,13 @@ protected:
     static constexpr unsigned int m_uiDim = dim;
 
     /**@brief: pointer to OCT DA*/
-    const ot::DA<dim>* m_uiOctDA;
-
-    /// /**@brief: type of the DA*/  //TODO
-    /// ot::DAType m_uiDaType;
+    const ot::DA<dim>* m_uiOctDA = {};
 
     /**@brief problem domain min point*/
-    Point<dim> m_uiPtMin;
+    Point<dim> m_uiPtMin = Point<dim>(-1.0);
 
     /**@brief problem domain max point*/
-    Point<dim> m_uiPtMax;
+    Point<dim> m_uiPtMax = Point<dim>(1.0);
 
 
 #ifdef BUILD_WITH_PETSC
@@ -39,29 +36,28 @@ protected:
     DM m_uiPETSC_DA;
 #endif
 
+protected:
+    // Place in protected access due to polymorphism.
+    feMat(const feMat &) = default;
+    feMat(feMat &&) = default;
+    feMat & operator=(const feMat &) = default;
+    feMat & operator=(feMat &&) = default;
+
+
 public:
+    feMat() = default;
+
     /**@brief: feMat constructor
       * @par[in] daType: type of the DA
       * @note Does not own da.
     **/
     feMat(const ot::DA<dim>* da)
       : m_uiOctDA(da)
-    {
-      std::array<double, dim> lo, hi;
-      std::fill(lo.begin(), lo.end(), -1);
-      std::fill(hi.begin(), hi.end(), 1);
-      this->setProblemDimensions(Point<dim>(lo), Point<dim>(hi));
-    }
-
-    feMat(feMat &&other)
-      : feMat(m_uiOctDA)
     { }
 
-    /**@brief deconstructor*/
-    ~feMat()
-    {
-
-    }
+    feMat(const ot::DA<dim>* da, const Point<dim>& pt_min, const Point<dim>& pt_max)
+      : m_uiOctDA(da), m_uiPtMin(pt_min), m_uiPtMax(pt_max)
+    { }
 
     // da()
     const ot::DA<dim> * da() const { return m_uiOctDA; }

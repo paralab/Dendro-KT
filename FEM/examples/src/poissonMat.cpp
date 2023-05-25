@@ -11,7 +11,7 @@ namespace PoissonEq
 template <unsigned int dim>
 PoissonMat<dim>::PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof) : feMatrix<PoissonMat<dim>,dim>(da, octList, dof)
 {
-    const unsigned int nPe=m_uiOctDA->getNumNodesPerElement();
+    const unsigned int nPe=this->m_uiOctDA->getNumNodesPerElement();
     for (unsigned int d = 0; d < dim-1; d++)
       imV[d] = new double[dof*nPe];
 
@@ -26,23 +26,37 @@ template <unsigned int dim>
 PoissonMat<dim>::~PoissonMat()
 {
     for (unsigned int d = 0; d < dim-1; d++)
-    {
       delete [] imV[d];
-      imV[d] = nullptr;
-    }
 
     for (unsigned int d = 0; d < dim; d++)
-    {
       delete [] Qx[d];
-      Qx[d] = nullptr;
-    }
 
     delete [] phi_i;
-    phi_i = nullptr;
-
     delete [] ematBuf;
-    ematBuf = nullptr;
 }
+
+
+template <unsigned int dim>
+PoissonMat<dim>::PoissonMat(PoissonMat &&other)
+  : feMatrix<PoissonMat<dim>, dim>(std::move(other))
+{
+  std::swap(this->imV,     other.imV);
+  std::swap(this->Qx,      other.Qx);
+  std::swap(this->phi_i,   other.phi_i);
+  std::swap(this->ematBuf, other.ematBuf);
+}
+
+template <unsigned int dim>
+PoissonMat<dim> & PoissonMat<dim>::operator=(PoissonMat &&other)
+{
+  feMatrix<PoissonMat<dim>, dim>::operator=(std::move(other));
+  std::swap(this->imV,     other.imV);
+  std::swap(this->Qx,      other.Qx);
+  std::swap(this->phi_i,   other.phi_i);
+  std::swap(this->ematBuf, other.ematBuf);
+  return *this;
+}
+
 
 template <unsigned int dim>
 void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale, bool isElementBoundary)
@@ -52,7 +66,7 @@ void PoissonMat<dim>::elementalMatVec(const VECType* in,VECType* out, unsigned i
 
     // 1D operators.
 
-    const RefElement* refEl=m_uiOctDA->getReferenceElement();
+    const RefElement* refEl=this->m_uiOctDA->getReferenceElement();
 
     const double * Q1d=refEl->getQ1d();
     const double * QT1d=refEl->getQT1d();
@@ -227,7 +241,7 @@ void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const d
 
     // 1D operators.
 
-    const RefElement* refEl=m_uiOctDA->getReferenceElement();
+    const RefElement* refEl=this->m_uiOctDA->getReferenceElement();
 
     // Could avoid storing the entrywise squares if simplify KroneckerProduct
     // to allow squaring on the fly.
@@ -307,7 +321,7 @@ void PoissonMat<dim>::elementalSetDiag(VECType *out, unsigned int ndofs, const d
 template <unsigned int dim>
 void PoissonMat<dim>::getElementalMatrix(std::vector<ot::MatRecord> &records, const double *coords, bool isElementBoundary)
 {
-  const RefElement* refEl=m_uiOctDA->getReferenceElement();
+  const RefElement* refEl=this->m_uiOctDA->getReferenceElement();
   const unsigned int eleOrder=refEl->getOrder();
   const unsigned int nPe=intPow(eleOrder+1, dim);
   const unsigned int nrp=eleOrder+1;
@@ -359,7 +373,7 @@ bool PoissonMat<dim>::preMatVec(const VECType* in,VECType* out,double scale)
   {
     // apply boundary conditions.  Assume that A u^bdry has been subtracted from rhs
     std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    this->m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -375,7 +389,7 @@ bool PoissonMat<dim>::postMatVec(const VECType* in,VECType* out,double scale) {
 
     // apply boundary conditions.
     std::vector<size_t> bdyIndex;
-    m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
+    this->m_uiOctDA->getBoundaryNodeIndices(bdyIndex);
 
     for(unsigned int i=0;i<bdyIndex.size();i++)
         out[bdyIndex[i]]=0.0;
@@ -387,7 +401,7 @@ template <unsigned int dim>
 double PoissonMat<dim>::gridX_to_X(unsigned int d, double x) const
 {
   double Rg=1.0;
-  return (((x)/(Rg))*((m_uiPtMax.x(d)-m_uiPtMin.x(d)))+m_uiPtMin.x(d));
+  return (((x)/(Rg))*((this->m_uiPtMax.x(d)-this->m_uiPtMin.x(d)))+this->m_uiPtMin.x(d));
 }
 
 template <unsigned int dim>
@@ -405,17 +419,17 @@ int PoissonMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,un
     double resid,alpha,beta,rho,rho_1;
     int status=1; // 0 indicates it has solved the system within the specified max_iter, 1 otherwise.
 
-    const unsigned int local_dof=m_uiOctDA->getLocalNodalSz();
+    const unsigned int local_dof=this->m_uiOctDA->getLocalNodalSz();
 
-    MPI_Comm globalComm=m_uiOctDA->getGlobalComm();
+    MPI_Comm globalComm=this->m_uiOctDA->getGlobalComm();
 
-    if(m_uiOctDA->isActive())
+    if(this->m_uiOctDA->isActive())
     {
 
-        int activeRank=m_uiOctDA->getRankActive();
-        int activeNpes=m_uiOctDA->getNpesActive();
+        int activeRank=this->m_uiOctDA->getRankActive();
+        int activeNpes=this->m_uiOctDA->getNpesActive();
 
-        MPI_Comm activeComm=m_uiOctDA->getCommActive();
+        MPI_Comm activeComm=this->m_uiOctDA->getCommActive();
 
         double* p;
         double* z;
@@ -425,14 +439,14 @@ int PoissonMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,un
         double* r0;
         double* r1;
 
-        m_uiOctDA->createVector(p);
-        m_uiOctDA->createVector(z);
-        m_uiOctDA->createVector(q);
+        this->m_uiOctDA->createVector(p);
+        this->m_uiOctDA->createVector(z);
+        this->m_uiOctDA->createVector(q);
 
-        m_uiOctDA->createVector(Ax);
-        m_uiOctDA->createVector(Ap);
-        m_uiOctDA->createVector(r0);
-        m_uiOctDA->createVector(r1);
+        this->m_uiOctDA->createVector(Ax);
+        this->m_uiOctDA->createVector(Ap);
+        this->m_uiOctDA->createVector(r0);
+        this->m_uiOctDA->createVector(r1);
 
         double normb = normLInfty(b,local_dof,activeComm);
         par::Mpi_Bcast(&normb,1,0,activeComm);
@@ -466,14 +480,14 @@ int PoissonMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,un
             tol = resid;
             max_iter = 0;
 
-            m_uiOctDA->destroyVector(p);
-            m_uiOctDA->destroyVector(z);
-            m_uiOctDA->destroyVector(q);
+            this->m_uiOctDA->destroyVector(p);
+            this->m_uiOctDA->destroyVector(z);
+            this->m_uiOctDA->destroyVector(q);
 
-            m_uiOctDA->destroyVector(Ax);
-            m_uiOctDA->destroyVector(Ap);
-            m_uiOctDA->destroyVector(r0);
-            m_uiOctDA->destroyVector(r1);
+            this->m_uiOctDA->destroyVector(Ax);
+            this->m_uiOctDA->destroyVector(Ap);
+            this->m_uiOctDA->destroyVector(r0);
+            this->m_uiOctDA->destroyVector(r1);
 
             status=0;
         }
@@ -505,14 +519,14 @@ int PoissonMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,un
 
                     if((!activeRank)) std::cout<<" iteration : "<<i<<" residual : "<<resid<<std::endl;
                     tol = resid;
-                    m_uiOctDA->destroyVector(p);
-                    m_uiOctDA->destroyVector(z);
-                    m_uiOctDA->destroyVector(q);
+                    this->m_uiOctDA->destroyVector(p);
+                    this->m_uiOctDA->destroyVector(z);
+                    this->m_uiOctDA->destroyVector(q);
 
-                    m_uiOctDA->destroyVector(Ax);
-                    m_uiOctDA->destroyVector(Ap);
-                    m_uiOctDA->destroyVector(r0);
-                    m_uiOctDA->destroyVector(r1);
+                    this->m_uiOctDA->destroyVector(Ax);
+                    this->m_uiOctDA->destroyVector(Ap);
+                    this->m_uiOctDA->destroyVector(r0);
+                    this->m_uiOctDA->destroyVector(r1);
 
                     status=0;
                     break;
@@ -537,14 +551,14 @@ int PoissonMat<dim>::cgSolve(double * x ,double * b,int max_iter, double& tol,un
             if(status!=0)
             {
                 tol = resid;
-                m_uiOctDA->destroyVector(p);
-                m_uiOctDA->destroyVector(z);
-                m_uiOctDA->destroyVector(q);
+                this->m_uiOctDA->destroyVector(p);
+                this->m_uiOctDA->destroyVector(z);
+                this->m_uiOctDA->destroyVector(q);
 
-                m_uiOctDA->destroyVector(Ax);
-                m_uiOctDA->destroyVector(Ap);
-                m_uiOctDA->destroyVector(r0);
-                m_uiOctDA->destroyVector(r1);
+                this->m_uiOctDA->destroyVector(Ax);
+                this->m_uiOctDA->destroyVector(Ap);
+                this->m_uiOctDA->destroyVector(r0);
+                this->m_uiOctDA->destroyVector(r1);
                 status=1;
 
             }

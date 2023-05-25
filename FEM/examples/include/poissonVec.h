@@ -15,11 +15,7 @@ namespace PoissonEq
 
     private:
 
-        double * imV[dim-1];
-
-        ot::DA<dim> * &m_uiOctDA = feVec<dim>::m_uiOctDA;
-        Point<dim> &m_uiPtMin = feVec<dim>::m_uiPtMin;
-        Point<dim> &m_uiPtMax = feVec<dim>::m_uiPtMax;
+        double * imV[dim-1] = {};
 
         static constexpr unsigned int m_uiDim = dim;
 
@@ -36,8 +32,15 @@ namespace PoissonEq
 
 
     public:
+        PoissonVec() = default;
         PoissonVec(ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList,unsigned int dof=1);
         ~PoissonVec();
+
+        PoissonVec(const PoissonVec &) = delete;
+        PoissonVec & operator=(const PoissonVec &) = delete;
+
+        PoissonVec(PoissonVec &&moved);
+        PoissonVec & operator=(PoissonVec &&moved);
 
         /**@biref elemental compute vec for rhs*/
         virtual void elementalComputeVec(const VECType* in,VECType* out, unsigned int ndofs, const double*coords,double scale, bool isElementBoundary) override;

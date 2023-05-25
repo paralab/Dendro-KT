@@ -15,21 +15,17 @@ namespace PoissonEq
 
     private:
         // some additional work space variables to perform elemental MatVec
-        double * imV[dim-1];
-        double * Qx[dim];
+        double * imV[dim-1] = {};
+        double * Qx[dim] = {};
 
-        double * phi_i;   //
-        double * ematBuf; // Needed for assembly.
-
-        // References for convenient access to base class members.
-        const ot::DA<dim> * &m_uiOctDA = feMat<dim>::m_uiOctDA;
-        Point<dim> &m_uiPtMin = feMat<dim>::m_uiPtMin;
-        Point<dim> &m_uiPtMax = feMat<dim>::m_uiPtMax;
+        double * phi_i = {};   //
+        double * ematBuf = {}; // Needed for assembly.
 
         static constexpr unsigned int m_uiDim = dim;
 
         bool m_zero_boundary = false;
 
+    private:
         void getImPtrs(const double * fromPtrs[], double * toPtrs[], const double *in, double *out) const
         {
           fromPtrs[0] = in;
@@ -42,11 +38,16 @@ namespace PoissonEq
         }
 
     public:
+        PoissonMat() = default;
+
         /**@brief: constructor. Matrix-free matrix depends on spatial structure represented by ODA.*/
         PoissonMat(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *octList, unsigned int dof=1);
 
-        PoissonMat(PoissonMat &&) = default;
-        PoissonMat & operator=(PoissonMat &&) = default;
+        PoissonMat(const PoissonMat &) = delete;
+        PoissonMat & operator=(const PoissonMat &) = delete;
+
+        PoissonMat(PoissonMat &&);
+        PoissonMat & operator=(PoissonMat &&);
 
         /**@brief default destructor*/
         ~PoissonMat();
