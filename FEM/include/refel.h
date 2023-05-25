@@ -212,25 +212,25 @@ class RefElement
     inline int getDim() const { return m_uiDimension; }
     inline int get1DNumInterpolationPoints() const { return m_uiNrp; }
 
-    inline const double *getIMChild0() const { if (!m_isValid) throw "Invalid!"; return &(*(ip_1D_0.begin())); }
-    inline const double *getIMChild1() const { if (!m_isValid) throw "Invalid!"; return &(*(ip_1D_1.begin())); }
+    inline const double *getIMChild0() const { assert(m_isValid); return &(*(ip_1D_0.begin())); }
+    inline const double *getIMChild1() const { assert(m_isValid); return &(*(ip_1D_1.begin())); }
 
-    inline const double *getQ1d() const { if (!m_isValid) throw "Invalid!"; return &(*(quad_1D.begin())); }
-    inline const double *getQT1d() const { if (!m_isValid) throw "Invalid!"; return &(*(quadT_1D.begin())); }
-    inline const double *getDg1d() const { if (!m_isValid) throw "Invalid!"; return &(*(Dg.begin())); }
-    inline const double *getDgT1d() const { if (!m_isValid) throw "Invalid!"; return &(*(DgT.begin())); }
-    inline const double *getDr1d() const { if (!m_isValid) throw "Invalid!"; return &(*(Dr.begin())); }
+    inline const double *getQ1d() const { assert(m_isValid); return &(*(quad_1D.begin())); }
+    inline const double *getQT1d() const { assert(m_isValid); return &(*(quadT_1D.begin())); }
+    inline const double *getDg1d() const { assert(m_isValid); return &(*(Dg.begin())); }
+    inline const double *getDgT1d() const { assert(m_isValid); return &(*(DgT.begin())); }
+    inline const double *getDr1d() const { assert(m_isValid); return &(*(Dr.begin())); }
 
-    inline const double *getQT1d_hadm2()  const { if (!m_isValid) throw "Invalid!"; return &(*quadT_1D_hadm2.begin()); }
-    inline const double *getDgT1d_hadm2() const { if (!m_isValid) throw "Invalid!"; return &(*DgT_hadm2.begin()); }
+    inline const double *getQT1d_hadm2()  const { assert(m_isValid); return &(*quadT_1D_hadm2.begin()); }
+    inline const double *getDgT1d_hadm2() const { assert(m_isValid); return &(*DgT_hadm2.begin()); }
 
-    inline double *getImVec1() const { if (!m_isValid) throw "Invalid!"; return (double *) &(*(im_vec1.begin())); }
-    inline double *getImVec2() const { if (!m_isValid) throw "Invalid!"; return (double *) &(*(im_vec2.begin())); }
+    inline double *getImVec1() const { assert(m_isValid); return (double *) &(*(im_vec1.begin())); }
+    inline double *getImVec2() const { assert(m_isValid); return (double *) &(*(im_vec2.begin())); }
 
-    inline const double *getWgq() const { if (!m_isValid) throw "Invalid!"; return &(*(w.begin())); }
-    inline const double *getWgll() const { if (!m_isValid) throw "Invalid!"; return &(*(wgll.begin())); }
+    inline const double *getWgq() const { assert(m_isValid); return &(*(w.begin())); }
+    inline const double *getWgll() const { assert(m_isValid); return &(*(wgll.begin())); }
 
-    inline double getElementSz() const { if (!m_isValid) throw "Invalid!"; return (u.back() - u.front()); }
+    inline double getElementSz() const { assert(m_isValid); return (u.back() - u.front()); }
 
      /**
      * @param[in] in: input function values.
