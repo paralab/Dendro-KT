@@ -207,6 +207,8 @@ set(DENDRO_KT_INC include/dendro.h
                   FEM/include/surrogate_cell_transfer.hpp
                   FEM/include/setDiag.h
                   FEM/include/gmgMat.h
+                  FEM/include/mg.hpp
+                  FEM/include/solver_utils.hpp
                   )
 
 set(DENDRO_KT_SRC src/binUtils.cpp
