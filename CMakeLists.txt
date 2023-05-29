@@ -650,6 +650,17 @@ if(BUILD_EXAMPLES)
   target_include_directories(doctest_gmg_poisson PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
   target_link_libraries(doctest_gmg_poisson dendroKT ${MPI_LIBRARIES} m)
 
+  ## Parameterized GMG to study convergence behavior.
+  set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/gmg_stat.cpp)
+  # future: use a petsc_main.cpp to have PetscInitialize()
+  add_executable(gmg_stat ${SRC_FILES})
+  set_property(TARGET gmg_stat PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+  target_include_directories(gmg_stat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+  target_link_libraries(gmg_stat dendroKT ${MPI_LIBRARIES} m)
 
 
 endif(BUILD_EXAMPLES)
