@@ -142,6 +142,7 @@ else()
 endif()
 
 add_subdirectory(external/HighFive)
+add_subdirectory(external/c4conf)
 
 
 set(DENDRO_KT_INC include/dendro.h
@@ -253,6 +254,7 @@ target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/array/inc
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/FEM/include)
 target_include_directories(dendroKT PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(dendroKT HighFive)
+target_link_libraries(dendroKT c4conf)
 target_link_libraries(dendroKT ${MPI_LIBRARIES} m)
 
 if(WITH_BLAS_LAPACK)

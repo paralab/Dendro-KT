@@ -1,3 +1,6 @@
 [submodule "external/HighFive"]
 	path = external/HighFive
 	url = https://github.com/BlueBrain/HighFive.git
+[submodule "external/c4conf"]
+	path = external/c4conf
+	url = https://github.com/biojppm/c4conf.git
