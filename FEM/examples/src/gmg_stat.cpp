@@ -150,6 +150,14 @@ class RootCollect
 
     bool is_root() const { return m_is_root; }
 
+    void clear()
+    {
+      m_vcycle_progress.clear();
+      m_matvec_progress.clear();
+      m_residual_L2.clear();
+      m_residual_Linf.clear();
+    }
+
     // observe()
     void observe(
         int vcycle_progress,
@@ -166,33 +174,41 @@ class RootCollect
       }
     }
 
-    // output_hdf5()
-    HighFive::File output_hdf5(
-        HighFive::File &&file,
-        const std::string &groupname,
+    // create_hdf5()
+    HighFive::File create_hdf5(
+        const std::string &filename,
         const Configuration &config) const
+    {
+      assert(this->is_root());
+      HighFive::File file(filename, HighFive::File::Overwrite);
+      //TODO config
+      return file;
+    }
+
+    void flush_to_hdf5(
+        HighFive::File &file,
+        const std::string &groupname)
     {
       //TODO git reference
       //TODO groups, names, attributes for metadata
-      //TODO config
 
       assert(this->is_root());
       H5Easy::dump(file, "/" + groupname + "/vcycles", m_vcycle_progress);
       H5Easy::dump(file, "/" + groupname + "/matvecs", m_matvec_progress);
       H5Easy::dump(file, "/" + groupname + "/res_L2", m_residual_L2);
       H5Easy::dump(file, "/" + groupname + "/res_Linf", m_residual_Linf);
-      return std::move(file);
+
+      this->clear();
     }
 
-    // create_hdf5()
-    HighFive::File create_hdf5(
-        const std::string &filename,
-        const std::string &groupname,
-        const Configuration &config) const
+    // output_hdf5()
+    HighFive::File flush_to_hdf5(
+        HighFive::File &&file,
+        const std::string &groupname)
     {
       assert(this->is_root());
-      using HighFive::File;
-      return output_hdf5(File(filename, File::Overwrite), groupname, config);
+      this->flush_to_hdf5(file, groupname);
+      return std::move(file);
     }
 
   private:
@@ -275,6 +291,13 @@ int tmain(int argc, char *argv[], Configuration &config)
   //future: remember which configurations were accessed, log those
 
   RootCollect collection(comm);
+
+  HighFive::File *h5_file = nullptr;
+  if (collection.is_root())
+  {
+    h5_file = new auto(collection.create_hdf5("vcycle_data.hdf5", config));
+  }
+
 
 #ifdef CRUNCHTIME
   DendroScopeBegin();
@@ -576,15 +599,28 @@ int tmain(int argc, char *argv[], Configuration &config)
   _DestroyHcurve();
   DendroScopeEnd();
 
+  if (collection.is_root())
+  {
+    collection.flush_to_hdf5(*h5_file, "first");
+  }
+
 #else//CRUNCHTIME
+
   std::cout << "Dry run ...............\n";
-#endif//CRUNCHTIME
 
   if (collection.is_root())
   {
-    collection.create_hdf5("vcycle_data.hdf5", "quick", config);
+    collection.observe(0, 0, 1.0, 1.0);
+    collection.observe(1, 1, 0.5, 0.5);
+    collection.flush_to_hdf5(*h5_file, "first");
+
+    collection.observe(0, 0, 1.0, 1.0);
+    collection.observe(1, 1, 0.4, 0.4);
+    collection.observe(3, 3, 0.25, 0.25);
+    collection.flush_to_hdf5(*h5_file, "second");
   }
 
+#endif//CRUNCHTIME
 
   return 0;
 }
