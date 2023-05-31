@@ -31,6 +31,8 @@
 #include "c4/conf/conf.hpp"
 #include "ryml_std.hpp"  // Add this for STL interop with ryml
 
+#include "c4/yml/detail/print.hpp"
+
 // -----------------------------
 // Typedefs
 // -----------------------------
@@ -63,6 +65,11 @@ template int tmain<2>(int argc, char *argv[], Configuration &);
 template int tmain<3>(int argc, char *argv[], Configuration &);
 template int tmain<4>(int argc, char *argv[], Configuration &);
 
+
+
+// =============================================================================
+// Configuration
+// =============================================================================
 // Declare default configuration.
 extern const char * const initial_config;
 
@@ -80,9 +87,6 @@ X to(const c4::yml::ConstNodeRef &node)
   return x;
 }
 
-// =============================================================================
-// Configuration
-// =============================================================================
 class Configuration
 {
   public:
@@ -95,6 +99,9 @@ class Configuration
     template <typename Index>
     auto operator[](Index &&index);
 
+    template <typename Index>
+    auto operator[](Index &&index) const;
+
     std::string help() const;
 
   private:
@@ -106,6 +113,13 @@ class Configuration
 // Configuration::operator[]
 template <typename Index>
 auto Configuration::operator[](Index &&index)
+{
+  return m_yaml_tree[std::forward<Index>(index)];
+}
+
+// Configuration::operator[]
+template <typename Index>
+auto Configuration::operator[](Index &&index) const
 {
   return m_yaml_tree[std::forward<Index>(index)];
 }
@@ -150,7 +164,7 @@ class RootCollect
 
     bool is_root() const { return m_is_root; }
 
-    void clear()
+    void clear_solver()
     {
       m_vcycle_progress.clear();
       m_matvec_progress.clear();
@@ -180,35 +194,49 @@ class RootCollect
         const Configuration &config) const
     {
       assert(this->is_root());
-      HighFive::File file(filename, HighFive::File::Overwrite);
-      //TODO config
-      return file;
+
+      auto mode = HighFive::File::ReadWrite;
+      if (to<bool>(config["overwrite_all"]))
+        mode = HighFive::File::Overwrite;
+
+      int failed_attempts = 0;
+      while (failed_attempts < 3)
+      {
+        try
+        {
+          HighFive::File file(filename, mode);
+          return file;
+        }
+        catch (const HighFive::Exception &e)
+        {
+          ++failed_attempts;
+          if (failed_attempts == 3)
+            throw e;
+          std::this_thread::sleep_for(std::chrono::milliseconds{5});
+        }
+      }
+      //future: config
+      //future: git reference
+      return HighFive::File(filename, mode);
     }
 
-    void flush_to_hdf5(
-        HighFive::File &file,
-        const std::string &groupname)
+    HighFive::Group & flush_to_hdf5(
+        HighFive::Group &group)
     {
-      //TODO git reference
-      //TODO groups, names, attributes for metadata
-
       assert(this->is_root());
-      H5Easy::dump(file, "/" + groupname + "/vcycles", m_vcycle_progress);
-      H5Easy::dump(file, "/" + groupname + "/matvecs", m_matvec_progress);
-      H5Easy::dump(file, "/" + groupname + "/res_L2", m_residual_L2);
-      H5Easy::dump(file, "/" + groupname + "/res_Linf", m_residual_Linf);
-
-      this->clear();
+      group.createDataSet("vcycles", m_vcycle_progress);
+      group.createDataSet("matvecs", m_matvec_progress);
+      group.createDataSet("res_L2", m_residual_L2);
+      group.createDataSet("res_Linf", m_residual_Linf);
+      this->clear_solver();
+      return group;
     }
 
-    // output_hdf5()
-    HighFive::File flush_to_hdf5(
-        HighFive::File &&file,
-        const std::string &groupname)
+    HighFive::Group flush_to_hdf5(
+        HighFive::Group &&group)
     {
       assert(this->is_root());
-      this->flush_to_hdf5(file, groupname);
-      return std::move(file);
+      return std::move(this->flush_to_hdf5(group));
     }
 
   private:
@@ -223,12 +251,53 @@ class RootCollect
 // =============================================================================
 
 
+
+// =============================================================================
+// Solver choices
+// =============================================================================
+
+// gmg_solver()
+template <typename MatType>
+int gmg_solver(
+    c4::yml::ConstNodeRef run_config,
+    RootCollect &collection,
+    mg::VCycle<MatType> &vcycle,
+    std::vector<double> &u_vec,
+    std::vector<double> &v_vec,
+    const std::vector<double> &rhs_vec,
+    int max_vcycles,
+    double relative_residual);
+
+
+// amg_solver()
+template <typename MatType>
+int amg_solver(
+    c4::yml::ConstNodeRef run_config,
+    RootCollect &collection,
+    MatType *mat,
+    const mg::CycleSettings &cycle_settings,
+    std::vector<double> &u_vec,
+    std::vector<double> &v_vec,
+    const std::vector<double> &rhs_vec,
+    int max_vcycles,
+    double relative_tolerance);
+
+
+// =============================================================================
+
+
+
+
 const char * const initial_config = R"(
 options:
   help: false
   quiet: false
 
-dim: 2
+output: vcycle_data.hdf5
+
+overwrite_all: true
+
+dim: -1
 )";
 
 
@@ -290,25 +359,36 @@ int tmain(int argc, char *argv[], Configuration &config)
   //future: write relvant configurations to log
   //future: remember which configurations were accessed, log those
 
+  enum OverwriteMode { OverwriteAll, OverwriteSome };
+  OverwriteMode overwrite_mode = OverwriteAll;
+  if (to<bool>(config["overwrite_all"]) == false)
+    overwrite_mode = OverwriteSome;
+
+  const std::string out_filename = to<std::string>(config["output"]);
+
   RootCollect collection(comm);
 
   HighFive::File *h5_file = nullptr;
   if (collection.is_root())
   {
-    h5_file = new auto(collection.create_hdf5("vcycle_data.hdf5", config));
+    h5_file = new auto(collection.create_hdf5(out_filename, config));
   }
-
 
 #ifdef CRUNCHTIME
   DendroScopeBegin();
   _InitializeHcurve(dim);
   const double partition_tolerance = 0.1;
-  const int polynomial_degree = 1;
   constexpr double pi = { M_PI };
   static_assert(3.0 < pi, "The macro M_PI is not defined as a value > 3!");
 
+  // ---------------------------------------------------------------------------
+  // Problem definition
+  // ---------------------------------------------------------------------------
+
   // Domain is a cube from -1 to 1 in each axis.
   Point<dim> min_corner(-1.0),  max_corner(1.0);
+
+  const double domain_length = (max_corner - min_corner).x();
 
   // Solve "-div(grad(u)) = f"
   // Sinusoid: f(x) = sin(pi * x)    //future/c++17: std::transform_reduce()
@@ -332,277 +412,274 @@ int tmain(int argc, char *argv[], Configuration &config)
     return u_exact(x);
   };
 
-  // Mesh (nonuniform grid)
-  const double interpolation = 1e-3;
-  /// const int refinement_level = 5;
-  ot::DistTree<uint, dim> base_tree = ot::DistTree<uint, dim>::template
-      constructDistTreeByFunc<double>(
-          f, 1, comm, polynomial_degree, interpolation, partition_tolerance);
-  ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tolerance);
-
-  // ghosted_node_coordinate()
-  const auto ghosted_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
+  int all_runs = -1;
+  for (c4::yml::ConstNodeRef setup: config["setups"])
   {
-    const ot::TreeNode<uint, dim> node = da.getTNCoords()[idx];   //integer
-    std::array<double, dim> coordinates;
-    ot::treeNode2Physical(node, polynomial_degree, coordinates.data());  //fixed
-
-    for (int d = 0; d < dim; ++d)
-      coordinates[d] = min_corner.x(d) * (1 - coordinates[d]) // scale and shift
-                     + max_corner.x(d) * coordinates[d];
-
-    return Point<dim>(coordinates);
-  };
-
-  // local_node_coordinate()
-  const auto local_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
-  {
-    return ghosted_node_coordinate(da, idx + da.getLocalNodeBegin());
-  };
-
-  // local_vector()
-  const auto local_vector = [&](const ot::DA<dim> &da, auto type, int dofs)
-  {
-    std::vector<std::remove_cv_t<decltype(type)>> local;
-    const bool ghosted = false;  // local means not ghosted
-    da.createVector(local, false, ghosted, dofs);
-    return local;
-  };
-
-  // Vectors
-  const int single_dof = 1;
-  std::vector<double> u_vec = local_vector(base_da, double{}, single_dof);
-  std::vector<double> v_vec = local_vector(base_da, double{}, single_dof);
-  std::vector<double> f_vec = local_vector(base_da, double{}, single_dof);
-  std::vector<double> rhs_vec = local_vector(base_da, double{}, single_dof);
-
-  using PoissonMat = PoissonEq::PoissonMat<dim>;
-
-  // fe_matrix()
-  const auto fe_matrix = [&](const ot::DA<dim> &da) -> PoissonMat
-  {
-    PoissonMat mat(&da, {}, single_dof);
-    mat.setProblemDimensions(min_corner, max_corner);
-    return mat;
-  };
-
-  // fe_vector()
-  const auto fe_vector = [&](const ot::DA<dim> &da) -> PoissonEq::PoissonVec<dim>
-  {
-    PoissonEq::PoissonVec<dim> vec(
-        const_cast<ot::DA<dim> *>(&da),   // violate const for weird feVec non-const necessity
-        {},
-        single_dof);
-    vec.setProblemDimensions(min_corner, max_corner);
-    return vec;
-  };
-
-  // Boundary condition and 0 on interior (needed to subtract A u^bdry from rhs)
-  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
-    u_vec[i] = 0;
-  for (size_t bdyIdx : base_da.getBoundaryNodeIndices())
-    u_vec[bdyIdx] = u_bdry(&local_node_coordinate(base_da, bdyIdx).x(0));
-
-  // Evaluate forcing term.
-  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
-    f_vec[i] = f(&local_node_coordinate(base_da, i).x(0));
-
-  // Linear system oracles encapsulating the operators.
-  PoissonEq::PoissonMat<dim> base_mat = fe_matrix(base_da);
-  PoissonEq::PoissonVec<dim> base_vec = fe_vector(base_da);
-
-  // Compute right hand side, subtracting boundary data.
-  // (See preMatVec, postMatVec, preComputeVec, postComputeVec).
-  base_mat.matVec(u_vec.data(), v_vec.data());
-  base_vec.computeVec(f_vec.data(), rhs_vec.data());
-  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
-    rhs_vec[i] -= v_vec[i];
-  base_mat.zero_boundary(true);
-
-  // Precompute exact solution to evaluate error of an approximate solution.
-  std::vector<double> u_exact_vec = local_vector(base_da, double{}, single_dof);
-  for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
-    u_exact_vec[i] = u_exact(&local_node_coordinate(base_da, i).x(0));
-
-  // Function to check solution error.
-  const auto sol_err_max = [&](const std::vector<double> &u) {
-      double err_max = 0.0;
-      for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
-        err_max = fmax(err_max, abs(u[i] - u_exact_vec[i]));
-      err_max = par::mpi_max(err_max, comm);
-      return err_max;
-  };
-
-
-  // Multigrid setup
-  //  future: distCoarsen to coarsen by 1 or more levels
-  //  future: coarse_to_fine and fine_to_coarse without surrogates
-  //  future: Can do 2:1-balance all-at-once instead of iteratively.
-  const int n_grids = 3;
-  ot::DistTree<uint, dim> &trees = base_tree;
-  ot::DistTree<uint, dim> surrogate_trees;
-  surrogate_trees = trees.generateGridHierarchyUp(true, n_grids, partition_tolerance);
-  assert(trees.getNumStrata() == n_grids);
-  /// struct DA_Pair { const ot::DA<dim> *primary; const ot::DA<dim> *surrogate; };
-  std::vector<mg::DA_Pair<dim>> das(n_grids, mg::DA_Pair<dim>{nullptr, nullptr});
-  das[0].primary = &base_da;
-  for (int g = 1; g < n_grids; ++g)
-  {
-    das[g].primary = new ot::DA<dim>(
-        trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
-    das[g].surrogate = new ot::DA<dim>(
-        surrogate_trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
-  }
-
-  std::vector<PoissonMat *> mats(n_grids, nullptr);
-  mats[0] = &base_mat;
-  for (int g = 1; g < n_grids; ++g)
-  {
-    mats[g] = new PoissonMat(fe_matrix(*das[g].primary));
-    mats[g]->zero_boundary(true);
-  }
-
-  mg::CycleSettings cycle_settings;
-  cycle_settings.pre_smooth(2);
-  cycle_settings.post_smooth(1);
-  cycle_settings.damp_smooth(2.0 / 3.0);
-
-  mg::VCycle<PoissonMat> vcycle(n_grids, das, mats.data(), cycle_settings, single_dof);
-
-  // Preconditioned right-hand side.
-  std::vector<double> pc_rhs_vec = rhs_vec;
-  std::vector<double> v_temporary = pc_rhs_vec;
-  pc_rhs_vec.assign(pc_rhs_vec.size(), 0);  // reset to zero
-  vcycle.vcycle(pc_rhs_vec.data(), v_temporary.data());
-
-  // Preconditioned matrix multiplication.
-  const auto pc_mat = [&vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
-    base_mat.matVec(u, v_temporary.data());
-
-    std::fill_n(v, v_temporary.size(), 0); // reset to zero
-    vcycle.vcycle(v, v_temporary.data());
-  };
-
-  if(rank == 0)
-  {
-    std::cout << "___________Begin poissonEq ("
-              << par::mpi_comm_size(comm)
-              << " processes)\n";
-  }
-
-  // Solve equation.
-  const double tol=1e-14;
-  const unsigned int max_iter=300;
-  const int max_vcycles = 100;
-
-  /// feenableexcept(FE_INVALID);
-
-  double relative_residual = tol;
-
-  /// const int steps = cgSolver(
-  ///     &base_da, [&base_mat](const double *u, double *v){ base_mat.matVec(u, v); },
-  ///     &(*u_vec.begin()), &(*rhs_vec.begin()), max_iter, relative_residual, true);
-
-  /// const int steps = cgSolver(
-  ///     &base_da, pc_mat,
-  ///     &(*u_vec.begin()), &(*pc_rhs_vec.begin()), max_iter, relative_residual, true);
-
-  struct Residual
-  {
-    double L2;
-    double Linf;
-  };
-
-  const auto compute_residual = [](
-      auto *mat,
-      int ndofs,
-      const std::vector<double> &u_vec,
-      std::vector<double> &v_vec,
-      const std::vector<double> &rhs_vec,
-      MPI_Comm comm)
-  {
-    mat->matVec(u_vec.data(), v_vec.data());
-    subt(rhs_vec.data(), v_vec.data(), v_vec.size(), v_vec.data());
-    const DendroIntL global_entries = (mat->da()->getGlobalNodeSz() * ndofs);
-    Residual res = {};
-    /// res.L2 = normL2(v_vec.data(), v_vec.size(), comm) / global_entries;
-    res.L2 = normL2(v_vec.data(), v_vec.size(), comm);
-    res.Linf = normLInfty(v_vec.data(), v_vec.size(), comm);
-    return res;
-  };
-
-  //future: count matvecs with a wrapper
-
-  // Multigrid V-Cycle iteration as solver.
-  const int steps = [&, steps=0]() mutable {
-    util::ConvergenceRate convergence(3);
-    util::ConvergenceRate residual_convergence(3);
-    Residual res;
-    double err;
-    res = compute_residual(
-        &base_mat, single_dof, u_vec, v_vec, rhs_vec, comm);
-    err = sol_err_max(u_vec);
-    collection.observe(steps, steps, res.L2, res.Linf);
-    residual_convergence.observe_step(res.L2);
-    convergence.observe_step(err);
-    if (rank == 0)
+    // -------------------------------------------------------------------------
+    // Discrete mesh
+    // -------------------------------------------------------------------------
+    ot::DistTree<uint, dim> base_tree;
+    std::string construction;
+    setup["mesh_recipe"]["construct"] >> construction;
+    const int polynomial_degree = to<int>(setup["mesh_recipe"]["degree"]);
+    std::string mesh_name;
+    if (construction ==  "by_func")
     {
-      fprintf(stdout, "steps==%2d  err==%e\n", steps, err);
+      const double interpolation = to<double>(setup["interpolation"]);
+      base_tree = ot::DistTree<uint, dim>::template
+          constructDistTreeByFunc<double>(
+              f, 1, comm, polynomial_degree, interpolation, partition_tolerance);
+      mesh_name = "adaptive(" + to<std::string>(setup["interpolation"]) + ")";
     }
-    while (steps < max_vcycles and err > 1e-14)
+    else if (construction == "uniform")
     {
-      vcycle.vcycle(u_vec.data(), v_vec.data());
-      ++steps;
-      res = compute_residual(
-          &base_mat, single_dof, u_vec, v_vec, rhs_vec, comm);
-      err = sol_err_max(u_vec);
-      collection.observe(steps, steps, res.L2, res.Linf);
-      residual_convergence.observe_step(res.L2);
-      convergence.observe_step(err);
+      const int max_depth = to<int>(setup["max_depth"]);
+      base_tree = ot::DistTree<uint, dim>::
+          constructSubdomainDistTree(max_depth, comm, partition_tolerance);
+      mesh_name = "uniform(" + to<std::string>(setup["max_depth"]) + ")";
+    }
+    ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tolerance);
 
-      const double rate = convergence.rate();
-      const double res_rate = residual_convergence.rate();
-      if (rank == 0)
+    const double spacing = par::mpi_min(
+        domain_length * ot::treeNode2Physical(
+          std::min_element(
+            base_tree.getTreePartFiltered().begin(),
+            base_tree.getTreePartFiltered().end(),
+            [](const auto &a, const auto &b) {
+                return a.range().side() < b.range().side();
+            })->range().side()
+          ),
+        comm);
+    std::cout << "spacing = " << spacing << "\n";
+
+    // ghosted_node_coordinate()
+    const auto ghosted_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
+    {
+      const ot::TreeNode<uint, dim> node = da.getTNCoords()[idx];   //integer
+      std::array<double, dim> coordinates;
+      ot::treeNode2Physical(node, polynomial_degree, coordinates.data());  //fixed
+
+      for (int d = 0; d < dim; ++d)
+        coordinates[d] = min_corner.x(d) * (1 - coordinates[d]) // scale and shift
+                       + max_corner.x(d) * coordinates[d];
+
+      return Point<dim>(coordinates);
+    };
+
+    // local_node_coordinate()
+    const auto local_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
+    {
+      return ghosted_node_coordinate(da, idx + da.getLocalNodeBegin());
+    };
+
+    // local_vector()
+    const auto local_vector = [&](const ot::DA<dim> &da, auto type, int dofs)
+    {
+      std::vector<std::remove_cv_t<decltype(type)>> local;
+      const bool ghosted = false;  // local means not ghosted
+      da.createVector(local, false, ghosted, dofs);
+      return local;
+    };
+
+    // Vectors
+    const int single_dof = 1;
+    std::vector<double> u_vec = local_vector(base_da, double{}, single_dof);
+    std::vector<double> v_vec = local_vector(base_da, double{}, single_dof);
+    std::vector<double> f_vec = local_vector(base_da, double{}, single_dof);
+    std::vector<double> rhs_vec = local_vector(base_da, double{}, single_dof);
+
+    using PoissonMat = PoissonEq::PoissonMat<dim>;
+
+    // fe_matrix()
+    const auto fe_matrix = [&](const ot::DA<dim> &da) -> PoissonMat
+    {
+      PoissonMat mat(&da, {}, single_dof);
+      mat.setProblemDimensions(min_corner, max_corner);
+      return mat;
+    };
+
+    // fe_vector()
+    const auto fe_vector = [&](const ot::DA<dim> &da) -> PoissonEq::PoissonVec<dim>
+    {
+      PoissonEq::PoissonVec<dim> vec(
+          const_cast<ot::DA<dim> *>(&da),   // violate const for weird feVec non-const necessity
+          {},
+          single_dof);
+      vec.setProblemDimensions(min_corner, max_corner);
+      return vec;
+    };
+
+    // Boundary condition and 0 on interior (needed to subtract A u^bdry from rhs)
+    for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+      u_vec[i] = 0;
+    for (size_t bdyIdx : base_da.getBoundaryNodeIndices())
+      u_vec[bdyIdx] = u_bdry(&local_node_coordinate(base_da, bdyIdx).x(0));
+
+    // Evaluate forcing term.
+    for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+      f_vec[i] = f(&local_node_coordinate(base_da, i).x(0));
+
+    // Linear system oracles encapsulating the operators.
+    PoissonEq::PoissonMat<dim> base_mat = fe_matrix(base_da);
+    PoissonEq::PoissonVec<dim> base_vec = fe_vector(base_da);
+
+    // Compute right hand side, subtracting boundary data.
+    // (See preMatVec, postMatVec, preComputeVec, postComputeVec).
+    base_mat.matVec(u_vec.data(), v_vec.data());
+    base_vec.computeVec(f_vec.data(), rhs_vec.data());
+    for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+      rhs_vec[i] -= v_vec[i];
+    base_mat.zero_boundary(true);
+
+    // Copy initial guess to be re-used between solves.
+    const std::vector<double> u_vec_initial = u_vec;
+
+    // Precompute exact solution to evaluate error of an approximate solution.
+    std::vector<double> u_exact_vec = local_vector(base_da, double{}, single_dof);
+    for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+      u_exact_vec[i] = u_exact(&local_node_coordinate(base_da, i).x(0));
+
+    // Function to check solution error.
+    const auto sol_err_max = [&](const std::vector<double> &u) {
+        double err_max = 0.0;
+        for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+          err_max = fmax(err_max, abs(u[i] - u_exact_vec[i]));
+        err_max = par::mpi_max(err_max, comm);
+        return err_max;
+    };
+
+
+    // Multigrid setup
+    //  future: distCoarsen to coarsen by 1 or more levels
+    //  future: coarse_to_fine and fine_to_coarse without surrogates
+    //  future: Can do 2:1-balance all-at-once instead of iteratively.
+    const int n_grids = 3;
+    ot::DistTree<uint, dim> &trees = base_tree;
+    ot::DistTree<uint, dim> surrogate_trees;
+    surrogate_trees = trees.generateGridHierarchyUp(true, n_grids, partition_tolerance);
+    assert(trees.getNumStrata() == n_grids);
+    /// struct DA_Pair { const ot::DA<dim> *primary; const ot::DA<dim> *surrogate; };
+    std::vector<mg::DA_Pair<dim>> das(n_grids, mg::DA_Pair<dim>{nullptr, nullptr});
+    das[0].primary = &base_da;
+    for (int g = 1; g < n_grids; ++g)
+    {
+      das[g].primary = new ot::DA<dim>(
+          trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
+      das[g].surrogate = new ot::DA<dim>(
+          surrogate_trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
+    }
+
+    std::vector<PoissonMat *> mats(n_grids, nullptr);
+    mats[0] = &base_mat;
+    for (int g = 1; g < n_grids; ++g)
+    {
+      mats[g] = new PoissonMat(fe_matrix(*das[g].primary));
+      mats[g]->zero_boundary(true);
+    }
+
+    int run_idx = -1;
+    for (c4::yml::ConstNodeRef run: setup["runs"])
+    {
+      ++run_idx;
+      ++all_runs;
+
+      if (not to<bool>(run["active"]))
       {
-        fprintf(stdout, "steps==%2d  err==%e  rate==(%0.1fx)"
-            "      res==%e  rate==(%0.1fx)\n",
-            steps, err, std::exp(std::abs(std::log(rate))),
-            res.L2, std::exp(std::abs(std::log(res_rate))));
+        if (collection.is_root())
+          std::cout << "Skipping run [" << run_idx << "] (inactive).\n";
+        continue;
       }
-      if (res_rate > 0.95)
-        break;
+
+      bool skip_existing = false;
+      const bool force_overwrite =
+          run.has_child("force_overwrite") and to<bool>(run["force_overwrite"]);
+      if (overwrite_mode == OverwriteSome and not force_overwrite)
+      {
+        if (collection.is_root())
+        {
+          skip_existing = h5_file->exist(std::to_string(all_runs));
+        }
+        par::Mpi_Bcast(&skip_existing, 1, 0, comm);
+      }
+
+      if (skip_existing)
+      {
+        if (collection.is_root())
+          std::cout << "Skipping run [" << run_idx << "] (already exists).\n";
+        continue;
+      }
+
+      if (collection.is_root())
+        std::cout << "Executing run [" << run_idx << "].\n";
+
+      std::copy(u_vec_initial.cbegin(), u_vec_initial.cend(), u_vec.begin());
+
+      const double tol=1e-14;
+      const unsigned int max_iter=300;
+      const int max_vcycles = 40;
+
+      if (run["solver"]["class"].val() == "multigrid")
+      {
+        mg::CycleSettings cycle_settings;
+        cycle_settings.n_grids(n_grids);
+        cycle_settings.pre_smooth(2);
+        cycle_settings.post_smooth(1);
+        cycle_settings.damp_smooth(2.0 / 3.0);
+
+        if (run["solver"]["type"].val() == "GMG")
+        {
+          mg::VCycle<PoissonMat> vcycle(das, mats.data(), cycle_settings, single_dof);
+
+          const int steps = gmg_solver(
+              run, collection,
+              vcycle, u_vec, v_vec, rhs_vec, max_vcycles, tol);
+
+          const double err = sol_err_max(u_vec);
+          const double res = normLInfty(v_vec.data(), v_vec.size(), comm);
+        }
+        else if (run["solver"]["type"].val() == "AMG")
+        {
+          const int steps = amg_solver(
+              run, collection,
+              &base_mat, cycle_settings, u_vec, v_vec, rhs_vec, max_vcycles, tol);
+
+          const double err = sol_err_max(u_vec);
+          const double res = normLInfty(v_vec.data(), v_vec.size(), comm);
+        }
+      }
+
+      if (collection.is_root())
+      {
+        const std::string group_name = std::to_string(all_runs);
+        if (h5_file->exist(group_name))
+          h5_file->unlink(group_name);
+        HighFive::Group group = h5_file->createGroup(group_name);
+        group.createAttribute("solver", to<std::string>(run["solver"]["name"]));
+        group.createAttribute("mesh_family", to<std::string>(setup["mesh_recipe"]["name"]));
+        group.createAttribute("mesh", mesh_name);
+        group.createAttribute("cells", base_da.getGlobalElementSz());
+        group.createAttribute("spacing", spacing);
+        group.createAttribute("unknowns", base_da.getGlobalNodeSz() * single_dof);
+        collection.flush_to_hdf5(group);
+      }
     }
-    return steps;
-  }();
 
-  const double err = sol_err_max(u_vec);
-  const double res = normLInfty(v_vec.data(), v_vec.size(), comm);
+    // Multigrid teardown.
+    for (int g = 1; g < n_grids; ++g)
+    {
+      delete das[g].primary;
+      delete das[g].surrogate;
+      delete mats[g];
+    }
+    das.clear();
+    mats.clear();
 
-  // Multigrid teardown.
-  for (int g = 1; g < n_grids; ++g)
-  {
-    delete das[g].primary;
-    delete das[g].surrogate;
-    delete mats[g];
   }
-  das.clear();
-  mats.clear();
 
-  if(!rank)
-  {
-    std::cout << "___________End of poissonEq: "
-              << "Finished "
-              << "in " << steps << " iterations. "
-              << "Final error==" << err << "\n";
-  }
+
 
   _DestroyHcurve();
   DendroScopeEnd();
-
-  if (collection.is_root())
-  {
-    collection.flush_to_hdf5(*h5_file, "first");
-  }
 
 #else//CRUNCHTIME
 
@@ -622,6 +699,8 @@ int tmain(int argc, char *argv[], Configuration &config)
 
 #endif//CRUNCHTIME
 
+  delete h5_file;
+
   return 0;
 }
 
@@ -629,6 +708,247 @@ int tmain(int argc, char *argv[], Configuration &config)
 
 
 #ifdef CRUNCHTIME
+
+
+// =============================================================================
+// Helper structs for solvers
+// =============================================================================
+
+// Residual
+struct Residual
+{
+  double L2;
+  double Linf;
+};
+
+// compute_residual()
+template <typename MatType>
+Residual compute_residual(
+  MatType *mat,
+  int ndofs,
+  const std::vector<double> &u_vec,
+  std::vector<double> &v_vec,
+  const std::vector<double> &rhs_vec,
+  MPI_Comm comm)
+{
+  mat->matVec(u_vec.data(), v_vec.data());
+  subt(rhs_vec.data(), v_vec.data(), v_vec.size(), v_vec.data());
+  const DendroIntL global_entries = (mat->da()->getGlobalNodeSz() * ndofs);
+  Residual res = {};
+  /// res.L2 = normL2(v_vec.data(), v_vec.size(), comm) / global_entries;
+  res.L2 = normL2(v_vec.data(), v_vec.size(), comm);
+  res.Linf = normLInfty(v_vec.data(), v_vec.size(), comm);
+  return res;
+}
+
+
+
+// =============================================================================
+
+// =============================================================================
+// gmg_solver()
+// =============================================================================
+//
+template <typename MatType>
+int gmg_solver(
+    c4::yml::ConstNodeRef run_config,
+    RootCollect &collection,
+    mg::VCycle<MatType> &vcycle,
+    std::vector<double> &u_vec,
+    std::vector<double> &v_vec,
+    const std::vector<double> &rhs_vec,
+    int max_vcycles,
+    double relative_tolerance)
+{
+  //future: count matvecs with a wrapper
+
+  auto &base_mat = *vcycle.mats[0];
+  const int ndofs = base_mat.ndofs();
+  const MPI_Comm comm = base_mat.da()->getCommActive();
+
+  assert(run_config["solver"]["ksp"].val() == "Stand");
+
+  // Multigrid V-Cycle iteration as solver.
+  int steps = 0;
+  util::ConvergenceRate residual_convergence(3);
+  Residual res;
+  res = compute_residual(
+      &base_mat, ndofs, u_vec, v_vec, rhs_vec, comm);
+  collection.observe(steps, steps, res.L2, res.Linf);
+  residual_convergence.observe_step(res.L2);
+  if (collection.is_root())
+  {
+    fprintf(stdout, "steps==%2d  res==%e\n", steps, res.L2);
+  }
+  const double initial_res = res.L2;
+  while (steps < max_vcycles and res.L2 > initial_res * relative_tolerance)
+  {
+    vcycle.vcycle(u_vec.data(), v_vec.data());
+    ++steps;
+    res = compute_residual(
+        &base_mat, ndofs, u_vec, v_vec, rhs_vec, comm);
+    collection.observe(steps, steps, res.L2, res.Linf);
+    residual_convergence.observe_step(res.L2);
+
+    const double res_rate = residual_convergence.rate();
+    if (collection.is_root())
+    {
+      fprintf(stdout, "steps==%2d  "
+          "      res==%e  rate==(%0.1fx)\n",
+          steps, res.L2, std::exp(std::abs(std::log(res_rate))));
+    }
+    if (res_rate > 0.95)
+      break;
+  }
+  return steps;
+}
+// =============================================================================
+
+
+
+
+// =============================================================================
+// amg_solver()
+// =============================================================================
+//
+template <typename MatType>
+int amg_solver(
+    c4::yml::ConstNodeRef run_config,
+    RootCollect &collection,
+    MatType *mat,
+    const mg::CycleSettings &cycle_settings,
+    std::vector<double> &u_vec,
+    std::vector<double> &v_vec,
+    const std::vector<double> &rhs_vec,
+    int max_vcycles,
+    double relative_tolerance)
+{
+  const auto *da = mat->da();
+  const MPI_Comm comm = da->getCommActive();
+
+
+  // PETSc
+  Mat petsc_mat;
+  Vec u, rhs;
+  KSP ksp;
+  PC pc;
+
+  // Assemble the matrix (assuming one-time assembly).
+  da->createMatrix(petsc_mat, MATAIJ, mat->ndofs());
+  mat->getAssembledMatrix(&petsc_mat, {});
+  MatAssemblyBegin(petsc_mat, MAT_FINAL_ASSEMBLY);
+  MatAssemblyEnd(petsc_mat, MAT_FINAL_ASSEMBLY);
+
+  const size_t local_size = da->getLocalNodalSz() * mat->ndofs();
+  const size_t global_size = da->getGlobalNodeSz() * mat->ndofs();
+  VecCreateMPIWithArray(comm, 1, local_size, global_size, nullptr, &u);
+  VecCreateMPIWithArray(comm, 1, local_size, global_size, nullptr, &rhs);
+
+  std::vector<int> global_ids_of_local_boundary_nodes(da->getBoundaryNodeIndices().size());
+  std::copy(da->getBoundaryNodeIndices().cbegin(),
+            da->getBoundaryNodeIndices().cend(),
+            global_ids_of_local_boundary_nodes.begin());
+  for (int &id : global_ids_of_local_boundary_nodes)
+    id += da->getGlobalRankBegin();
+  // If ndofs != 1 then need to duplicate and zip.
+  assert(mat->ndofs() == 1);
+
+  MatZeroRows(
+      petsc_mat,
+      global_ids_of_local_boundary_nodes.size(),
+      global_ids_of_local_boundary_nodes.data(),
+      1.0,
+      NULL, NULL);
+
+  //TODO add from settings
+  /// cycle_settings.n_grids();
+  /// cycle_settings.pre_smooth();
+  /// cycle_settings.post_smooth();
+  /// cycle_settings.damp_smooth();
+
+  // Coarse solver setup with PETSc.
+  KSPCreate(da->getCommActive(), &ksp);
+  KSPSetOperators(ksp, petsc_mat, petsc_mat);
+  KSPSetInitialGuessNonzero(ksp, PETSC_TRUE);
+  KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
+  KSPConvergedDefaultSetUIRNorm(ksp);
+  KSPSetTolerances(ksp, relative_tolerance, 0.0, 10.0, max_vcycles);
+
+  // See also KSPSetPCSide(PC_SYMMETRIC)
+
+  auto monitor_state = [](
+      KSP, int iterations, double res_L2, void *collect) -> int
+  {
+    //future: accurately count the number of matvecs 
+    static_cast<RootCollect*>(collect)->observe(iterations, iterations,
+        res_L2, std::numeric_limits<PetscReal>::quiet_NaN());
+    return 0;
+  };
+  KSPMonitorSet(ksp, monitor_state, &collection, NULL);
+
+  // Switch outer Krylov method. Standalone M.G. is Richardson.
+  const std::string ksp_choice = to<std::string>(run_config["solver"]["ksp"]);
+  if (ksp_choice == "Stand")
+    KSPSetType(ksp, KSPRICHARDSON);
+  else if (ksp_choice == "CG")
+    KSPSetType(ksp, KSPCG);
+  else
+  {
+    if (collection.is_root())
+      std::cerr << "Warning: Ignoring ksp choice " << ksp_choice << ".\n";
+      // Note that the default is GMRES.
+  }
+
+  KSPGetPC(ksp, &pc);
+  PCSetType(pc, PCGAMG);  // solver choice.
+  KSPSetUp(ksp);
+
+  /// if (collection.is_root())
+  /// {
+  ///   KSPView(ksp, PETSC_VIEWER_STDOUT_SELF);
+  /// }
+
+  // Bind u and rhs to Vec
+  VecPlaceArray(u, u_vec.data());
+  VecPlaceArray(rhs, rhs_vec.data());
+
+  // Solve.
+  KSPSolve(ksp, rhs, u);
+
+  /// // Debug for solution magnitude.
+  /// PetscReal sol_norm = 0.0;
+  /// VecNorm(u, NORM_INFINITY, &sol_norm);
+
+  // Unbind from Vec.
+  VecResetArray(u);
+  VecResetArray(rhs);
+
+  // Get residual norm and number of iterations.
+  int iterations = 0;
+  PetscReal res_norm = 0.0;
+  KSPGetIterationNumber(ksp, &iterations);
+  KSPGetResidualNorm(ksp, &res_norm);
+
+  /// Residual res = compute_residual(
+  ///     mat, mat->ndofs(), u_vec, v_vec, rhs_vec, comm);
+  /// collection.observe(iterations, iterations, res.L2, res.Linf);
+
+  if (collection.is_root())
+  {
+    std::cout << "ksp iterations == " << iterations << "\n";
+  }
+
+  VecDestroy(&u);
+  VecDestroy(&rhs);
+  KSPDestroy(&ksp);
+  MatDestroy(&petsc_mat);
+
+  return iterations;
+}
+// =============================================================================
+
+
+
 template <unsigned int dim, typename NodeT>
 std::ostream & print(const ot::DA<dim> &da,
                      const std::vector<NodeT> &local_vec,
@@ -731,6 +1051,10 @@ void Configuration::mpi_apply(MPI_Comm comm)
   c4::conf::Workspace workspace(&m_yaml_tree);
   workspace.apply_opts(m_configs);
 
+  /// c4::yml::print_tree(m_yaml_tree);
+
+  m_yaml_tree.resolve();  // aliases -> subtrees
+
   m_configs.clear();
 }
 
@@ -743,5 +1067,13 @@ std::string Configuration::help() const
 
 
 
+
+      /// const int steps = cgSolver(
+      ///     &base_da, [&base_mat](const double *u, double *v){ base_mat.matVec(u, v); },
+      ///     &(*u_vec.begin()), &(*rhs_vec.begin()), max_iter, tol, true);
+
+      /// const int steps = cgSolver(
+      ///     &base_da, pc_mat,
+      ///     &(*u_vec.begin()), &(*pc_rhs_vec.begin()), max_iter, tol, true);
 
 

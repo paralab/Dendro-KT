@@ -22,6 +22,13 @@ inline void permuteDims(unsigned int nDims,
 }
 
 
+
+template <typename T>
+double treeNode2Physical(T side)
+{
+  return double(side) / double(1u << m_uiMaxDepth);
+}
+
 /** @brief Uses the level to identify the node on an element, then compute coords. */
 template <typename T, unsigned int dim>
 void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOrder, double * physCoords)

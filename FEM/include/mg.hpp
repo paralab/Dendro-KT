@@ -71,16 +71,19 @@ namespace mg
   // CycleSettings
   struct CycleSettings
   {
+    int n_grids()        const { return m_n_grids; }
     int pre_smooth()     const { return m_pre_smooth; }
     int post_smooth()    const { return m_post_smooth; }
     double damp_smooth() const { return m_damp_smooth; }
     bool print()         const { return m_print; }
 
+    void n_grids(int n_grids)          { m_n_grids = n_grids; }
     void pre_smooth(int pre_smooth)      { m_pre_smooth = pre_smooth; }
     void post_smooth(int post_smooth)    { m_post_smooth = post_smooth; }
     void damp_smooth(double damp_smooth) { m_damp_smooth = damp_smooth; }
     void print(bool print)               { m_print = print; }
 
+    int m_n_grids = 2;
     int m_pre_smooth = 1;
     int m_post_smooth = 1;
     double m_damp_smooth = 1.0;
@@ -120,7 +123,6 @@ namespace mg
     // Temporary data
     public:
       // Inputs
-      int n_grids = 1;
       MatType * *mats = nullptr;
       CycleSettings settings = {};
       int ndofs = 1;
@@ -145,24 +147,26 @@ namespace mg
       VCycle(const VCycle &) = delete;
       VCycle(VCycle &&) = default;
 
-      VCycle(int n_grids,
+      int n_grids() const { return settings.n_grids(); }
+
+      VCycle(
           const std::vector<DA_Pair<dim()>> &da_pairs,
           MatType * *mats, CycleSettings settings, int ndofs)
-        : n_grids(n_grids), mats(mats), settings(settings), ndofs(ndofs),
-          r_ghosted(n_grids),
-          u_ghosted(n_grids),
-          e_ghosted(n_grids),
-          a_diag_ghosted(n_grids)
+        : mats(mats), settings(settings), ndofs(ndofs),
+          r_ghosted(settings.n_grids()),
+          u_ghosted(settings.n_grids()),
+          e_ghosted(settings.n_grids()),
+          a_diag_ghosted(settings.n_grids())
       {
         // Save pointers to surrogate DAs. (Primary DAs already stored in mats).
-        surrogate_das.reserve(n_grids);
+        surrogate_das.reserve(n_grids());
         for (DA_Pair<dim()> pair: da_pairs)
           surrogate_das.push_back(pair.surrogate);
-        assert(surrogate_das.size() == n_grids);
+        assert(surrogate_das.size() == n_grids());
         assert(surrogate_das[0] == nullptr);
 
         // Allocate temporary ghosted vectors.
-        for (int g = 0; g < n_grids; ++g)
+        for (int g = 0; g < n_grids(); ++g)
         {
           const auto *da = mats[g]->da();
           u_ghosted[g].resize(da->getTotalNodalSz() * ndofs);
@@ -171,7 +175,7 @@ namespace mg
         }
 
         // Initialilze a_diag_ghosted.
-        for (int g = 0; g < n_grids; ++g)
+        for (int g = 0; g < n_grids(); ++g)
         {
           const auto *da = mats[g]->da();
           a_diag_ghosted[g].resize(da->getTotalNodalSz() * ndofs);
@@ -187,11 +191,11 @@ namespace mg
         // ===========================================================================
         // Try KSPSolve() with Coarse grid system.
         // ===========================================================================
-        const auto *coarse_da = mats[n_grids - 1]->da();
+        const auto *coarse_da = mats[n_grids() - 1]->da();
 
         // Assemble the coarse grid matrix (assuming one-time assembly).
         coarse_da->createMatrix(coarse_mat, MATAIJ, ndofs);
-        mats[n_grids - 1]->getAssembledMatrix(&coarse_mat, {});
+        mats[n_grids() - 1]->getAssembledMatrix(&coarse_mat, {});
         MatAssemblyBegin(coarse_mat, MAT_FINAL_ASSEMBLY);
         MatAssemblyEnd(coarse_mat, MAT_FINAL_ASSEMBLY);
 
@@ -222,9 +226,10 @@ namespace mg
         // Coarse solver setup with PETSc.
         KSPCreate(coarse_da->getCommActive(), &coarse_ksp);
         KSPSetOperators(coarse_ksp, coarse_mat, coarse_mat);
-        KSPSetType(coarse_ksp, KSPPREONLY);  // Do not use iteration.
+        KSPSetTolerances(coarse_ksp, 1.0e-14, 0.0, 10.0, 50);
+        /// KSPSetType(coarse_ksp, KSPPREONLY);  // Do not use iteration.
         KSPGetPC(coarse_ksp, &coarse_pc);
-        PCSetType(coarse_pc, PCGAMG);  // Direct solver choice.
+        PCSetType(coarse_pc, PCGAMG);  // "Direct" solver choice.
         KSPSetUp(coarse_ksp);
       }
 
@@ -294,7 +299,7 @@ namespace mg
       {
         const auto &base_da = *this->mats[0]->da();
         const int ndofs = this->ndofs;
-        const int n_grids = this->n_grids;
+        const int n_grids = this->n_grids();
         const int pre_smooth = this->settings.pre_smooth();
         const int post_smooth = this->settings.post_smooth();
         const double damp = this->settings.damp_smooth();

@@ -1,0 +1,105 @@
+
+# Solver convergence on different meshes
+
+```vis
+data:
+  url: Dendro-KT/build/vcycle_data.csv
+mark: line
+encoding:
+  x:
+    field: vcycles
+    type: quantitative
+  y:
+    field: res_L2
+    type: quantitative
+    scale:
+      type: log
+  row:
+    field: mesh
+    type: nominal
+  color:
+    field: solver
+    type: nominal
+
+config:
+  line:
+    strokeWidth: 3
+```
+
+
+# Mesh independence on different solvers
+
+```vis
+data:
+  url: Dendro-KT/build/vcycle_data.csv
+transform:
+  - calculate: toString(datum.mesh_family) + " (h=" + format(datum.spacing, ".0e") + ")"
+    as: Mesh
+
+  - calculate: toNumber(datum.res_L2)
+    as: numeric_res_L2
+
+  - window:
+      - op: lag
+        field: numeric_res_L2
+        param: 2
+        as: lag2_res_L2
+      - op: lag
+        field: numeric_res_L2
+        param: 1
+        as: lag1_res_L2
+
+  - filter: datum.numeric_res_L2 < 0.90 * datum.lag2_res_L2
+
+  - joinaggregate:
+      - op: min
+        field: numeric_res_L2
+        as: min_res_L2
+    groupby: [mesh, solver]
+
+  - joinaggregate:
+      - op: max
+        field: min_res_L2
+        as: common_res_L2
+    groupby: [solver]
+
+  - filter: datum.lag1_res_L2 >= datum.common_res_L2
+
+facet:
+  column: {field: solver}
+spec:
+  vconcat:
+    - mark: bar
+      encoding:
+        x:
+          field: vcycles
+          type: quantitative
+          aggregate: max
+        y:
+          field: Mesh
+          type: nominal
+    - mark: line
+      encoding:
+        x:
+          field: vcycles
+          type: quantitative
+        y:
+          field: numeric_res_L2
+          type: quantitative
+          scale:
+            type: log
+          axis:
+            format: "0.0e"
+        color:
+          field: Mesh
+          type: nominal
+resolve:
+  scale:
+    x: shared
+  axis:
+    y: shared
+
+config:
+  line:
+    strokeWidth: 3
+```

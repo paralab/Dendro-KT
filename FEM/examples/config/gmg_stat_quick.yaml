@@ -1,0 +1,117 @@
+dim: 2
+
+# output: "testing.hdf5"
+
+overwrite_all: true
+
+### problems:
+###   - &sine_box_const
+###     name: "sine_box_const"
+###     scaling:             # Best if all axes same length. Only first dim axes used.
+###       - [-1.0, 1.0]
+###       - [-1.0, 1.0]
+###       - [-1.0, 1.0]
+###     domain:
+###       box: ~             # By default the full unit cube.
+###     equation:
+###       let:
+###         "f": &def_of_f "x: prod(i: sin(pi() * x[i]), dim)"
+###       operator: "u: -div(grad(u))"                  # In production, given as code
+###       source: "x: f(x)"
+###       boundary:
+###         kind: dirichlet
+###         type: explicit    # Equivalent to specifying operator: "u: u"
+###         source: "x: f(x) / (dim * pi() * pi())"
+
+solvers:
+  - &standalone_gmg
+    name: "standalone_gmg"
+    class: "multigrid"
+    type: "GMG"
+    ksp: "Stand"
+
+  - &standalone_amg
+    name: "standalone_amg"
+    class: "multigrid"
+    type: "AMG"
+    ksp: "Stand"
+
+  - &accelerated_gmg
+    name: "accelerated_gmg"
+    class: "multigrid"
+    type: "GMG"
+    ksp: "CG"
+
+  - &accelerated_amg
+    name: "accelerated_amg"
+    class: "multigrid"
+    type: "AMG"
+    ksp: "CG"
+
+mesh_recipes:
+  - &proxy_adapt
+    name: "proxy_adapt_p1"
+    construct: by_func   # scalar; for vector, use by_vector_func
+    # arguments:
+    #   ### func: "x: f(x)"
+    #   interpolation: 1.0e-3
+    degree: 1
+
+  - &uniform
+    name: "uniform_p1"
+    construct: uniform
+    # arguments:
+    #   max_depth: 5
+    degree: 1
+
+setups:
+  - mesh_recipe: *proxy_adapt
+    interpolation: 1.0e-3
+    runs:
+      - solver: *standalone_gmg
+        active: true
+
+      - solver: *standalone_amg
+        active: true
+
+      - solver: *accelerated_amg
+        active: true
+
+  - mesh_recipe: *proxy_adapt
+    interpolation: 1.0e-4
+    runs:
+      - solver: *standalone_gmg
+        active: true
+
+      - solver: *standalone_amg
+        active: true
+
+      - solver: *accelerated_amg
+        active: true
+
+  - mesh_recipe: *uniform
+    max_depth: 4
+    runs:
+      - solver: *standalone_gmg
+        active: true
+        force_overwrite: true
+
+      - solver: *standalone_amg
+        active: true
+
+      - solver: *accelerated_amg
+        active: true
+
+  - mesh_recipe: *uniform
+    max_depth: 5
+    runs:
+      - solver: *standalone_gmg
+        active: true
+
+      - solver: *standalone_amg
+        active: true
+
+      - solver: *accelerated_amg
+        active: true
+
+
