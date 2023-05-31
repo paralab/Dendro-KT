@@ -298,6 +298,9 @@ output: vcycle_data.hdf5
 overwrite_all: true
 
 dim: -1
+
+problem:
+  freq: 1.0
 )";
 
 
@@ -413,8 +416,24 @@ int tmain(int argc, char *argv[], Configuration &config)
   };
 
   int all_runs = -1;
+  int setup_idx = -1;
+  const int n_setups = config["setups"].num_children();
   for (c4::yml::ConstNodeRef setup: config["setups"])
   {
+    ++setup_idx;
+
+    int count_active_runs = 0;
+    for (c4::yml::ConstNodeRef run: setup["runs"])
+      if (to<bool>(run["active"]))
+        ++count_active_runs;
+
+    if (count_active_runs == 0)
+    {
+      if (collection.is_root())
+        std::cout << "Skipping setup " << setup_idx << " <" << n_setups << " (no active runs)" << "\n";
+      continue;
+    }
+
     // -------------------------------------------------------------------------
     // Discrete mesh
     // -------------------------------------------------------------------------
@@ -450,7 +469,8 @@ int tmain(int argc, char *argv[], Configuration &config)
             })->range().side()
           ),
         comm);
-    std::cout << "spacing = " << spacing << "\n";
+    std::cout << "cells = " << double(base_da.getGlobalElementSz()) << "  "
+              << "spacing = " << spacing << "\n";
 
     // ghosted_node_coordinate()
     const auto ghosted_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
@@ -578,6 +598,7 @@ int tmain(int argc, char *argv[], Configuration &config)
     }
 
     int run_idx = -1;
+    const int n_runs = setup["runs"].num_children();
     for (c4::yml::ConstNodeRef run: setup["runs"])
     {
       ++run_idx;
@@ -586,7 +607,7 @@ int tmain(int argc, char *argv[], Configuration &config)
       if (not to<bool>(run["active"]))
       {
         if (collection.is_root())
-          std::cout << "Skipping run [" << run_idx << "] (inactive).\n";
+          std::cout << "Skipping run [" << run_idx << " <" << n_runs << "] of setup [" << setup_idx << " <" << n_setups << "] (inactive).\n";
         continue;
       }
 
@@ -605,12 +626,12 @@ int tmain(int argc, char *argv[], Configuration &config)
       if (skip_existing)
       {
         if (collection.is_root())
-          std::cout << "Skipping run [" << run_idx << "] (already exists).\n";
+          std::cout << "Skipping run [" << run_idx << " <" << n_runs << "] of setup [" << setup_idx << " <" << n_setups << "] (already exists).\n";
         continue;
       }
 
       if (collection.is_root())
-        std::cout << "Executing run [" << run_idx << "].\n";
+        std::cout << "Executing run [" << run_idx << " <" << n_runs << "] of setup [" << setup_idx << " <" << n_setups << "].\n";
 
       std::copy(u_vec_initial.cbegin(), u_vec_initial.cend(), u_vec.begin());
 
@@ -650,7 +671,18 @@ int tmain(int argc, char *argv[], Configuration &config)
 
       if (collection.is_root())
       {
-        const std::string group_name = std::to_string(all_runs);
+        //future: set attributes first, then rename
+        std::stringstream name;
+        name << "solver=" << to<std::string>(run["solver"]["name"]) << " ";
+        name << "mesh=" << to<std::string>(setup["mesh_recipe"]["name"]) << " ";
+        if (setup.has_child("interpolation"))
+          name << "interpolation=" << to<std::string>(setup["interpolation"]);
+        if (setup.has_child("max_depth"))
+          name << "max_depth=" << to<std::string>(setup["max_depth"]);
+
+        const std::string group_name = name.str();
+
+        /// const std::string group_name = std::to_string(all_runs);
         if (h5_file->exist(group_name))
           h5_file->unlink(group_name);
         HighFive::Group group = h5_file->createGroup(group_name);
