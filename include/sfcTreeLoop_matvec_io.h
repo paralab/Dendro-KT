@@ -561,35 +561,41 @@ namespace ot
         }
 
         /** overwriteNodeValsOut() */
-        void overwriteNodeValsOut(const NodeT *newVals) {
-          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
-          std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
+        size_t overwriteNodeValsOut(const NodeT *newVals) {
+          const size_t alloc_nodes = std::max<size_t>(this->getNodesPerElement(), getNumNodesIn());
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * alloc_nodes);
+          std::copy_n(newVals,  treeloop.m_ndofs * alloc_nodes,
                       treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
 
           treeloop.getCurrentFrame().template getMyOutputHandle<1>().clear();
-          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(getNumNodesIn(), true);
+          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(alloc_nodes, true);
+          return treeloop.m_ndofs * alloc_nodes;
         }
 
         /** overwriteNodeValsOut() with isDirty flags (#flags == #nodes) */
-        void overwriteNodeValsOut(const NodeT *newVals, const char *isDirty) {
-          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
-          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(getNumNodesIn());
-          std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
+        size_t overwriteNodeValsOut(const NodeT *newVals, const char *isDirty) {
+          const size_t alloc_nodes = std::max<size_t>(this->getNodesPerElement(), getNumNodesIn());
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * alloc_nodes);
+          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(alloc_nodes);
+          std::copy_n(newVals,  treeloop.m_ndofs * alloc_nodes,
                       treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
-          std::copy_n(isDirty,  1 * getNumNodesIn(),
+          std::copy_n(isDirty,  1 * alloc_nodes,
                       treeloop.getCurrentFrame().template getMyOutputHandle<1>().begin());
+          return treeloop.m_ndofs * alloc_nodes;
         }
 
         /** overwriteNodeValsOutScalar() */
-        void overwriteNodeValsOutScalar(const NodeT *newDofs) {
-          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
+        size_t overwriteNodeValsOutScalar(const NodeT *newDofs) {
+          const size_t alloc_nodes = std::max<size_t>(this->getNodesPerElement(), getNumNodesIn());
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * alloc_nodes);
           size_t ii = 0;
-          for (size_t nodeIdx = 0; nodeIdx < getNumNodesIn(); ++nodeIdx)
+          for (size_t nodeIdx = 0; nodeIdx < alloc_nodes; ++nodeIdx)
             for (size_t dofIdx = 0; dofIdx < treeloop.m_ndofs; ++dofIdx)
               treeloop.getCurrentFrame().template getMyOutputHandle<0>()[ii++] = newDofs[dofIdx];
 
           treeloop.getCurrentFrame().template getMyOutputHandle<1>().clear();
-          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(getNumNodesIn(), true);
+          treeloop.getCurrentFrame().template getMyOutputHandle<1>().resize(alloc_nodes, true);
+          return treeloop.m_ndofs * alloc_nodes;
         }
 
 
@@ -1876,9 +1882,7 @@ namespace ot
         {
           auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
           const sfc::ChildNum::Type child_m = this->getCurrentRotation().child_num(child_sfc);
-          if (hangingInChild[child_sfc]
-              && childOutput.size() > 0
-              || m_visitEmpty)
+          if (childOutput.size() > 0 and (hangingInChild[child_sfc] or m_visitEmpty))
           {
             // Has hanging nodes. Interpolation-transpose.
             constexpr bool transposeTrue = true;

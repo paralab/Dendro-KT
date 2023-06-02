@@ -941,46 +941,46 @@ namespace ot
     }
 
 
-    template <unsigned int dim>
-    const std::vector<int> & DA<dim>::elements_per_node() const
-    {
-      if (not m_elements_per_node.initialized())
-      {
-        std::vector<int> element_count(this->getTotalNodalSz(), 0);
+    /// template <unsigned int dim>
+    /// const std::vector<int> & DA<dim>::elements_per_node() const
+    /// {
+    ///   if (not m_elements_per_node.initialized())
+    ///   {
+    ///     std::vector<int> element_count(this->getTotalNodalSz(), 0);
 
-        const TreeNode<C, dim> *tn_list = this->dist_tree()->getTreePartFiltered(this->stratum()).data();
-        const TreeNode<C, dim> *node_list = this->getTNCoords();
-        const size_t tn_list_sz = this->dist_tree()->getTreePartFiltered(this->stratum()).size();
-        const size_t node_list_sz = this->getTotalNodalSz();
-        const int single_dof = 1;
-        const int degree = this->getElementOrder();
-        const int one = 1;
+    ///     const TreeNode<C, dim> *tn_list = this->dist_tree()->getTreePartFiltered(this->stratum()).data();
+    ///     const TreeNode<C, dim> *node_list = this->getTNCoords();
+    ///     const size_t tn_list_sz = this->dist_tree()->getTreePartFiltered(this->stratum()).size();
+    ///     const size_t node_list_sz = this->getTotalNodalSz();
+    ///     const int single_dof = 1;
+    ///     const int degree = this->getElementOrder();
+    ///     const int one = 1;
 
-        MatvecBaseOut<dim, int, true> loop(
-            node_list_sz, single_dof, degree, false, 0, node_list, tn_list, tn_list_sz,
-            dummyOctant<dim>(), dummyOctant<dim>());
-        while (not loop.isFinished())
-        {
-          if (loop.isPre() and loop.isLeaf())
-          {
-            loop.subtreeInfo().overwriteNodeValsOutScalar(&one);
-            loop.next();
-          }
-          else
-            loop.step();
-        }
-        loop.finalize(element_count.data());
+    ///     MatvecBaseOut<dim, int, true> loop(
+    ///         node_list_sz, single_dof, degree, false, 0, node_list, tn_list, tn_list_sz,
+    ///         dummyOctant<dim>(), dummyOctant<dim>());
+    ///     while (not loop.isFinished())
+    ///     {
+    ///       if (loop.isPre() and loop.isLeaf())
+    ///       {
+    ///         loop.subtreeInfo().overwriteNodeValsOutScalar(&one);
+    ///         loop.next();
+    ///       }
+    ///       else
+    ///         loop.step();
+    ///     }
+    ///     loop.finalize(element_count.data());
 
-        this->writeToGhostsBegin(element_count.data());
-        this->writeToGhostsEnd(element_count.data());
-        this->readFromGhostBegin(element_count.data());
-        this->readFromGhostEnd(element_count.data());
+    ///     this->writeToGhostsBegin(element_count.data());
+    ///     this->writeToGhostsEnd(element_count.data());
+    ///     this->readFromGhostBegin(element_count.data());
+    ///     this->readFromGhostEnd(element_count.data());
 
-        m_elements_per_node = element_count;
-      }
+    ///     m_elements_per_node = element_count;
+    ///   }
 
-      return m_elements_per_node.get();
-    }
+    ///   return m_elements_per_node.get();
+    /// }
 
 
 
@@ -1145,15 +1145,16 @@ namespace ot
         {
             const size_t lSz = dof * this->getLocalNodalSz();
             const unsigned int dofsPerElem = dof * this->getNumNodesPerElement();
-            const std::vector<int> &epn_ghosted = this->elements_per_node();
-            std::vector<PetscInt> nnz_bound;
-            nnz_bound.reserve(lSz);
-            for (size_t i = this->getLocalNodeBegin(),
-                end = i + this->getLocalNodalSz(); i < end; ++i)
-            {
-              const int relevant_cells = epn_ghosted[i];
-              nnz_bound.insert(nnz_bound.end(), dof, dofsPerElem * relevant_cells);
-            }
+
+            /// const std::vector<int> &epn_ghosted = this->elements_per_node();
+            /// std::vector<PetscInt> nnz_bound;
+            /// nnz_bound.reserve(lSz);
+            /// for (size_t i = this->getLocalNodeBegin(),
+            ///     end = i + this->getLocalNodalSz(); i < end; ++i)
+            /// {
+            ///   const int relevant_cells = epn_ghosted[i];
+            ///   nnz_bound.insert(nnz_bound.end(), dof, dofsPerElem * relevant_cells);
+            /// }
 
             const unsigned int npesAll=m_uiGlobalNpes;
             const unsigned int eleOrder=m_uiElementOrder;
@@ -1181,6 +1182,13 @@ namespace ot
             /// }
             MatSetUp(M);
 
+        }
+        else
+        {
+          MatCreate(MPI_COMM_SELF, &M);
+          MatSetSizes(M, 0, 0, 0, 0);
+          MatSetType(M, mtype);
+          MatSetUp(M);
         }
 
 

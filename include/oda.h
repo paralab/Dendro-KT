@@ -271,7 +271,7 @@ class DA
      * Only needed due to DistTree interface. */
     int m_stratum;
 
-    mutable Lazy<std::vector<int>> m_elements_per_node;  // ghosted, note petsc wants local
+    /// mutable Lazy<std::vector<int>> m_elements_per_node;  // ghosted, note petsc wants local
 
     const DistTree<C, dim> *m_dist_tree;
     typename DistTree<C, dim>::LivePtr m_dist_tree_lifetime;
@@ -467,7 +467,7 @@ class DA
         /**@brief returns a const ref to boundary node indices. */
         inline const std::vector<size_t> & getBoundaryNodeIndices() const { return m_uiBdyNodeIds; }
 
-        inline const std::vector<int> & elements_per_node() const;  // ghosted, note petsc wants local
+        /// inline const std::vector<int> & elements_per_node() const;  // ghosted, note petsc wants local
 
         /**@brief: Pointer to the DistTree used in construction. */
         const DistTree<C, dim> * dist_tree() const

@@ -8,6 +8,7 @@
 
 #include "include/dendro.h"
 #include "include/parUtils.h"
+#include "debug/comm_log.hpp"
 #ifdef CRUNCHTIME
 #include "include/distTree.h" // for convenient uniform grid partition
 #include "include/point.h"
@@ -15,6 +16,7 @@
 #include "FEM/examples/include/poissonVec.h"
 #include "FEM/include/mg.hpp"
 #include "FEM/include/solver_utils.hpp"
+#include "include/nodal_data.hpp"
 #include <petsc.h>
 #else//CRUNCHTIME
 #define PetscInitialize(...)
@@ -51,6 +53,8 @@ std::ostream & print(const ot::DA<dim> &da,
                      std::ostream & out = std::cerr);
 #endif//CRUNCHTIME
 
+
+
 // -----------------------------
 // Functions
 // -----------------------------
@@ -65,6 +69,16 @@ template int tmain<2>(int argc, char *argv[], Configuration &);
 template int tmain<3>(int argc, char *argv[], Configuration &);
 template int tmain<4>(int argc, char *argv[], Configuration &);
 
+// -----------------------------
+// Globals
+// -----------------------------
+
+
+/// namespace debug
+/// {
+///   // only safe after|before enter|exit main()
+///   CommLog *global_comm_log = nullptr;
+/// }
 
 
 // =============================================================================
@@ -148,13 +162,15 @@ void Configuration::eat_command_line(int *argc, char ***argv)
 
 
 // =============================================================================
-// RootCollect
+// Collector
 // =============================================================================
-class RootCollect
+class Collector
 {
   public:
-    RootCollect(MPI_Comm comm)
-      : m_comm(comm), m_is_root(par::mpi_comm_rank(comm) == 0)
+    static constexpr int world_root = 0;
+
+    Collector(MPI_Comm comm)
+      : m_comm(comm), m_is_root(par::mpi_comm_rank(comm) == world_root)
     {
       if (m_is_root)
       {
@@ -179,12 +195,59 @@ class RootCollect
         double residual_L2,
         double residual_Linf)
     {
-      if (m_is_root)
+      // All ranks with data should observe, as the world root may be inactive.
+      m_vcycle_progress.push_back(vcycle_progress);
+      m_matvec_progress.push_back(matvec_progress);
+      m_residual_L2.push_back(residual_L2);
+      m_residual_Linf.push_back(residual_Linf);
+    }
+
+    // synch():  Quick-and-dirty: transfer observations to root before flushing.
+    void synch()
+    {
+      const int world_size = par::mpi_comm_size(m_comm);
+      const int world_rank = par::mpi_comm_rank(m_comm);
+      const bool self_full = m_vcycle_progress.size() > 0;
+
+      // The first rank with nonempty dataset shall send to root.
+      const int first_nonempty = par::mpi_min(
+          (self_full? world_rank : world_size), m_comm);
+
+      if (world_rank == world_size)
+        if (this->is_root())
+          std::cerr << YLW "WARNING: Dataset size is 0 on ALL ranks!\n" NRM;
+
+      if (world_rank == first_nonempty and not this->is_root())
       {
-        m_vcycle_progress.push_back(vcycle_progress);
-        m_matvec_progress.push_back(matvec_progress);
-        m_residual_L2.push_back(residual_L2);
-        m_residual_Linf.push_back(residual_Linf);
+        // send
+        MPI_Request requests[5];
+        const int count = m_vcycle_progress.size();
+        par::Mpi_Isend(&count, 1, world_root, 0, m_comm, &requests[0]);
+        par::Mpi_Isend(m_vcycle_progress.data(), count, world_root, 0, m_comm, &requests[1]);
+        par::Mpi_Isend(m_matvec_progress.data(), count, world_root, 0, m_comm, &requests[2]);
+        par::Mpi_Isend(m_residual_L2.data(), count, world_root, 0, m_comm, &requests[3]);
+        par::Mpi_Isend(m_residual_Linf.data(), count, world_root, 0, m_comm, &requests[4]);
+        MPI_Waitall(5, requests, MPI_STATUSES_IGNORE);
+      }
+
+      if (this->is_root() and world_rank != first_nonempty)
+      {
+        // receive
+        MPI_Request requests[5];
+        int count = 0;
+        par::Mpi_Irecv(&count, 1, first_nonempty, 0, m_comm, &requests[0]);
+
+        MPI_Wait(&requests[0], MPI_STATUS_IGNORE);
+        m_vcycle_progress.resize(count);
+        m_matvec_progress.resize(count);
+        m_residual_L2.resize(count);
+        m_residual_Linf.resize(count);
+
+        par::Mpi_Irecv(m_vcycle_progress.data(), count, first_nonempty, 0, m_comm, &requests[1]);
+        par::Mpi_Irecv(m_matvec_progress.data(), count, first_nonempty, 0, m_comm, &requests[2]);
+        par::Mpi_Irecv(m_residual_L2.data(), count, first_nonempty, 0, m_comm, &requests[3]);
+        par::Mpi_Irecv(m_residual_Linf.data(), count, first_nonempty, 0, m_comm, &requests[4]);
+        MPI_Waitall(5, requests, MPI_STATUSES_IGNORE);
       }
     }
 
@@ -223,6 +286,9 @@ class RootCollect
     HighFive::Group & flush_to_hdf5(
         HighFive::Group &group)
     {
+      if (m_vcycle_progress.size() == 0)
+        std::cerr << YLW "Warning: Dataset size is 0!\n" NRM;
+
       assert(this->is_root());
       group.createDataSet("vcycles", m_vcycle_progress);
       group.createDataSet("matvecs", m_matvec_progress);
@@ -260,7 +326,7 @@ class RootCollect
 template <typename MatType>
 int gmg_solver(
     c4::yml::ConstNodeRef run_config,
-    RootCollect &collection,
+    Collector &collection,
     mg::VCycle<MatType> &vcycle,
     std::vector<double> &u_vec,
     std::vector<double> &v_vec,
@@ -273,7 +339,7 @@ int gmg_solver(
 template <typename MatType>
 int amg_solver(
     c4::yml::ConstNodeRef run_config,
-    RootCollect &collection,
+    Collector &collection,
     MatType *mat,
     const mg::CycleSettings &cycle_settings,
     std::vector<double> &u_vec,
@@ -362,6 +428,11 @@ int tmain(int argc, char *argv[], Configuration &config)
   //future: write relvant configurations to log
   //future: remember which configurations were accessed, log those
 
+  debug::EnablePrint printer(rank == 0);
+
+  /// debug::CommLog main_comm_log(std::cout);
+  /// debug::global_comm_log = &main_comm_log;
+
   enum OverwriteMode { OverwriteAll, OverwriteSome };
   OverwriteMode overwrite_mode = OverwriteAll;
   if (to<bool>(config["overwrite_all"]) == false)
@@ -369,7 +440,7 @@ int tmain(int argc, char *argv[], Configuration &config)
 
   const std::string out_filename = to<std::string>(config["output"]);
 
-  RootCollect collection(comm);
+  Collector collection(comm);
 
   HighFive::File *h5_file = nullptr;
   if (collection.is_root())
@@ -388,26 +459,30 @@ int tmain(int argc, char *argv[], Configuration &config)
   // Problem definition
   // ---------------------------------------------------------------------------
 
-  // Domain is a cube from -1 to 1 in each axis.
-  Point<dim> min_corner(-1.0),  max_corner(1.0);
+  // Domain is a cube from 0 to 1 in each axis.
+  //     (due to buggy mesh gen, only 0.0--1.0 supported)
+  Point<dim> min_corner(0.0),  max_corner(1.0);
 
   const double domain_length = (max_corner - min_corner).x();
 
+  const double freq = to<double>(config["problem"]["freq"]);
+  const double afreq = freq * 2.0 * pi;
+
   // Solve "-div(grad(u)) = f"
-  // Sinusoid: f(x) = sin(pi * x)    //future/c++17: std::transform_reduce()
-  const auto f = [](const double *x, double *y = nullptr) {
+  // Sinusoid: f(x) = sin(afreq * x)    //future/c++17: std::transform_reduce()
+  const auto f = [=](const double *x, double *y = nullptr) {
     double result = 1.0;
     for (int d = 0; d < dim; ++d)
-      result *= std::sin(pi * x[d]);
+      result *= std::sin(freq * afreq * x[d]);
     if (y != nullptr)
       *y = result;
     return result;
   };
-  // Solution: u(x) = 1/(pi^2) sin(pi * x)
-  const auto u_exact = [] (const double *x) {
-    double result = 1.0 / (dim * pi * pi);
+  // Solution: u(x) = 1/(afreq^2) sin(afreq * x)
+  const auto u_exact = [=] (const double *x) {
+    double result = 1.0 / (dim * afreq * afreq);
     for (int d = 0; d < dim; ++d)
-      result *= std::sin(pi * x[d]);
+      result *= std::sin(afreq * x[d]);
     return result;
   };
   // Dirichlet boundary condition (matching u_exact).
@@ -420,6 +495,8 @@ int tmain(int argc, char *argv[], Configuration &config)
   const int n_setups = config["setups"].num_children();
   for (c4::yml::ConstNodeRef setup: config["setups"])
   {
+    printer(std::cout) << "--------------------------------------------------\n";
+    /// debug::global_comm_log->clear();
     ++setup_idx;
 
     int count_active_runs = 0;
@@ -429,8 +506,7 @@ int tmain(int argc, char *argv[], Configuration &config)
 
     if (count_active_runs == 0)
     {
-      if (collection.is_root())
-        std::cout << "Skipping setup " << setup_idx << " <" << n_setups << " (no active runs)" << "\n";
+      printer(std::cout) << "Skipping setup " << setup_idx << " <" << n_setups << " (no active runs)" << "\n";
       continue;
     }
 
@@ -457,6 +533,10 @@ int tmain(int argc, char *argv[], Configuration &config)
           constructSubdomainDistTree(max_depth, comm, partition_tolerance);
       mesh_name = "uniform(" + to<std::string>(setup["max_depth"]) + ")";
     }
+    else
+    {
+      assert(false);
+    }
     ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tolerance);
 
     const double spacing = par::mpi_min(
@@ -469,7 +549,9 @@ int tmain(int argc, char *argv[], Configuration &config)
             })->range().side()
           ),
         comm);
-    std::cout << "cells = " << double(base_da.getGlobalElementSz()) << "  "
+
+    printer(std::cout) << "mesh = " << mesh_name << "\n";
+    printer(std::cout) << "cells = " << double(base_da.getGlobalElementSz()) << "  "
               << "spacing = " << spacing << "\n";
 
     // ghosted_node_coordinate()
@@ -577,10 +659,20 @@ int tmain(int argc, char *argv[], Configuration &config)
     ot::DistTree<uint, dim> &trees = base_tree;
     ot::DistTree<uint, dim> surrogate_trees;
     surrogate_trees = trees.generateGridHierarchyUp(true, n_grids, partition_tolerance);
+
+    /// if (setup_idx == 1)
+    /// {
+    ///   for (int i = 0; i < n_grids; ++i)
+    ///     ot::quadTreeToGnuplot(trees.getTreePartFiltered(i), 10, "primary." + std::to_string(i), comm);
+    ///   for (int i = 1; i < n_grids; ++i)
+    ///     ot::quadTreeToGnuplot(surrogate_trees.getTreePartFiltered(i), 10, "surrogate." + std::to_string(i), comm);
+    /// }
+
     assert(trees.getNumStrata() == n_grids);
     /// struct DA_Pair { const ot::DA<dim> *primary; const ot::DA<dim> *surrogate; };
     std::vector<mg::DA_Pair<dim>> das(n_grids, mg::DA_Pair<dim>{nullptr, nullptr});
     das[0].primary = &base_da;
+
     for (int g = 1; g < n_grids; ++g)
     {
       das[g].primary = new ot::DA<dim>(
@@ -588,6 +680,23 @@ int tmain(int argc, char *argv[], Configuration &config)
       das[g].surrogate = new ot::DA<dim>(
           surrogate_trees, g, comm, polynomial_degree, size_t{}, partition_tolerance);
     }
+
+    std::stringstream tower;
+    tower << "tower = [ " << das[0].primary->getGlobalElementSz();
+    for (int g = 1; g < n_grids; ++g)
+      tower << " > " << das[g].primary->getGlobalElementSz();
+    tower << " ]\n";
+    printer(std::cout) << tower.str();
+
+    /// // base_da active comm
+    /// debug::global_comm_log->register_comm(base_da.getCommActive(), COMMLOG_CONTEXT);
+    /// for (int g = 1; g < n_grids; ++g)
+    /// {
+    ///   // multigrid da active comm
+    ///   debug::global_comm_log->register_comm(das[g].primary->getCommActive(), COMMLOG_CONTEXT);
+    ///   debug::global_comm_log->register_comm(das[g].surrogate->getCommActive(), COMMLOG_CONTEXT);
+    /// }
+
 
     std::vector<PoissonMat *> mats(n_grids, nullptr);
     mats[0] = &base_mat;
@@ -606,8 +715,8 @@ int tmain(int argc, char *argv[], Configuration &config)
 
       if (not to<bool>(run["active"]))
       {
-        if (collection.is_root())
-          std::cout << "Skipping run [" << run_idx << " <" << n_runs << "] of setup [" << setup_idx << " <" << n_setups << "] (inactive).\n";
+        printer(std::cout) << "Skipping run [" << run_idx << " <" << n_runs
+          << "] of setup [" << setup_idx << " <" << n_setups << "] (inactive).\n";
         continue;
       }
 
@@ -625,13 +734,13 @@ int tmain(int argc, char *argv[], Configuration &config)
 
       if (skip_existing)
       {
-        if (collection.is_root())
-          std::cout << "Skipping run [" << run_idx << " <" << n_runs << "] of setup [" << setup_idx << " <" << n_setups << "] (already exists).\n";
+        printer(std::cout) << "Skipping run [" << run_idx << " <" << n_runs
+          << "] of setup [" << setup_idx << " <" << n_setups << "] (already exists).\n";
         continue;
       }
 
-      if (collection.is_root())
-        std::cout << "Executing run [" << run_idx << " <" << n_runs << "] of setup [" << setup_idx << " <" << n_setups << "].\n";
+      printer(std::cout) << "Executing run [" << run_idx << " <" << n_runs
+        << "] of setup [" << setup_idx << " <" << n_setups << "].\n";
 
       std::copy(u_vec_initial.cbegin(), u_vec_initial.cend(), u_vec.begin());
 
@@ -654,35 +763,46 @@ int tmain(int argc, char *argv[], Configuration &config)
           const int steps = gmg_solver(
               run, collection,
               vcycle, u_vec, v_vec, rhs_vec, max_vcycles, tol);
-
-          const double err = sol_err_max(u_vec);
-          const double res = normLInfty(v_vec.data(), v_vec.size(), comm);
         }
         else if (run["solver"]["type"].val() == "AMG")
         {
           const int steps = amg_solver(
               run, collection,
               &base_mat, cycle_settings, u_vec, v_vec, rhs_vec, max_vcycles, tol);
-
-          const double err = sol_err_max(u_vec);
-          const double res = normLInfty(v_vec.data(), v_vec.size(), comm);
         }
       }
+      else
+      {
+        assert(false);
+      }
 
+
+      // Define "group_name"
+      //future (maybe): set attributes first, then rename
+      std::stringstream name;
+      name << "solver=" << to<std::string>(run["solver"]["name"]) << " ";
+      name << "mesh=" << to<std::string>(setup["mesh_recipe"]["name"]) << " ";
+      if (setup.has_child("interpolation"))
+        name << "interpolation=" << to<std::string>(setup["interpolation"]);
+      if (setup.has_child("max_depth"))
+        name << "max_depth=" << to<std::string>(setup["max_depth"]);
+      const std::string group_name = name.str();
+      /// const std::string group_name = std::to_string(all_runs);
+
+      // Dump solution to binary file. (optional, default: false)
+      const bool dump_solution =
+          run.has_child("dump_solution") and to<bool>(run["dump_solution"]);
+      if (dump_solution)
+      {
+        //future: incorporate in self-describing HDF5 format
+        //fornow: raw binary files, one each per MPI process.
+
+        io::dump_nodal_data(base_da, u_vec, single_dof, group_name + ".solution");
+      }
+
+      collection.synch();
       if (collection.is_root())
       {
-        //future: set attributes first, then rename
-        std::stringstream name;
-        name << "solver=" << to<std::string>(run["solver"]["name"]) << " ";
-        name << "mesh=" << to<std::string>(setup["mesh_recipe"]["name"]) << " ";
-        if (setup.has_child("interpolation"))
-          name << "interpolation=" << to<std::string>(setup["interpolation"]);
-        if (setup.has_child("max_depth"))
-          name << "max_depth=" << to<std::string>(setup["max_depth"]);
-
-        const std::string group_name = name.str();
-
-        /// const std::string group_name = std::to_string(all_runs);
         if (h5_file->exist(group_name))
           h5_file->unlink(group_name);
         HighFive::Group group = h5_file->createGroup(group_name);
@@ -763,10 +883,13 @@ Residual compute_residual(
   const std::vector<double> &rhs_vec,
   MPI_Comm comm)
 {
+  const size_t size = u_vec.size();
   mat->matVec(u_vec.data(), v_vec.data());
   subt(rhs_vec.data(), v_vec.data(), v_vec.size(), v_vec.data());
   const DendroIntL global_entries = (mat->da()->getGlobalNodeSz() * ndofs);
   Residual res = {};
+  v_vec.resize(std::max<size_t>(size, 1), 0.0);  // at least one entry is initialized.
+  v_vec.resize(size);
   /// res.L2 = normL2(v_vec.data(), v_vec.size(), comm) / global_entries;
   res.L2 = normL2(v_vec.data(), v_vec.size(), comm);
   res.Linf = normLInfty(v_vec.data(), v_vec.size(), comm);
@@ -784,7 +907,7 @@ Residual compute_residual(
 template <typename MatType>
 int gmg_solver(
     c4::yml::ConstNodeRef run_config,
-    RootCollect &collection,
+    Collector &collection,
     mg::VCycle<MatType> &vcycle,
     std::vector<double> &u_vec,
     std::vector<double> &v_vec,
@@ -796,7 +919,7 @@ int gmg_solver(
 
   auto &base_mat = *vcycle.mats[0];
   const int ndofs = base_mat.ndofs();
-  const MPI_Comm comm = base_mat.da()->getCommActive();
+  const MPI_Comm global_comm = base_mat.da()->getGlobalComm();
 
   assert(run_config["solver"]["ksp"].val() == "Stand");
 
@@ -805,7 +928,7 @@ int gmg_solver(
   util::ConvergenceRate residual_convergence(3);
   Residual res;
   res = compute_residual(
-      &base_mat, ndofs, u_vec, v_vec, rhs_vec, comm);
+      &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
   collection.observe(steps, steps, res.L2, res.Linf);
   residual_convergence.observe_step(res.L2);
   if (collection.is_root())
@@ -818,7 +941,7 @@ int gmg_solver(
     vcycle.vcycle(u_vec.data(), v_vec.data());
     ++steps;
     res = compute_residual(
-        &base_mat, ndofs, u_vec, v_vec, rhs_vec, comm);
+        &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
     collection.observe(steps, steps, res.L2, res.Linf);
     residual_convergence.observe_step(res.L2);
 
@@ -846,7 +969,7 @@ int gmg_solver(
 template <typename MatType>
 int amg_solver(
     c4::yml::ConstNodeRef run_config,
-    RootCollect &collection,
+    Collector &collection,
     MatType *mat,
     const mg::CycleSettings &cycle_settings,
     std::vector<double> &u_vec,
@@ -858,122 +981,126 @@ int amg_solver(
   const auto *da = mat->da();
   const MPI_Comm comm = da->getCommActive();
 
-
-  // PETSc
-  Mat petsc_mat;
-  Vec u, rhs;
-  KSP ksp;
-  PC pc;
-
-  // Assemble the matrix (assuming one-time assembly).
-  da->createMatrix(petsc_mat, MATAIJ, mat->ndofs());
-  mat->getAssembledMatrix(&petsc_mat, {});
-  MatAssemblyBegin(petsc_mat, MAT_FINAL_ASSEMBLY);
-  MatAssemblyEnd(petsc_mat, MAT_FINAL_ASSEMBLY);
-
-  const size_t local_size = da->getLocalNodalSz() * mat->ndofs();
-  const size_t global_size = da->getGlobalNodeSz() * mat->ndofs();
-  VecCreateMPIWithArray(comm, 1, local_size, global_size, nullptr, &u);
-  VecCreateMPIWithArray(comm, 1, local_size, global_size, nullptr, &rhs);
-
-  std::vector<int> global_ids_of_local_boundary_nodes(da->getBoundaryNodeIndices().size());
-  std::copy(da->getBoundaryNodeIndices().cbegin(),
-            da->getBoundaryNodeIndices().cend(),
-            global_ids_of_local_boundary_nodes.begin());
-  for (int &id : global_ids_of_local_boundary_nodes)
-    id += da->getGlobalRankBegin();
-  // If ndofs != 1 then need to duplicate and zip.
-  assert(mat->ndofs() == 1);
-
-  MatZeroRows(
-      petsc_mat,
-      global_ids_of_local_boundary_nodes.size(),
-      global_ids_of_local_boundary_nodes.data(),
-      1.0,
-      NULL, NULL);
-
-  //TODO add from settings
-  /// cycle_settings.n_grids();
-  /// cycle_settings.pre_smooth();
-  /// cycle_settings.post_smooth();
-  /// cycle_settings.damp_smooth();
-
-  // Coarse solver setup with PETSc.
-  KSPCreate(da->getCommActive(), &ksp);
-  KSPSetOperators(ksp, petsc_mat, petsc_mat);
-  KSPSetInitialGuessNonzero(ksp, PETSC_TRUE);
-  KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
-  KSPConvergedDefaultSetUIRNorm(ksp);
-  KSPSetTolerances(ksp, relative_tolerance, 0.0, 10.0, max_vcycles);
-
-  // See also KSPSetPCSide(PC_SYMMETRIC)
-
-  auto monitor_state = [](
-      KSP, int iterations, double res_L2, void *collect) -> int
-  {
-    //future: accurately count the number of matvecs 
-    static_cast<RootCollect*>(collect)->observe(iterations, iterations,
-        res_L2, std::numeric_limits<PetscReal>::quiet_NaN());
-    return 0;
-  };
-  KSPMonitorSet(ksp, monitor_state, &collection, NULL);
-
-  // Switch outer Krylov method. Standalone M.G. is Richardson.
-  const std::string ksp_choice = to<std::string>(run_config["solver"]["ksp"]);
-  if (ksp_choice == "Stand")
-    KSPSetType(ksp, KSPRICHARDSON);
-  else if (ksp_choice == "CG")
-    KSPSetType(ksp, KSPCG);
-  else
-  {
-    if (collection.is_root())
-      std::cerr << "Warning: Ignoring ksp choice " << ksp_choice << ".\n";
-      // Note that the default is GMRES.
-  }
-
-  KSPGetPC(ksp, &pc);
-  PCSetType(pc, PCGAMG);  // solver choice.
-  KSPSetUp(ksp);
-
-  /// if (collection.is_root())
-  /// {
-  ///   KSPView(ksp, PETSC_VIEWER_STDOUT_SELF);
-  /// }
-
-  // Bind u and rhs to Vec
-  VecPlaceArray(u, u_vec.data());
-  VecPlaceArray(rhs, rhs_vec.data());
-
-  // Solve.
-  KSPSolve(ksp, rhs, u);
-
-  /// // Debug for solution magnitude.
-  /// PetscReal sol_norm = 0.0;
-  /// VecNorm(u, NORM_INFINITY, &sol_norm);
-
-  // Unbind from Vec.
-  VecResetArray(u);
-  VecResetArray(rhs);
-
-  // Get residual norm and number of iterations.
   int iterations = 0;
-  PetscReal res_norm = 0.0;
-  KSPGetIterationNumber(ksp, &iterations);
-  KSPGetResidualNorm(ksp, &res_norm);
 
-  /// Residual res = compute_residual(
-  ///     mat, mat->ndofs(), u_vec, v_vec, rhs_vec, comm);
-  /// collection.observe(iterations, iterations, res.L2, res.Linf);
-
-  if (collection.is_root())
+  if (da->isActive())
   {
-    std::cout << "ksp iterations == " << iterations << "\n";
-  }
+    // PETSc
+    Mat petsc_mat;
+    Vec u, rhs;
+    KSP ksp;
+    PC pc;
 
-  VecDestroy(&u);
-  VecDestroy(&rhs);
-  KSPDestroy(&ksp);
-  MatDestroy(&petsc_mat);
+    // Assemble the matrix (assuming one-time assembly).
+    da->createMatrix(petsc_mat, MATAIJ, mat->ndofs());
+    mat->getAssembledMatrix(&petsc_mat, {});
+    MatAssemblyBegin(petsc_mat, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(petsc_mat, MAT_FINAL_ASSEMBLY);
+
+    const size_t local_size = da->getLocalNodalSz() * mat->ndofs();
+    const size_t global_size = da->getGlobalNodeSz() * mat->ndofs();
+    VecCreateMPIWithArray(comm, 1, local_size, global_size, nullptr, &u);
+    VecCreateMPIWithArray(comm, 1, local_size, global_size, nullptr, &rhs);
+
+    std::vector<int> global_ids_of_local_boundary_nodes(da->getBoundaryNodeIndices().size());
+    std::copy(da->getBoundaryNodeIndices().cbegin(),
+              da->getBoundaryNodeIndices().cend(),
+              global_ids_of_local_boundary_nodes.begin());
+    for (int &id : global_ids_of_local_boundary_nodes)
+      id += da->getGlobalRankBegin();
+    // If ndofs != 1 then need to duplicate and zip.
+    assert(mat->ndofs() == 1);
+
+    MatZeroRows(
+        petsc_mat,
+        global_ids_of_local_boundary_nodes.size(),
+        global_ids_of_local_boundary_nodes.data(),
+        1.0,
+        NULL, NULL);
+
+    //TODO add from settings
+    /// cycle_settings.n_grids();
+    /// cycle_settings.pre_smooth();
+    /// cycle_settings.post_smooth();
+    /// cycle_settings.damp_smooth();
+
+    // Coarse solver setup with PETSc.
+    KSPCreate(da->getCommActive(), &ksp);
+    KSPSetOperators(ksp, petsc_mat, petsc_mat);
+    KSPSetInitialGuessNonzero(ksp, PETSC_TRUE);
+    KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
+    KSPConvergedDefaultSetUIRNorm(ksp);
+    KSPSetTolerances(ksp, relative_tolerance, 0.0, 10.0, max_vcycles);
+
+    // See also KSPSetPCSide(PC_SYMMETRIC)
+
+    auto monitor_state = [](
+        KSP, int iterations, double res_L2, void *collect) -> int
+    {
+      //future: accurately count the number of matvecs 
+      static_cast<Collector*>(collect)->observe(iterations, iterations,
+          res_L2, std::numeric_limits<PetscReal>::quiet_NaN());
+      return 0;
+    };
+    KSPMonitorSet(ksp, monitor_state, &collection, NULL);
+
+    // Switch outer Krylov method. Standalone M.G. is Richardson.
+    const std::string ksp_choice = to<std::string>(run_config["solver"]["ksp"]);
+    if (ksp_choice == "Stand")
+      KSPSetType(ksp, KSPRICHARDSON);
+    else if (ksp_choice == "CG")
+      KSPSetType(ksp, KSPCG);
+    else
+    {
+      if (collection.is_root())
+        std::cerr << "Warning: Ignoring ksp choice " << ksp_choice << ".\n";
+        // Note that the default is GMRES.
+    }
+
+    KSPGetPC(ksp, &pc);
+    PCSetType(pc, PCGAMG);  // solver choice.
+    KSPSetUp(ksp);
+
+    /// if (collection.is_root())
+    /// {
+    ///   KSPView(ksp, PETSC_VIEWER_STDOUT_SELF);
+    /// }
+
+    // Bind u and rhs to Vec
+    VecPlaceArray(u, u_vec.data());
+    VecPlaceArray(rhs, rhs_vec.data());
+
+    // Solve.
+    KSPSolve(ksp, rhs, u);
+
+    /// // Debug for solution magnitude.
+    /// PetscReal sol_norm = 0.0;
+    /// VecNorm(u, NORM_INFINITY, &sol_norm);
+
+    // Unbind from Vec.
+    VecResetArray(u);
+    VecResetArray(rhs);
+
+    // Get residual norm and number of iterations.
+    iterations = 0;
+    PetscReal res_norm = 0.0;
+    KSPGetIterationNumber(ksp, &iterations);
+    KSPGetResidualNorm(ksp, &res_norm);
+
+    /// Residual res = compute_residual(
+    ///     mat, mat->ndofs(), u_vec, v_vec, rhs_vec, comm);
+    /// collection.observe(iterations, iterations, res.L2, res.Linf);
+
+    if (collection.is_root())
+    {
+      std::cout << "ksp iterations == " << iterations << "\n";
+    }
+
+    VecDestroy(&u);
+    VecDestroy(&rhs);
+    KSPDestroy(&ksp);
+    MatDestroy(&petsc_mat);
+  }
 
   return iterations;
 }

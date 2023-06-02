@@ -193,56 +193,71 @@ namespace mg
         // ===========================================================================
         const auto *coarse_da = mats[n_grids() - 1]->da();
 
-        // Assemble the coarse grid matrix (assuming one-time assembly).
-        coarse_da->createMatrix(coarse_mat, MATAIJ, ndofs);
-        mats[n_grids() - 1]->getAssembledMatrix(&coarse_mat, {});
-        MatAssemblyBegin(coarse_mat, MAT_FINAL_ASSEMBLY);
-        MatAssemblyEnd(coarse_mat, MAT_FINAL_ASSEMBLY);
+        if (coarse_da->isActive())
+        {
+          /// auto dbg_region = debug::global_comm_log->declare_region(coarse_da->getCommActive(), COMMLOG_CONTEXT);
 
-        // Placeholder Vec's to which user array will be bound in coarse grid solve.
-        const MPI_Comm coarse_comm = coarse_da->getCommActive();
-        const size_t coarse_local_size = coarse_da->getLocalNodalSz() * ndofs;
-        const size_t coarse_global_size = coarse_da->getGlobalNodeSz() * ndofs;
-        VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_u);
-        VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_rhs);
+          // Assemble the coarse grid matrix (assuming one-time assembly).
+          coarse_da->createMatrix(coarse_mat, MATAIJ, ndofs);
+          mats[n_grids() - 1]->getAssembledMatrix(&coarse_mat, {});
+          MatAssemblyBegin(coarse_mat, MAT_FINAL_ASSEMBLY);
+          MatAssemblyEnd(coarse_mat, MAT_FINAL_ASSEMBLY);
 
-        std::vector<int> coarse_global_ids_of_local_boundary_nodes(coarse_da->getBoundaryNodeIndices().size());
-        std::copy(coarse_da->getBoundaryNodeIndices().cbegin(),
-                  coarse_da->getBoundaryNodeIndices().cend(),
-                  coarse_global_ids_of_local_boundary_nodes.begin());
-        for (int &id : coarse_global_ids_of_local_boundary_nodes)
-          id += coarse_da->getGlobalRankBegin();
-        // If ndofs != 1 then need to duplicate and zip.
+          // Placeholder Vec's to which user array will be bound in coarse grid solve.
+          const MPI_Comm coarse_comm = coarse_da->getCommActive();
+          const size_t coarse_local_size = coarse_da->getLocalNodalSz() * ndofs;
+          const size_t coarse_global_size = coarse_da->getGlobalNodeSz() * ndofs;
+          VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_u);
+          VecCreateMPIWithArray(coarse_comm, 1, coarse_local_size, coarse_global_size, nullptr, &coarse_rhs);
 
-        MatZeroRows(
-            coarse_mat,
-            coarse_global_ids_of_local_boundary_nodes.size(),
-            coarse_global_ids_of_local_boundary_nodes.data(),
-            1.0,
-            NULL, NULL);
+          std::vector<int> coarse_global_ids_of_local_boundary_nodes(coarse_da->getBoundaryNodeIndices().size());
+          std::copy(coarse_da->getBoundaryNodeIndices().cbegin(),
+                    coarse_da->getBoundaryNodeIndices().cend(),
+                    coarse_global_ids_of_local_boundary_nodes.begin());
+          for (int &id : coarse_global_ids_of_local_boundary_nodes)
+            id += coarse_da->getGlobalRankBegin();
+          // If ndofs != 1 then need to duplicate and zip.
 
-        /// MatView(coarse_mat, PETSC_VIEWER_STDOUT_(coarse_da->getCommActive()));
+          MatZeroRows(
+              coarse_mat,
+              coarse_global_ids_of_local_boundary_nodes.size(),
+              coarse_global_ids_of_local_boundary_nodes.data(),
+              1.0,
+              NULL, NULL);
 
-        // Coarse solver setup with PETSc.
-        KSPCreate(coarse_da->getCommActive(), &coarse_ksp);
-        KSPSetOperators(coarse_ksp, coarse_mat, coarse_mat);
-        KSPSetTolerances(coarse_ksp, 1.0e-14, 0.0, 10.0, 50);
-        /// KSPSetType(coarse_ksp, KSPPREONLY);  // Do not use iteration.
-        KSPGetPC(coarse_ksp, &coarse_pc);
-        PCSetType(coarse_pc, PCGAMG);  // "Direct" solver choice.
-        KSPSetUp(coarse_ksp);
+          /// MatView(coarse_mat, PETSC_VIEWER_STDOUT_(coarse_da->getCommActive()));
+
+          // Coarse solver setup with PETSc.
+          KSPCreate(coarse_da->getCommActive(), &coarse_ksp);
+          KSPSetOperators(coarse_ksp, coarse_mat, coarse_mat);
+          KSPSetTolerances(coarse_ksp, 1.0e-14, 0.0, 10.0, 50);
+          /// KSPSetType(coarse_ksp, KSPPREONLY);  // Do not use iteration.
+          KSPGetPC(coarse_ksp, &coarse_pc);
+          PCSetType(coarse_pc, PCGAMG);  // "Direct" solver choice.
+          KSPSetUp(coarse_ksp);
+        }
       }
 
       ~VCycle()
       {
-        VecDestroy(&coarse_u);
-        VecDestroy(&coarse_rhs);
-        KSPDestroy(&coarse_ksp);
-        MatDestroy(&coarse_mat);
+        if (mats[n_grids()-1]->da()->isActive())
+        {
+          /// auto dbg_region = debug::global_comm_log->declare_region(mats[n_grids()-1]->da()->getCommActive(), COMMLOG_CONTEXT);
+
+          VecDestroy(&coarse_u);
+          VecDestroy(&coarse_rhs);
+          KSPDestroy(&coarse_ksp);
+          MatDestroy(&coarse_mat);
+        }
       }
 
       int coarse_solver(double *u_local, const double *rhs_local)
       {
+        if (not mats[n_grids()-1]->da()->isActive())
+          return 0;
+
+        /// auto dbg_region = debug::global_comm_log->declare_region(mats[n_grids()-1]->da()->getCommActive(), COMMLOG_CONTEXT);
+
         // Bind u and rhs to Vec
         VecPlaceArray(coarse_u, u_local);
         VecPlaceArray(coarse_rhs, rhs_local);
@@ -446,6 +461,8 @@ namespace mg
 
     if (fine_da.primary->getLocalNodalSz() > 0)
     {
+      /// auto dbg_region = debug::global_comm_log->declare_region(fine_da.primary->getCommActive(), COMMLOG_CONTEXT);
+
       // Index fine grid elements as we loop.
       OwnershipT globElementId = fine_da.primary->getGlobalElementBegin();
 
@@ -490,7 +507,7 @@ namespace mg
             }
           }
 
-          loopCoarse.subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
+          const size_t written = loopCoarse.subtreeInfo().overwriteNodeValsOut(leafBuffer.data());
 
           loopFine.next();
           loopCoarse.next();
@@ -509,21 +526,36 @@ namespace mg
     }
 
     // Coarse ghost write.
-    coarse_da.surrogate->writeToGhostsBegin(coarse_surr_ghosted.data(), ndofs);
-    coarse_da.surrogate->writeToGhostsEnd(coarse_surr_ghosted.data(), ndofs);
+    {
+      /// auto dbg_region = debug::global_comm_log->declare_region(coarse_da.surrogate->getCommActive(), COMMLOG_CONTEXT);
+
+      coarse_da.surrogate->writeToGhostsBegin(coarse_surr_ghosted.data(), ndofs);
+      coarse_da.surrogate->writeToGhostsEnd(coarse_surr_ghosted.data(), ndofs);
+    }
 
     // Shift in the coarse grid from surrogate to primary.
-    ot::distShiftNodes(
-        *coarse_da.surrogate,
-        coarse_surr_ghosted.data() + coarse_da.surrogate->getLocalNodeBegin() * ndofs,
-        *coarse_da.primary,
-        coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
-        ndofs);
+    {
+      /// auto dbg_region = debug::global_comm_log->declare_region(
+      ///     {coarse_da.surrogate->getCommActive(),
+      ///     coarse_da.primary->getCommActive()},
+      ///     COMMLOG_CONTEXT);
+
+      ot::distShiftNodes(
+          *coarse_da.surrogate,
+          coarse_surr_ghosted.data() + coarse_da.surrogate->getLocalNodeBegin() * ndofs,
+          *coarse_da.primary,
+          coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs,
+          ndofs);
+    }
 
     post_restriction(coarse_vec_ghosted + coarse_da.primary->getLocalNodeBegin() * ndofs);
 
-    coarse_da.primary->readFromGhostBegin(coarse_vec_ghosted, ndofs);
-    coarse_da.primary->readFromGhostEnd(coarse_vec_ghosted, ndofs);
+    {
+      /// auto dbg_region = debug::global_comm_log->declare_region(coarse_da.primary->getCommActive(), COMMLOG_CONTEXT);
+
+      coarse_da.primary->readFromGhostBegin(coarse_vec_ghosted, ndofs);
+      coarse_da.primary->readFromGhostEnd(coarse_vec_ghosted, ndofs);
+    }
 
     vector_pool.checkin(std::move(leafBuffer));
     vector_pool.checkin(std::move(coarse_surr_ghosted));
