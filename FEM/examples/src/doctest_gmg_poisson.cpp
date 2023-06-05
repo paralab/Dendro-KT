@@ -329,8 +329,9 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   cycle_settings.post_smooth(1);
   cycle_settings.damp_smooth(2.0 / 3.0);
   cycle_settings.print(false);
+  cycle_settings.n_grids(n_grids);
 
-  mg::VCycle<PoissonMat> vcycle(n_grids, das, mats.data(), cycle_settings, single_dof);
+  mg::VCycle<PoissonMat> vcycle(das, mats.data(), cycle_settings, single_dof);
 
   // Preconditioned right-hand side.
   std::vector<double> pc_rhs_vec = rhs_vec;
@@ -622,8 +623,9 @@ MPI_TEST_CASE("Nonuniform Poisson gmg sinusoid", 5)
   cycle_settings.pre_smooth(2);
   cycle_settings.post_smooth(1);
   cycle_settings.damp_smooth(2.0 / 3.0);
+  cycle_settings.n_grids(n_grids);
 
-  mg::VCycle<PoissonMat> vcycle(n_grids, das, mats.data(), cycle_settings, single_dof);
+  mg::VCycle<PoissonMat> vcycle(das, mats.data(), cycle_settings, single_dof);
 
   // Preconditioned right-hand side.
   std::vector<double> pc_rhs_vec = rhs_vec;
