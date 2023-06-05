@@ -49,7 +49,10 @@ class feMatrix : public feMat<dim> {
          * @param[in] da: octree DA
          * */
          // future: remove the octlist parameter
+        [[deprecated("The `octlist` parameter is redundant with `DA` accessors.")]]
         feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *, unsigned int dof=1);
+
+        feMatrix(const ot::DA<dim>* da, unsigned int dof=1);
 
         ~feMatrix();
 
@@ -227,6 +230,11 @@ class feMatrix : public feMat<dim> {
 
 template <typename LeafT, unsigned int dim>
 feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *, unsigned int dof)
+  : feMatrix(da, dof)
+{ }
+
+template <typename LeafT, unsigned int dim>
+feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, unsigned int dof)
   : feMat<dim>(da)
 {
     m_uiDof=dof;

@@ -33,7 +33,7 @@ namespace ot
      * @brief: generate random set of treeNodes for a specified dimension
      * @param[in] numPoints: number of treeNodes need to be generated.
      * */
-    template <typename T, unsigned int dim, bool useRandom=true>
+    template <typename T, unsigned int dim, bool useRandom=false>
     inline std::vector<TreeNode<T,dim>> getPts(unsigned int numPoints, unsigned int sLev = m_uiMaxDepth, unsigned int eLev = m_uiMaxDepth)
     {
         std::vector<TreeNode<T,dim>> points;

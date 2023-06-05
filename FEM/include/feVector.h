@@ -110,9 +110,8 @@ public:
 };
 
 template <typename T, unsigned int dim>
-feVector<T,dim>::feVector(ot::DA<dim> *da, const std::vector<ot::TreeNode<unsigned int, dim>> *,unsigned int dof) : feVec<dim>(da)
+feVector<T,dim>::feVector(ot::DA<dim> *da, const std::vector<ot::TreeNode<unsigned int, dim>> *,unsigned int dof) : feVec<dim>(da), m_uiDof(dof)
 {
-    m_uiDof=dof;
     const unsigned int nPe=this->m_uiOctDA->getNumNodesPerElement();
     m_uiEleVecIn = new  VECType[m_uiDof*nPe];
     m_uiEleVecOut = new VECType[m_uiDof*nPe];

@@ -30,3 +30,16 @@ target_link_libraries(doctest_octree_adler32 dendroKT ${MPI_LIBRARIES} m)
 add_executable(doctest_partition_unweighted partition_unweighted.cpp main.cpp)
 target_include_directories(doctest_partition_unweighted PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_partition_unweighted dendroKT ${MPI_LIBRARIES} m)
+
+set(SRC_FILES
+  ${CMAKE_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+  ${CMAKE_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
+  ${CMAKE_SOURCE_DIR}/FEM/examples/include/poissonMat.h
+  ${CMAKE_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+  ${CMAKE_SOURCE_DIR}/FEM/examples/include/hybridPoissonMat.h
+  ${CMAKE_SOURCE_DIR}/FEM/examples/src/hybridPoissonMat.cpp)
+add_executable(doctest_hybrid_poisson hybrid_poisson.cpp ${SRC_FILES} main_with_petsc.cpp)
+target_include_directories(doctest_hybrid_poisson PUBLIC
+  ${MPI_INCLUDE_PATH} ${CMAKE_SOURCE_DIR}/FEM/examples/include)
+target_link_libraries(doctest_hybrid_poisson dendroKT ${MPI_LIBRARIES} m)
+
