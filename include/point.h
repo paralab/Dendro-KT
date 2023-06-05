@@ -41,7 +41,7 @@ class Point{
 
     /** @name Constructors and Destructor */
     //@{
-    Point();
+    Point() = default;
     // virtual ~Point();
 
     Point(double scale);
@@ -50,20 +50,24 @@ class Point{
     Point(double newx, double newy, double newz);
     Point(int newx, int newy, int newz);
     Point(unsigned int newx, unsigned int newy, unsigned int newz);
-    Point(const Point &newpoint);
+    Point(const Point &newpoint) = default;
+    Point(Point &&newpoint) = default;
     //@}
+
+    Point& operator=(const Point &other) = default;
+    Point& operator=(Point &&other) = default;
 
     /** @name Getters */
     //@{
-    const double& x() const {return _x; };
-    const double& y() const {return _y; };
-    const double& z() const {return _z; };
-    const double& x(unsigned d) const { return _coords[d]; }
+    const double& x() const {return _p[0]; };
+    const double& y() const {return _p[1]; };
+    const double& z() const {return _p[2]; };
+    const double& x(unsigned d) const { return _p[d]; }
 
-    int xint() const {return static_cast<int>(_x); };
-    int yint() const {return static_cast<int>(_y); };
-    int zint() const {return static_cast<int>(_z); };
-    int xint(unsigned d) const { return static_cast<int>(_coords[d]); }
+    int xint() const {return static_cast<int>(_p[0]); };
+    int yint() const {return static_cast<int>(_p[1]); };
+    int zint() const {return static_cast<int>(_p[2]); };
+    int xint(unsigned d) const { return static_cast<int>(_p[d]); }
     //@}
 
     /** @name Overloaded Operators */
@@ -77,7 +81,6 @@ class Point{
     inline void operator *= (const int factor);
     inline void operator *= (const double factor);
 
-    inline Point& operator=(const Point &other);
     inline Point  operator+(const Point &other) const;
     inline Point  operator-(const Point &other) const;
 
@@ -86,39 +89,35 @@ class Point{
     
     double magnitude();
 
-    inline bool operator != (const Point &other)///{ return ( (xint() != other.xint() ) || (yint() != other.yint()) || (zint() != other.zint())); };
+    inline bool operator != (const Point &other) const
     {
-      unsigned int d = 0;
-      while (d < dim && xint(d) == other.xint(d)) { d++; }
-      return d != dim;
+      return this->_p != other._p;
     }
 
-    inline bool operator == (const Point &other)///{ return ( ( xint() == other.xint() ) && ( yint() == other.yint()) && ( zint() == other.zint())); };
+    inline bool operator == (const Point &other) const
     {
-      unsigned int d = 0;
-      while (d < dim && xint(d) != other.xint(d)) { d++; }
-      return d == dim;
+      return this->_p == other._p;
     }
     //@}
 
-    inline double dot(Point other) { 
+    inline double dot(Point other) const { 
       double sum = 0.0;
       #pragma unroll(dim)
       for (unsigned int d = 0; d < dim; d++)
-        sum += _coords[d] * other._coords[d];
+        sum += _p[d] * other._p[d];
       return sum;
     }
 
-    inline double dot3(Point Other) {
-      return  (_x*Other._x+_y*Other._y+_z*Other._z);
+    inline double dot3(Point Other) const {
+      return  (_p[0]*Other._p[0]+_p[1]*Other._p[1]+_p[2]*Other._p[2]);
     };
 
-    inline Point cross(Point  Other){
-      return  Point(_y*Other._z-Other._y*_z, _z*Other._x-_x*Other._z, 
-          _x*Other._y-_y*Other._x); 
+    inline Point cross(Point  Other) const{
+      return  Point(_p[1]*Other._p[2]-Other._p[1]*_p[2], _p[2]*Other._p[0]-_p[0]*Other._p[2], 
+          _p[0]*Other._p[1]-_p[1]*Other._p[0]); 
     };
 
-    inline double abs(){
+    inline double abs() const{
       return sqrt(dot(*this));
     };
 
@@ -129,36 +128,25 @@ class Point{
   protected:
     inline void initialize3(double newx, double newy, double newz);
 
-    std::array<double,m_uiDim> _coords;
-    double &_x = _coords[0];
-    double &_y = _coords[1];
-    double &_z = _coords[2];
+    std::array<double,m_uiDim> _p = {};
 };
-
-template <unsigned int dim>
-Point<dim>::Point()
-{
-  _coords.fill(0.0);
-}
 
 template <unsigned int dim>
 Point<dim>::Point(double scale)
 {
-  _coords.fill(scale);
+  std::fill(&_p[0], &_p[dim], scale);
 }
 
 template <unsigned int dim>
 Point<dim>::Point(const std::array<double, dim> &newCoords)
 {
-  std::copy(&newCoords[0], &newCoords[dim], &_coords[0]);
-  std::fill(&_coords[dim], &_coords[m_uiDim], 0.0);   // 2d or 1d
+  std::copy(&newCoords[0], &newCoords[dim], &_p[0]);
 }
 
 template <unsigned int dim>
 Point<dim>::Point(const double * newCoords)
 {
-  std::copy(newCoords, newCoords + dim, &_coords[0]);
-  std::fill(&_coords[dim], &_coords[m_uiDim], 0.0);   // 2d or 1d
+  std::copy(&newCoords[0], &newCoords[dim], &_p[0]);
 }
 
 template <unsigned int dim>
@@ -183,11 +171,6 @@ Point<dim>::Point(unsigned int newx, unsigned int newy, unsigned int newz)
       static_cast<double>(newz));
 }
 
-template <unsigned int dim>
-Point<dim>::Point(const Point &newposition)
-{
-  _coords = newposition._coords;
-}
 /*
 template <unsigned int dim>
 Point<dim>::~Point()
@@ -199,7 +182,7 @@ Point<dim>::~Point()
 template <unsigned int dim>
 inline void Point<dim>::initialize3(double newx, double newy, double newz)
 {
-  _x = newx;  _y = newy;  _z = newz;
+  _p[0] = newx;  _p[1] = newy;  _p[2] = newz;
 }
 
 template <unsigned int dim>
@@ -207,7 +190,7 @@ Point<dim> Point<dim>::operator - () const {
   Point ret(*this);
   #pragma unroll(dim)
   for (unsigned int d = 0; d < dim; d++)
-    ret._coords[d] = -ret._coords[d];
+    ret._p[d] = -ret._p[d];
   return ret;
 }
 
@@ -215,14 +198,14 @@ template <unsigned int dim>
 void Point<dim>::operator *= (const int factor){
   #pragma unroll(dim)
   for (unsigned int d = 0; d < dim; d++)
-    _coords[d] *= factor;
+    _p[d] *= factor;
 }
 
 template <unsigned int dim>
 void Point<dim>::operator *= (const double factor){
   #pragma unroll(dim)
   for (unsigned int d = 0; d < dim; d++)
-    _coords[d] *= factor;
+    _p[d] *= factor;
 }
 
 template <unsigned int dim>
@@ -230,7 +213,7 @@ void Point<dim>::operator /= (const int divisor){
   if (divisor == 0) return;
   #pragma unroll(dim)
   for (unsigned int d = 0; d < dim; d++)
-    _coords[d] /= static_cast<double>(divisor);
+    _p[d] /= static_cast<double>(divisor);
 }
 
 template <unsigned int dim>
@@ -238,21 +221,21 @@ void Point<dim>::operator /= (const double divisor){
   if (divisor == 0) return;
   #pragma unroll(dim)
   for (unsigned int d = 0; d < dim; d++)
-    _coords[d] /= divisor;
+    _p[d] /= divisor;
 }
 
 template <unsigned int dim>
 void Point<dim>::operator += (const Point& other){
   #pragma unroll(dim)
   for (unsigned int d = 0; d < dim; d++)
-    _coords[d] += other._coords[d];
+    _p[d] += other._p[d];
 }
 
 template <unsigned int dim>
 void Point<dim>::operator -= (const Point& other){
   #pragma unroll(dim)
   for (unsigned int d = 0; d < dim; d++)
-    _coords[d] -= other._coords[d];
+    _p[d] -= other._p[d];
 }
 
 template <unsigned int dim>
@@ -269,13 +252,6 @@ Point<dim> Point<dim>::operator + (const Point &other) const{
   return ret;
 }
 
-template <unsigned int dim>
-Point<dim>& Point<dim>::operator=(const Point &other){
-  #pragma unroll(dim)
-  for (unsigned int d = 0; d < dim; d++)
-    _coords[d] = other._coords[d];
-  return *this;
-}
 
 template <unsigned int dim>
 Point<dim> Point<dim>::operator /(const double divisor) const
@@ -298,12 +274,12 @@ Point<dim> Point<dim>::TransMatMultiply3(double *transMat, Point inPoint)
 {
   Point outPoint;
 
-  outPoint._x = transMat[ 0]*inPoint._x +transMat[ 4]*inPoint._y +transMat[8]
-    *inPoint._z +transMat[12];
-  outPoint._y = transMat[ 1]*inPoint._x +transMat[ 5]*inPoint._y +transMat[9]
-    *inPoint._z +transMat[13];
-  outPoint._z = transMat[ 2]*inPoint._x +transMat[ 6]*inPoint._y
-    +transMat[10]*inPoint._z +transMat[14];
+  outPoint._p[0] = transMat[ 0]*inPoint._p[0] +transMat[ 4]*inPoint._p[1] +transMat[8]
+    *inPoint._p[2] +transMat[12];
+  outPoint._p[1] = transMat[ 1]*inPoint._p[0] +transMat[ 5]*inPoint._p[1] +transMat[9]
+    *inPoint._p[2] +transMat[13];
+  outPoint._p[2] = transMat[ 2]*inPoint._p[0] +transMat[ 6]*inPoint._p[1]
+    +transMat[10]*inPoint._p[2] +transMat[14];
 
   return outPoint;
 }
@@ -318,9 +294,9 @@ Point<dim> Point<dim>::TransMatMultiply(double *transMat, Point inPoint)
 
   for (unsigned int i = 0; i < dim; i++)
   {
-    outPoint._coords[i] = transMat[dim*(dim+1) + i];
+    outPoint._p[i] = transMat[dim*(dim+1) + i];
     for (unsigned int j = 0; j < dim; j++)
-      outPoint._coords[i] += transMat[j*(dim+1) + i] * inPoint._coords[j];
+      outPoint._p[i] += transMat[j*(dim+1) + i] * inPoint._p[j];
   }
 
   return outPoint;
