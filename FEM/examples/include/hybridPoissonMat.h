@@ -28,6 +28,9 @@ namespace PoissonEq
 
       Point<dim> center;
     };
+
+
+    class ElementalMatrix;
   }
 
 
@@ -67,6 +70,13 @@ namespace PoissonEq
 
 
       // -----------------------------------------------------------------------
+      // Produce hybrid coarsened operator. (Galerkin coarsening where explicit)
+      // -----------------------------------------------------------------------
+
+      HybridPoissonMat coarsen(const ot::DA<dim> *da) const;
+
+
+      // -----------------------------------------------------------------------
       // Interface pass-through to internal PoissonMat
       // -----------------------------------------------------------------------
 
@@ -98,13 +108,14 @@ namespace PoissonEq
 
 
     private:
-      /// void implicit_elemental_mvec();
-      /// void explicit_elemental_mvec();
-
-      /// ???? implicit_elemental_mat();
-      /// ???? explicit_elemental_mat();
-
       void emat_mult(const double *in, double *out, size_t local_eid);
+
+      bool is_evaluated(size_t local_eid) const;
+      void is_evaluated(size_t local_eid, bool evaluated);
+
+      detail::ElementalMatrix proto_emat() const;
+      detail::ElementalMatrix elemental_matrix(size_t local_eid) const;  //future: return a view, avoid alloc
+      void elemental_matrix(size_t local_eid, detail::ElementalMatrix emat);
 
     private:
       PoissonMat<dim> m_matfree;

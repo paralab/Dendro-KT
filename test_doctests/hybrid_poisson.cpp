@@ -83,9 +83,17 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
 
   // Mesh (nonuniform grid)
   const LLU global_seeds = 1000;
-  /// ot::DistTree<uint32_t, dim> base_tree = gaussian_tree<dim>(global_seeds, partition_tol, comm);
-  ot::DistTree<uint32_t, dim> base_tree = uniform_tree<dim>(global_seeds, partition_tol, comm);
-  ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tol);
+  const int n_grids = 2;
+  ot::DistTree<uint32_t, dim> trees = gaussian_tree<dim>(global_seeds, partition_tol, comm);
+  /// ot::DistTree<uint32_t, dim> trees = uniform_tree<dim>(global_seeds, partition_tol, comm);
+  ot::DistTree<uint32_t, dim> surrogate_trees = trees.generateGridHierarchyUp(true, n_grids, partition_tol);
+  std::vector<ot::DA<dim> *> das(n_grids, nullptr);
+  std::vector<ot::DA<dim> *> surrogate_das(n_grids, nullptr);
+  for (int g = 0; g < n_grids; ++g)
+    das[g] = new ot::DA<dim>(trees, g, comm, polynomial_degree, int{}, partition_tol);
+  for (int g = 1; g < n_grids; ++g)
+    surrogate_das[g] = new ot::DA<dim>(surrogate_trees, g, comm, polynomial_degree, int{}, partition_tol);
+  ot::DA<dim> &base_da = *das[0];
   const LLU global_cells = base_da.getGlobalElementSz();
   const LLU global_nodes = base_da.getGlobalNodeSz();
 
@@ -122,12 +130,16 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   using HybridVec = PoissonEq::HybridPoissonVec<dim>;
   PoissonMat fine_geo_matrix(&base_da, nullptr, single_dof);
   PoissonVec fine_geo_vector(&base_da, nullptr, single_dof);  //future: rm {} octlist
-  HybridMat fine_hyb_matrix(&base_da, single_dof);
+  HybridMat fine_hyb_matrix(&base_da, single_dof);  //future: specify partition
   HybridVec fine_hyb_vector(&base_da, nullptr, single_dof);  //future: rm {} octlist
   fine_geo_matrix.setProblemDimensions(min_corner, max_corner);
   fine_geo_vector.setProblemDimensions(min_corner, max_corner);
   fine_hyb_matrix.setProblemDimensions(min_corner, max_corner);
   fine_hyb_vector.setProblemDimensions(min_corner, max_corner);
+
+  // Compare coarse systems.
+  PoissonMat coarse_geo_matrix(das[1], nullptr, single_dof);
+  HybridMat coarse_hyb_matrix = fine_hyb_matrix.coarsen(das[1]);
 
   // Vector storage
   std::vector<double> u_vec = local_vector(base_da, double{}, single_dof);
@@ -135,6 +147,11 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   std::vector<double> w_vec = local_vector(base_da, double{}, single_dof);
   std::vector<double> f_vec = local_vector(base_da, double{}, single_dof);
   std::vector<double> rhs_vec = local_vector(base_da, double{}, single_dof);
+
+  std::vector<double> u_c_vec = local_vector(*das[1], double{}, single_dof);
+  std::vector<double> v_c_vec = local_vector(*das[1], double{}, single_dof);
+  std::vector<double> w_c_vec = local_vector(*das[1], double{}, single_dof);
+
 
   // Boundary condition and 0 on interior (needed to subtract A u^bdry from rhs)
   for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
@@ -156,6 +173,9 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
 
   fine_hyb_matrix.zero_boundary(true);
 
+  coarse_geo_matrix.zero_boundary(true);
+  coarse_hyb_matrix.zero_boundary(true);
+
   // Precompute exact solution to evaluate error of an approximate solution.
   std::vector<double> u_exact_vec = local_vector(base_da, double{}, single_dof);
   for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
@@ -167,13 +187,26 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   std::uniform_real_distribution<double> rand(0.0, 1.0);
   for (double &u : u_vec)
     u = rand(gen);
+  for (double &u_c : u_c_vec)
+    u_c = rand(gen);
 
   fine_geo_matrix.matVec(u_vec.data(), v_vec.data());
   fine_hyb_matrix.matVec(u_vec.data(), w_vec.data());
 
-  const double diff_infty = normLInfty(v_vec.data(), w_vec.data(), v_vec.size(), comm);
+  coarse_geo_matrix.matVec(u_c_vec.data(), v_c_vec.data());
+  coarse_hyb_matrix.matVec(u_c_vec.data(), w_c_vec.data());
 
+  //
+  const double diff_infty = normLInfty(v_vec.data(), w_vec.data(), v_vec.size(), comm);
   MPI_CHECK(0, diff_infty < 1e-12);
+
+  const double coarse_diff_infty = normLInfty(v_c_vec.data(), w_c_vec.data(), v_c_vec.size(), comm);
+  MPI_CHECK(0, coarse_diff_infty < 1e-12);
+
+  for (ot::DA<dim> *da: das)
+    delete da;
+  for (ot::DA<dim> *da: surrogate_das)
+    delete da;
 
   _DestroyHcurve();
   DendroScopeEnd();
@@ -194,7 +227,7 @@ ot::DistTree<uint32_t, dim> uniform_tree(LLU global_seeds, double partition_tol,
       partition_tol);
 
   std::cerr << "uniform_tree() -> " << result.getTreePartFiltered().size() << " cells\n";
-  
+
   return result;
 }
 
@@ -242,7 +275,7 @@ ot::DistTree<uint32_t, dim> gaussian_tree(LLU global_seeds, double partition_tol
   // DistTree.
   auto result = ot::DistTree<uint32_t, dim>(tree, comm);
 
-  std::cerr << "uniform_tree() -> " << result.getTreePartFiltered().size() << " cells\n";
+  std::cerr << "gaussian_tree() -> " << result.getTreePartFiltered().size() << " cells\n";
 
   return result;
 }
