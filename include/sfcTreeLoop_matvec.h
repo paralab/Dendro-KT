@@ -25,6 +25,7 @@
 #include <tuple>
 
 
+
 namespace ot
 {
 
@@ -193,7 +194,8 @@ namespace ot
 
         /** overwriteNodeValsOut() */
         void overwriteNodeValsOut(const NodeT *newVals) {
-          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn());
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().clear();
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * getNumNodesIn(), 42);
           std::copy_n(newVals,  treeloop.m_ndofs * getNumNodesIn(),
                       treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
         }
@@ -758,6 +760,7 @@ namespace ot
       const ChildI child_sfc = nodeInstance.getChild_sfc();
       const size_t nIdx = nodeInstance.getPNodeIdx();
       const size_t childOffset = childNodeOffsets[child_sfc];
+
 
       auto &childOutput = parentFrame.template getChildOutput<0>(child_sfc);
       if (childOutput.size() > 0)

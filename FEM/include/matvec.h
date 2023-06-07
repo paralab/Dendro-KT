@@ -14,6 +14,7 @@
 #include "nsort.h"    // TNPoint
 
 #include "sfcTreeLoop_matvec.h"
+#include "sfcTreeLoop_matvec_io.h"
 
 #include<iostream>
 #include<functional>
@@ -95,6 +96,66 @@ namespace fem
         std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
     }
 
+
+    template <typename T, typename TN>
+    void matvec_no_interpolation(
+        const T* vecIn, T* vecOut, unsigned int ndofs, const TN *coords, unsigned int sz, const TN *treePartPtr, size_t treePartSz, const TN &partFront, const TN &partBack, EleOpT<T> eleOp, double scale, int degree)
+    {
+      // Initialize output vector to 0.
+      std::fill(vecOut, vecOut + ndofs*sz, 0);
+
+      using C = typename TN::coordType;  // If not unsigned int, error.
+      constexpr unsigned int dim = ot::coordDim((TN*){});
+      const unsigned int npe = intPow(degree + 1, dim);
+
+      ot::MatvecBaseIn<dim, T, false> input_loop(
+          sz, ndofs, degree, false, 0,
+          coords, vecIn,
+          treePartPtr, treePartSz,
+          partFront, partBack);
+
+      ot::MatvecBaseOut<dim, T, true> output_loop(
+          sz, ndofs, degree, false, 0,
+          coords,
+          treePartPtr, treePartSz,
+          partFront, partBack);
+
+      input_loop.interpolation(false);
+      output_loop.interpolation(false);
+
+      std::vector<T> leafResult(ndofs*npe, 0.0);
+
+      size_t count_elements = 0;
+      while (not input_loop.isFinished())
+      {
+        if (input_loop.isPre() && input_loop.subtreeInfo().isLeaf())
+        {
+          const double * nodeCoordsFlat = input_loop.subtreeInfo().getNodeCoords();
+          const T * nodeValsFlat = input_loop.subtreeInfo().readNodeValsIn();
+
+          eleOp(
+              nodeValsFlat, &(*leafResult.begin()), ndofs,
+              nodeCoordsFlat, scale,
+              input_loop.subtreeInfo().isElementBoundary());
+
+          output_loop.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
+
+          input_loop.next();
+          output_loop.next();
+          ++count_elements;
+        }
+        else
+        {
+          input_loop.step();
+          output_loop.step();
+        }
+      }
+
+      size_t writtenSz = output_loop.finalize(vecOut);
+
+      if (sz > 0 && writtenSz == 0)
+        std::cerr << "Warning: matvec() did not write any data! Loop misconfigured?\n";
+    }
 
 
 } // end of namespace fem

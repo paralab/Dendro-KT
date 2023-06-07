@@ -414,6 +414,9 @@ namespace ot
               <= BaseT::getCurrentSubtree().getLevel();
       }
 
+      bool interpolation() const { return p2c; }
+      void interpolation(bool interpolation) { assert(interpolation == p2c); }
+
     protected:
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
       void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren) {}
@@ -563,7 +566,8 @@ namespace ot
         /** overwriteNodeValsOut() */
         size_t overwriteNodeValsOut(const NodeT *newVals) {
           const size_t alloc_nodes = std::max<size_t>(this->getNodesPerElement(), getNumNodesIn());
-          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * alloc_nodes);
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().clear();
+          treeloop.getCurrentFrame().template getMyOutputHandle<0>().resize(treeloop.m_ndofs * alloc_nodes, 42);
           std::copy_n(newVals,  treeloop.m_ndofs * alloc_nodes,
                       treeloop.getCurrentFrame().template getMyOutputHandle<0>().begin());
 
@@ -643,6 +647,9 @@ namespace ot
               <= BaseT::getCurrentSubtree().getLevel();
       }
 
+      bool interpolation() const { return m_interpolation; }
+      void interpolation(bool interpolation) { m_interpolation = interpolation; }
+
     protected:
       void topDownNodes(FrameT &parentFrame, ExtantCellFlagT *extantChildren);
       void bottomUpNodes(FrameT &parentFrame, ExtantCellFlagT extantChildren);
@@ -679,6 +686,8 @@ namespace ot
 
       unsigned int m_ndofs;
       unsigned int m_eleOrder;
+
+      bool m_interpolation = true;
 
       bool m_visitEmpty;
 
@@ -1374,6 +1383,7 @@ namespace ot
             // Has hanging nodes. Interpolate.
             // Nodes not on a hanging face will be overwritten later, not to worry.
             constexpr bool transposeFalse = false;
+            assert(this->interpolation());
             m_interp_matrices.template IKD_ParentChildInterpolation<transposeFalse>(
                 parentNodeVals,
                 &(*parentFrame.template getChildInput<1>(child_sfc).begin()),
@@ -1383,6 +1393,7 @@ namespace ot
         }
         else
         {
+          assert(not this->interpolation());
           if (m_visitEmpty || hangingInChild[child_sfc])
           {
             // If not p2c, just copy the parent node values into child.
@@ -1773,6 +1784,7 @@ namespace ot
 
     const bool parentNonleaf = parSubtree.getLevel() < parentFrame.mySummaryHandle.m_subtreeFinestLevel;
 
+
     //
     // Accumulate non-hanging node values from child buffers into parent frame.
     //
@@ -1884,20 +1896,30 @@ namespace ot
           const sfc::ChildNum::Type child_m = this->getCurrentRotation().child_num(child_sfc);
           if (childOutput.size() > 0 and (hangingInChild[child_sfc] or m_visitEmpty))
           {
+            auto &childOutIsDirty = parentFrame.template getChildOutput<1>(child_sfc);
+
             // Has hanging nodes. Interpolation-transpose.
             constexpr bool transposeTrue = true;
-            m_interp_matrices.template IKD_ParentChildInterpolation<transposeTrue>(
-                &(*childOutput.begin()),
-                &(*childOutput.begin()),
-                m_ndofs,
-                child_m);
+            if (this->interpolation())
+            {
+              // Interpolate^T in-place.
 
-            auto &childOutIsDirty = parentFrame.template getChildOutput<1>(child_sfc);
-            m_interp_matrices_logical.template IKD_ParentChildInterpolation<transposeTrue>(
-                &(*childOutIsDirty.begin()),
-                &(*childOutIsDirty.begin()),
-                1,
-                child_m);
+              m_interp_matrices.template IKD_ParentChildInterpolation<transposeTrue>(
+                  &(*childOutput.begin()),
+                  &(*childOutput.begin()),
+                  m_ndofs,
+                  child_m);
+
+              m_interp_matrices_logical.template IKD_ParentChildInterpolation<transposeTrue>(
+                  &(*childOutIsDirty.begin()),
+                  &(*childOutIsDirty.begin()),
+                  1,
+                  child_m);
+            }
+            else
+            {
+              // Assume that the leaf wanted references to parent nodes.
+            }
 
             for (int nIdx = 0; nIdx < npe; ++nIdx)
               if (childOutIsDirty[nIdx])

@@ -118,6 +118,8 @@ namespace PoissonEq
 
     assert(m_partition_table.find(key) != m_partition_table.end());
 
+    //TODO P2C
+
     switch (index.partition_id)
     {
       case opaque:
@@ -132,6 +134,9 @@ namespace PoissonEq
       default:
         assert(false);
     }
+
+    // TODO C2P
+
   }
 
   // HybridPoissonMat::emat_mult()
@@ -145,6 +150,64 @@ namespace PoissonEq
     Eigen::Map<Eigen::VectorXd> vec_out(out, n);
     vec_out = mat * vec_in;
   }
+
+
+  // HybridPoissonMat::matVec()
+  template <int dim>
+  void HybridPoissonMat<dim>::matVec(
+      const VECType* in,VECType* out, double scale)
+  {
+    // Copy-pasted from feMatrix.h:matVec(),
+    // just changed matvec() -> matvec_no_interpolation()
+
+    using namespace std::placeholders;   // Convenience for std::bind().
+
+    // Shorter way to refer to our member DA.
+    const ot::DA<dim> * m_oda = this->da();
+    const int m_uiDof = this->ndofs();
+
+    // Static buffers for ghosting. Check/increase size.
+    static std::vector<VECType> inGhosted, outGhosted;
+    m_oda->template createVector<VECType>(inGhosted, false, true, m_uiDof);
+    m_oda->template createVector<VECType>(outGhosted, false, true, m_uiDof);
+    std::fill(outGhosted.begin(), outGhosted.end(), 0);
+    VECType *inGhostedPtr = inGhosted.data();
+    VECType *outGhostedPtr = outGhosted.data();
+
+    // 1. Copy input data to ghosted buffer.
+    m_oda->template nodalVecToGhostedNodal<VECType>(in, inGhostedPtr, true, m_uiDof);
+
+    // 1.a. Override input data with pre-matvec initialization.
+    this->preMatVec(in, inGhostedPtr + this->ndofs() * m_oda->getLocalNodeBegin(), scale);
+
+    // 2. Upstream->downstream ghost exchange.
+    m_oda->template readFromGhostBegin<VECType>(inGhostedPtr, m_uiDof);
+    m_oda->template readFromGhostEnd<VECType>(inGhostedPtr, m_uiDof);
+
+    // 3. Local matvec().
+    const auto * tnCoords = m_oda->getTNCoords();
+    std::function<void(const VECType *, VECType *, unsigned int, const double *, double, bool)> eleOp =
+        std::bind(&HybridPoissonMat::elementalMatVec, this, _1, _2, _3, _4, _5, _6);
+
+    assert(m_oda->getElementOrder() == m_oda->getReferenceElement()->getOrder());
+
+    fem::matvec_no_interpolation(
+        inGhostedPtr, outGhostedPtr, m_uiDof, tnCoords, m_oda->getTotalNodalSz(),
+        &(*this->octList()->cbegin()), this->octList()->size(),
+        *m_oda->getTreePartFront(), *m_oda->getTreePartBack(),
+        eleOp, scale, m_oda->getElementOrder());
+
+    // 4. Downstream->Upstream ghost exchange.
+    m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, m_uiDof);
+    m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, m_uiDof);
+
+    // 5. Copy output data from ghosted buffer.
+    m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, m_uiDof);
+
+    // 5.a. Override output data with post-matvec re-initialization.
+    this->postMatVec(outGhostedPtr + this->ndofs() * m_oda->getLocalNodeBegin(), out, scale);
+  }
+
 
 
   // HybridPoissonMat::coarsen()
@@ -185,6 +248,8 @@ namespace PoissonEq
       }
       coarse_mat.is_evaluated(i, true);
     }
+
+#warning "TODO skip tree traversal loops if there are no elements"
 
     //
     // Evaluate the coarse elemental matrices: Galerkin coarsening operator.

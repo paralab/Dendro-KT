@@ -49,6 +49,11 @@ namespace PoissonEq
       HybridPoissonMat(HybridPoissonMat &&other);
       HybridPoissonMat & operator=(HybridPoissonMat &&other);
 
+
+      // -----------------------------------------------------------------------
+      // Elemental operations.
+      // -----------------------------------------------------------------------
+
       void elementalMatVec(
           const VECType* in,
           VECType* out,
@@ -77,8 +82,11 @@ namespace PoissonEq
 
 
       // -----------------------------------------------------------------------
-      // Interface pass-through to internal PoissonMat
+      // Vector operations.
       // -----------------------------------------------------------------------
+
+      // Override the outer matVec() so as to use custom loops.
+      virtual void matVec(const VECType* in,VECType* out, double scale=1.0);
 
       // zero_boundary()
       bool zero_boundary() const { return m_matfree.zero_boundary(); }
