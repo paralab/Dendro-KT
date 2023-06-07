@@ -1833,13 +1833,13 @@ namespace ot
                 }
 
                 myOutIsDirty[nIdx] |= bool(childOutIsDirty[nodeRank]);
-              }
 
-              // Zero out the values after they are transferred.
-              // This is necessary so that later linear transforms are not contaminated.
-              std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
-                           m_ndofs, zero );
-              childOutIsDirty[nodeRank] = false;
+                // Zero out the values after they are transferred.
+                // This is necessary so that later linear transforms are not contaminated.
+                std::fill_n( &parentFrame.template getChildOutput<0>(child_sfc)[m_ndofs * nodeRank],
+                             m_ndofs, zero );
+                childOutIsDirty[nodeRank] = false;
+              }
             }
           }
         }
