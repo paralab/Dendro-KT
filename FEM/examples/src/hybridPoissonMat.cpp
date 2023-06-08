@@ -465,19 +465,17 @@ namespace PoissonEq
       //   parent fine := virtual coarse             f.s|_par  <-    V c.s
       //     self fine := interp.(virt. coarse)      f.s|_self <- P' V c.s
       //
-      //     ^ Modify: Due to 2:1-balancing and single-level coarsening,
-      //     a fine-grid self node (nonhanging) lives on a face
-      //     that can be larger but *NEVER hanging in the coarse grid*.
-      //     Therefore the coarse virtual nodes equal coarse self nodes:
+      //     ^ Note: Due to 2:1-balancing and single-level coarsening,
+      //     a coarse-grid face containing a fine-grid self node (nonhanging)
+      //     cannot itself be hanging, so it may seem that (P' V) is unneeded.
+      //     HOWEVER, fine-grid self nodes can be *internal* to a coarse-grid
+      //     cell, and for these cases chained interpolations are necessary.
       //
-      //     self fine := interp.(coarse)            f.s|_self <- P' c.s
-      //
-      // Therefore, all rows of P are      Note that V is a disjoint union
-      // either rows of V or of P':        of rows from I and rows from P''.
-      //   fine/coarse:  =      ≠          P'' interpolates from coarse parent.
-      //  --------------------------       Rows from I are for nonhanging nodes;
-      //   P|_par   <-   I  or  V          Rows from P'' are for hanging nodes.
-      //   P|_self  <-   V  or  P'
+      //                                   Note that V is a disjoint union
+      //   fine/coarse:  =      ≠          of rows from I and rows from P''.
+      //  --------------------------       P'' interpolates from coarse parent.
+      //   P|_par   <-   I  or  V          Rows from I are for nonhanging nodes;
+      //   P|_self  <-   V  or  P'V        Rows from P'' are for hanging nodes.
 
       const size_t n_nodes = fine_emat.n_nodes;
       const int ndofs = fine_emat.ndofs;
@@ -487,6 +485,9 @@ namespace PoissonEq
       const int fine_chn = fine_oct.getMortonIndex();
 
       Eigen::MatrixXd P = Eigen::MatrixXd::Identity(n, n);
+      Eigen::MatrixXd K = Eigen::MatrixXd::Identity(n, n);
+
+      // M = (M^T I)^T
 
       if (fine_oct.getLevel() == coarse_oct.getLevel())
       {
@@ -499,24 +500,34 @@ namespace PoissonEq
               interp->template IKD_ParentChildInterpolation<(interp->C2P)>(
                   P.col(row).data(), P.col(row).data(), ndofs, coarse_chn);
             }
+        P.transposeInPlace();
       }
       else  // (fine_oct.getLevel() > coarse_oct.getLevel())
       {
-        // coarse.interp if fine hanging and coarse hanging.
-        //   fine.interp if fine nonhanging.
+        // coarse.interp if coarse hanging.
         for (size_t i = 0; i < n_nodes; ++i)
-          if (fine_nonhanging[i] or not coarse_nonhanging[i])
-          {
-            const int chn = fine_nonhanging[i] ? fine_chn : coarse_chn;
+          if (not coarse_nonhanging[i])
             for (int dof = 0; dof < ndofs; ++dof)
             {
               const size_t row = i * ndofs + dof;
               interp->template IKD_ParentChildInterpolation<(interp->C2P)>(
-                  P.col(row).data(), P.col(row).data(), ndofs, chn);
+                  P.col(row).data(), P.col(row).data(), ndofs, coarse_chn);
             }
-          }
+        P.transposeInPlace();
+
+        // fine.interp if fine nonhanging.
+        for (size_t i = 0; i < n_nodes; ++i)
+          if (fine_nonhanging[i])
+            for (int dof = 0; dof < ndofs; ++dof)
+            {
+              const size_t row = i * ndofs + dof;
+              interp->template IKD_ParentChildInterpolation<(interp->C2P)>(
+                  K.col(row).data(), K.col(row).data(), ndofs, fine_chn);
+            }
+        K.transposeInPlace();
+
+        P = K * P;
       }
-      P.transposeInPlace();  // The "columns" defined above are rows as desired.
 
       //future: Other tensor library might simplify Kroenecker product. xtensor?
 
