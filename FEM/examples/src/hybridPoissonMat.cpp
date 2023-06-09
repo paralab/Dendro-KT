@@ -46,11 +46,14 @@ namespace PoissonEq
   // HybridPoissonMat()
   template <int dim>
   HybridPoissonMat<dim>::HybridPoissonMat(const ot::DA<dim> *da, int dof)
-    : Base(da, nullptr, dof), m_matfree(da, nullptr, dof), m_emats(da->getLocalElementSz())
+    : Base(da, nullptr, dof), m_matfree(da, nullptr, dof), m_emats(da->getLocalElementSz()),
+      m_elemental_nonhanging(da->getLocalElementSz(), da->getNumNodesPerElement(), true),
+      m_interp(da->getElementOrder())
   {
     // Partition table  (center coordinate -> element id).
-    m_partition_table.reserve(da->getLocalElementSz());
-    const auto &octlist = da->dist_tree()->getTreePartFiltered(da->stratum());
+    m_partition_table.reserve(da->getLocalElementSz()); //don't invalidate iters
+    m_inv_partition_table.resize(da->getLocalElementSz());
+    const auto &octlist = *this->octList();
     for (size_t i = 0; i < octlist.size(); ++i)
     {
       const ot::TreeNode<uint32_t, dim> tn = octlist[i];
@@ -61,40 +64,184 @@ namespace PoissonEq
       const Point<dim> center = corner + Point<dim>(size) / 2.0;
       const detail::ElemCenter<dim> key(center);
 
-      //future: some opaque, some evaluated
-      HybridPartition partition_id = evaluated;
+      // Change the partition id after construction using store_evaluated().
+      using detail::HybridPartition;
+      HybridPartition partition_id = HybridPartition::opaque;
 
+      using detail::ElemIndex;
       const ElemIndex value = ElemIndex{i, partition_id};
 
       assert(m_partition_table.find(key) == m_partition_table.end());//unique.
 
-      m_partition_table.emplace(key, value);
+      m_inv_partition_table[i] = m_partition_table.emplace(key, value).first;
     }
 
+    const size_t n_nodes = this->da()->getNumNodesPerElement();
+    std::vector<bool> nonhanging(n_nodes, false);
+    const ot::TreeNode<uint32_t, dim> *tn_coords = nullptr;
+    size_t local_element_id = 0;
 
-    //future: separate element-by-element for subset, not in constructor.
+    // Store hanging node status of all elements.
+    ot::MatvecBaseCoords<dim> loop(
+        this->da()->getTotalNodalSz(), this->da()->getElementOrder(),
+        false, 0,
+        this->da()->getTNCoords(),
+        this->octList()->data(),
+        this->octList()->size(),
+        *this->da()->getTreePartFront(),
+        *this->da()->getTreePartBack());
+    while (not loop.isFinished())
+    {
+      if (loop.isPre() and loop.subtreeInfo().isLeaf())
+      {
+        const int level = loop.getCurrentSubtree().getLevel();
+        nonhanging = loop.subtreeInfo().readNodeNonhangingIn();
+        tn_coords = loop.subtreeInfo().readNodeCoordsIn();
 
+        // Block factorization needs entire closed faces to be hanging or not.
+        for (size_t i = 0; i < n_nodes; ++i)
+          if (nonhanging[i] and tn_coords[i].getLevel() != level)
+            nonhanging[i] = false;
+
+        m_elemental_nonhanging.set_row(local_element_id, nonhanging);
+
+        loop.next();
+        ++local_element_id;
+      }
+      else
+      {
+        loop.step();
+      }
+    }
+  }
+
+
+  template <int dim>
+  void HybridPoissonMat<dim>::store_evaluated(size_t local_eid)
+  {
     // Those Eigen matrices that are not resized will just be null pointers.
 
-    // Initialize m_emats (elemental matrices): evaluate getElementalMatrix()
-    const size_t n = da->getNumNodesPerElement() * dof;
-    for (Eigen::MatrixXd &mat: m_emats)
-      mat.resize(n, n);
+    this->is_evaluated(local_eid, true);
+    this->elemental_matrix(local_eid, this->evaluate(local_eid));
+  }
 
-    size_t local_element_id = 0;
-    m_matfree.collectMatrixEntries([&, this](
-          const std::vector<PetscInt>& ,//ids
-          const std::vector<PetscScalar>& entries )
+
+  template <int dim>
+  detail::ElementalMatrix
+    HybridPoissonMat<dim>::evaluate(size_t local_eid) const
+  {
+    const size_t n_nodes = this->da()->getNumNodesPerElement();
+    const int ndofs = this->ndofs();
+    const size_t n = n_nodes * ndofs;
+    detail::ElementalMatrix emat(n_nodes, ndofs);
+
+    const ot::TreeNode<uint32_t, dim> octant = (*this->octList())[local_eid];
+    const bool is_boundary = octant.getIsOnTreeBdry();
+
+    static std::vector<double> node_coords_flat;
+    const std::vector<ot::TreeNode<uint32_t, dim>> *no_tn_coords = nullptr;
+    ot::fillAccessNodeCoordsFlat(
+        false, *no_tn_coords,
+        octant, this->da()->getElementOrder(), node_coords_flat);
+
+    static std::vector<ot::MatRecord> elem_records;
+    m_matfree.getElementalMatrix(elem_records, node_coords_flat.data(), is_boundary);//beware: not entire element set
+    for (const ot::MatRecord &entry : elem_records)
+      emat.entries(entry.getRowID() * ndofs + entry.getRowDim(),
+                   entry.getColID() * ndofs + entry.getColDim())
+          = entry.getMatVal();
+
+    // Multiply on the left since Eigen entries are column-major.
+
+    // Hᵀ A H = Hᵀ (Hᵀ Aᵀ)ᵀ
+
+    emat.entries.transposeInPlace();
+
+    for (size_t col = 0; col < n; ++col)
+      this->elemental_c2p( local_eid,
+          emat.entries.col(col).data(),
+          emat.entries.col(col).data());
+
+    emat.entries.transposeInPlace();
+
+    for (size_t col = 0; col < n; ++col)
+      this->elemental_c2p( local_eid,
+          emat.entries.col(col).data(),
+          emat.entries.col(col).data());
+
+    elem_records.clear();
+    node_coords_flat.clear();
+
+    return emat;
+  }
+
+
+  template <int dim>
+  void HybridPoissonMat<dim>::elemental_p2c(
+      size_t local_eid, const double *in, double *out) const
+  {
+    HybridPoissonMat<dim>::transform_hanging<false>(
+        &m_interp,
+        (*this->octList())[local_eid].getMortonIndex(),
+        m_elemental_nonhanging[local_eid],
+        this->da()->getNumNodesPerElement(), this->ndofs(),
+        in, out);
+  }
+
+  template <int dim>
+  void HybridPoissonMat<dim>::elemental_c2p(
+      size_t local_eid, const double *in, double *out) const
+  {
+    HybridPoissonMat<dim>::transform_hanging<true>(
+        &m_interp,
+        (*this->octList())[local_eid].getMortonIndex(),
+        m_elemental_nonhanging[local_eid],
+        this->da()->getNumNodesPerElement(), this->ndofs(),
+        in, out);
+  }
+
+
+  template <int dim>
+  template <bool use_c2p>
+  void HybridPoissonMat<dim>::transform_hanging(
+      const InterpMatrices<dim, double> *interp,
+      int child_number,
+      detail::ConstArrayBool1DView nonhanging,
+      size_t n_nodes, int ndofs,
+      const double *in, double *out)
+  {
+    static std::vector<double> on_faces;
+    on_faces.resize(n_nodes * ndofs, 0.0);
+
+    if (out != in)
     {
-      auto &mat = this->m_emats[local_element_id];
+      std::copy_n(in, n_nodes * ndofs, out);
+    }
 
-      for (int r = 0; r < n; ++r)
-        for (int c = 0; c < n; ++c)
-          mat(r, c) = entries[r * n + c];
+    bool transform = false;
 
-      ++local_element_id;
-    });
+    for (size_t i = 0; i < n_nodes; ++i)
+    {
+      if (not nonhanging[i])   // Note: ensure interior hanging => exterior also
+      {
+        transform = true;
+        for (int dof = 0; dof < ndofs; ++dof)
+          on_faces[i * ndofs + dof] = in[i * ndofs + dof];
+      }
+    }
 
+    if (transform)
+    {
+      interp->template IKD_ParentChildInterpolation<use_c2p>(
+          on_faces.data(), on_faces.data(), ndofs, child_number);
+
+      for (size_t i = 0; i < n_nodes; ++i)
+        if (not nonhanging[i])
+          for (int dof = 0; dof < ndofs; ++dof)
+            out[i * ndofs + dof] = on_faces[i * ndofs + dof];
+    }
+
+    on_faces.clear();
   }
 
 
@@ -114,28 +261,32 @@ namespace PoissonEq
     const Point<dim> center = (first_pt + last_pt) / 2.0;
     const detail::ElemCenter<dim> key(center);
 
+    using detail::ElemIndex;
     const ElemIndex index = m_partition_table[key];
 
     assert(m_partition_table.find(key) != m_partition_table.end());
 
-    //TODO P2C
-
+    using detail::HybridPartition;
     switch (index.partition_id)
     {
-      case opaque:
+      case HybridPartition::opaque:
+
+        this->elemental_p2c(index.local_element_id, in, out);
+
         this->m_matfree.elementalMatVec(
-            in, out, ndofs, coords, scale, isElementBoundary);
+            out, out, ndofs, coords, scale, isElementBoundary);
+
+        this->elemental_c2p(index.local_element_id, out, out);
+
         break;
 
-      case evaluated:
+      case HybridPartition::evaluated:
         this->emat_mult(in, out, index.local_element_id);
         break;
 
       default:
         assert(false);
     }
-
-    // TODO C2P
 
   }
 
@@ -144,6 +295,7 @@ namespace PoissonEq
   void HybridPoissonMat<dim>::emat_mult(const double *in, double *out, size_t local_eid)
   {
     assert(local_eid < this->da()->getLocalElementSz());
+    assert(this->is_evaluated(local_eid));
     const size_t n = this->da()->getNumNodesPerElement() * this->ndofs();
     const auto &mat = this->m_emats[local_eid];
     Eigen::Map<const Eigen::VectorXd> vec_in(in, n);
@@ -281,8 +433,6 @@ namespace PoissonEq
 
     detail::ElementalMatrix fine_emat;
 
-    const InterpMatrices<dim, double> interpolation(this->da()->getElementOrder());
-
     while (not coarse_loop.isFinished())
     {
       assert(coarse_loop.getCurrentSubtree() == fine_loop.getCurrentSubtree());
@@ -315,7 +465,7 @@ namespace PoissonEq
                 fine_loop.getCurrentSubtree(),
                 fine_emat,
                 fine_loop.subtreeInfo().readNodeNonhangingIn(),
-                &interpolation,
+                &m_interp,
                 coarse_loop.getCurrentSubtree(),
                 coarse_loop.subtreeInfo().readNodeNonhangingIn());
 
@@ -333,7 +483,7 @@ namespace PoissonEq
                   fine_loop.getCurrentSubtree(),
                   fine_emat,
                   fine_loop.subtreeInfo().readNodeNonhangingIn(),
-                  &interpolation,
+                  &m_interp,
                   coarse_loop.getCurrentSubtree(),
                   coarse_loop.subtreeInfo().readNodeNonhangingIn());
 
@@ -363,11 +513,20 @@ namespace PoissonEq
   template <int dim>
   void HybridPoissonMat<dim>::is_evaluated(size_t local_eid, bool evaluated)
   {
+    using detail::HybridPartition;
     const size_t n = this->da()->getNumNodesPerElement() * this->ndofs();
     if (evaluated)
+    {
       m_emats[local_eid].resize(n, n);
+      m_inv_partition_table[local_eid]->second
+          .partition_id = HybridPartition::evaluated;
+    }
     else
+    {
       m_emats[local_eid].resize(0, 0);
+      m_inv_partition_table[local_eid]->second
+          .partition_id = HybridPartition::opaque;
+    }
   }
 
   template <int dim>
@@ -384,7 +543,7 @@ namespace PoissonEq
   {
     if (not this->is_evaluated(local_eid))
     {
-      assert(false); //TODO elemental assembly
+      return this->evaluate(local_eid);
     }
     else
     {
@@ -407,6 +566,28 @@ namespace PoissonEq
   // Implementation of detail
   namespace detail
   {
+    // ArrayBool2D::ArrayBool2D()
+    ArrayBool2D::ArrayBool2D(size_t outer, size_t inner, bool value)
+      : m_outer(outer), m_inner(inner), m_vec_bool(outer * inner, value)
+    { }
+
+    // ArrayBool2D::set_row()
+    void ArrayBool2D::set_row(
+        size_t outer_idx, const std::vector<bool> &new_row)
+    {
+      size_t offset = outer_idx * m_inner;
+      for (bool bit : new_row)
+        m_vec_bool[offset++] = bit;
+      assert(offset == (outer_idx + 1) * m_inner);
+    }
+
+    // ArrayBool2D::operator[]()
+    ConstArrayBool1DView ArrayBool2D::operator[](size_t outer_idx) const
+    {
+      return { this, outer_idx * m_inner };
+    }
+
+
     // ElementalMatrix::ElementalMatrix()
     ElementalMatrix::ElementalMatrix(size_t n_nodes, int ndofs)
       : n_nodes(n_nodes),
@@ -454,28 +635,28 @@ namespace PoissonEq
       // Find rows of P by analyzing the action upon stored coarse-grid vectors.
       //
       // The stored vector (s) is a union of self nodes and parent nodes.
-      // Define the virtual vector (V s) by interpolating hanging nodes
-      // from parent. P' represents the prolongation for a uniform grid.
+      // Define the virtual vector (H s) by interpolating hanging nodes
+      // from parent. U represents the prolongation for a uniform grid.
 
       // If the coarse and fine octants are equal:
       //   parent fine := parent coarse              f.s|_par  <-   c.s
-      //     self fine := virt. coarse               f.s|_self <- V c.s
+      //     self fine := virt. coarse               f.s|_self <- H c.s
       //
       // If the coarse and fine octants differ:
-      //   parent fine := virtual coarse             f.s|_par  <-    V c.s
-      //     self fine := interp.(virt. coarse)      f.s|_self <- P' V c.s
+      //   parent fine := virtual coarse             f.s|_par  <-   H c.s
+      //     self fine := interp.(virt. coarse)      f.s|_self <- U H c.s
       //
       //     ^ Note: Due to 2:1-balancing and single-level coarsening,
       //     a coarse-grid face containing a fine-grid self node (nonhanging)
-      //     cannot itself be hanging, so it may seem that (P' V) is unneeded.
+      //     cannot itself be hanging, so it may seem that (U H) is unneeded.
       //     HOWEVER, fine-grid self nodes can be *internal* to a coarse-grid
       //     cell, and for these cases chained interpolations are necessary.
       //
-      //                                   Note that V is a disjoint union
-      //   fine/coarse:  =      ≠          of rows from I and rows from P''.
-      //  --------------------------       P'' interpolates from coarse parent.
-      //   P|_par   <-   I  or  V          Rows from I are for nonhanging nodes;
-      //   P|_self  <-   V  or  P'V        Rows from P'' are for hanging nodes.
+      //                                   Note that H is a disjoint union
+      //   fine/coarse:  =      ≠          of rows from I and rows from W.
+      //  ---------------------------      W interpolates from coarse parent.
+      //   P|_par   <-    I  or    H       Rows from I are for nonhanging nodes;
+      //   P|_self  <-  H I  or  U H       Rows from W are for hanging nodes.
 
       const size_t n_nodes = fine_emat.n_nodes;
       const int ndofs = fine_emat.ndofs;
@@ -485,7 +666,7 @@ namespace PoissonEq
       const int fine_chn = fine_oct.getMortonIndex();
 
       Eigen::MatrixXd P = Eigen::MatrixXd::Identity(n, n);
-      Eigen::MatrixXd K = Eigen::MatrixXd::Identity(n, n);
+      Eigen::MatrixXd H = Eigen::MatrixXd::Identity(n, n);
 
       // M = (M^T I)^T
 
@@ -522,16 +703,16 @@ namespace PoissonEq
             {
               const size_t row = i * ndofs + dof;
               interp->template IKD_ParentChildInterpolation<(interp->C2P)>(
-                  K.col(row).data(), K.col(row).data(), ndofs, fine_chn);
+                  H.col(row).data(), H.col(row).data(), ndofs, fine_chn);
             }
-        K.transposeInPlace();
+        H.transposeInPlace();
 
-        P = K * P;
+        P = H * P;
       }
 
       //future: Other tensor library might simplify Kroenecker product. xtensor?
 
-      Eigen::MatrixXd RAP = P.adjoint() * fine_emat.entries * P;
+      Eigen::MatrixXd RAP = P.transpose() * fine_emat.entries * P;
 
       return ElementalMatrix(n_nodes, ndofs, std::move(RAP));
 

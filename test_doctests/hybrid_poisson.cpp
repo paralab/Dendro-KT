@@ -94,6 +94,7 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   for (int g = 1; g < n_grids; ++g)
     surrogate_das[g] = new ot::DA<dim>(surrogate_trees, g, comm, polynomial_degree, int{}, partition_tol);
   ot::DA<dim> &base_da = *das[0];
+  const size_t local_cells = base_da.getLocalElementSz();
   const LLU global_cells = base_da.getGlobalElementSz();
   const LLU global_nodes = base_da.getGlobalNodeSz();
 
@@ -137,16 +138,14 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   fine_hyb_matrix.setProblemDimensions(min_corner, max_corner);
   fine_hyb_vector.setProblemDimensions(min_corner, max_corner);
 
-  // Compare coarse systems.
-  PoissonMat coarse_geo_matrix(das[1], nullptr, single_dof);
-  HybridMat coarse_hyb_matrix = fine_hyb_matrix.coarsen(das[1]);
-
   // Vector storage
   std::vector<double> u_vec = local_vector(base_da, double{}, single_dof);
   std::vector<double> v_vec = local_vector(base_da, double{}, single_dof);
   std::vector<double> w_vec = local_vector(base_da, double{}, single_dof);
   std::vector<double> f_vec = local_vector(base_da, double{}, single_dof);
   std::vector<double> rhs_vec = local_vector(base_da, double{}, single_dof);
+
+  std::vector<double> w_evald_vec = local_vector(base_da, double{}, single_dof);
 
   std::vector<double> u_c_vec = local_vector(*das[1], double{}, single_dof);
   std::vector<double> v_c_vec = local_vector(*das[1], double{}, single_dof);
@@ -173,9 +172,6 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
 
   fine_hyb_matrix.zero_boundary(true);
 
-  coarse_geo_matrix.zero_boundary(true);
-  coarse_hyb_matrix.zero_boundary(true);
-
   // Precompute exact solution to evaluate error of an approximate solution.
   std::vector<double> u_exact_vec = local_vector(base_da, double{}, single_dof);
   for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
@@ -193,12 +189,28 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   fine_geo_matrix.matVec(u_vec.data(), v_vec.data());
   fine_hyb_matrix.matVec(u_vec.data(), w_vec.data());
 
+  // Choose a proper subset of elements to be 'evaluated'
+  for (size_t i = 0; i < local_cells / 2; ++i)
+    fine_hyb_matrix.store_evaluated(i);
+  fine_hyb_matrix.matVec(u_vec.data(), w_evald_vec.data());
+
+
+  // Compare coarse systems.
+  PoissonMat coarse_geo_matrix(das[1], nullptr, single_dof);
+  HybridMat coarse_hyb_matrix = fine_hyb_matrix.coarsen(das[1]);
+
+  coarse_geo_matrix.zero_boundary(true);
+  coarse_hyb_matrix.zero_boundary(true);
+
   coarse_geo_matrix.matVec(u_c_vec.data(), v_c_vec.data());
   coarse_hyb_matrix.matVec(u_c_vec.data(), w_c_vec.data());
 
   //
   const double diff_infty = normLInfty(v_vec.data(), w_vec.data(), v_vec.size(), comm);
   MPI_CHECK(0, diff_infty < 1e-12);
+
+  const double diff_evald_infty = normLInfty(v_vec.data(), w_evald_vec.data(), v_vec.size(), comm);
+  MPI_CHECK(0, diff_evald_infty < 1e-12);
 
   const double coarse_diff_infty = normLInfty(v_c_vec.data(), w_c_vec.data(), v_c_vec.size(), comm);
   MPI_CHECK(0, coarse_diff_infty < 1e-12);
