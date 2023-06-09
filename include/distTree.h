@@ -453,7 +453,7 @@ namespace ot
 
     // Get a complete tree sufficiently granular to represent func with accuracy interp_tol.
     std::vector<ot::TreeNode<C,dim>> completeTree;
-    function2Octree<C,dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, m_uiMaxDepth, interp_tol, sfc_tol, order, comm, min_corner, max_corner);
+    function2Octree<C,dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, m_uiMaxDepth - 2, interp_tol, sfc_tol, order, comm, min_corner, max_corner);
 
     // Make the tree balanced, using completeTree as a minimal set of TreeNodes.
     // Calling distTreeBalancing() on a complete tree with ptsPerElement==1

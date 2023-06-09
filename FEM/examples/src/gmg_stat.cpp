@@ -367,6 +367,7 @@ overwrite_all: true
 dim: -1
 
 problem:
+  scale: 1.0
   freq: 0.5
 )";
 
@@ -460,28 +461,48 @@ int tmain(int argc, char *argv[], Configuration &config)
   // Problem definition
   // ---------------------------------------------------------------------------
 
-  Point<dim> min_corner(-1.0),  max_corner(1.0);
+  std::array<double, dim> scale = {};
+  std::array<double, dim> freq = {};
+  std::array<double, dim> afreq = {};
 
-  const double domain_length = (max_corner - min_corner).x();
+  // Scale
+  if (config["problem"]["scale"].has_val())
+    scale.fill(to<double>(config["problem"]["scale"]));
+  else
+    for (int d = 0; d < dim; ++d)
+      scale[d] = to<double>(config["problem"]["scale"][d]);
 
-  const double freq = to<double>(config["problem"]["freq"]);
-  const double afreq = freq * 2.0 * pi;
+  Point<dim> min_corner(scale),  max_corner(scale);
+  min_corner *= -1.0;
+
+  // Frequency
+  if (config["problem"]["freq"].has_val())
+    freq.fill(to<double>(config["problem"]["freq"]));
+  else
+    for (int d = 0; d < dim; ++d)
+      freq[d] = to<double>(config["problem"]["freq"][d]);
+
+  for (int d = 0; d < dim; ++d)
+    afreq[d] = freq[d] * 2.0 * pi;
+
 
   // Solve "-div(grad(u)) = f"
-  // Sinusoid: f(x) = sin(afreq * x)    //future/c++17: std::transform_reduce()
+  // Sinusoid: f(x) = afreq^2 sin(afreq * x)    //future/c++17: std::transform_reduce()
   const auto f = [=](const double *x, double *y = nullptr) {
-    double result = 1.0;
+    double result = 0.0;
     for (int d = 0; d < dim; ++d)
-      result *= std::sin(afreq * x[d]);
+      result += afreq[d] * afreq[d];
+    for (int d = 0; d < dim; ++d)
+      result *= std::sin(afreq[d] * x[d]);
     if (y != nullptr)
       *y = result;
     return result;
   };
-  // Solution: u(x) = 1/(afreq^2) sin(afreq * x)
+  // Solution: u(x) = -sin(afreq * x)
   const auto u_exact = [=] (const double *x) {
-    double result = 1.0 / (dim * afreq * afreq);
+    double result = -1.0;
     for (int d = 0; d < dim; ++d)
-      result *= std::sin(afreq * x[d]);
+      result *= std::sin(afreq[d] * x[d]);
     return result;
   };
   // Dirichlet boundary condition (matching u_exact).
@@ -538,20 +559,18 @@ int tmain(int argc, char *argv[], Configuration &config)
     }
     ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tolerance);
 
-    const double spacing = par::mpi_min(
-        domain_length * ot::treeNode2Physical(
-          std::min_element(
+    const int real_max_depth = par::mpi_max(
+          std::max_element(
             base_tree.getTreePartFiltered().begin(),
             base_tree.getTreePartFiltered().end(),
             [](const auto &a, const auto &b) {
-                return a.range().side() < b.range().side();
-            })->range().side()
-          ),
+                return a.getLevel() < b.getLevel();
+            })->getLevel(),
         comm);
 
     printer(std::cout) << "mesh = " << mesh_name << "\n";
     printer(std::cout) << "cells = " << double(base_da.getGlobalElementSz()) << "  "
-              << "spacing = " << spacing << "\n";
+              << "max_depth = " << real_max_depth << "\n";
 
     // ghosted_node_coordinate()
     const auto ghosted_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
@@ -660,7 +679,7 @@ int tmain(int argc, char *argv[], Configuration &config)
     ot::DistTree<uint, dim> surrogate_trees;
     surrogate_trees = trees.generateGridHierarchyUp(true, n_grids, partition_tolerance);
 
-    /// if (setup_idx == 1)
+    /// if (setup_idx == 0)
     /// {
     ///   for (int i = 0; i < n_grids; ++i)
     ///     ot::quadTreeToGnuplot(trees.getTreePartFiltered(i), 10, "primary." + std::to_string(i), comm);
@@ -710,7 +729,8 @@ int tmain(int argc, char *argv[], Configuration &config)
     hybrid_mats[0] = new HybridPoissonMat(&base_da, single_dof);
     hybrid_mats[0]->zero_boundary(true);
     for (size_t i = 0; i < base_da.getLocalElementSz(); ++i)
-      if (trees.getTreePartFiltered(0)[i].getIsOnTreeBdry())
+      /// if (trees.getTreePartFiltered(0)[i].getIsOnTreeBdry())
+      if (true)
         hybrid_mats[0]->store_evaluated(i);
     for (int g = 1; g < n_grids; ++g)
     {
@@ -800,6 +820,17 @@ int tmain(int argc, char *argv[], Configuration &config)
       // Define "group_name"
       //future (maybe): set attributes first, then rename
       std::stringstream name;
+
+      name << "scale=[";
+      for (int d = 0; d < dim; ++d)
+        name << (d == 0 ? "" : "_") << scale[d];
+      name << "]" << " ";
+
+      name << "freq=[";
+      for (int d = 0; d < dim; ++d)
+        name << (d == 0 ? "" : "_") << freq[d];
+      name << "]" << " ";
+
       name << "solver=" << to<std::string>(run["solver"]["name"]) << " ";
       name << "mesh=" << to<std::string>(setup["mesh_recipe"]["name"]) << " ";
       if (setup.has_child("interpolation"))
@@ -820,17 +851,34 @@ int tmain(int argc, char *argv[], Configuration &config)
         io::dump_nodal_data(base_da, u_vec, single_dof, group_name + ".solution");
       }
 
+      const char axes[] = "xyzt";
+
       collection.synch();
       if (collection.is_root())
       {
         if (h5_file->exist(group_name))
           h5_file->unlink(group_name);
         HighFive::Group group = h5_file->createGroup(group_name);
+
+        std::string scale_axis = "scale_x";
+        for (int d = 0; d < dim; ++d)
+        {
+          scale_axis[scale_axis.size() - 1] = axes[d];
+          group.createAttribute(scale_axis, scale[d]);
+        }
+
+        std::string frequency_axis = "frequency_x";
+        for (int d = 0; d < dim; ++d)
+        {
+          frequency_axis[frequency_axis.size() - 1] = axes[d];
+          group.createAttribute(frequency_axis, freq[d]);
+        }
+
         group.createAttribute("solver", to<std::string>(run["solver"]["name"]));
         group.createAttribute("mesh_family", to<std::string>(setup["mesh_recipe"]["name"]));
         group.createAttribute("mesh", mesh_name);
         group.createAttribute("cells", base_da.getGlobalElementSz());
-        group.createAttribute("spacing", spacing);
+        group.createAttribute("max_depth", real_max_depth);
         group.createAttribute("unknowns", base_da.getGlobalNodeSz() * single_dof);
         collection.flush_to_hdf5(group);
       }
