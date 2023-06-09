@@ -10,6 +10,7 @@
 
 
 #include "treeNode.h"
+#include "point.h"
 #include "octUtils.h"
 #include "lazy.hpp"
 #include "passive_shared_ptr.hpp"
@@ -87,7 +88,9 @@ namespace ot
           MPI_Comm comm,
           unsigned int order,
           double interp_tol,
-          double sfc_tol);
+          double sfc_tol,
+          Point<dim> min_corner = Point<dim>(0.0),
+          Point<dim> max_corner = Point<dim>(1.0));
 
       ~DistTree(){
         // DistTree does not own the global comm it is constructed with.
@@ -440,7 +443,9 @@ namespace ot
       MPI_Comm comm,
       unsigned int order,
       double interp_tol,
-      double sfc_tol)
+      double sfc_tol,
+      Point<dim> min_corner,
+      Point<dim> max_corner)
   {
     std::vector<unsigned int> varIndex(dofSz);
     for (unsigned int ii = 0; ii < dofSz; ii++)
@@ -448,7 +453,7 @@ namespace ot
 
     // Get a complete tree sufficiently granular to represent func with accuracy interp_tol.
     std::vector<ot::TreeNode<C,dim>> completeTree;
-    function2Octree<C,dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, m_uiMaxDepth, interp_tol, sfc_tol, order, comm);
+    function2Octree<C,dim>(func, dofSz, &(*varIndex.cbegin()), dofSz, completeTree, m_uiMaxDepth, interp_tol, sfc_tol, order, comm, min_corner, max_corner);
 
     // Make the tree balanced, using completeTree as a minimal set of TreeNodes.
     // Calling distTreeBalancing() on a complete tree with ptsPerElement==1

@@ -21,6 +21,7 @@
 #include "nsort.h"
 #include "tsort.h"
 #include "treeNode.h"
+#include "point.h"
 
 #include "tnUtils.h"
 #include "parUtils.h"
@@ -264,7 +265,9 @@ void function2Octree(std::function<void(const double *, double*)> fx,
                     const double & interp_tol,
                     const double sfc_tol,
                     unsigned int elementOrder,
-                    MPI_Comm comm );
+                    MPI_Comm comm,
+                    Point<dim> min_corner = Point<dim>(0.0),
+                    Point<dim> max_corner = Point<dim>(1.0));
 
 
 template <typename DofT, typename TNT, unsigned int dim>
@@ -290,7 +293,7 @@ std::vector<TreeNode<TNT, dim>> function2BalancedOctree(
 
 
 template <typename T, unsigned int dim>
-void function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm )
+void function2Octree(std::function<void(const double *, double*)> fx,const unsigned int numVars,const unsigned int* varIndex,const unsigned int numInterpVars, std::vector<TreeNode<T,dim>> & nodes,unsigned int maxDepth, const double & interp_tol, const double sfc_tol, unsigned int elementOrder,MPI_Comm comm, Point<dim> min_corner, Point<dim> max_corner)
 {
   int size, rank;
   MPI_Comm_size(comm, &size);
@@ -315,9 +318,18 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
   // "nodes" meaning element nodes here.
   std::vector<TreeNode<T,dim>> tmpENodes(nodesPerElement);
   tmpENodes.clear();
-  double ptCoords[dim];
+  const double *ptCoords = nullptr;
 
-  const double domScale = 1.0 / (1u << m_uiMaxDepth);
+  const auto tn2pt = [&](const ot::TreeNode<uint32_t, dim> &tn)
+  {
+    std::array<double, dim> coordinates;
+    treeNode2Physical(tn, elementOrder, coordinates.data());
+    for (int d = 0; d < dim; ++d)
+      coordinates[d] = min_corner.x(d) * (1.0 - coordinates[d])
+                     + max_corner.x(d) * coordinates[d];
+    return Point<dim>(coordinates);
+  };
+
   RefElement refEl(dim, elementOrder);
   double l2_norm=0;
   bool splitOctant=false;
@@ -329,6 +341,14 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
     TreeNode<T,dim> root;
     for (unsigned int cnum = 0; cnum < NUM_CHILDREN; cnum++)
       nodes.push_back(root.getChildMorton(cnum));
+
+    std::cout << "domain: [";
+    for (int d = 0; d < dim; ++d)
+      std::cout << (d > 0 ? " " : "") << min_corner.x(d);
+    std::cout << "] .. [";
+    for (int d = 0; d < dim; ++d)
+      std::cout << (d > 0 ? " " : "") << max_corner.x(d);
+    std::cout << "]\n";
 
     while ( (num_intersected > 0 ) && (num_intersected < size/**size*/ ) && (depth < maxDepth) ) {
       std::cout << "Depth: " << depth << " n = " << nodes.size() << std::endl;
@@ -348,8 +368,8 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
         Element<T,dim>(elem).appendNodes(elementOrder, tmpENodes);
         for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
         {
-          for (int d = 0; d < dim; d++)
-            ptCoords[d] = domScale * tmpENodes[eNodeIdx].getX(d);   // TODO this is what class Point is for.
+          const Point<dim> pt = tn2pt(tmpENodes[eNodeIdx]);
+          ptCoords = &pt.x(0);
           fx(ptCoords, varVal);
           for (unsigned int var = 0; var < numInterpVars; var++)
             dist_parent[varIndex[var]*nodesPerElement + eNodeIdx] = varVal[varIndex[var]];
@@ -366,8 +386,8 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
           Element<T,dim>(elemChild).appendNodes(elementOrder, tmpENodes);
           for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
           {
-            for (int d = 0; d < dim; d++)
-              ptCoords[d] = domScale * tmpENodes[eNodeIdx].getX(d);   // TODO this is what class Point is for.
+            const Point<dim> pt = tn2pt(tmpENodes[eNodeIdx]);
+            ptCoords = &pt.x(0);
             fx(ptCoords, varVal);
             for (unsigned int var = 0; var < numInterpVars; var++)
               dist_child[varIndex[var]*nodesPerElement + eNodeIdx] = varVal[varIndex[var]];
@@ -436,8 +456,8 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
       Element<T,dim>(elem).appendNodes(elementOrder, tmpENodes);
       for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
       {
-        for (int d = 0; d < dim; d++)
-          ptCoords[d] = domScale * tmpENodes[eNodeIdx].getX(d);   // TODO this is what class Point is for.
+        const Point<dim> pt = tn2pt(tmpENodes[eNodeIdx]);
+        ptCoords = &pt.x(0);
         fx(ptCoords, varVal);
         for (unsigned int var = 0; var < numInterpVars; var++)
           dist_parent[varIndex[var]*nodesPerElement + eNodeIdx] = varVal[varIndex[var]];
@@ -456,8 +476,8 @@ void function2Octree(std::function<void(const double *, double*)> fx,const unsig
         Element<T,dim>(elemChild).appendNodes(elementOrder, tmpENodes);
         for (unsigned int eNodeIdx = 0; eNodeIdx < tmpENodes.size(); eNodeIdx++)
         {
-          for (int d = 0; d < dim; d++)
-            ptCoords[d] = domScale * tmpENodes[eNodeIdx].getX(d);   // TODO this is what class Point is for.
+          const Point<dim> pt = tn2pt(tmpENodes[eNodeIdx]);
+          ptCoords = &pt.x(0);
           fx(ptCoords, varVal);
           for (unsigned int var = 0; var < numInterpVars; var++)
             dist_child[varIndex[var]*nodesPerElement + eNodeIdx] = varVal[varIndex[var]];

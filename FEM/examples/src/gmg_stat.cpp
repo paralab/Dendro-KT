@@ -367,7 +367,7 @@ overwrite_all: true
 dim: -1
 
 problem:
-  freq: 1.0
+  freq: 0.5
 )";
 
 
@@ -460,9 +460,7 @@ int tmain(int argc, char *argv[], Configuration &config)
   // Problem definition
   // ---------------------------------------------------------------------------
 
-  // Domain is a cube from 0 to 1 in each axis.
-  //     (due to buggy mesh gen, only 0.0--1.0 supported)
-  Point<dim> min_corner(0.0),  max_corner(1.0);
+  Point<dim> min_corner(-1.0),  max_corner(1.0);
 
   const double domain_length = (max_corner - min_corner).x();
 
@@ -474,7 +472,7 @@ int tmain(int argc, char *argv[], Configuration &config)
   const auto f = [=](const double *x, double *y = nullptr) {
     double result = 1.0;
     for (int d = 0; d < dim; ++d)
-      result *= std::sin(freq * afreq * x[d]);
+      result *= std::sin(afreq * x[d]);
     if (y != nullptr)
       *y = result;
     return result;
@@ -524,7 +522,7 @@ int tmain(int argc, char *argv[], Configuration &config)
       const double interpolation = to<double>(setup["interpolation"]);
       base_tree = ot::DistTree<uint, dim>::template
           constructDistTreeByFunc<double>(
-              f, 1, comm, polynomial_degree, interpolation, partition_tolerance);
+              f, 1, comm, polynomial_degree, interpolation, partition_tolerance, min_corner, max_corner);
       mesh_name = "adaptive(" + to<std::string>(setup["interpolation"]) + ")";
     }
     else if (construction == "uniform")
