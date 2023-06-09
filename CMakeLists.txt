@@ -653,8 +653,10 @@ if(BUILD_EXAMPLES)
   ## Parameterized GMG to study convergence behavior.
   set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/hybridPoissonMat.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/hybridPoissonMat.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/gmg_stat.cpp)
   # future: use a petsc_main.cpp to have PetscInitialize()
   add_executable(gmg_stat ${SRC_FILES})

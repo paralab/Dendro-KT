@@ -110,13 +110,13 @@ namespace PoissonEq
 
       // hybridMatrix
       // - matVec()                         .......       Fᵀ    *   F x
-      // - assemble_matrix()                .......       Fᵀ    *   F
+      // - getAssembledMatrix()             .......       Fᵀ    *   F
+      // - setDiag()                        .......       Fᵀ diag(*) F
       //
       // - evaluate()                       .......          Hᵀ * H
-      //   store()
-      //   retrieve()
+      //   elemental_matrix()
       //
-      // - elemental_matvec()               .......          Hᵀ * H x
+      // - elementalMatVec()                .......          Hᵀ * H x
 
       // multigrid
       // - vcycle()
@@ -148,17 +148,6 @@ namespace PoissonEq
       bool is_evaluated(size_t local_eid) const;
 
       void store_evaluated(size_t local_eid);
-
-      /// void elementalSetDiag(
-      ///     VECType *out,
-      ///     unsigned int ndofs,
-      ///     const double *coords,
-      ///     double scale = 1.0);
-      //
-      /// void getElementalMatrix(
-      ///     std::vector<ot::MatRecord> &records,
-      ///     const double *coords,
-      ///     bool isElementBoundary);
 
 
       // -----------------------------------------------------------------------
@@ -192,6 +181,17 @@ namespace PoissonEq
       {
         return m_matfree.postMatVec(in, out, scale);
       }
+
+
+      // -----------------------------------------------------------------------
+      // Assembly.
+      // -----------------------------------------------------------------------
+
+      // Override the outer setDiag() so as to use custom loops.
+      virtual void setDiag(VECType *out, double scale = 1.0);
+
+      // Override the outer getAssembledMatrix() so as to use custom loops.
+      virtual bool getAssembledMatrix(Mat *J, MatType mtype);
 
 
     private:

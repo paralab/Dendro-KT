@@ -361,6 +361,175 @@ namespace PoissonEq
   }
 
 
+  // HybridPoissonMat::setDiag()
+  template <int dim>
+  void HybridPoissonMat<dim>::setDiag(VECType *out, double scale)
+  {
+    // Copy-pasted from feMatrix.h:setDiag() and setDiag.h,
+    // but set interpolation(false).
+
+    // Shorter way to refer to our member DA.
+    const ot::DA<dim> * m_oda = this->da();
+    const int ndofs = this->ndofs();
+
+    // Static buffers for ghosting. Check/increase size.
+    static std::vector<VECType> outGhosted;
+    /// static std::vector<char> outDirty;
+    m_oda->template createVector<VECType>(outGhosted, false, true, ndofs);
+    /// m_oda->template createVector<char>(outDirty, false, true, 1);
+    std::fill(outGhosted.begin(), outGhosted.end(), 0);
+    VECType *outGhostedPtr = outGhosted.data();
+
+
+    // --------------------------
+    // Local setDiag().
+    // --------------------------
+
+    // Initialize output vector to 0.
+    const size_t sz = this->da()->getTotalNodalSz();
+    std::fill(outGhostedPtr, outGhostedPtr + ndofs*sz, 0);
+
+    const unsigned int eleOrder = this->da()->getElementOrder();
+    const unsigned int npe = this->da()->getNumNodesPerElement();
+    const size_t n = npe * ndofs;
+
+    std::vector<double> leafResult(ndofs*npe, 0.0);
+
+    constexpr bool noVisitEmpty = false;
+    const ot::TreeNode<uint32_t, dim> *coords = this->da()->getTNCoords();
+    const ot::TreeNode<uint32_t, dim> *treePartPtr = &(*this->octList()->cbegin());
+    const size_t treePartSz = this->octList()->size();
+    const ot::TreeNode<uint32_t, dim> &partFront = *this->da()->getTreePartFront();
+    const ot::TreeNode<uint32_t, dim> &partBack = *this->da()->getTreePartBack();
+    /// ot::MatvecBaseOut<dim, double, false> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, treePartPtr, treePartSz, partFront, partBack);
+    ot::MatvecBaseOut<dim, double, true> treeLoopOut(sz, ndofs, eleOrder, noVisitEmpty, 0, coords, treePartPtr, treePartSz, partFront, partBack);
+
+    treeLoopOut.interpolation(false);
+
+    size_t local_element_id = 0;
+    while (!treeLoopOut.isFinished())
+    {
+      if (treeLoopOut.isPre() && treeLoopOut.subtreeInfo().isLeaf())
+      {
+        const double * nodeCoordsFlat = treeLoopOut.subtreeInfo().getNodeCoords();
+
+        const auto & emat = this->elemental_matrix(local_element_id);
+        const auto & diag = emat.entries.diagonal();
+        for (size_t i = 0; i < n; ++i)
+          leafResult[i] = diag[i];
+
+        treeLoopOut.subtreeInfo().overwriteNodeValsOut(&(*leafResult.begin()));
+
+        treeLoopOut.next();
+        ++local_element_id;
+      }
+      else
+        treeLoopOut.step();
+    }
+
+    /// size_t writtenSz = treeLoopOut.finalize(outGhostedPtr, dirtyOut);
+    size_t writtenSz = treeLoopOut.finalize(outGhostedPtr);
+
+    if (sz > 0 && writtenSz == 0)
+      std::cerr << "Warning: locSetDiag() did not write any data! Loop misconfigured?\n";
+
+    // ----------------------
+    // Ghost exchange
+    // ----------------------
+
+    // Downstream->Upstream ghost exchange.
+    m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, ndofs);
+    m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, ndofs);
+    /// m_oda->template writeToGhostsBegin<VECType>(outGhostedPtr, ndofs, outDirty.data());
+    /// m_oda->template writeToGhostsEnd<VECType>(outGhostedPtr, ndofs, false, outDirty.data());
+
+    // 5. Copy output data from ghosted buffer.
+    m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, ndofs);
+  }
+
+
+  // HybridPoissonMat::getAssembledMatrix()
+  template <int dim>
+  bool HybridPoissonMat<dim>::getAssembledMatrix(Mat *J, MatType mtype)
+  {
+    // Copy-pasted from feMatrix.h:collectMatrixEntries()
+    // and getAssembledMatrix(), then deleted hanging interpolation
+    // (it is already built into elemental_matrix()).
+
+    this->preMat();
+
+    const unsigned int eleOrder = this->da()->getElementOrder();
+    const unsigned int nPe = this->da()->getNumNodesPerElement();
+    const int ndofs = this->ndofs();
+    const int n = this->da()->getNumNodesPerElement() * this->ndofs();
+    const unsigned int n_squared = n * n;
+
+    // Loop over all elements, adding row chunks from elemental matrices.
+    // Get the node indices on an element using MatvecBaseIn<dim, unsigned int, false>.
+
+    if (this->da()->isActive())
+    {
+      using ot::RankI;
+
+      const size_t ghostedNodalSz = this->da()->getTotalNodalSz();
+      const ot::TreeNode<uint32_t, dim> *odaCoords = this->da()->getTNCoords();
+      const std::vector<RankI> &ghostedGlobalNodeId = this->da()->getNodeLocalToGlobalMap();
+
+      std::vector<PetscInt> rowIdxBuffer(n);
+
+      using Eigen::Dynamic;
+      using Eigen::RowMajor;
+      Eigen::Matrix<double, Dynamic, Dynamic, RowMajor> row_major_entries(n, n);
+
+      const bool visitEmpty = false;
+      const unsigned int padLevel = 0;
+      ot::MatvecBaseIn<dim, RankI, false> treeLoopIn(ghostedNodalSz,
+                                                     1,                // node id is scalar
+                                                     eleOrder,
+                                                     visitEmpty,
+                                                     padLevel,
+                                                     odaCoords,
+                                                     &(*ghostedGlobalNodeId.cbegin()),
+                                                     &(*this->octList()->cbegin()),
+                                                     this->octList()->size(),
+                                                     *this->da()->getTreePartFront(),
+                                                     *this->da()->getTreePartBack());
+
+      size_t local_element_id = 0;
+
+      // Iterate over all leafs of the local part of the tree.
+      while (!treeLoopIn.isFinished())
+      {
+        const ot::TreeNode<uint32_t, dim> subtree = treeLoopIn.getCurrentSubtree();
+        const auto subtreeInfo = treeLoopIn.subtreeInfo();
+
+        if (treeLoopIn.isPre() && subtreeInfo.isLeaf())
+        {
+          const double * nodeCoordsFlat = subtreeInfo.getNodeCoords();
+          const RankI * nodeIdsFlat = subtreeInfo.readNodeValsIn();
+          for (int i = 0; i < nPe; ++i)
+            for (int id = 0; id < ndofs; ++id)
+              rowIdxBuffer[i * ndofs + id] = nodeIdsFlat[i] * ndofs + id;
+
+          // Get elemental matrix for the current leaf element.
+          row_major_entries = this->elemental_matrix(local_element_id).entries;
+
+          // Send the values to petsc.
+          MatSetValues(
+              *J, n, rowIdxBuffer.data(), n, rowIdxBuffer.data(),
+              row_major_entries.data(), ADD_VALUES);
+
+          ++local_element_id;
+        }
+        treeLoopIn.step();
+      }
+    }
+
+    this->postMat();
+
+    return true;
+  }
+
 
   // HybridPoissonMat::coarsen()
   template <int dim>

@@ -6,6 +6,14 @@
 
 #include <mpi.h>
 
+#include "highfive/H5File.hpp"
+#include "highfive/H5Easy.hpp"
+
+#include "c4/conf/conf.hpp"
+#include "ryml_std.hpp"  // Add this for STL interop with ryml
+
+#include "c4/yml/detail/print.hpp"
+
 #include "include/dendro.h"
 #include "include/parUtils.h"
 #include "debug/comm_log.hpp"
@@ -14,6 +22,7 @@
 #include "include/point.h"
 #include "FEM/examples/include/poissonMat.h"
 #include "FEM/examples/include/poissonVec.h"
+#include "FEM/examples/include/hybridPoissonMat.h"
 #include "FEM/include/mg.hpp"
 #include "FEM/include/solver_utils.hpp"
 #include "include/nodal_data.hpp"
@@ -26,14 +35,6 @@
 #include <vector>
 #include <functional>
 #include <sstream>
-
-#include "highfive/H5File.hpp"
-#include "highfive/H5Easy.hpp"
-
-#include "c4/conf/conf.hpp"
-#include "ryml_std.hpp"  // Add this for STL interop with ryml
-
-#include "c4/yml/detail/print.hpp"
 
 // -----------------------------
 // Typedefs
@@ -591,6 +592,7 @@ int tmain(int argc, char *argv[], Configuration &config)
     std::vector<double> rhs_vec = local_vector(base_da, double{}, single_dof);
 
     using PoissonMat = PoissonEq::PoissonMat<dim>;
+    using HybridPoissonMat = PoissonEq::HybridPoissonMat<dim>;
 
     // fe_matrix()
     const auto fe_matrix = [&](const ot::DA<dim> &da) -> PoissonMat
@@ -706,6 +708,18 @@ int tmain(int argc, char *argv[], Configuration &config)
       mats[g]->zero_boundary(true);
     }
 
+    std::vector<HybridPoissonMat *> hybrid_mats(n_grids, nullptr);
+    hybrid_mats[0] = new HybridPoissonMat(&base_da, single_dof);
+    hybrid_mats[0]->zero_boundary(true);
+    for (size_t i = 0; i < base_da.getLocalElementSz(); ++i)
+      if (trees.getTreePartFiltered(0)[i].getIsOnTreeBdry())
+        hybrid_mats[0]->store_evaluated(i);
+    for (int g = 1; g < n_grids; ++g)
+    {
+      hybrid_mats[g] = new HybridPoissonMat(hybrid_mats[g - 1]->coarsen(das[g].primary));
+      hybrid_mats[g]->zero_boundary(true);
+    }
+
     int run_idx = -1;
     const int n_runs = setup["runs"].num_children();
     for (c4::yml::ConstNodeRef run: setup["runs"])
@@ -764,6 +778,14 @@ int tmain(int argc, char *argv[], Configuration &config)
               run, collection,
               vcycle, u_vec, v_vec, rhs_vec, max_vcycles, tol);
         }
+        else if (run["solver"]["type"].val() == "Hybrid")
+        {
+          mg::VCycle<HybridPoissonMat> vcycle(das, hybrid_mats.data(), cycle_settings, single_dof);
+
+          const int steps = gmg_solver(
+              run, collection,
+              vcycle, u_vec, v_vec, rhs_vec, max_vcycles, tol);
+        }
         else if (run["solver"]["type"].val() == "AMG")
         {
           const int steps = amg_solver(
@@ -817,11 +839,13 @@ int tmain(int argc, char *argv[], Configuration &config)
     }
 
     // Multigrid teardown.
+    delete hybrid_mats[0];
     for (int g = 1; g < n_grids; ++g)
     {
       delete das[g].primary;
       delete das[g].surrogate;
       delete mats[g];
+      delete hybrid_mats[g];
     }
     das.clear();
     mats.clear();
