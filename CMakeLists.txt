@@ -641,10 +641,11 @@ if(BUILD_EXAMPLES)
   ## GMG as preconditioner to solve Poisson (doctest test cases).
   set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonVec.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/hybridPoissonMat.h
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonVec.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/poissonMat.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/hybridPoissonMat.cpp
                 ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/doctest_gmg_poisson.cpp)
-  # future: use a petsc_main.cpp to have PetscInitialize()
   add_executable(doctest_gmg_poisson ${SRC_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/test_doctests/main_with_petsc.cpp)
   set_property(TARGET doctest_gmg_poisson PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
   target_include_directories(doctest_gmg_poisson PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)

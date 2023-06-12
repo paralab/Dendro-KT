@@ -25,6 +25,7 @@
 #include "FEM/examples/include/hybridPoissonMat.h"
 #include "FEM/include/mg.hpp"
 #include "FEM/include/solver_utils.hpp"
+#include "FEM/include/cg_solver.hpp"
 #include "include/nodal_data.hpp"
 #include <petsc.h>
 #else//CRUNCHTIME
@@ -188,6 +189,9 @@ class Collector
       m_residual_L2.clear();
       m_residual_Linf.clear();
     }
+
+    //future: separate the following events:
+    // -count vcycles  -count matvecs  -update solution  -observe residual(s)
 
     // observe()
     void observe(
@@ -966,6 +970,23 @@ Residual compute_residual(
   return res;
 }
 
+// compute_residual_after_mvec()
+Residual compute_residual_after_mvec(
+  int ndofs,
+  const double *v_ptr,
+  const std::vector<double> &rhs_vec,
+  MPI_Comm comm)
+{
+  const size_t size = rhs_vec.size();
+  const double zero = 0.0;
+  if (size == 0)
+    v_ptr = &zero;
+  Residual res = {};
+  res.L2 = normL2(rhs_vec.data(), v_ptr, size, comm);
+  res.Linf = normLInfty(rhs_vec.data(), v_ptr, size, comm);
+  return res;
+}
+
 
 
 // =============================================================================
@@ -985,13 +1006,62 @@ int gmg_solver(
     int max_vcycles,
     double relative_tolerance)
 {
-  //future: count matvecs with a wrapper
+  //future: accurately capture matvecs
 
   auto &base_mat = *vcycle.mats[0];
   const int ndofs = base_mat.ndofs();
   const MPI_Comm global_comm = base_mat.da()->getGlobalComm();
 
-  assert(run_config["solver"]["ksp"].val() == "Stand");
+  const std::string ksp_choice = to<std::string>(run_config["solver"]["ksp"]);
+  if (ksp_choice == "CG")
+  {
+    // Use VCycle as a preconditioner.
+    int count_vcycles = 0;
+    Residual res;
+    res = compute_residual(
+        &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
+    collection.observe(count_vcycles, count_vcycles, res.L2, res.Linf);
+    //future: accurately capture matvecs
+
+    // right_pc_mat(): Right-preconditioned matrix multiplication.
+    std::vector<double> u_temporary(u_vec.size(), 0.0);
+    std::vector<double> v_temporary(u_vec.size(), 0.0);
+    const auto right_pc_mat = [&](const double *u, double *v) -> void
+    {
+      const size_t n = u_temporary.size();
+
+      std::fill_n(u_temporary.begin(), n, 0.0);
+      std::copy_n(u, n, v_temporary.begin());
+      vcycle.vcycle(u_temporary.data(), v_temporary.data());
+      ++count_vcycles;
+
+      base_mat.matVec(u_temporary.data(), v);
+
+      // Cannot always observe residual here, as sometimes 'u' is actually 'p'.
+    };
+
+    const int steps = solve::cgSolver(
+        base_mat.da(), right_pc_mat,
+        &(*u_vec.begin()), &(*rhs_vec.begin()), max_vcycles, relative_tolerance, true);
+
+    std::fill(v_temporary.begin(), v_temporary.end(), 0.0);
+    std::swap(u_vec, v_temporary);
+    vcycle.vcycle(u_vec.data(), v_temporary.data());
+    ++count_vcycles;
+
+    res = compute_residual(
+        &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
+    collection.observe(count_vcycles, count_vcycles, res.L2, res.Linf);
+
+    /////////////////////////
+    return count_vcycles;
+    /////////////////////////
+  }
+  else if (ksp_choice != "Stand")
+  {
+    if (collection.is_root())
+      std::cerr << "Warning: Ignoring ksp choice " << ksp_choice << ", using Stand\n";
+  }
 
   // Multigrid V-Cycle iteration as solver.
   int steps = 0;
@@ -1025,7 +1095,9 @@ int gmg_solver(
     if (res_rate > 0.95)
       break;
   }
+  /////////////////////////
   return steps;
+  /////////////////////////
 }
 // =============================================================================
 
