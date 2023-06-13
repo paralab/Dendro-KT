@@ -207,6 +207,18 @@ class Collector
       m_residual_Linf.push_back(residual_Linf);
     }
 
+    int range_vcycles() const
+    {
+      assert(m_vcycle_progress.size() > 0);
+      return m_vcycle_progress.back() - m_vcycle_progress.front();
+    }
+
+    double range_residual_L2() const
+    {
+      assert(m_residual_L2.size() > 0);
+      return m_residual_L2.back() / m_residual_L2.front();
+    }
+
     // synch():  Quick-and-dirty: transfer observations to root before flushing.
     void synch()
     {
@@ -820,7 +832,6 @@ int tmain(int argc, char *argv[], Configuration &config)
         assert(false);
       }
 
-
       // Define "group_name"
       //future (maybe): set attributes first, then rename
       std::stringstream name;
@@ -855,9 +866,19 @@ int tmain(int argc, char *argv[], Configuration &config)
         io::dump_nodal_data(base_da, u_vec, single_dof, group_name + ".solution");
       }
 
+      collection.synch();
+
+      if (collection.is_root())
+      {
+        std::cout << "In \e[1m" << collection.range_vcycles() << " VCycles\e[0m"
+                  << " (reduced by "
+                  << std::scientific << std::setprecision(4)
+                  << collection.range_residual_L2()
+                  << ")\n";
+      }
+
       const char axes[] = "xyzt";
 
-      collection.synch();
       if (collection.is_root())
       {
         if (h5_file->exist(group_name))
@@ -1017,37 +1038,32 @@ int gmg_solver(
   {
     // Use VCycle as a preconditioner.
     int count_vcycles = 0;
+    /// int count_matvecs = 0;
+
     Residual res;
     res = compute_residual(
         &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
     collection.observe(count_vcycles, count_vcycles, res.L2, res.Linf);
     //future: accurately capture matvecs
 
-    // right_pc_mat(): Right-preconditioned matrix multiplication.
-    std::vector<double> u_temporary(u_vec.size(), 0.0);
-    std::vector<double> v_temporary(u_vec.size(), 0.0);
-    const auto right_pc_mat = [&](const double *u, double *v) -> void
+    const auto mat_mult = [&](const double *u, double *v) -> void
     {
-      const size_t n = u_temporary.size();
-
-      std::fill_n(u_temporary.begin(), n, 0.0);
-      std::copy_n(u, n, v_temporary.begin());
-      vcycle.vcycle(u_temporary.data(), v_temporary.data());
-      ++count_vcycles;
-
-      base_mat.matVec(u_temporary.data(), v);
-
-      // Cannot always observe residual here, as sometimes 'u' is actually 'p'.
+      base_mat.matVec(u, v);
+      /// ++count_matvecs;
     };
 
-    const int steps = solve::cgSolver(
-        base_mat.da(), right_pc_mat,
-        &(*u_vec.begin()), &(*rhs_vec.begin()), max_vcycles, relative_tolerance, true);
+    std::vector<double> r_temporary(u_vec.size(), 0.0);
+    const auto preconditioner = [&, n = u_vec.size()](double *e, const double *r) -> void
+    {
+      std::copy_n(r, n, r_temporary.begin());
+      vcycle.vcycle(e, r_temporary.data());
+      ++count_vcycles;
+      //future: pass mat_mult into vcycles() to count inner matvecs.
+    };
 
-    std::fill(v_temporary.begin(), v_temporary.end(), 0.0);
-    std::swap(u_vec, v_temporary);
-    vcycle.vcycle(u_vec.data(), v_temporary.data());
-    ++count_vcycles;
+    const int steps = solve::pcgSolver(
+        base_mat.da(), mat_mult, preconditioner,
+        &(*u_vec.begin()), &(*rhs_vec.begin()), max_vcycles, relative_tolerance, true);
 
     res = compute_residual(
         &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
@@ -1095,6 +1111,7 @@ int gmg_solver(
     if (res_rate > 0.95)
       break;
   }
+
   /////////////////////////
   return steps;
   /////////////////////////
