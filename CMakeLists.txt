@@ -211,6 +211,7 @@ set(DENDRO_KT_INC include/dendro.h
                   FEM/include/gmgMat.h
                   FEM/include/mg.hpp
                   FEM/include/solver_utils.hpp
+                  FEM/include/hybrid_mat_wrapper.hpp
                   )
 
 set(DENDRO_KT_SRC src/binUtils.cpp
@@ -242,7 +243,9 @@ set(DENDRO_KT_SRC src/binUtils.cpp
                   FEM/src/tensor_special_unsigned.cpp
                   FEM/src/tensor_special_char.cpp
                   FEM/src/refel.cpp
-                  FEM/src/basis.cpp)
+                  FEM/src/basis.cpp
+                  FEM/src/hybrid_mat_wrapper.cpp
+                  )
 
 
 add_library(dendroKT ${DENDRO_KT_INC} ${DENDRO_KT_SRC})
