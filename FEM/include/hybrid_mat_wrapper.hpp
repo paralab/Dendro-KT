@@ -179,8 +179,13 @@ namespace fem
         return m_matdef->postMatVec(in, out, scale);
       }
 
-      //TODO feMat and feMatrix methods that should affect m_matdef,
-      //such as setProblemDimensions().
+      /**@brief set the problem dimension*/
+      virtual void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max) override
+      {
+        this->feMat<dim>::setProblemDimensions(pt_min, pt_max);
+        m_matdef->setProblemDimensions(pt_min, pt_max);
+        //future: probably remove the data members from abstract feMat.
+      }
 
 
       // -----------------------------------------------------------------------

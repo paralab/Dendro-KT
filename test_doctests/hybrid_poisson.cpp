@@ -46,7 +46,7 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   MPI_Comm_dup(MPI_COMM_WORLD, &comm);
 
   DendroScopeBegin();
-  constexpr int dim = 2;
+  constexpr int dim = 3;
   _InitializeHcurve(dim);
 
   const double partition_tol = 0.1;
@@ -54,8 +54,8 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   constexpr double pi = { M_PI };
   static_assert(3.0 < pi, "The macro M_PI is not defined as a value > 3!");
 
-  // Domain is a cube from -1 to 1 in each axis.
-  Point<dim> min_corner(-1.0),  max_corner(1.0);
+  // Domain is a cube from -10 to 10 in each axis.
+  Point<dim> min_corner(-10.0),  max_corner(10.0);
 
   const int single_dof = 1;
 
@@ -212,6 +212,9 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   PoissonMat coarse_geo_matrix(das[1], nullptr, single_dof);
   PoissonMat coarse_hyb_matrix_def(das[1], nullptr, single_dof);
   HybridMat coarse_hyb_matrix = fine_hyb_matrix.coarsen(&coarse_hyb_matrix_def);
+
+  coarse_geo_matrix.setProblemDimensions(min_corner, max_corner);
+  coarse_hyb_matrix.setProblemDimensions(min_corner, max_corner);
 
   coarse_geo_matrix.zero_boundary(true);
   coarse_hyb_matrix.matdef()->zero_boundary(true);

@@ -77,7 +77,7 @@ public:
     virtual void setDiag(VECType *out, double scale = 1.0) = 0;
 
     /**@brief set the problem dimension*/
-    inline void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max)
+    virtual void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max)
     {
         m_uiPtMin=pt_min;
         m_uiPtMax=pt_max;

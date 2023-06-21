@@ -25,15 +25,6 @@ class feMatrix : public feMat<dim> {
          /**@brief number of dof*/
          unsigned int m_uiDof = -1;
 
-         /**@brief element nodal vec in */
-         VECType * m_uiEleVecIn = {};
-
-         /***@brief element nodal vecOut */
-         VECType * m_uiEleVecOut = {};
-
-         /** elemental coordinates */
-         double * m_uiEleCoords = {};
-
     protected:
         // Place in protected access due to polymorphism.
         feMatrix(const feMatrix &) = delete;
@@ -53,8 +44,6 @@ class feMatrix : public feMat<dim> {
         feMatrix(const ot::DA<dim>* da, const std::vector<ot::TreeNode<unsigned int, dim>> *, unsigned int dof=1);
 
         feMatrix(const ot::DA<dim>* da, unsigned int dof=1);
-
-        ~feMatrix();
 
         unsigned ndofs() const { return m_uiDof; }
 
@@ -239,11 +228,6 @@ feMatrix<LeafT,dim>::feMatrix(const ot::DA<dim>* da, unsigned int dof)
 {
     m_uiDof=dof;
     const unsigned int nPe=this->m_uiOctDA->getNumNodesPerElement();
-    m_uiEleVecIn = new  VECType[m_uiDof*nPe];
-    m_uiEleVecOut = new VECType[m_uiDof*nPe];
-
-    m_uiEleCoords= new double[m_uiDim*nPe];
-
 }
 
 template <typename LeafT, unsigned int dim>
@@ -251,9 +235,6 @@ feMatrix<LeafT, dim>::feMatrix(feMatrix &&moved)
   : feMat<dim>(std::move(moved))
 {
   std::swap(m_uiDof,       moved.m_uiDof);
-  std::swap(m_uiEleVecIn,  moved.m_uiEleVecIn);
-  std::swap(m_uiEleVecOut, moved.m_uiEleVecOut);
-  std::swap(m_uiEleCoords, moved.m_uiEleCoords);
 }
 
 template <typename LeafT, unsigned int dim>
@@ -261,18 +242,7 @@ feMatrix<LeafT, dim> & feMatrix<LeafT, dim>::operator=(feMatrix &&moved)
 {
   feMat<dim>::operator=(std::move(moved));
   std::swap(m_uiDof,       moved.m_uiDof);
-  std::swap(m_uiEleVecIn,  moved.m_uiEleVecIn);
-  std::swap(m_uiEleVecOut, moved.m_uiEleVecOut);
-  std::swap(m_uiEleCoords, moved.m_uiEleCoords);
   return *this;
-}
-
-template <typename LeafT, unsigned int dim>
-feMatrix<LeafT,dim>::~feMatrix()
-{
-    delete [] m_uiEleVecIn;
-    delete [] m_uiEleVecOut;
-    delete [] m_uiEleCoords;
 }
 
 template <typename LeafT, unsigned int dim>
