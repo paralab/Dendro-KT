@@ -78,11 +78,12 @@ namespace PoissonEq
     public:
       using Base = feMatrix<HybridPoissonMat<dim>, dim>;
 
-      HybridPoissonMat(const ot::DA<dim> *da, int dof);
+      HybridPoissonMat(PoissonMat<dim> *matdef);  // borrower
+      HybridPoissonMat(std::unique_ptr<PoissonMat<dim>> matdef);  // owner
       HybridPoissonMat(HybridPoissonMat &&other);
       HybridPoissonMat & operator=(HybridPoissonMat &&other);
 
-
+      virtual ~HybridPoissonMat();
 
       // A_global = Fᵀ Hᵀ A H F
       //
@@ -154,7 +155,14 @@ namespace PoissonEq
       // Produce hybrid coarsened operator. (Galerkin coarsening where explicit)
       // -----------------------------------------------------------------------
 
-      HybridPoissonMat coarsen(const ot::DA<dim> *da) const;
+      HybridPoissonMat coarsen(PoissonMat<dim> *coarse_matdef) const;
+      HybridPoissonMat coarsen(std::unique_ptr<PoissonMat<dim>> coarse_matdef) const;
+
+
+      // -----------------------------------------------------------------------
+      // Access underlying matrix operator object.
+      // -----------------------------------------------------------------------
+      PoissonMat<dim> *matdef() const { return m_matdef; }
 
 
       // -----------------------------------------------------------------------
@@ -164,23 +172,20 @@ namespace PoissonEq
       // Override the outer matVec() so as to use custom loops.
       virtual void matVec(const VECType* in,VECType* out, double scale=1.0);
 
-      // zero_boundary()
-      bool zero_boundary() const { return m_matfree.zero_boundary(); }
-
-      // zero_boundary()
-      void zero_boundary(bool enable) { m_matfree.zero_boundary(enable); }
-
       // preMatVec()
       bool preMatVec(const VECType* in, VECType* out, double scale=1.0)
       {
-        return m_matfree.preMatVec(in, out, scale);
+        return m_matdef->preMatVec(in, out, scale);
       }
 
       // postMatVec()
       bool postMatVec(const VECType* in, VECType* out, double scale=1.0)
       {
-        return m_matfree.postMatVec(in, out, scale);
+        return m_matdef->postMatVec(in, out, scale);
       }
+
+      //TODO feMat and feMatrix methods that should affect m_matdef,
+      //such as setProblemDimensions().
 
 
       // -----------------------------------------------------------------------
@@ -203,8 +208,18 @@ namespace PoissonEq
           size_t n_nodes, int ndofs,
           const double *in, double *out);
 
+      static HybridPoissonMat evaluate_galerkin_elements(
+          const HybridPoissonMat &fine_mat,
+          HybridPoissonMat &&coarse_mat);
+
 
     private:
+      HybridPoissonMat(
+          PoissonMat<dim> *matdef,
+          bool owns_def,
+          const ot::DA<dim> *da,
+          int dof);
+
       // Evaluates from geometric definition.
       detail::ElementalMatrix evaluate(size_t local_eid) const;
 
@@ -217,7 +232,8 @@ namespace PoissonEq
       void emat_mult(const double *in, double *out, size_t local_eid);
 
     private:
-      mutable PoissonMat<dim> m_matfree;   // Internal getElementalMatrix() is not const.. but should be.
+      bool m_owns_def = false;
+      PoissonMat<dim> *m_matdef = nullptr;
       std::vector<Eigen::MatrixXd> m_emats;
 
       std::unordered_map<detail::ElemCenter<dim>, detail::ElemIndex> m_partition_table;

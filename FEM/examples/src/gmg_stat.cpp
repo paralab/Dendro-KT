@@ -742,16 +742,16 @@ int tmain(int argc, char *argv[], Configuration &config)
     }
 
     std::vector<HybridPoissonMat *> hybrid_mats(n_grids, nullptr);
-    hybrid_mats[0] = new HybridPoissonMat(&base_da, single_dof);
-    hybrid_mats[0]->zero_boundary(true);
+    hybrid_mats[0] = new HybridPoissonMat(&base_mat);
+    hybrid_mats[0]->matdef()->zero_boundary(true);
     for (size_t i = 0; i < base_da.getLocalElementSz(); ++i)
       /// if (trees.getTreePartFiltered(0)[i].getIsOnTreeBdry())
       if (true)
         hybrid_mats[0]->store_evaluated(i);
     for (int g = 1; g < n_grids; ++g)
     {
-      hybrid_mats[g] = new HybridPoissonMat(hybrid_mats[g - 1]->coarsen(das[g].primary));
-      hybrid_mats[g]->zero_boundary(true);
+      hybrid_mats[g] = new HybridPoissonMat(hybrid_mats[g - 1]->coarsen(mats[g]));
+      hybrid_mats[g]->matdef()->zero_boundary(true);
     }
 
     int run_idx = -1;

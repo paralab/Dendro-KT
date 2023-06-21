@@ -830,13 +830,15 @@ MPI_TEST_CASE("Nonuniform Poisson hybrid sinusoid", 1)
   std::vector<double> f_vec = local_vector(base_da, double{}, single_dof);
   std::vector<double> rhs_vec = local_vector(base_da, double{}, single_dof);
 
+  using PoissonMat = PoissonEq::PoissonMat<dim>;
   using HybridPoissonMat = PoissonEq::HybridPoissonMat<dim>;
 
   // fe_matrix()
   //  future: return HybridPoissonMat without dynamic memory, after finish move constructors
   const auto fe_matrix = [&](const ot::DA<dim> &da) -> HybridPoissonMat *
   {
-    auto *mat = new HybridPoissonMat(&da, single_dof);
+    auto *mat = new HybridPoissonMat(
+        std::make_unique<PoissonMat>(&da, nullptr, single_dof));
     mat->setProblemDimensions(min_corner, max_corner);
     return mat;
   };
@@ -872,7 +874,7 @@ MPI_TEST_CASE("Nonuniform Poisson hybrid sinusoid", 1)
   base_vec.computeVec(f_vec.data(), rhs_vec.data());
   for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
     rhs_vec[i] -= v_vec[i];
-  base_mat.zero_boundary(true);
+  base_mat.matdef()->zero_boundary(true);
 
   // Precompute exact solution to evaluate error of an approximate solution.
   std::vector<double> u_exact_vec = local_vector(base_da, double{}, single_dof);
@@ -919,7 +921,7 @@ MPI_TEST_CASE("Nonuniform Poisson hybrid sinusoid", 1)
   for (int g = 1; g < n_grids; ++g)
   {
     mats[g] = fe_matrix(*das[g].primary);
-    mats[g]->zero_boundary(true);
+    mats[g]->matdef()->zero_boundary(true);
   }
 
   mg::CycleSettings cycle_settings;

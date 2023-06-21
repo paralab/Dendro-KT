@@ -81,6 +81,14 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
     return u_exact(x);
   };
 
+  // debug
+  const auto u_xpy = [](const double *x) -> double {
+    double sum = 0.0;
+    for (int d = 0; d < dim; ++d)
+      sum += x[d];
+    return sum;
+  };
+
   // Mesh (nonuniform grid)
   const LLU global_seeds = 1000;
   const int n_grids = 2;
@@ -128,15 +136,15 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   using PoissonMat = PoissonEq::PoissonMat<dim>;
   using PoissonVec = PoissonEq::PoissonVec<dim>;
   using HybridMat = PoissonEq::HybridPoissonMat<dim>;
-  using HybridVec = PoissonEq::HybridPoissonVec<dim>;
   PoissonMat fine_geo_matrix(&base_da, nullptr, single_dof);
   PoissonVec fine_geo_vector(&base_da, nullptr, single_dof);  //future: rm {} octlist
-  HybridMat fine_hyb_matrix(&base_da, single_dof);  //future: specify partition
-  HybridVec fine_hyb_vector(&base_da, nullptr, single_dof);  //future: rm {} octlist
+
+  PoissonMat fine_hyb_matrix_def(&base_da, nullptr, single_dof);
+  HybridMat fine_hyb_matrix(&fine_hyb_matrix_def);
+
   fine_geo_matrix.setProblemDimensions(min_corner, max_corner);
   fine_geo_vector.setProblemDimensions(min_corner, max_corner);
   fine_hyb_matrix.setProblemDimensions(min_corner, max_corner);
-  fine_hyb_vector.setProblemDimensions(min_corner, max_corner);
 
   // Vector storage
   std::vector<double> u_vec = local_vector(base_da, double{}, single_dof);
@@ -169,8 +177,7 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
     rhs_vec[i] -= v_vec[i];
   fine_geo_matrix.zero_boundary(true);
-
-  fine_hyb_matrix.zero_boundary(true);
+  fine_hyb_matrix.matdef()->zero_boundary(true);
 
   // Precompute exact solution to evaluate error of an approximate solution.
   std::vector<double> u_exact_vec = local_vector(base_da, double{}, single_dof);
@@ -186,6 +193,12 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
   for (double &u_c : u_c_vec)
     u_c = rand(gen);
 
+  /// // debug: predictable function
+  /// for (size_t i = 0; i < base_da.getLocalNodalSz(); ++i)
+  ///   u_vec[i] = u_xpy(&local_phys(base_da, i).x(0));
+  /// for (size_t i = 0; i < das[1]->getLocalNodalSz(); ++i)
+  ///   u_c_vec[i] = u_xpy(&local_phys(*das[1], i).x(0));
+
   fine_geo_matrix.matVec(u_vec.data(), v_vec.data());
   fine_hyb_matrix.matVec(u_vec.data(), w_vec.data());
 
@@ -197,10 +210,11 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
 
   // Compare coarse systems.
   PoissonMat coarse_geo_matrix(das[1], nullptr, single_dof);
-  HybridMat coarse_hyb_matrix = fine_hyb_matrix.coarsen(das[1]);
+  PoissonMat coarse_hyb_matrix_def(das[1], nullptr, single_dof);
+  HybridMat coarse_hyb_matrix = fine_hyb_matrix.coarsen(&coarse_hyb_matrix_def);
 
   coarse_geo_matrix.zero_boundary(true);
-  coarse_hyb_matrix.zero_boundary(true);
+  coarse_hyb_matrix.matdef()->zero_boundary(true);
 
   coarse_geo_matrix.matVec(u_c_vec.data(), v_c_vec.data());
   coarse_hyb_matrix.matVec(u_c_vec.data(), w_c_vec.data());

@@ -45,8 +45,33 @@ namespace PoissonEq
 
   // HybridPoissonMat()
   template <int dim>
-  HybridPoissonMat<dim>::HybridPoissonMat(const ot::DA<dim> *da, int dof)
-    : Base(da, nullptr, dof), m_matfree(da, nullptr, dof), m_emats(da->getLocalElementSz()),
+  HybridPoissonMat<dim>::HybridPoissonMat(PoissonMat<dim> *matdef)
+  : HybridPoissonMat(matdef, false, matdef->da(), matdef->ndofs())
+  { }
+
+  // HybridPoissonMat()
+  template <int dim>
+  HybridPoissonMat<dim>::HybridPoissonMat(std::unique_ptr<PoissonMat<dim>> matdef)
+  : HybridPoissonMat(matdef.release(), true, matdef->da(), matdef->ndofs())
+  { }
+
+  // ~HybridPoissonMat()
+  template <int dim>
+  HybridPoissonMat<dim>::~HybridPoissonMat()
+  {
+    if (m_owns_def)
+      delete m_matdef;
+  }
+
+  // HybridPoissonMat()
+  template <int dim>
+  HybridPoissonMat<dim>::HybridPoissonMat(
+      PoissonMat<dim> *matdef, bool owns_def, const ot::DA<dim> *da, int dof)
+  :
+      Base(da, nullptr, dof),
+      m_owns_def(owns_def),
+      m_matdef(matdef),
+      m_emats(da->getLocalElementSz()),
       m_elemental_nonhanging(da->getLocalElementSz(), da->getNumNodesPerElement(), true),
       m_interp(da->getElementOrder())
   {
@@ -145,7 +170,7 @@ namespace PoissonEq
         octant, this->da()->getElementOrder(), node_coords_flat);
 
     static std::vector<ot::MatRecord> elem_records;
-    m_matfree.getElementalMatrix(elem_records, node_coords_flat.data(), is_boundary);//beware: not entire element set
+    m_matdef->getElementalMatrix(elem_records, node_coords_flat.data(), is_boundary);//beware: not entire element set
     for (const ot::MatRecord &entry : elem_records)
       emat.entries(entry.getRowID() * ndofs + entry.getRowDim(),
                    entry.getColID() * ndofs + entry.getColDim())
@@ -273,7 +298,7 @@ namespace PoissonEq
 
         this->elemental_p2c(index.local_element_id, in, out);
 
-        this->m_matfree.elementalMatVec(
+        this->m_matdef->elementalMatVec(
             out, out, ndofs, coords, scale, isElementBoundary);
 
         this->elemental_c2p(index.local_element_id, out, out);
@@ -533,10 +558,32 @@ namespace PoissonEq
 
   // HybridPoissonMat::coarsen()
   template <int dim>
-  HybridPoissonMat<dim> HybridPoissonMat<dim>::coarsen(const ot::DA<dim> *da) const
+  HybridPoissonMat<dim> HybridPoissonMat<dim>::coarsen(
+      PoissonMat<dim> *coarse_matdef) const
   {
-    HybridPoissonMat coarse_mat(da, this->ndofs());
+    HybridPoissonMat coarse_mat(coarse_matdef);
     const HybridPoissonMat &fine_mat = *this;
+    return evaluate_galerkin_elements(fine_mat, std::move(coarse_mat));
+  }
+
+  // HybridPoissonMat::coarsen()
+  template <int dim>
+  HybridPoissonMat<dim> HybridPoissonMat<dim>::coarsen(
+      std::unique_ptr<PoissonMat<dim>> coarse_matdef) const
+  {
+    HybridPoissonMat coarse_mat(std::move(coarse_matdef));
+    const HybridPoissonMat &fine_mat = *this;
+    return evaluate_galerkin_elements(fine_mat, std::move(coarse_mat));
+  }
+
+  // HybridPoissonMat::evaluate_galerkin_elements()
+  template <int dim>
+  HybridPoissonMat<dim>
+  HybridPoissonMat<dim>::evaluate_galerkin_elements(
+      const HybridPoissonMat<dim> &fine_mat,
+      HybridPoissonMat<dim> &&coarse_mat_)
+  {
+    HybridPoissonMat<dim> coarse_mat = std::move(coarse_mat_);
 
 #warning "In general, need surrogate here to line up process partitions."
 
@@ -634,7 +681,7 @@ namespace PoissonEq
                 fine_loop.getCurrentSubtree(),
                 fine_emat,
                 fine_loop.subtreeInfo().readNodeNonhangingIn(),
-                &m_interp,
+                &fine_mat.m_interp,
                 coarse_loop.getCurrentSubtree(),
                 coarse_loop.subtreeInfo().readNodeNonhangingIn());
 
@@ -652,7 +699,7 @@ namespace PoissonEq
                   fine_loop.getCurrentSubtree(),
                   fine_emat,
                   fine_loop.subtreeInfo().readNodeNonhangingIn(),
-                  &m_interp,
+                  &fine_mat.m_interp,
                   coarse_loop.getCurrentSubtree(),
                   coarse_loop.subtreeInfo().readNodeNonhangingIn());
 
