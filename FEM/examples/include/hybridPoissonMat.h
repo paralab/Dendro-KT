@@ -7,7 +7,7 @@
 
 #include <unordered_map>
 
-#include <external/aMat/Eigen/Dense>
+#include "Eigen/Dense"
 
 namespace PoissonEq
 {

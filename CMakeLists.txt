@@ -141,6 +141,7 @@ else()
     add_definitions(-DDENDRO_VTU_ASCII)
 endif()
 
+add_subdirectory(external/eigen)
 add_subdirectory(external/HighFive)
 add_subdirectory(external/c4conf)
 
@@ -253,6 +254,7 @@ target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/zlib/i
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/array/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/FEM/include)
 target_include_directories(dendroKT PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(dendroKT eigen)
 target_link_libraries(dendroKT HighFive)
 target_link_libraries(dendroKT c4conf)
 target_link_libraries(dendroKT ${MPI_LIBRARIES} m)

@@ -4,3 +4,6 @@
 [submodule "external/c4conf"]
 	path = external/c4conf
 	url = https://github.com/biojppm/c4conf.git
+[submodule "external/eigen"]
+	path = external/eigen
+	url = https://gitlab.com/libeigen/eigen.git
