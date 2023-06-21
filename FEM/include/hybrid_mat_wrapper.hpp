@@ -179,6 +179,18 @@ namespace fem
         return m_matdef->postMatVec(in, out, scale);
       }
 
+      // preMat()
+      bool preMat()
+      {
+        return m_matdef->preMat();
+      }
+
+      // postMat()
+      bool postMat()
+      {
+        return m_matdef->postMat();
+      }
+
       /**@brief set the problem dimension*/
       virtual void setProblemDimensions(const Point<dim>& pt_min, const Point<dim>& pt_max) override
       {
