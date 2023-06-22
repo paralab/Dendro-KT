@@ -143,15 +143,17 @@ namespace fem
 
       bool is_evaluated(size_t local_eid) const;
 
-      void store_evaluated(size_t local_eid);
+      // marked, lazily stored.
+      void mark_evaluated(size_t local_eid);
+      void mark_unevaluated(size_t local_eid);
 
 
       // -----------------------------------------------------------------------
       // Produce hybrid coarsened operator. (Galerkin coarsening where explicit)
       // -----------------------------------------------------------------------
 
-      HybridMatWrapper coarsen(MatDef *coarse_matdef) const;
-      HybridMatWrapper coarsen(std::unique_ptr<MatDef> coarse_matdef) const;
+      HybridMatWrapper coarsen(MatDef *coarse_matdef);
+      HybridMatWrapper coarsen(std::unique_ptr<MatDef> coarse_matdef);
 
 
       // -----------------------------------------------------------------------
@@ -221,7 +223,7 @@ namespace fem
           const double *in, double *out);
 
       static HybridMatWrapper evaluate_galerkin_elements(
-          const HybridMatWrapper &fine_mat,
+          HybridMatWrapper &fine_mat,
           HybridMatWrapper &&coarse_mat);
 
 
@@ -232,8 +234,13 @@ namespace fem
           const ot::DA<dim> *da,
           int dof);
 
+      void store_all_evaluated();
+      void ensure_store_all_evaluated();
+
       // Evaluates from geometric definition.
       detail::ElementalMatrix evaluate(size_t local_eid) const;
+
+      void evaluate_discard(size_t local_eid) const;
 
       void is_evaluated(size_t local_eid, bool evaluated);
 
@@ -244,6 +251,7 @@ namespace fem
       void emat_mult(const double *in, double *out, size_t local_eid);
 
     private:
+      bool m_new_marks = false;
       bool m_owns_def = false;
       MatDef *m_matdef = nullptr;
       std::vector<Eigen::MatrixXd> m_emats;
@@ -377,7 +385,7 @@ namespace fem
       const Point<dim> center = corner + Point<dim>(size) / 2.0;
       const detail::ElemCenter<dim> key(center);
 
-      // Change the partition id after construction using store_evaluated().
+      // Change the partition id after construction using mark_evaluated().
       using detail::HybridPartition;
       HybridPartition partition_id = HybridPartition::opaque;
 
@@ -429,16 +437,57 @@ namespace fem
   }
 
 
+  // ensure_store_all_evaluated()
   template <int dim, class MatDef>
-  void HybridMatWrapper<dim, MatDef>::store_evaluated(size_t local_eid)
+  void HybridMatWrapper<dim, MatDef>::ensure_store_all_evaluated()
   {
-    // Those Eigen matrices that are not resized will just be null pointers.
+    if (m_new_marks)
+    {
+      store_all_evaluated();
+      m_new_marks = false;
+    }
+  }
 
-    this->is_evaluated(local_eid, true);
-    this->elemental_matrix(local_eid, this->evaluate(local_eid));
+  // store_all_evaluated()
+  template <int dim, class MatDef>
+  void HybridMatWrapper<dim, MatDef>::store_all_evaluated()
+  {
+    this->preMat();
+    const size_t local_elements = this->da()->getLocalElementSz();
+    for (size_t eid = 0; eid < local_elements; ++eid)
+    {
+      if (this->is_evaluated(eid))
+        this->elemental_matrix(eid, this->evaluate(eid));
+      else
+        this->evaluate_discard(eid);
+    }
+    this->postMat();
   }
 
 
+  // evaluate_discard()
+  template <int dim, class MatDef>
+  void HybridMatWrapper<dim, MatDef>::evaluate_discard(size_t local_eid) const
+  {
+    const ot::TreeNode<uint32_t, dim> octant = (*this->octList())[local_eid];
+    const bool is_boundary = octant.getIsOnTreeBdry();
+
+    static std::vector<double> node_coords_flat;
+    const std::vector<ot::TreeNode<uint32_t, dim>> *no_tn_coords = nullptr;
+    ot::fillAccessNodeCoordsFlat(
+        false, *no_tn_coords,
+        octant, this->da()->getElementOrder(), node_coords_flat);
+
+    static std::vector<ot::MatRecord> dummy_records;
+    dummy_records.clear();
+
+    m_matdef->turn_element_off();
+    m_matdef->getElementalMatrix(dummy_records, node_coords_flat.data(), is_boundary);
+    m_matdef->turn_element_on();
+  }
+
+
+  // evaluate()
   template <int dim, class MatDef>
   detail::ElementalMatrix
     HybridMatWrapper<dim, MatDef>::evaluate(size_t local_eid) const
@@ -458,7 +507,7 @@ namespace fem
         octant, this->da()->getElementOrder(), node_coords_flat);
 
     static std::vector<ot::MatRecord> elem_records;
-    m_matdef->getElementalMatrix(elem_records, node_coords_flat.data(), is_boundary);//beware: not entire element set
+    m_matdef->getElementalMatrix(elem_records, node_coords_flat.data(), is_boundary);
     for (const ot::MatRecord &entry : elem_records)
       emat.entries(entry.getRowID() * ndofs + entry.getRowDim(),
                    entry.getColID() * ndofs + entry.getColDim())
@@ -586,6 +635,7 @@ namespace fem
 
         this->elemental_p2c(index.local_element_id, in, out);
 
+#warning "aliased elementalMatVec()"  // fix with separate buffer here.
         this->m_matdef->elementalMatVec(
             out, out, ndofs, coords, scale, isElementBoundary);
 
@@ -594,7 +644,13 @@ namespace fem
         break;
 
       case HybridPartition::evaluated:
+
+        m_matdef->turn_element_off();
+        m_matdef->elementalMatVec(in, out, ndofs, coords, scale, isElementBoundary);
+        m_matdef->turn_element_on();
+
         this->emat_mult(in, out, index.local_element_id);
+
         break;
 
       default:
@@ -622,6 +678,8 @@ namespace fem
   void HybridMatWrapper<dim, MatDef>::matVec(
       const VECType* in,VECType* out, double scale)
   {
+    this->ensure_store_all_evaluated();
+
     // Copy-pasted from feMatrix.h:matVec(),
     // just changed matvec() -> matvec_no_interpolation()
 
@@ -678,6 +736,10 @@ namespace fem
   template <int dim, class MatDef>
   void HybridMatWrapper<dim, MatDef>::setDiag(VECType *out, double scale)
   {
+    this->ensure_store_all_evaluated();
+
+    this->preMat();
+
     // Copy-pasted from feMatrix.h:setDiag() and setDiag.h,
     // but set interpolation(false).
 
@@ -758,6 +820,8 @@ namespace fem
 
     // 5. Copy output data from ghosted buffer.
     m_oda->template ghostedNodalToNodalVec<VECType>(outGhostedPtr, out, true, ndofs);
+
+    this->postMat();
   }
 
 
@@ -765,6 +829,8 @@ namespace fem
   template <int dim, class MatDef>
   bool HybridMatWrapper<dim, MatDef>::getAssembledMatrix(Mat *J, MatType mtype)
   {
+    this->ensure_store_all_evaluated();
+
     // Copy-pasted from feMatrix.h:collectMatrixEntries()
     // and getAssembledMatrix(), then deleted hanging interpolation
     // (it is already built into elemental_matrix()).
@@ -847,20 +913,20 @@ namespace fem
   // HybridMatWrapper::coarsen()
   template <int dim, class MatDef>
   HybridMatWrapper<dim, MatDef> HybridMatWrapper<dim, MatDef>::coarsen(
-      MatDef *coarse_matdef) const
+      MatDef *coarse_matdef)
   {
     HybridMatWrapper coarse_mat(coarse_matdef);
-    const HybridMatWrapper &fine_mat = *this;
+    HybridMatWrapper &fine_mat = *this;
     return evaluate_galerkin_elements(fine_mat, std::move(coarse_mat));
   }
 
   // HybridMatWrapper::coarsen()
   template <int dim, class MatDef>
   HybridMatWrapper<dim, MatDef> HybridMatWrapper<dim, MatDef>::coarsen(
-      std::unique_ptr<MatDef> coarse_matdef) const
+      std::unique_ptr<MatDef> coarse_matdef)
   {
     HybridMatWrapper coarse_mat(std::move(coarse_matdef));
-    const HybridMatWrapper &fine_mat = *this;
+    HybridMatWrapper &fine_mat = *this;
     return evaluate_galerkin_elements(fine_mat, std::move(coarse_mat));
   }
 
@@ -868,7 +934,7 @@ namespace fem
   template <int dim, class MatDef>
   HybridMatWrapper<dim, MatDef>
   HybridMatWrapper<dim, MatDef>::evaluate_galerkin_elements(
-      const HybridMatWrapper<dim, MatDef> &fine_mat,
+      HybridMatWrapper<dim, MatDef> &fine_mat,
       HybridMatWrapper<dim, MatDef> &&coarse_mat_)
   {
     HybridMatWrapper<dim, MatDef> coarse_mat = std::move(coarse_mat_);
@@ -937,6 +1003,10 @@ namespace fem
 
     detail::ElementalMatrix fine_emat;
 
+    fine_mat.ensure_store_all_evaluated();
+
+    fine_mat.preMat();
+
     while (not coarse_loop.isFinished())
     {
       assert(coarse_loop.getCurrentSubtree() == fine_loop.getCurrentSubtree());
@@ -1004,6 +1074,8 @@ namespace fem
       }
     }
 
+    fine_mat.postMat();
+
     return coarse_mat;
   }
 
@@ -1012,6 +1084,20 @@ namespace fem
   bool HybridMatWrapper<dim, MatDef>::is_evaluated(size_t local_eid) const
   {
     return m_emats[local_eid].size() > 0;
+  }
+
+  template <int dim, class MatDef>
+  void HybridMatWrapper<dim, MatDef>::mark_evaluated(size_t local_eid)
+  {
+    this->is_evaluated(local_eid, true);
+    m_new_marks = true;
+  }
+
+  template <int dim, class MatDef>
+  void HybridMatWrapper<dim, MatDef>::mark_unevaluated(size_t local_eid)
+  {
+    this->is_evaluated(local_eid, false);
+    m_new_marks = true;
   }
 
   template <int dim, class MatDef>
@@ -1051,6 +1137,8 @@ namespace fem
     }
     else
     {
+      this->evaluate_discard(local_eid);
+
       return detail::ElementalMatrix(
           this->da()->getNumNodesPerElement(),
           this->ndofs(),

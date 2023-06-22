@@ -747,7 +747,7 @@ int tmain(int argc, char *argv[], Configuration &config)
     for (size_t i = 0; i < base_da.getLocalElementSz(); ++i)
       /// if (trees.getTreePartFiltered(0)[i].getIsOnTreeBdry())
       if (true)
-        hybrid_mats[0]->store_evaluated(i);
+        hybrid_mats[0]->mark_evaluated(i);
     for (int g = 1; g < n_grids; ++g)
     {
       hybrid_mats[g] = new HybridPoissonMat(hybrid_mats[g - 1]->coarsen(mats[g]));

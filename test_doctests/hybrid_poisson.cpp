@@ -204,7 +204,7 @@ MPI_TEST_CASE("Hybrid poisson should match gmg poisson", 1)
 
   // Choose a proper subset of elements to be 'evaluated'
   for (size_t i = 0; i < local_cells / 2; ++i)
-    fine_hyb_matrix.store_evaluated(i);
+    fine_hyb_matrix.mark_evaluated(i);
   fine_hyb_matrix.matVec(u_vec.data(), w_evald_vec.data());
 
 

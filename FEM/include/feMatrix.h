@@ -25,6 +25,8 @@ class feMatrix : public feMat<dim> {
          /**@brief number of dof*/
          unsigned int m_uiDof = -1;
 
+         bool m_is_element_on = true;
+
     protected:
         // Place in protected access due to polymorphism.
         feMatrix(const feMatrix &) = delete;
@@ -55,6 +57,15 @@ class feMatrix : public feMat<dim> {
         virtual void matVec(const VECType* in,VECType* out, double scale=1.0);
 
         virtual void setDiag(VECType *out, double scale = 1.0);
+
+        /**@brief Allows the application code to check if an element should be included. */
+        bool is_element_on() const { return m_is_element_on; }
+
+        /**@brief Indicates to the application code whether to include an element. */
+        void turn_element_on() { m_is_element_on = true; }
+
+        /**@brief Indicates to the application code whether to include an element. */
+        void turn_element_off() { m_is_element_on = false; }
 
 
         /**@brief Computes the elemental matvec
@@ -235,6 +246,7 @@ feMatrix<LeafT, dim>::feMatrix(feMatrix &&moved)
   : feMat<dim>(std::move(moved))
 {
   std::swap(m_uiDof,       moved.m_uiDof);
+  std::swap(m_is_element_on,       moved.m_is_element_on);
 }
 
 template <typename LeafT, unsigned int dim>
@@ -242,6 +254,7 @@ feMatrix<LeafT, dim> & feMatrix<LeafT, dim>::operator=(feMatrix &&moved)
 {
   feMat<dim>::operator=(std::move(moved));
   std::swap(m_uiDof,       moved.m_uiDof);
+  std::swap(m_is_element_on,       moved.m_is_element_on);
   return *this;
 }
 
