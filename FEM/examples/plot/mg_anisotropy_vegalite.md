@@ -16,6 +16,13 @@ transform:
     as: Cells (depth)
   - calculate: toNumber(datum.cells)
     as: cells
+  - window:
+    - op: first_value
+      field: res_L2
+      as: first_res_L2
+    groupby: ["Cells (depth)", "solver"]
+  - calculate: toNumber(datum.res_L2) / toNumber(datum.first_res_L2)
+    as: rel_res_L2
 facet:
   row:
     field: scaling
@@ -27,7 +34,7 @@ spec:
       field: vcycles
       type: quantitative
     y:
-      field: res_L2
+      field: rel_res_L2
       type: quantitative
       scale:
         type: log
@@ -58,29 +65,37 @@ config:
 data:
   url: Dendro-KT/savedata/anisotropic_vcycle_data.csv
 transform:
-  - calculate: toString(datum.mesh_family) + " (h=" + format(datum.spacing, ".0e") + ")"
-    as: Mesh
+  - calculate: format(datum.cells, ",d") + " (lev=" + toString(datum.max_depth) + ")"
+    as: Cells (depth)
 
-  - calculate: toNumber(datum.res_L2)
-    as: numeric_res_L2
+  - calculate: toNumber(datum.cells)
+    as: cells
+  - window:
+    - op: first_value
+      field: res_L2
+      as: first_res_L2
+    groupby: ["Cells (depth)", "solver"]
+  - calculate: toNumber(datum.res_L2) / toNumber(datum.first_res_L2)
+    as: rel_res_L2
 
   - window:
-      - op: lag
-        field: numeric_res_L2
-        param: 2
-        as: lag2_res_L2
-      - op: lag
-        field: numeric_res_L2
-        param: 1
-        as: lag1_res_L2
+    - op: lag
+      field: rel_res_L2
+      param: 2
+      as: lag2_res_L2
+    - op: lag
+      field: rel_res_L2
+      param: 1
+      as: lag1_res_L2
+    groupby: ["Cells (depth)", "solver"]
 
-  - filter: datum.numeric_res_L2 < 0.90 * datum.lag2_res_L2
+  - filter: (datum.vcycles <= 5) || (datum.rel_res_L2 < 0.90 * datum.lag2_res_L2)
 
   - joinaggregate:
       - op: min
-        field: numeric_res_L2
+        field: rel_res_L2
         as: min_res_L2
-    groupby: [Mesh, solver]
+    groupby: ["Cells (depth)", "solver"]
 
   - joinaggregate:
       - op: max
@@ -88,7 +103,7 @@ transform:
         as: common_res_L2
     groupby: [solver]
 
-  - filter: datum.lag1_res_L2 >= datum.common_res_L2
+  - filter: (datum.vcycles <= 5) || (datum.lag1_res_L2 >= datum.common_res_L2)
 
 facet:
   column: {field: solver}
@@ -100,15 +115,16 @@ spec:
           field: vcycles
           type: quantitative
         y:
-          field: numeric_res_L2
+          field: rel_res_L2
           type: quantitative
           scale:
             type: log
           axis:
             format: "0.0e"
         color:
-          field: Mesh
+          field: "Cells (depth)"
           type: nominal
+          sort: {field: cells, order: ascending}
     - mark: bar
       encoding:
         x:
@@ -116,7 +132,7 @@ spec:
           type: quantitative
           aggregate: max
         y:
-          field: Mesh
+          field: "Cells (depth)"
           type: nominal
           sort:
             field: vcycles
