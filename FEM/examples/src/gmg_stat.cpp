@@ -27,6 +27,7 @@
 #include "FEM/include/solver_utils.hpp"
 #include "FEM/include/cg_solver.hpp"
 #include "include/nodal_data.hpp"
+#include "IO/vtk/include/oct2vtk.h"
 #include <petsc.h>
 #else//CRUNCHTIME
 #define PetscInitialize(...)
@@ -588,6 +589,12 @@ int tmain(int argc, char *argv[], Configuration &config)
     printer(std::cout) << "cells = " << double(base_da.getGlobalElementSz()) << "  "
               << "max_depth = " << real_max_depth << "\n";
 
+    /// io::vtk::oct2vtu<unsigned, 3>(
+    ///     (const ot::TreeNode<unsigned, 3> *) base_tree.getTreePartFiltered(0).data(),
+    ///     base_tree.getTreePartFiltered(0).size(),
+    ///     ("mesh_" + std::to_string(setup_idx)).c_str(),
+    ///     base_tree.getComm());
+
     // ghosted_node_coordinate()
     const auto ghosted_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
     {
@@ -1040,10 +1047,10 @@ int gmg_solver(
     int count_vcycles = 0;
     /// int count_matvecs = 0;
 
-    Residual res;
-    res = compute_residual(
-        &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
-    collection.observe(count_vcycles, count_vcycles, res.L2, res.Linf);
+    /// Residual res;
+    /// res = compute_residual(
+    ///     &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
+    /// collection.observe(count_vcycles, count_vcycles, res.L2, res.Linf);
     //future: accurately capture matvecs
 
     const auto mat_mult = [&](const double *u, double *v) -> void
@@ -1063,11 +1070,14 @@ int gmg_solver(
 
     const int steps = solve::pcgSolver(
         base_mat.da(), mat_mult, preconditioner,
-        &(*u_vec.begin()), &(*rhs_vec.begin()), max_vcycles, relative_tolerance, true);
+        &(*u_vec.begin()), &(*rhs_vec.begin()), max_vcycles, relative_tolerance, true,
+        [&](double l2, double linf){
+          collection.observe(count_vcycles, count_vcycles, l2, linf);
+        });
 
-    res = compute_residual(
-        &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
-    collection.observe(count_vcycles, count_vcycles, res.L2, res.Linf);
+    /// res = compute_residual(
+    ///     &base_mat, ndofs, u_vec, v_vec, rhs_vec, global_comm);
+    /// collection.observe(count_vcycles, count_vcycles, res.L2, res.Linf);
 
     /////////////////////////
     return count_vcycles;

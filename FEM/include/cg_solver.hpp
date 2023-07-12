@@ -109,8 +109,8 @@ namespace solve
 
 
   // pcgSolver()
-  template <unsigned int dim, typename MatMult, typename PCSolver>
-  int pcgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, const PCSolver &pc_solve, VECType * u, const VECType * rhs, int max_iter, double relResErr, bool print_progress)
+  template <unsigned int dim, typename MatMult, typename PCSolver, typename Monitor>
+  int pcgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, const PCSolver &pc_solve, VECType * u, const VECType * rhs, int max_iter, double relResErr, bool print_progress, const Monitor &monitor)
   {
     // https://en.wikipedia.org/wiki/Conjugate_gradient_method#The_preconditioned_conjugate_gradient_method
 
@@ -119,6 +119,9 @@ namespace solve
     // Vector norm and dot
     const auto vec_norm_linf = [da](const VECType *v) -> VECType {
       return normLInfty(v, da->getLocalNodalSz(), da->getCommActive());
+    };
+    const auto vec_norm_l2 = [da](const VECType *v) -> VECType {
+      return normL2(v, da->getLocalNodalSz(), da->getCommActive());
     };
     const auto vec_dot = [da](const VECType *u, const VECType *v) -> VECType {
       return dot(u, v, da->getLocalNodalSz(), da->getCommActive());
@@ -154,6 +157,8 @@ namespace solve
     int step = 0;
     residual(mat_mult, &r[0], u, rhs);
     VECType rmag = vec_norm_linf(&r[0]);
+    VECType rmag_l2 = vec_norm_l2(&r[0]);
+    monitor(rmag, rmag_l2);
     const VECType rmag0 = rmag;
     fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
     if (rmag <= thresh)
@@ -188,6 +193,8 @@ namespace solve
           r[ii] -= alpha * Ap[ii];
 
       rmag = vec_norm_linf(&r[0]);
+      VECType rmag_l2 = vec_norm_l2(&r[0]);
+      monitor(rmag, rmag_l2);
       if (rmag <= thresh)
         break;
 
