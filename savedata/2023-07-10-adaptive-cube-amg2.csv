@@ -1,0 +1,15 @@
+matvecs,res_L2,res_Linf,vcycles,group_name,cells,frequency_x,frequency_y,frequency_z,max_depth,mesh,mesh_family,scale_x,scale_y,scale_z,solver,unknowns
+0,0.6005838918250588,,0,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+1,0.08104567996054982,,1,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+2,0.00795006742415877,,2,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+3,0.0005398601823873432,,3,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+4,3.632466875219804e-05,,4,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+5,2.7488658771244277e-06,,5,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+6,2.2175388728711034e-07,,6,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+7,1.755951228274408e-08,,7,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+8,1.3366492570219667e-09,,8,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+9,9.440740881897171e-11,,9,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+10,7.293200528010227e-12,,10,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+11,5.93640413731679e-13,,11,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+12,4.6602114918974256e-14,,12,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769
+13,3.526218437081462e-15,,13,scale=[1_1_1] freq=[0.5_0.5_0.5] solver=accelerated_amg mesh=adapt interpolation=5.0e-1,14400,0.5,0.5,0.5,5,adaptive(5.0e-1),adapt,1.0,1.0,1.0,accelerated_amg,12769

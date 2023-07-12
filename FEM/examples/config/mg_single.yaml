@@ -1,0 +1,71 @@
+dim: 2
+
+output: "mg_single.hdf5"
+
+overwrite_all: true
+
+problem:
+  freq: 0.75
+
+solvers:
+  - &standalone_gmg
+    name: "standalone_gmg"
+    class: "multigrid"
+    type: "GMG"
+    ksp: "Stand"
+
+  - &standalone_hybrid_mg
+    name: "standalone_hybrid_mg"
+    class: "multigrid"
+    type: "Hybrid"
+    ksp: "Stand"
+
+  - &standalone_amg
+    name: "standalone_amg"
+    class: "multigrid"
+    type: "AMG"
+    ksp: "Stand"
+
+  - &accelerated_gmg
+    name: "accelerated_gmg"
+    class: "multigrid"
+    type: "GMG"
+    ksp: "CG"
+
+  - &accelerated_hybrid_mg
+    name: "accelerated_hybrid_mg"
+    class: "multigrid"
+    type: "Hybrid"
+    ksp: "CG"
+
+  - &accelerated_amg
+    name: "accelerated_amg"
+    class: "multigrid"
+    type: "AMG"
+    ksp: "CG"
+
+mesh_recipes:
+  - &proxy_adapt
+    name: "adapt"
+    construct: by_func   # scalar; for vector, use by_vector_func
+    degree: 1
+
+  - &uniform
+    name: "uniform"
+    construct: uniform
+    degree: 1
+
+setups:
+  ### - mesh_recipe: *proxy_adapt
+  ###   interpolation: 5.0e-2
+  #...
+
+  - mesh_recipe: *uniform
+    max_depth: 4
+    runs:
+      - {active: true, solver: *standalone_gmg}
+      - {active: true, solver: *accelerated_gmg}
+      - {active: true, solver: *standalone_hybrid_mg}
+      - {active: true, solver: *accelerated_hybrid_mg}
+      - {active: true, solver: *accelerated_amg}
+

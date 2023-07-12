@@ -1,0 +1,89 @@
+dim: 3
+
+overwrite_all: false
+
+output: 2023-07-10-uniform-cube.hdf5
+
+solvers:
+  - &standalone_gmg
+    name: "standalone_gmg"
+    class: "multigrid"
+    type: "GMG"
+    ksp: "Stand"
+
+  - &standalone_hybrid_mg
+    name: "standalone_hybrid_mg"
+    class: "multigrid"
+    type: "Hybrid"
+    ksp: "Stand"
+
+  - &standalone_amg
+    name: "standalone_amg"
+    class: "multigrid"
+    type: "AMG"
+    ksp: "Stand"
+
+  - &accelerated_gmg
+    name: "accelerated_gmg"
+    class: "multigrid"
+    type: "GMG"
+    ksp: "CG"
+
+  - &accelerated_hybrid_mg
+    name: "accelerated_hybrid_mg"
+    class: "multigrid"
+    type: "Hybrid"
+    ksp: "CG"
+
+  - &accelerated_amg
+    name: "accelerated_amg"
+    class: "multigrid"
+    type: "AMG"
+    ksp: "CG"
+
+
+mesh_recipes:
+  - &proxy_adapt
+    name: "adapt"
+    construct: by_func   # scalar; for vector, use by_vector_func
+    degree: 1
+
+  - &uniform
+    name: "uniform"
+    construct: uniform
+    degree: 1
+
+setups:
+
+  ## Uniform ##
+
+  - mesh_recipe: *uniform
+    max_depth: 4
+    runs:
+      - {active: false, solver: *standalone_gmg}
+      - {active: false, solver: *accelerated_gmg}
+      - {active: false, solver: *standalone_hybrid_mg}
+      - {active: false, solver: *accelerated_hybrid_mg}
+      - {active: false, solver: *standalone_amg}
+      - {active: false, solver: *accelerated_amg}
+
+  - mesh_recipe: *uniform
+    max_depth: 6
+    runs:
+      - {active: false, solver: *standalone_gmg}
+      - {active: false, solver: *accelerated_gmg}
+      - {active: false, solver: *standalone_hybrid_mg}
+      - {active: false, solver: *accelerated_hybrid_mg}
+      - {active: false, solver: *standalone_amg}
+      - {active: false, solver: *accelerated_amg}
+
+  - mesh_recipe: *uniform
+    max_depth: 7
+    runs:
+      - {active: false, solver: *standalone_gmg}
+      - {active: false, solver: *accelerated_gmg}
+      - {active: false, solver: *standalone_hybrid_mg}
+      - {active: false, solver: *accelerated_hybrid_mg}
+      - {active: false, solver: *standalone_amg}
+      - {active: false, solver: *accelerated_amg}
+

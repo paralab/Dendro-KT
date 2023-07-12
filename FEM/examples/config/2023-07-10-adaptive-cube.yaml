@@ -1,0 +1,99 @@
+dim: 3
+
+overwrite_all: true
+
+output: 2023-07-10-adaptive-cube.hdf5
+
+solvers:
+  - &standalone_gmg
+    name: "standalone_gmg"
+    class: "multigrid"
+    type: "GMG"
+    ksp: "Stand"
+
+  - &standalone_hybrid_mg
+    name: "standalone_hybrid_mg"
+    class: "multigrid"
+    type: "Hybrid"
+    ksp: "Stand"
+
+  - &standalone_amg
+    name: "standalone_amg"
+    class: "multigrid"
+    type: "AMG"
+    ksp: "Stand"
+
+  - &accelerated_gmg
+    name: "accelerated_gmg"
+    class: "multigrid"
+    type: "GMG"
+    ksp: "CG"
+
+  - &accelerated_hybrid_mg
+    name: "accelerated_hybrid_mg"
+    class: "multigrid"
+    type: "Hybrid"
+    ksp: "CG"
+
+  - &accelerated_amg
+    name: "accelerated_amg"
+    class: "multigrid"
+    type: "AMG"
+    ksp: "CG"
+
+
+mesh_recipes:
+  - &proxy_adapt
+    name: "adapt"
+    construct: by_func   # scalar; for vector, use by_vector_func
+    degree: 1
+
+  - &uniform
+    name: "uniform"
+    construct: uniform
+    degree: 1
+
+setups:
+
+  ## Adaptive ##
+
+  - mesh_recipe: *proxy_adapt
+    interpolation: 1.0e-1
+    runs:
+      - {active: false, solver: *standalone_amg}
+      - {active: false, solver: *accelerated_amg}
+      - {active: false, solver: *standalone_gmg}
+      - {active: false, solver: *accelerated_gmg}
+      - {active: false, solver: *standalone_hybrid_mg}
+      - {active: false, solver: *accelerated_hybrid_mg}
+
+  - mesh_recipe: *proxy_adapt
+    interpolation: 2.0e-1
+    runs:
+      - {active: false, solver: *standalone_amg}
+      - {active: false, solver: *accelerated_amg}
+      - {active: false, solver: *standalone_gmg}
+      - {active: false, solver: *accelerated_gmg}
+      - {active: false, solver: *standalone_hybrid_mg}
+      - {active: false, solver: *accelerated_hybrid_mg}
+
+  - mesh_recipe: *proxy_adapt
+    interpolation: 5.0e-1
+    runs:
+      - {active: false, solver: *standalone_amg}
+      - {active: false, solver: *accelerated_amg}
+      - {active: false, solver: *standalone_gmg}
+      - {active: false, solver: *accelerated_gmg}
+      - {active: false, solver: *standalone_hybrid_mg}
+      - {active: false, solver: *accelerated_hybrid_mg}
+
+  - mesh_recipe: *proxy_adapt
+    interpolation: 1.0e-0
+    runs:
+      - {active: false, solver: *standalone_amg}
+      - {active: false, solver: *accelerated_amg}
+      - {active: false, solver: *standalone_gmg}
+      - {active: false, solver: *accelerated_gmg}
+      - {active: false, solver: *standalone_hybrid_mg}
+      - {active: false, solver: *accelerated_hybrid_mg}
+
