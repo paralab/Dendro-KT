@@ -33,7 +33,7 @@ int main(int argc, char * argv[])
   {
     /// lev = m_uiMaxDepth;  // override
     lev = lev * 2 / 3;
-    const uint mask = (1u << m_uiMaxDepth) - (1u << m_uiMaxDepth - lev);
+    const uint mask = (1u << m_uiMaxDepth) - (1u << (m_uiMaxDepth - lev));
     for (int d = 0; d < DIM; ++d)
       coords[d] &= mask;
     return Oct(coords, lev);

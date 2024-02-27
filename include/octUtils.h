@@ -553,7 +553,7 @@ std::ostream & printNodeCoords(const TreeNode<T, dim> *coordBegin,
 
   std::sort(zipped.begin(), zipped.end());
 
-  const unsigned int numTiles1D = (1u << int(deepestLev) - int(subdomain.getLevel())) + 1;
+  const unsigned int numTiles1D = (1u << (int(deepestLev) - int(subdomain.getLevel()))) + 1;
   /// const unsigned int charBound = (numTiles1D * 10 + 4)*numTiles1D + 2;
   const unsigned int charBound = (numTiles1D * 20 + 4)*numTiles1D + 2;
   /// std::vector<char> charBuffer(charBound + 10, '\0');
@@ -577,10 +577,10 @@ std::ostream & printNodeCoords(const TreeNode<T, dim> *coordBegin,
       while (cursorX < x)
       {
         s += snprintf(s, bufEnd-s, "       \t");
-        cursorX += (1u << m_uiMaxDepth - deepestLev);
+        cursorX += (1u << (m_uiMaxDepth - deepestLev));
       }
       s += snprintf(s, bufEnd-s, "(%2d %2d)\t", val[0] >> (m_uiMaxDepth- deepestLev), val[1] >> (m_uiMaxDepth - deepestLev));
-      cursorX += (1u << m_uiMaxDepth - deepestLev);
+      cursorX += (1u << (m_uiMaxDepth - deepestLev));
       ii++;
     }
 
@@ -590,7 +590,7 @@ std::ostream & printNodeCoords(const TreeNode<T, dim> *coordBegin,
       while (cursorY < nextY)
       {
         s += snprintf(s, bufEnd-s, "\n\n\n");
-        cursorY += (1u << m_uiMaxDepth - deepestLev);
+        cursorY += (1u << (m_uiMaxDepth - deepestLev));
       }
     }
   }
@@ -643,7 +643,7 @@ std::ostream & printNodes(const TreeNode<T, dim> *coordBegin,
 
   std::sort(zipped.begin(), zipped.end());
 
-  const unsigned int numTiles1D = (1u << int(deepestLev) - int(subdomain.getLevel())) + 1;
+  const unsigned int numTiles1D = (1u << (int(deepestLev) - int(subdomain.getLevel()))) + 1;
   /// const unsigned int charBound = (numTiles1D * 10 + 4)*numTiles1D + 2;
   const unsigned int charBound = (numTiles1D * 20 + 4)*numTiles1D + 2;
   /// std::vector<char> charBuffer(charBound + 10, '\0');
@@ -667,10 +667,10 @@ std::ostream & printNodes(const TreeNode<T, dim> *coordBegin,
       while (cursorX < x)
       {
         s += snprintf(s, bufEnd-s, "    \t");
-        cursorX += (1u << m_uiMaxDepth - deepestLev);
+        cursorX += (1u << (m_uiMaxDepth - deepestLev));
       }
       s += snprintf(s, bufEnd-s, "%01.2f\t", val);
-      cursorX += (1u << m_uiMaxDepth - deepestLev);
+      cursorX += (1u << (m_uiMaxDepth - deepestLev));
       ii++;
     }
 
@@ -680,7 +680,7 @@ std::ostream & printNodes(const TreeNode<T, dim> *coordBegin,
       while (cursorY < nextY)
       {
         s += snprintf(s, bufEnd-s, "\n\n\n");
-        cursorY += (1u << m_uiMaxDepth - deepestLev);
+        cursorY += (1u << (m_uiMaxDepth - deepestLev));
       }
     }
   }
@@ -731,7 +731,7 @@ std::ostream & printNodes(const TreeNode<T, dim> *coordBegin,
 
   std::sort(zipped.begin(), zipped.end());
 
-  const unsigned int numTiles1D = (1u << int(deepestLev) - int(subdomain.getLevel())) + 1;
+  const unsigned int numTiles1D = (1u << (int(deepestLev) - int(subdomain.getLevel()))) + 1;
   /// const unsigned int charBound = (numTiles1D * 10 + 4)*numTiles1D + 2;
   const unsigned int charBound = (numTiles1D * 20 + 4)*numTiles1D + 2;
   /// std::vector<char> charBuffer(charBound + 10, '\0');
@@ -756,10 +756,10 @@ std::ostream & printNodes(const TreeNode<T, dim> *coordBegin,
       while (cursorX < x)
       {
         s += snprintf(s, bufEnd-s, "    \t");
-        cursorX += (1u << m_uiMaxDepth - deepestLev);
+        cursorX += (1u << (m_uiMaxDepth - deepestLev));
       }
       s += snprintf(s, bufEnd-s, "%s%01.2f%s\t", color, val, NRM);
-      cursorX += (1u << m_uiMaxDepth - deepestLev);
+      cursorX += (1u << (m_uiMaxDepth - deepestLev));
       ii++;
     }
 
@@ -769,7 +769,7 @@ std::ostream & printNodes(const TreeNode<T, dim> *coordBegin,
       while (cursorY < nextY)
       {
         s += snprintf(s, bufEnd-s, "\n\n\n");
-        cursorY += (1u << m_uiMaxDepth - deepestLev);
+        cursorY += (1u << (m_uiMaxDepth - deepestLev));
       }
     }
   }

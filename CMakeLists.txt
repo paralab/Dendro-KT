@@ -1,7 +1,12 @@
 ## CMAKE for Dendro-KT
 cmake_minimum_required(VERSION 2.8)
 project(Dendro-KT)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# This lets clangd LSP know the included directories.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
@@ -94,9 +99,8 @@ endif ()
 
 if(BUILD_WITH_PETSC)
     list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake-modules")
-    set(PETSC_DIR $ENV{HOME}/petsc-3.17.4)
-    set(PETSC_INCLUDES $ENV{HOME}/petsc-3.17.4)
-    set(PETSC_ARCH arch-linux-c-debug)
+    set(PETSC_DIR $ENV{HOME}/petsc-3.17.4 CACHE PATH "PETSc root directory")
+    set(PETSC_ARCH arch-linux-c-debug CACHE STRING "PETSc arch type")
     find_package(PETSc REQUIRED)
     add_definitions(-DBUILD_WITH_PETSC)
 endif()

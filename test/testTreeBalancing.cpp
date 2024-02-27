@@ -373,8 +373,12 @@ bool checkLocalCompleteness(const std::vector<ot::TreeNode<T,D>> &tree,
       std::cout << "  \t ++ " << tn.getBase32Hex().data() << "\n";
     }
 
-    if (lev > (lev = tn.getLevel()) && (m_uiMaxDepth - counter.lowestNonzero()) > lev)
-      return false;
+    if (lev > tn.getLevel())
+    {
+      lev = tn.getLevel();
+      if ((m_uiMaxDepth - counter.lowestNonzero()) > lev)
+        return false;
+    }
     counter.addToPlace(m_uiMaxDepth - lev, 1);
   }
   if (entireTree)

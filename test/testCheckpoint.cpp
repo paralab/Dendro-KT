@@ -84,7 +84,7 @@ int _main(int argc, char * argv[])
   MPI_Comm_rank(comm, &rProc);
 
   char rankStr[10];
-  sprintf(rankStr, "r%02d", rProc);
+  snprintf(rankStr, sizeof(rankStr), "r%02d", rProc);
   filePrefix = filePrefix + rankStr;
 
   using TreeNodeT = ot::TreeNode<unsigned int, dim>;

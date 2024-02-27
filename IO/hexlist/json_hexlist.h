@@ -78,8 +78,14 @@ namespace io
     hexlist.format_version[1] = j.at("format_version").at(1);
     hexlist.format_version[2] = j.at("format_version").at(2);
 
-    hexlist.fields[0] = j.at("fields").at(0);
-    hexlist.fields[1] = j.at("fields").at(1);
+    // Assignment to strings can get complicated..
+    // e.g. JSON has a ton of user-defined conversion operators,
+    // whilst (clang) std::string can be assigned anything if that
+    // thing is assignable to std::string_view.
+    // Recent versions of nlohmann JSON probably fix this,
+    // but for now the easiest thing to do is spell <std::string>.
+     hexlist.fields[0] = j.at("fields").at(0).get<std::string>();
+     hexlist.fields[1] = j.at("fields").at(1).get<std::string>();
 
     hexlist.data = j.at("data").get<std::vector<JSON_Hexlist::Hex>>();
   }
