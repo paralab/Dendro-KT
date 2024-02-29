@@ -3509,10 +3509,16 @@ void locResolveTree_rec(
       // otherwise insert copy of root into whichever has room,
       // otherwise push into auxiliary vector.
       if (not dom_tree.keep_all())
+      {
         if (res_kept_root)
+        {
           res_should_keep_root = true;
+        }
         else if (not (res_tree.it.store(subtree) or dom_tree.it.store(subtree)))
+        {
           extra.push_back(subtree);
+        }
+      }
     }
 
     if (res_kept_root and not res_should_keep_root)
