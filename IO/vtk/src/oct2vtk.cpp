@@ -1541,7 +1541,7 @@ namespace io
 
             char fname[FNAME_LENGTH];
             char str[2048];
-            sprintf(fname,"%s_%d_%d.vtu",fPrefix,rank,npes);
+            snprintf(fname, sizeof(fname),"%s_%d_%d.vtu",fPrefix,rank,npes);
 
             fp=fopen(fname,"w+");
             if(fp==NULL) {
@@ -1821,7 +1821,7 @@ namespace io
             fp=NULL;
 
             if(!rank) {
-                sprintf(fname, "%s.pvtu", fPrefix);
+                snprintf(fname, sizeof(fname), "%s.pvtu", fPrefix);
 
                 fp = fopen(fname, "w+");
                 if (fp == NULL) {

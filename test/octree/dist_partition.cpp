@@ -56,7 +56,7 @@ int main(int argc, char * argv[])
   const auto new_oct = [=](std::array<uint, DIM> coords, int lev)
   {
     lev = m_uiMaxDepth;  // override
-    const uint mask = (1u << m_uiMaxDepth) - (1u << m_uiMaxDepth - lev);
+    const uint mask = (1u << m_uiMaxDepth) - (1u << (m_uiMaxDepth - lev));
     for (int d = 0; d < DIM; ++d)
       coords[d] &= mask;
     return Oct(coords, lev);

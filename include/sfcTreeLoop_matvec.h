@@ -868,7 +868,7 @@ namespace ot
     const unsigned int curLev = subtree.getLevel();
 
     const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
-    const double elemSz = double(1u << m_uiMaxDepth - curLev) / double(1u << m_uiMaxDepth);
+    const double elemSz = double(1u << (m_uiMaxDepth - curLev)) / double(1u << m_uiMaxDepth);
     double translate[dim];
     for (int d = 0; d < dim; d++)
       translate[d] = domainScale * subtree.getX(d);

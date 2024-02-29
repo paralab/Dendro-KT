@@ -874,6 +874,10 @@ struct SFC_Tree
 
 };
 
+extern template struct SFC_Tree<unsigned int, 2>;
+extern template struct SFC_Tree<unsigned int, 3>;
+extern template struct SFC_Tree<unsigned int, 4>;
+
 
 /** Discover sources from destinations within active list in comm */
 std::vector<int> recvFromActive(

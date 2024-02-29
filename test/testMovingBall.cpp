@@ -84,8 +84,8 @@ void test_distOutputTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
       printf("[%d] slice %c size == %ld\n", rProc, dimNames[d], (long) slice3D.size());
 
       // Output to file with oct2vtu().
-      char fPrefix[] =  "                                                             ";  // beware buffer overflow.
-      sprintf(fPrefix,  "_output/testSlice-%c-t%u", dimNames[d], t);
+      char fPrefix[]                   =  "                                                             ";  // beware buffer overflow.
+      snprintf(fPrefix, sizeof(fPrefix),  "_output/testSlice-%c-t%u", dimNames[d], t);
       io::vtk::oct2vtu(&(*slice3D.begin()), (unsigned int) slice3D.size(), fPrefix, comm);
 
       // Advance slice dimension by coarseness of the slice.

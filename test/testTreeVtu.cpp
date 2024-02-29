@@ -78,8 +78,8 @@ void test_distOutputTreeBalancing(int numPoints, MPI_Comm comm = MPI_COMM_WORLD)
       // Note that the partitioning of the slice is not related to partition of original tree.
 
       // Output to file with oct2vtu().
-      char fPrefix[] =  "                                           ";  // beware buffer overflow.
-      sprintf(fPrefix,  "_output/testSlice-%c-t%u", dimNames[d], tIdx);
+      char fPrefix[]                   =  "                                           ";  // beware buffer overflow.
+      snprintf(fPrefix, sizeof(fPrefix),  "_output/testSlice-%c-t%u", dimNames[d], tIdx);
       io::vtk::oct2vtu(&(*slice3D.begin()), (unsigned int) slice3D.size(), fPrefix, comm);
     }
   }

@@ -2692,7 +2692,7 @@ namespace par {
       }
       if (i < src_range_sz && srcFrom[i] == s->rProc)
         i++;
-      for(i; i < src_range_sz; i++) {
+      for(; i < src_range_sz; i++) {
         if(srcCount[i] > 0) {
           par::Mpi_Irecv( &(dstLocal[ndofs * srcDspls[i]]) , ndofs * srcCount[i], srcFrom[i], 1,
               s->comm, &((*requests)[commCnt++]) );
