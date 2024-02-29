@@ -1,7 +1,12 @@
 ## CMAKE for Dendro-KT
 cmake_minimum_required(VERSION 2.8)
 project(Dendro-KT)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
+
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# This lets clangd LSP know the included directories.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
