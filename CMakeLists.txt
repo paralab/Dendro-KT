@@ -100,6 +100,8 @@ endif ()
 
 if(BUILD_WITH_PETSC)
     list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake-modules")
+    set(PETSC_DIR $ENV{HOME}/petsc-3.17.4 CACHE PATH "PETSc root directory")
+    set(PETSC_ARCH arch-linux-c-debug CACHE STRING "PETSc arch type")
     find_package(PETSc REQUIRED)
     add_definitions(-DBUILD_WITH_PETSC)
 endif()
