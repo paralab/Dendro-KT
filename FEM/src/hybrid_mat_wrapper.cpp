@@ -126,6 +126,8 @@ namespace fem
       Eigen::MatrixXd P = Eigen::MatrixXd::Identity(n, n);
       Eigen::MatrixXd H = Eigen::MatrixXd::Identity(n, n);
 
+      constexpr auto C2P = InterpMatrices<dim, double>::C2P;
+
       // M = (M^T I)^T
 
       if (fine_oct.getLevel() == coarse_oct.getLevel())
@@ -136,7 +138,7 @@ namespace fem
             for (int dof = 0; dof < ndofs; ++dof)
             {
               const size_t row = i * ndofs + dof;
-              interp->template IKD_ParentChildInterpolation<(interp->C2P)>(
+              interp->template IKD_ParentChildInterpolation<C2P>(
                   P.col(row).data(), P.col(row).data(), ndofs, coarse_chn);
             }
         P.transposeInPlace();
@@ -149,7 +151,7 @@ namespace fem
             for (int dof = 0; dof < ndofs; ++dof)
             {
               const size_t row = i * ndofs + dof;
-              interp->template IKD_ParentChildInterpolation<(interp->C2P)>(
+              interp->template IKD_ParentChildInterpolation<C2P>(
                   P.col(row).data(), P.col(row).data(), ndofs, coarse_chn);
             }
         P.transposeInPlace();
@@ -160,7 +162,7 @@ namespace fem
             for (int dof = 0; dof < ndofs; ++dof)
             {
               const size_t row = i * ndofs + dof;
-              interp->template IKD_ParentChildInterpolation<(interp->C2P)>(
+              interp->template IKD_ParentChildInterpolation<C2P>(
                   H.col(row).data(), H.col(row).data(), ndofs, fine_chn);
             }
         H.transposeInPlace();
