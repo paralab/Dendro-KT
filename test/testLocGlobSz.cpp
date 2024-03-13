@@ -33,7 +33,8 @@ int main(int argc, char * argv[])
   std::vector<ot::TreeNode<C, dim>> treePart;
   ot::createRegularOctree(treePart, 1, comm);
 
-  ot::DA<dim> octDA(ot::DistTree<C, dim>(treePart, comm), comm, 1);
+  ot::DistTree<C, dim> dtree(treePart, comm);
+  ot::DA<dim> octDA(dtree, comm, 1);
 
   fprintf(stderr, "%*s[%d] Local size = %llu, global size = %llu\n",
       40*rProc, "\0", rProc,

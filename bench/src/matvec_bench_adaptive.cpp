@@ -129,7 +129,8 @@ namespace bench
 
             // Generate DA from balanced tree.
             t_adaptive_oda.start();
-            ot::DA<dim> oda(ot::DistTree<T,dim>(tree, comm), comm, eleOrder, numPts, loadFlexibility);
+            ot::DistTree<T,dim> dtree(tree, comm);
+            ot::DA<dim> oda(dtree, comm, eleOrder, numPts, loadFlexibility);
             t_adaptive_oda.stop();
             gDistRptSz.b1_globNodeSz = oda.getGlobalNodeSz();
         }
@@ -147,7 +148,8 @@ namespace bench
             gRptSz.b2_treeMatvecSz = tree.size();
 
             // DA based on adaptive grid.
-            ot::DA<dim> *octDA = new ot::DA<dim>(ot::DistTree<T, dim>(tree, comm), comm, eleOrder, numPts, loadFlexibility);
+            ot::DistTree<T, dim> dtree(tree, comm);
+            ot::DA<dim> *octDA = new ot::DA<dim>(dtree, comm, eleOrder, numPts, loadFlexibility);
             gDistRptSz.b2_globNodeSz = octDA->getGlobalNodeSz();
 
             const unsigned int DOF = 1;   // matvec only supports dof==1 right now.
