@@ -729,15 +729,17 @@ namespace ot
         }
 
         // 5. Release the asynchronous exchange context.
-        /// ctxPtr->deAllocateRecvBuffer();
-        ctxPtr->deAllocateSendBuffer();
-        m_uiMPIContexts.erase(ctxPtr);
-
         if (isDirtyOut)
         {
           ctx_dirty->deAllocateSendBuffer();
           m_uiMPIContexts.erase(ctx_dirty);
         }
+        // Erasing invalidates iterators and references after the erased item,
+        // so make sure to erase iterators from back to front.
+
+        /// ctxPtr->deAllocateRecvBuffer();
+        ctxPtr->deAllocateSendBuffer();
+        m_uiMPIContexts.erase(ctxPtr);
     }
 
     template <unsigned int dim>
