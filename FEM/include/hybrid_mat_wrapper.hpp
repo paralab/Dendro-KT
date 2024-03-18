@@ -230,9 +230,7 @@ namespace fem
     private:
       HybridMatWrapper(
           MatDef *matdef,
-          bool owns_def,
-          const ot::DA<dim> *da,
-          int dof);
+          bool owns_def);
 
       void store_all_evaluated();
       void ensure_store_all_evaluated();
@@ -342,13 +340,13 @@ namespace fem
   // HybridMatWrapper()
   template <int dim, class MatDef>
   HybridMatWrapper<dim, MatDef>::HybridMatWrapper(MatDef *matdef)
-  : HybridMatWrapper(matdef, false, matdef->da(), matdef->ndofs())
+  : HybridMatWrapper(matdef, false)
   { }
 
   // HybridMatWrapper()
   template <int dim, class MatDef>
   HybridMatWrapper<dim, MatDef>::HybridMatWrapper(std::unique_ptr<MatDef> matdef)
-  : HybridMatWrapper(matdef.release(), true, matdef->da(), matdef->ndofs())
+  : HybridMatWrapper(matdef.release(), true)
   { }
 
   // ~HybridMatWrapper()
@@ -362,15 +360,20 @@ namespace fem
   // HybridMatWrapper()
   template <int dim, class MatDef>
   HybridMatWrapper<dim, MatDef>::HybridMatWrapper(
-      MatDef *matdef, bool owns_def, const ot::DA<dim> *da, int dof)
+      MatDef *matdef, bool owns_def)
   :
-      Base(da, nullptr, dof),
+      Base(matdef->da(), nullptr, matdef->ndofs()),
       m_owns_def(owns_def),
       m_matdef(matdef),
-      m_emats(da->getLocalElementSz()),
-      m_elemental_nonhanging(da->getLocalElementSz(), da->getNumNodesPerElement(), true),
-      m_interp(da->getElementOrder())
+      m_emats(matdef->da()->getLocalElementSz()),
+      m_elemental_nonhanging(
+          matdef->da()->getLocalElementSz(),
+          matdef->da()->getNumNodesPerElement(),
+          true),
+      m_interp(matdef->da()->getElementOrder())
   {
+    const ot::DA<dim> *da = matdef->da();
+
     // Partition table  (center coordinate -> element id).
     m_partition_table.reserve(da->getLocalElementSz()); //don't invalidate iters
     m_inv_partition_table.resize(da->getLocalElementSz());

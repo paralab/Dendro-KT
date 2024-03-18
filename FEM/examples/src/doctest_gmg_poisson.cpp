@@ -324,20 +324,21 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   cycle_settings.print(false);
   cycle_settings.n_grids(n_grids);
 
-  mg::VCycle<PoissonMat> vcycle(das, mats.data(), cycle_settings, single_dof);
+  mg::VCycle<PoissonMat> *vcycle =
+      new mg::VCycle<PoissonMat>(das, mats.data(), cycle_settings, single_dof);
 
   // Preconditioned right-hand side.
   std::vector<double> pc_rhs_vec = rhs_vec;
   std::vector<double> v_temporary = pc_rhs_vec;
   pc_rhs_vec.assign(pc_rhs_vec.size(), 0);  // reset to zero
-  vcycle.vcycle(pc_rhs_vec.data(), v_temporary.data());
+  vcycle->vcycle(pc_rhs_vec.data(), v_temporary.data());
 
   // Preconditioned matrix multiplication.
-  const auto pc_mat = [&vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
+  const auto pc_mat = [vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
     base_mat.matVec(u, v_temporary.data());
 
     std::fill_n(v, v_temporary.size(), 0); // reset to zero
-    vcycle.vcycle(v, v_temporary.data());
+    vcycle->vcycle(v, v_temporary.data());
   };
 
   // Solve equation.
@@ -376,7 +377,7 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
     /// }
     while (steps < max_iter and err > 1e-14)
     {
-      vcycle.vcycle(u_vec.data(), v_vec.data());
+      vcycle->vcycle(u_vec.data(), v_vec.data());
       base_mat.matVec(u_vec.data(), v_vec.data());
       for (size_t i = 0; i < v_vec.size(); ++i)
         v_vec[i] = rhs_vec[i] - v_vec[i];
@@ -394,6 +395,8 @@ MPI_TEST_CASE("Poisson problem on a uniformly refined cube with 5 processes, sho
   const double err = sol_err_max(u_vec);
 
   // Multigrid teardown.
+  delete vcycle;
+
   for (int g = 1; g < n_grids; ++g)
   {
     delete das[g].primary;
@@ -618,20 +621,21 @@ MPI_TEST_CASE("Nonuniform Poisson gmg sinusoid", 1)
   cycle_settings.damp_smooth(2.0 / 3.0);
   cycle_settings.n_grids(n_grids);
 
-  mg::VCycle<PoissonMat> vcycle(das, mats.data(), cycle_settings, single_dof);
+  mg::VCycle<PoissonMat> *vcycle =
+      new mg::VCycle<PoissonMat>(das, mats.data(), cycle_settings, single_dof);
 
   // Preconditioned right-hand side.
   std::vector<double> pc_rhs_vec = rhs_vec;
   std::vector<double> v_temporary = pc_rhs_vec;
   pc_rhs_vec.assign(pc_rhs_vec.size(), 0);  // reset to zero
-  vcycle.vcycle(pc_rhs_vec.data(), v_temporary.data());
+  vcycle->vcycle(pc_rhs_vec.data(), v_temporary.data());
 
   // Preconditioned matrix multiplication.
-  const auto pc_mat = [&vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
+  const auto pc_mat = [vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
     base_mat.matVec(u, v_temporary.data());
 
     std::fill_n(v, v_temporary.size(), 0); // reset to zero
-    vcycle.vcycle(v, v_temporary.data());
+    vcycle->vcycle(v, v_temporary.data());
   };
 
   if(rank == 0)
@@ -677,7 +681,7 @@ MPI_TEST_CASE("Nonuniform Poisson gmg sinusoid", 1)
   ///   }
   ///   while (steps < max_vcycles and err > 1e-14)
   ///   {
-  ///     vcycle.vcycle(u_vec.data(), v_vec.data());
+  ///     vcycle->vcycle(u_vec.data(), v_vec.data());
   ///     base_mat.matVec(u_vec.data(), v_vec.data());
   ///     for (size_t i = 0; i < v_vec.size(); ++i)
   ///       v_vec[i] = rhs_vec[i] - v_vec[i];
@@ -705,6 +709,8 @@ MPI_TEST_CASE("Nonuniform Poisson gmg sinusoid", 1)
   const double res = normLInfty(v_vec.data(), v_vec.size(), comm);
 
   // Multigrid teardown.
+  delete vcycle;
+
   for (int g = 1; g < n_grids; ++g)
   {
     delete das[g].primary;
@@ -930,20 +936,21 @@ MPI_TEST_CASE("Nonuniform Poisson hybrid sinusoid", 1)
   cycle_settings.damp_smooth(2.0 / 3.0);
   cycle_settings.n_grids(n_grids);
 
-  mg::VCycle<HybridPoissonMat> vcycle(das, mats.data(), cycle_settings, single_dof);
+  mg::VCycle<HybridPoissonMat> *vcycle =
+      new mg::VCycle<HybridPoissonMat>(das, mats.data(), cycle_settings, single_dof);
 
   // Preconditioned right-hand side.
   std::vector<double> pc_rhs_vec = rhs_vec;
   std::vector<double> v_temporary = pc_rhs_vec;
   pc_rhs_vec.assign(pc_rhs_vec.size(), 0);  // reset to zero
-  vcycle.vcycle(pc_rhs_vec.data(), v_temporary.data());
+  vcycle->vcycle(pc_rhs_vec.data(), v_temporary.data());
 
   // Preconditioned matrix multiplication.
-  const auto pc_mat = [&vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
+  const auto pc_mat = [vcycle, &base_mat, &v_temporary](const double *u, double *v) -> void {
     base_mat.matVec(u, v_temporary.data());
 
     std::fill_n(v, v_temporary.size(), 0); // reset to zero
-    vcycle.vcycle(v, v_temporary.data());
+    vcycle->vcycle(v, v_temporary.data());
   };
 
   if(rank == 0)
@@ -989,7 +996,7 @@ MPI_TEST_CASE("Nonuniform Poisson hybrid sinusoid", 1)
   ///   }
   ///   while (steps < max_vcycles and err > 1e-14)
   ///   {
-  ///     vcycle.vcycle(u_vec.data(), v_vec.data());
+  ///     vcycle->vcycle(u_vec.data(), v_vec.data());
   ///     base_mat.matVec(u_vec.data(), v_vec.data());
   ///     for (size_t i = 0; i < v_vec.size(); ++i)
   ///       v_vec[i] = rhs_vec[i] - v_vec[i];
@@ -1017,6 +1024,8 @@ MPI_TEST_CASE("Nonuniform Poisson hybrid sinusoid", 1)
   const double res = normLInfty(v_vec.data(), v_vec.size(), comm);
 
   // Multigrid teardown.
+  delete vcycle;
+
   for (int g = 1; g < n_grids; ++g)
   {
     delete das[g].primary;
