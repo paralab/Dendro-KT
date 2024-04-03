@@ -3,7 +3,9 @@ data:
   url: code/paralab/Dendro-KT/savedata/2023-07-11-anisotropy-cube.csv
 transform:
   - filter: indexof(datum.solver, "accelerated") != -1
-  - calculate: toString("Anisotropy = ") + format(datum.scale_x, "d") + "/" + format(datum.scale_y, "d") + "/" + format(datum.scale_z, "d")
+  - calculate: replace(datum.solver, "accelerated_", "cg+")
+    as: solver
+  - calculate: toString("Anisotropy(") + format(datum.scale_x, "d") + ":" + format(datum.scale_y, "d") + ":" + format(datum.scale_z, "d") + ")"
     as: stretch
   - calculate: format(datum.cells, ",d") + " (lev=" + toString(datum.max_depth) + ")"
     as: Cells (depth)
@@ -29,12 +31,20 @@ transform:
   - calculate: datum.vcycles * 10.0 / (-log(datum.rel_res_L2)/LN10)
     as: vcycles_per_10_digits
 facet:
-  row:
-    field: stretch
-    type: nominal
-    header:
-      labelOrient: top
-      title: false
+  field: stretch
+  type: nominal
+  header:
+    title: false
+    labelOrient: top
+    labelPadding: -18
+    labelAlign: right
+    labelAnchor: end
+#######    labelAnchor: middle
+resolve:
+  scale:
+    y: independent
+columns: 1
+spacing: 5
 spec:
   mark: line
   encoding:
@@ -43,6 +53,7 @@ spec:
       type: nominal
       sort:
         field: cells
+      title: Cells
     x:
       field: vcycles_per_10_digits
       type: quantitative
@@ -60,13 +71,10 @@ spec:
       legend:
         orient: none
         direction: horizontal
-        legendX: -100
-        legendY: -90
-        padding: 8
-        strokeColor: gray
-resolve:
-  scale:
-    y: independent
+        legendX: -60
+        legendY: -30
+        title: false
+        columnPadding: 15
 
 config:
   line:
