@@ -598,6 +598,13 @@ target_include_directories(matvecBenchChannel PUBLIC ${MPI_INCLUDE_PATH}
                                               ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
 target_link_libraries(matvecBenchChannel dendroKT ${MPI_LIBRARIES} m)
 
+## uniform_faces (./bench_uniform_faces)
+## -----------
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/uniform_faces.cpp)
+add_executable(bench_uniform_faces ${SRC_FILES})
+target_include_directories(bench_uniform_faces PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/bench/include)
+target_link_libraries(bench_uniform_faces dendroKT ${MPI_LIBRARIES} m)
+
 
 
 ## Examples
