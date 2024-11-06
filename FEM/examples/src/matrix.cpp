@@ -48,8 +48,9 @@ int main(int argc, char *argv[]) {
     std::vector<ot::TreeNode<unsigned int, DIM>> treePart;
     ot::createRegularOctree(treePart, 3, MPI_COMM_WORLD);
 
+    ot::DistTree<DENDRITE_UINT, DIM> dtree(treePart, MPI_COMM_WORLD);
     ot::DA<DIM> *newDA = new ot::DA<DIM>(
-        ot::DistTree<DENDRITE_UINT, DIM>(treePart, MPI_COMM_WORLD),
+        dtree,
         MPI_COMM_WORLD,
         eleOrder);
     {
@@ -62,8 +63,9 @@ int main(int argc, char *argv[]) {
         surrTree = ot::SFC_Tree<DENDRITE_UINT, DIM>::getSurrogateGrid(
             ot::RemeshPartition::SurrogateInByOut, treePart, newTree, MPI_COMM_WORLD);
 
+        dtree = ot::DistTree<DENDRITE_UINT, DIM>(newTree, MPI_COMM_WORLD);
         ot::DA<DIM> *octDA = new ot::DA<DIM>(
-            ot::DistTree<DENDRITE_UINT, DIM>(newTree, MPI_COMM_WORLD),
+            dtree,
             MPI_COMM_WORLD,
             eleOrder, 100, 0.3);
 
