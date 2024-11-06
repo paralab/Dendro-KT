@@ -1161,7 +1161,7 @@ void gmgMat<dim, LeafClass>::petscMatCreateShellSmooth(Mat &matrixFreeMat, unsig
 
   // MATOP_SOR is for providing a smoother.
   MatCreateShell(comm, localM, localM, globalM, globalM, &m_stratumWrappers[stratum], &matrixFreeMat);
-  MatShellSetOperation(matrixFreeMat, MATOP_SOR, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserSmooth);
+  MatShellSetOperation(matrixFreeMat, MATOP_SOR, (void(*)(void)) gmgMat<dim, LeafClass>::petscUserApplySmoother);
 }
 
 template <unsigned int dim, class LeafClass>

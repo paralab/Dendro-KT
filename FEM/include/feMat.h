@@ -57,7 +57,7 @@ public:
     }
 
     feMat(feMat &&other)
-      : feMat(m_uiOctDA, m_octList)
+      : feMat(other.m_uiOctDA, other.m_octList)
     { }
 
     /**@brief deconstructor*/

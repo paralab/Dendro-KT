@@ -231,9 +231,9 @@ void printSparseMatrix(const ot::MatCompactRows &matRows, std::ostream &out = st
         char entryBuf[20];
         const auto &searchColIdx = aggRow.find(colIdx);
         if (searchColIdx != aggRow.end())
-          sprintf(entryBuf, " %5.2f", aggRow[colIdx]);
+          snprintf(entryBuf, sizeof(entryBuf), " %5.2f", aggRow[colIdx]);
         else
-          sprintf(entryBuf, "      ");
+          snprintf(entryBuf, sizeof(entryBuf), "      ");
         out << entryBuf;
       }
     }

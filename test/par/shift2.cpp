@@ -12,7 +12,7 @@ std::vector<int> uniform(int length, MPI_Comm comm);
 std::vector<int> ragged(int init_length, int max_exchange, MPI_Comm comm);
 
 template <typename ... Ts>
-void ZPrintf(Ts && ... ts)
+static void ZPrintf(Ts && ... ts)
 {
   int comm_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &comm_rank);
@@ -133,8 +133,8 @@ class StridedGenerator
   public:
     using result_type = typename BaseGenerator::result_type;
 
-    static result_type min() { return BaseGenerator::min(); }
-    static result_type max() { return BaseGenerator::max(); }
+    constexpr static result_type min() { return BaseGenerator::min(); }
+    constexpr static result_type max() { return BaseGenerator::max(); }
 
     template <typename ... Ts>
     StridedGenerator(int size, int rank, Ts ... ts)

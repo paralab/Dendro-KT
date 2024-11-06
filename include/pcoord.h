@@ -124,6 +124,26 @@ namespace periodic
 
 namespace periodic
 {
+  namespace detail
+  {
+    template <typename T, int dim>
+    constexpr std::array<T, dim> filled(T scalar)
+    {
+      std::array<T, dim> array;
+      array.fill(scalar);
+      return array;
+    }
+  }
+
+  template <typename T, int dim>
+  std::array<T, dim> PCoord<T, dim>::m_masks = detail::filled<T, dim>(-1u);
+
+  extern template class PCoord<unsigned, 2>;
+  extern template class PCoord<unsigned, 3>;
+  extern template class PCoord<unsigned, 4>;
+
+
+
   // Representation:
   //   The period is stored as a static member of the class.
   //   A period of '0' encodes the NO_PERIOD condition. 

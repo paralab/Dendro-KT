@@ -256,7 +256,7 @@ namespace dollar
 
     std::stringstream ss;
     char buf[1024];
-    sprintf(buf, "%*s, %*s, %*s, \n",
+    snprintf(buf, sizeof(buf), "%*s, %*s, %*s, \n",
         max_length, "name",
         width_ms, "ms",
         width_hits, "hits");
@@ -265,7 +265,7 @@ namespace dollar
     for (const auto & it : m_totals)
     {
       const info & info = it.second;
-      sprintf(buf, "%*s, %*.3f, %*.1f, \n",
+      snprintf(buf, sizeof(buf), "%*s, %*.3f, %*.1f, \n",
           max_length, info.short_title.c_str(),
           width_ms,   info.total * 1000,
           width_hits, info.hits);
@@ -405,9 +405,9 @@ namespace dollar
               int width(cpu*DOLLAR_CPUMETER_WIDTH/100);
               graph = std::string( width, '=' ) + std::string( DOLLAR_CPUMETER_WIDTH - width, '.' );
 #ifdef _MSC_VER
-              sprintf_s( &buffer[0], 1024,
+              snprintf_s( &buffer[0], 1024,
 #else
-              sprintf( &buffer[0],
+              snprintf( &buffer[0], buffer.size(),
 #endif
               format.c_str(), ++i, it.second.short_title.c_str(), graph.c_str(), cpu, (float)(info.total * 1000), info.hits );
               out << &buffer[0];

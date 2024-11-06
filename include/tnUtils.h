@@ -27,7 +27,7 @@ template <typename T, unsigned int dim>
 void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, unsigned int eleOrder, double * physCoords)
 {
   const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
-  const double elemSz = double(1u << m_uiMaxDepth - octCoords.getLevel())
+  const double elemSz = double(1u << (m_uiMaxDepth - octCoords.getLevel()))
                         / double(1u << m_uiMaxDepth);
 
   // Get coordinates of a host element (lower left).
@@ -50,7 +50,7 @@ template <typename T, unsigned int dim>
 void treeNode2Physical(const ot::TreeNode<T, dim> &octCoords, double * physCoords, double & physSize)
 {
   const double domainScale = 1.0 / double(1u << m_uiMaxDepth);
-  const double elemSz = double(1u << m_uiMaxDepth - octCoords.getLevel())
+  const double elemSz = double(1u << (m_uiMaxDepth - octCoords.getLevel()))
                         / double(1u << m_uiMaxDepth);
 
   // Compute physical coords.
