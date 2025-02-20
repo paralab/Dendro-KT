@@ -153,6 +153,17 @@ struct Example3
   private:
     static void subdivide_element(ot::TreeNode<T,dim> parent, unsigned int endL, Tree<dim> &outTree)
     {
+      const auto is_boundary = [](const auto &oct) -> bool
+      {
+        for (int d = 0; d < dim; ++d)
+        {
+          if (oct.lowerBound(d) == ot::TreeNode<T, dim>().lowerBound(d) or
+              oct.upperBound(d) == ot::TreeNode<T, dim>().upperBound(d))
+            return true;
+        }
+        return false;
+      };
+
       constexpr unsigned char numCh = ot::nchild(dim);
       if (parent.getLevel() >= endL)
         outTree.push_back(parent);
@@ -161,7 +172,7 @@ struct Example3
         for (unsigned char ch = 0; ch < numCh; ch++)
         {
           ot::TreeNode<T,dim> f = parent.getChildMorton(ch);
-          if (f.isTouchingDomainBoundary())
+          if (is_boundary(f))
             subdivide_element(f, endL, outTree);
           else
             outTree.push_back(f);

@@ -30,3 +30,7 @@ target_link_libraries(doctest_octree_adler32 dendroKT ${MPI_LIBRARIES} m)
 add_executable(doctest_partition_unweighted partition_unweighted.cpp main.cpp)
 target_include_directories(doctest_partition_unweighted PUBLIC ${MPI_INCLUDE_PATH})
 target_link_libraries(doctest_partition_unweighted dendroKT ${MPI_LIBRARIES} m)
+
+add_executable(doctest_da_nonhanging da_nonhanging.cpp main.cpp)
+target_include_directories(doctest_da_nonhanging PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(doctest_da_nonhanging dendroKT ${MPI_LIBRARIES} m)

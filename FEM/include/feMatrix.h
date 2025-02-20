@@ -63,7 +63,10 @@ protected:
           * @param [out] out output vector Ku
           * @param [in] scale vector by scale*Ku
         **/
-        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale, bool isElementBoundary ) = 0;
+        virtual void elementalMatVec(const VECType *in, VECType *out, unsigned int ndofs, const double *coords, double scale, bool isElementBoundary )
+        {
+          throw std::logic_error{"elementalMatVec() not implemented by feMatrix leaf derived class"};
+        }
 
         /**@brief Sets the diagonal of the elemental matrix.
          * @param [out] out output vector diag(K)
