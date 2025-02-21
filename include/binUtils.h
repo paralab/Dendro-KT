@@ -9,6 +9,7 @@
 #define __BIN_UTILS_H_
 #include <vector>
 #include <array>
+#include <stddef.h>
 
 /**
   @namespace binOp
