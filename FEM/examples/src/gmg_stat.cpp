@@ -778,7 +778,7 @@ int tmain(int argc, char *argv[], Configuration &config)
 
       bool skip_existing = false;
       const bool force_overwrite =
-          run["force_overwrite"].readable() and to<bool>(run["force_overwrite"]);
+          run.has_child("force_overwrite") and to<bool>(run["force_overwrite"]);
       if (overwrite_mode == OverwriteSome and not force_overwrite)
       {
         if (collection.is_root())
@@ -856,16 +856,16 @@ int tmain(int argc, char *argv[], Configuration &config)
 
       name << "solver=" << to<std::string>(run["solver"]["name"]) << " ";
       name << "mesh=" << to<std::string>(setup["mesh_recipe"]["name"]) << " ";
-      if (setup["interpolation"].readable())
+      if (setup.has_child("interpolation"))
         name << "interpolation=" << to<std::string>(setup["interpolation"]);
-      if (setup["max_depth"].readable())
+      if (setup.has_child("max_depth"))
         name << "max_depth=" << to<std::string>(setup["max_depth"]);
       const std::string group_name = name.str();
       /// const std::string group_name = std::to_string(all_runs);
 
       // Dump solution to binary file. (optional, default: false)
       const bool dump_solution =
-          run["dump_solution"].readable() and to<bool>(run["dump_solution"]);
+          run.has_child("dump_solution") and to<bool>(run["dump_solution"]);
       if (dump_solution)
       {
         //future: incorporate in self-describing HDF5 format
