@@ -363,6 +363,11 @@ add_executable(tstMatvec ${SRC_FILES})
 target_include_directories(tstMatvec PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
 target_link_libraries(tstMatvec dendroKT ${MPI_LIBRARIES} m)
 
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRefel.cpp)
+add_executable(tstRefel ${SRC_FILES})
+target_include_directories(tstRefel PUBLIC ${MPI_INCLUDE_PATH})
+target_link_libraries(tstRefel dendroKT ${MPI_LIBRARIES} m)
+
 set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testFunction2Octree.cpp)
 add_executable(tstFunction2Octree ${SRC_FILES})
 target_include_directories(tstFunction2Octree PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
