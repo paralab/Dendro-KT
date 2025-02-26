@@ -21,32 +21,7 @@
 #include <math.h>
 #include <cmath>
 #include "cstring"
-#ifdef WITH_BLAS_LAPACK
 #include "lapac.h"
-#endif
-
-#ifndef WITH_BLAS_LAPACK
-template <typename T>
-void printArray_1D(T *a, int length)
-{
-    for (int i = 0; i < length; i++) { std::cout<<a[i]<<" "; }
-    std::cout<<std::endl;
-}
-
-
-template <typename T>
-void printArray_2D(T *a, int length1,int length2)
-{
-    for (int i = 0; i < length1; i++) {
-        for (int j = 0; j < length2; j++) {
-            std::cout << a[i * length2 + j] << " ";
-        }
-        std::cout<<std::endl;
-    }
-    std::cout<<std::endl;
-}
-
-#endif
 
 
 

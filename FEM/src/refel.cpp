@@ -76,10 +76,6 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
     DgT_hadm2.resize(m_uiNrp*m_uiNrp);
 
 
-#ifdef WITH_BLAS_LAPACK
-
-   unsigned int info;
-
    double x_min=-1.0;
    double x_max= 1.0;
 
@@ -159,21 +155,20 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
     printArray_2D(&(*(gradVg.begin())),m_uiNrp,m_uiNrp);*/
 
 
-    lapack::lapack_DGESV(m_uiNrp,m_uiNrp,&(*(Vu.begin())),m_uiNrp,&(*(gradVr.begin())),&(*(Dr.begin())),m_uiNrp,info);
-    lapack::lapack_DGESV(m_uiNrp,m_uiNrp,&(*(Vu.begin())),m_uiNrp,&(*(gradVg.begin())),&(*(Dg.begin())),m_uiNrp,info);
+    lapack::eigen_DGESV(m_uiNrp, m_uiNrp, &(*(Vu.begin())), &(*(gradVr.begin())), &(*(Dr.begin())));
+    lapack::eigen_DGESV(m_uiNrp, m_uiNrp, &(*(Vu.begin())), &(*(gradVg.begin())), &(*(Dg.begin())));
 
+    lapack::eigen_DGESV(m_uiNrp, m_uiNrp, &(*(Vu.begin())), &(*(Vu_0.begin())), &(*(ip_1D_0.begin())));
+    lapack::eigen_DGESV(m_uiNrp, m_uiNrp, &(*(Vu.begin())), &(*(Vu_1.begin())), &(*(ip_1D_1.begin())));
 
-    lapack::lapack_DGESV(m_uiNrp,m_uiNrp,&(*(Vu.begin())),m_uiNrp,&(*(Vu_0.begin())),&(*(ip_1D_0.begin())),m_uiNrp,info);
-    lapack::lapack_DGESV(m_uiNrp,m_uiNrp,&(*(Vu.begin())),m_uiNrp,&(*(Vu_1.begin())),&(*(ip_1D_1.begin())),m_uiNrp,info);
-
-    lapack::lapack_DGESV(m_uiNrp,m_uiNrp,&(*(Vu.begin())),m_uiNrp,&(*(Vg.begin())),&(*(quad_1D.begin())),m_uiNrp,info);
+    lapack::eigen_DGESV(m_uiNrp, m_uiNrp, &(*(Vu.begin())), &(*(Vg.begin())), &(*(quad_1D.begin())));
 
 
     // transpose operators
-    /*lapack::lapack_DGESV(m_uiNrp,m_uiNrp,&(*(Vu_0.begin())),m_uiNrp,&(*(Vu.begin())),&(*(ipT_1D_0.begin())),m_uiNrp,info);
-    lapack::lapack_DGESV(m_uiNrp,m_uiNrp,&(*(Vu_1.begin())),m_uiNrp,&(*(Vu.begin())),&(*(ipT_1D_1.begin())),m_uiNrp,info);
+    /*lapack::eigen_DGESV(m_uiNrp,m_uiNrp,&(*(Vu_0.begin())), &(*(Vu.begin())),&(*(ipT_1D_0.begin())));
+    lapack::eigen_DGESV(m_uiNrp,m_uiNrp,&(*(Vu_1.begin())), &(*(Vu.begin())),&(*(ipT_1D_1.begin())));
 
-    lapack::lapack_DGESV(m_uiNrp,m_uiNrp,&(*(Vg.begin())),m_uiNrp,&(*(Vu.begin())),&(*(quadT_1D.begin())),m_uiNrp,info);*/
+    lapack::eigen_DGESV(m_uiNrp,m_uiNrp,&(*(Vg.begin())), &(*(Vu.begin())),&(*(quadT_1D.begin())));*/
 
 
 
@@ -227,64 +222,6 @@ RefElement::RefElement(unsigned int dim, unsigned int order)
     //std::cout<<" wg: ";printArray_1D((&(*(w.begin()))),m_uiNrp);
 
     m_isValid = true;
-
-#else
-
-    if(m_uiDimension==3 && m_uiOrder==1)
-    {
-        for(unsigned int i=0;i<m_uiNrp;i++ )
-        {
-           for(unsigned int j=0;j<m_uiNrp;j++)
-           {
-               ip_1D_0[i*m_uiNrp+j]=IP_1D_Order_1_0[i*m_uiNrp+j];
-               ipT_1D_0[i*m_uiNrp+j]=IP_1D_Order_1_0[j*m_uiNrp+i];
-
-               ip_1D_1[i*m_uiNrp+j]=IP_1D_Order_1_1[i*m_uiNrp+j];
-               ipT_1D_1[i*m_uiNrp+j]=IP_1D_Order_1_1[j*m_uiNrp+i];
-           }
-
-        }
-
-    }else if (m_uiDimension==3 && m_uiOrder==2)
-    {
-        for(unsigned int i=0;i<m_uiNrp;i++ )
-        {
-            for(unsigned int j=0;j<m_uiNrp;j++)
-            {
-                ip_1D_0[i*m_uiNrp+j]=IP_1D_Order_2_0[i*m_uiNrp+j];
-                ipT_1D_0[i*m_uiNrp+j]=IP_1D_Order_2_0[j*m_uiNrp+i];
-
-                ip_1D_1[i*m_uiNrp+j]=IP_1D_Order_2_1[i*m_uiNrp+j];
-                ipT_1D_1[i*m_uiNrp+j]=IP_1D_Order_2_1[j*m_uiNrp+i];
-
-            }
-
-        }
-
-    }else if (m_uiDimension==3 && m_uiOrder==4)
-    {
-        for(unsigned int i=0;i<m_uiNrp;i++ )
-        {
-            for(unsigned int j=0;j<m_uiNrp;j++)
-            {
-                ip_1D_0[i*m_uiNrp+j]=IP_1D_Order_4_0[i*m_uiNrp+j];
-                ipT_1D_0[i*m_uiNrp+j]=IP_1D_Order_4_0[j*m_uiNrp+i];
-
-                ip_1D_1[i*m_uiNrp+j]=IP_1D_Order_4_1[i*m_uiNrp+j];
-                ipT_1D_1[i*m_uiNrp+j]=IP_1D_Order_4_1[j*m_uiNrp+i];
-            }
-
-        }
-
-    }else
-    {
-        std::cout<<"RefEl: Error invalid dimension and order specified"<<std::endl;
-    }
-
-    m_isValid = false;
-
-#endif
-
 
 }
 
@@ -352,9 +289,6 @@ RefElement::~RefElement() {
 
 void RefElement::generateHeaderFile(char * fName)
 {
-
-
-#ifdef WITH_BLAS_LAPACK
     std::ofstream myfile (fName);
     if (myfile.is_open())
     {
@@ -379,9 +313,5 @@ void RefElement::generateHeaderFile(char * fName)
        myfile.close();
     }
     else std::cout << "Unable to open file"<<std::endl;
-#else
-    std::cout<<"GenerateHeader file should be run with BLAS enabled. "<<std::endl;
-#endif
-
 }
 

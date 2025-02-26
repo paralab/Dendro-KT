@@ -92,8 +92,6 @@ namespace basis {
 
     void jacobigq(double alpha, double beta, int N, double *x, double *w)
     {
-
-#ifdef WITH_BLAS_LAPACK
         //Note: size of x and w should be (N+1)
         if(N==0)
         {
@@ -141,12 +139,8 @@ namespace basis {
         }*/
 
 
-//      Compute quadrature by eigenvalue solve
-        unsigned int info;
-        //std::cout<<" lapack eigen solve begin "<<std::endl;
-        lapack::lapack_DSYEV((N+1),jtrans,(N+1),wr,vs,info);
-        //[V,D] = eig(J); x = diag(D);
-        //std::cout<<" lapack eigen solve end "<<std::endl;
+        // Compute quadrature by eigenvalue solve
+        lapack::eigen_DSYEV(N+1, jtrans, wr, vs);
         memcpy(x,wr,sizeof(double)*(N+1));
 
         for(unsigned int k=0;k<(N+1);k++)
@@ -161,8 +155,6 @@ namespace basis {
         delete [] wr;
         delete [] wi;
         delete [] vs;
-#endif
-
     }
 
 
@@ -170,8 +162,6 @@ namespace basis {
 
     void jacobiglq(double alpha, double beta, int N, double *x, double *w)
     {
-
-#ifdef WITH_BLAS_LAPACK
         if(N==1)
         {
             x[0]=-1.0;
@@ -211,7 +201,6 @@ namespace basis {
             delete [] wq;
 
         }
-#endif
     }
 
 
