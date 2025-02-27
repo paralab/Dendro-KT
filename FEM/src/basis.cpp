@@ -11,6 +11,7 @@
 #include <limits>
 #include <vector>
 #include "basis.h"
+#include "lapac.h"
 
 namespace basis {
 

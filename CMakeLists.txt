@@ -21,14 +21,6 @@ if(OPENMP_FOUND)
 endif()
 
 
-if(MPI_COMPILE_FLAGS)
-    set(COMPILE_FLAGS "${COMPILE_FLAGS} ${MPI_COMPILE_FLAGS}")
-endif()
-
-if(MPI_LINK_FLAGS)
-    set(LINK_FLAGS "${LINK_FLAGS} ${MPI_LINK_FLAGS}")
-endif()
-
 
 ## options for dendro
 
@@ -60,7 +52,8 @@ endif()
 
 
 if(BUILD_WITH_PETSC)
-    pkg_check_modules(PETSC REQUIRED IMPORTED_TARGET PETSc)
+    pkg_check_modules(PETSc REQUIRED IMPORTED_TARGET PETSc)
+    add_library(PETSc ALIAS PkgConfig::PETSc)
     add_definitions(-DBUILD_WITH_PETSC)
 endif()
 
@@ -227,14 +220,12 @@ target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/in
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/zlib/inc)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/array/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/FEM/include)
-target_include_directories(dendroKT PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(dendroKT eigen)
-target_link_libraries(dendroKT HighFive)
-target_link_libraries(dendroKT c4conf)
-target_link_libraries(dendroKT ${MPI_LIBRARIES} m)
+target_link_libraries(dendroKT PRIVATE eigen)
+target_link_libraries(dendroKT PRIVATE m)
+target_link_libraries(dendroKT PRIVATE MPI::MPI_CXX)
 
 if(BUILD_WITH_PETSC)
-    target_link_libraries(dendroKT PkgConfig::PETSC)
+  target_link_libraries(dendroKT PUBLIC PETSc)
 endif()
 
 if(HILBERT_ORDERING)
@@ -242,252 +233,8 @@ if(HILBERT_ORDERING)
 endif()
 
 
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testPartition.cpp)
-add_executable(tstPartition ${SRC_FILES})
-target_include_directories(tstPartition PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstPartition dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testConstruct.cpp)
-add_executable(tstConstruct ${SRC_FILES})
-target_include_directories(tstConstruct PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstConstruct dendroKT ${MPI_LIBRARIES} m)
-
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTables.cpp)
-add_executable(tstTable ${SRC_FILES})
-target_include_directories(tstTable PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstTable dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeSort.cpp)
-add_executable(tstTreeSort ${SRC_FILES})
-target_include_directories(tstTreeSort PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstTreeSort dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeConstruction.cpp)
-add_executable(tstTreeConstruction ${SRC_FILES})
-target_include_directories(tstTreeConstruction PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstTreeConstruction dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeBalancing.cpp)
-add_executable(tstTreeBalancing ${SRC_FILES})
-target_include_directories(tstTreeBalancing PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstTreeBalancing dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeVtu.cpp)
-add_executable(tstTreeVtu ${SRC_FILES})
-target_include_directories(tstTreeVtu PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstTreeVtu dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeJson.cpp)
-add_executable(tstTreeJson ${SRC_FILES})
-target_include_directories(tstTreeJson PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstTreeJson dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testHCurveTable.cpp)
-add_executable(tstHCurveTable ${SRC_FILES})
-target_include_directories(tstHCurveTable PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstHCurveTable dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testMovingBall.cpp)
-add_executable(tstMovingBall ${SRC_FILES})
-target_include_directories(tstMovingBall PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstMovingBall dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTSearchCmpx.cpp)
-add_executable(tstTSearchCmpx ${SRC_FILES})
-target_include_directories(tstTSearchCmpx PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstTSearchCmpx dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testODA.cpp)
-add_executable(tstODA ${SRC_FILES})
-target_include_directories(tstODA PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstODA dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testMatvec.cpp)
-add_executable(tstMatvec ${SRC_FILES})
-target_include_directories(tstMatvec PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstMatvec dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRefel.cpp)
-add_executable(tstRefel ${SRC_FILES})
-target_include_directories(tstRefel PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(tstRefel dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testFunction2Octree.cpp)
-add_executable(tstFunction2Octree ${SRC_FILES})
-target_include_directories(tstFunction2Octree PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstFunction2Octree dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testSFCTreeLoop.cpp)
-add_executable(tstSFCTreeLoop ${SRC_FILES})
-target_include_directories(tstSFCTreeLoop PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstSFCTreeLoop dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testKeepSiblingLeafsTogether.cpp)
-add_executable(tstKeepSiblingLeafsTogether ${SRC_FILES})
-target_include_directories(tstKeepSiblingLeafsTogether PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstKeepSiblingLeafsTogether dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testCreateRegularOctree.cpp)
-add_executable(tstCreateRegularOctree ${SRC_FILES})
-target_include_directories(tstCreateRegularOctree PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstCreateRegularOctree dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testLocGlobSz.cpp)
-add_executable(tstLocGlobSz ${SRC_FILES})
-target_include_directories(tstLocGlobSz PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstLocGlobSz dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testBillionsOfElements.cpp)
-add_executable(tstBillionsOfElements ${SRC_FILES})
-target_include_directories(tstBillionsOfElements PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstBillionsOfElements dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testMeshLoop.cpp)
-add_executable(tstMeshLoop ${SRC_FILES})
-target_include_directories(tstMeshLoop PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstMeshLoop dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testGenerateGridHierarchy.cpp)
-add_executable(tstGenerateGridHierarchy ${SRC_FILES})
-target_include_directories(tstGenerateGridHierarchy PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstGenerateGridHierarchy dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIntergridTransfer.cpp)
-add_executable(tstIntergridTransfer ${SRC_FILES})
-target_include_directories(tstIntergridTransfer PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstIntergridTransfer dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIntergridSubda.cpp)
-add_executable(tstIntergridSubda ${SRC_FILES})
-target_include_directories(tstIntergridSubda PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstIntergridSubda dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRestriction.cpp)
-add_executable(tstRestriction ${SRC_FILES})
-target_include_directories(tstRestriction PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstRestriction dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRemesh.cpp)
-add_executable(tstRemesh ${SRC_FILES})
-target_include_directories(tstRemesh PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstRemesh dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testCheckpoint.cpp)
-add_executable(tstCheckpoint ${SRC_FILES})
-target_include_directories(tstCheckpoint PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstCheckpoint dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testBoundaryIndices.cpp)
-add_executable(tstBoundaryIndices ${SRC_FILES})
-target_include_directories(tstBoundaryIndices PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstBoundaryIndices dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testRefineSubda.cpp)
-add_executable(tstRefineSubda ${SRC_FILES})
-target_include_directories(tstRefineSubda PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstRefineSubda dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testTreeNodeOwner.cpp)
-add_executable(tstTreeNodeOwner ${SRC_FILES})
-target_include_directories(tstTreeNodeOwner PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstTreeNodeOwner dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testBoundaryRefined.cpp)
-add_executable(tstBoundaryRefined ${SRC_FILES})
-target_include_directories(tstBoundaryRefined PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstBoundaryRefined dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testConsistentElements.cpp)
-add_executable(tstConsistentElements ${SRC_FILES})
-target_include_directories(tstConsistentElements PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstConsistentElements dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testProduceHangingSubda.cpp)
-add_executable(tstProduceHangingSubda ${SRC_FILES})
-target_include_directories(tstProduceHangingSubda PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstProduceHangingSubda dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testHangingBoundary.cpp)
-add_executable(tstHangingBoundary ${SRC_FILES})
-target_include_directories(tstHangingBoundary PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstHangingBoundary dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testPeriodicSphereStatic.cpp)
-add_executable(tstPeriodicSphereStatic ${SRC_FILES})
-target_include_directories(tstPeriodicSphereStatic PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstPeriodicSphereStatic dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testPeriodicUniformNodes.cpp)
-add_executable(tstPeriodicUniformNodes ${SRC_FILES})
-target_include_directories(tstPeriodicUniformNodes PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstPeriodicUniformNodes dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testIncidentGhostPoints.cpp
-              ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/genChannelPoints.cpp)
-add_executable(tstIncidentGhostPoints ${SRC_FILES})
-target_include_directories(tstIncidentGhostPoints PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/bench/include)
-target_link_libraries(tstIncidentGhostPoints dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/nonoverlapping.cpp
-              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/multisphere.h)
-add_executable(tstOctreeNonoverlapping ${SRC_FILES})
-target_include_directories(tstOctreeNonoverlapping PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/octree)
-target_link_libraries(tstOctreeNonoverlapping dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/remesh.cpp
-              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/multisphere.h)
-add_executable(tstOctreeRemesh ${SRC_FILES})
-target_include_directories(tstOctreeRemesh PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/octree)
-target_link_libraries(tstOctreeRemesh dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/intergrid/refine_many.cpp
-              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/multisphere.h)
-add_executable(tstIntergridRefineMany ${SRC_FILES})
-target_include_directories(tstIntergridRefineMany PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(tstIntergridRefineMany dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/fem/collect_mat.cpp
-              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/multisphere.h)
-add_executable(tstFemCollectMat ${SRC_FILES})
-target_include_directories(tstFemCollectMat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(tstFemCollectMat dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/dist_partition.cpp
-              ${CMAKE_CURRENT_SOURCE_DIR}/test/octree/gaussian.hpp)
-add_executable(tstOctreeDistPartition ${SRC_FILES})
-target_include_directories(tstOctreeDistPartition PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/ ${CMAKE_CURRENT_SOURCE_DIR}/octree)
-target_link_libraries(tstOctreeDistPartition dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/par/nbx.cpp)
-add_executable(tstParNbx ${SRC_FILES})
-target_include_directories(tstParNbx PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstParNbx dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/par/sendall.cpp)
-add_executable(tstParSendall ${SRC_FILES})
-target_include_directories(tstParSendall PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstParSendall dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/par/shift2.cpp)
-add_executable(tstParShift2 ${SRC_FILES})
-target_include_directories(tstParShift2 PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstParShift2 dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/test/testDollar.cpp)
-add_executable(tstDollar ${SRC_FILES})
-target_include_directories(tstDollar PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/test/)
-target_link_libraries(tstDollar dendroKT ${MPI_LIBRARIES} m)
-
-set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/matrix.h
-              ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/matrix.cpp)
-add_executable(tstMatAssembly ${SRC_FILES})
-set_property(TARGET tstMatAssembly PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
-target_include_directories(tstMatAssembly PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
-target_link_libraries(tstMatAssembly dendroKT ${MPI_LIBRARIES} m)
-
+add_subdirectory(test)
 add_subdirectory(test_doctests)
-
 
 add_subdirectory(utility)
 
@@ -554,6 +301,19 @@ set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/bench/src/uniform_faces.cpp)
 add_executable(bench_uniform_faces ${SRC_FILES})
 target_include_directories(bench_uniform_faces PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/bench/include)
 target_link_libraries(bench_uniform_faces dendroKT ${MPI_LIBRARIES} m)
+
+
+
+
+
+set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/matrix.h
+              ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/src/matrix.cpp)
+add_executable(tstMatAssembly ${SRC_FILES})
+set_property(TARGET tstMatAssembly PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
+target_include_directories(tstMatAssembly PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
+target_link_libraries(tstMatAssembly dendroKT MPI::MPI_CXX m)
+
+
 
 
 
@@ -625,7 +385,7 @@ if(BUILD_EXAMPLES)
   add_executable(doctest_gmg_poisson ${SRC_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/test_doctests/main_with_petsc.cpp)
   set_property(TARGET doctest_gmg_poisson PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
   target_include_directories(doctest_gmg_poisson PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
-  target_link_libraries(doctest_gmg_poisson dendroKT ${MPI_LIBRARIES} m)
+  target_link_libraries(doctest_gmg_poisson dendroKT MPI::MPI_CXX m eigen)
 
   ## Parameterized GMG to study convergence behavior.
   set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
@@ -639,7 +399,7 @@ if(BUILD_EXAMPLES)
   add_executable(gmg_stat ${SRC_FILES})
   set_property(TARGET gmg_stat PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
   target_include_directories(gmg_stat PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
-  target_link_libraries(gmg_stat dendroKT ${MPI_LIBRARIES} m)
+  target_link_libraries(gmg_stat dendroKT MPI::MPI_CXX m eigen HighFive c4conf)
 
 
 endif(BUILD_EXAMPLES)

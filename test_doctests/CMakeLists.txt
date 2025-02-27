@@ -9,27 +9,27 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(doctest_hello_world hello_world.cpp main.cpp)
 target_include_directories(doctest_hello_world PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(doctest_hello_world dendroKT ${MPI_LIBRARIES} m)
+target_link_libraries(doctest_hello_world dendroKT MPI::MPI_CXX m)
 
 
 add_executable(doctest_coarsening coarsening.cpp main.cpp)
 add_dependencies(doctest_coarsening copy_assets)
 target_include_directories(doctest_coarsening PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(doctest_coarsening dendroKT ${MPI_LIBRARIES} m)
+target_link_libraries(doctest_coarsening dendroKT MPI::MPI_CXX m)
 
 add_executable(doctest_refine_many refine_many.cpp main.cpp)
 add_dependencies(doctest_refine_many copy_assets)
 target_include_directories(doctest_refine_many PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(doctest_refine_many dendroKT ${MPI_LIBRARIES} m)
+target_link_libraries(doctest_refine_many dendroKT MPI::MPI_CXX m)
 
 add_executable(doctest_octree_adler32 octree_adler32.cpp main.cpp)
 add_dependencies(doctest_octree_adler32 copy_assets)
 target_include_directories(doctest_octree_adler32 PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(doctest_octree_adler32 dendroKT ${MPI_LIBRARIES} m)
+target_link_libraries(doctest_octree_adler32 dendroKT MPI::MPI_CXX m)
 
 add_executable(doctest_partition_unweighted partition_unweighted.cpp main.cpp)
 target_include_directories(doctest_partition_unweighted PUBLIC ${MPI_INCLUDE_PATH})
-target_link_libraries(doctest_partition_unweighted dendroKT ${MPI_LIBRARIES} m)
+target_link_libraries(doctest_partition_unweighted dendroKT MPI::MPI_CXX m)
 
 set(SRC_FILES
   ${CMAKE_SOURCE_DIR}/FEM/examples/include/poissonVec.h
@@ -41,5 +41,5 @@ set(SRC_FILES
 add_executable(doctest_hybrid_poisson hybrid_poisson.cpp ${SRC_FILES} main_with_petsc.cpp)
 target_include_directories(doctest_hybrid_poisson PUBLIC
   ${MPI_INCLUDE_PATH} ${CMAKE_SOURCE_DIR}/FEM/examples/include)
-target_link_libraries(doctest_hybrid_poisson dendroKT ${MPI_LIBRARIES} m)
+target_link_libraries(doctest_hybrid_poisson dendroKT MPI::MPI_CXX m eigen)
 

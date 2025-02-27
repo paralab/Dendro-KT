@@ -11,6 +11,7 @@
  * */
 
 #include "refel.h"
+#include "lapac.h"
 
 
 RefElement::RefElement()// default constructor
