@@ -100,7 +100,6 @@ else()
 endif()
 
 add_subdirectory(external/eigen)
-add_subdirectory(external/HighFive)
 add_subdirectory(external/c4conf)
 
 # Add the Tracy profiler.
@@ -386,6 +385,10 @@ if(BUILD_EXAMPLES)
   set_property(TARGET doctest_gmg_poisson PROPERTY RUNTIME_OUTPUT_DIRECTORY Examples/FEM)
   target_include_directories(doctest_gmg_poisson PUBLIC ${MPI_INCLUDE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include)
   target_link_libraries(doctest_gmg_poisson dendroKT MPI::MPI_CXX m eigen)
+
+
+
+add_subdirectory(external/HighFive)
 
   ## Parameterized GMG to study convergence behavior.
   set(SRC_FILES ${CMAKE_CURRENT_SOURCE_DIR}/FEM/examples/include/poissonMat.h
