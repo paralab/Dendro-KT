@@ -1,6 +1,6 @@
 ## CMAKE for Dendro-KT
 cmake_minimum_required(VERSION 3.10)
-project(Dendro-KT)
+project(Dendro-KT C CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
