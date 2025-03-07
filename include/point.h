@@ -34,10 +34,10 @@
   @author Hari Sundar
   @author Masado Ishii
   */
-template <unsigned int dim>
+template <int dim>
 class Point{
   public:
-    static constexpr unsigned int m_uiDim = (dim > 3 ? dim : 3);
+    static constexpr int m_uiDim = (dim > 3 ? dim : 3);
 
     /** @name Constructors and Destructor */
     //@{
@@ -62,12 +62,12 @@ class Point{
     const double& x() const {return _p[0]; };
     const double& y() const {return _p[1]; };
     const double& z() const {return _p[2]; };
-    const double& x(unsigned d) const { return _p[d]; }
+    const double& x(int d) const { return _p[d]; }
 
     int xint() const {return static_cast<int>(_p[0]); };
     int yint() const {return static_cast<int>(_p[1]); };
     int zint() const {return static_cast<int>(_p[2]); };
-    int xint(unsigned d) const { return static_cast<int>(_p[d]); }
+    int xint(int d) const { return static_cast<int>(_p[d]); }
     //@}
 
     /** @name Overloaded Operators */
@@ -103,7 +103,7 @@ class Point{
     inline double dot(Point other) const { 
       double sum = 0.0;
       #pragma unroll(dim)
-      for (unsigned int d = 0; d < dim; d++)
+      for (int d = 0; d < dim; d++)
         sum += _p[d] * other._p[d];
       return sum;
     }
@@ -131,31 +131,31 @@ class Point{
     std::array<double,m_uiDim> _p = {};
 };
 
-template <unsigned int dim>
+template <int dim>
 Point<dim>::Point(double scale)
 {
   std::fill(&_p[0], &_p[dim], scale);
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim>::Point(const std::array<double, dim> &newCoords)
 {
   std::copy(&newCoords[0], &newCoords[dim], &_p[0]);
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim>::Point(const double * newCoords)
 {
   std::copy(&newCoords[0], &newCoords[dim], &_p[0]);
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim>::Point(double newx, double newy, double newz)
 {
   initialize3(newx, newy, newz);
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim>::Point(int newx, int newy, int newz)
 { 
   initialize3(static_cast<double>(newx),
@@ -163,7 +163,7 @@ Point<dim>::Point(int newx, int newy, int newz)
       static_cast<double>(newz));
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim>::Point(unsigned int newx, unsigned int newy, unsigned int newz)
 { 
   initialize3(static_cast<double>(newx),
@@ -172,80 +172,80 @@ Point<dim>::Point(unsigned int newx, unsigned int newy, unsigned int newz)
 }
 
 /*
-template <unsigned int dim>
+template <int dim>
 Point<dim>::~Point()
 {
 
 }
 */
 
-template <unsigned int dim>
+template <int dim>
 inline void Point<dim>::initialize3(double newx, double newy, double newz)
 {
   _p[0] = newx;  _p[1] = newy;  _p[2] = newz;
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim> Point<dim>::operator - () const {
   Point ret(*this);
   #pragma unroll(dim)
-  for (unsigned int d = 0; d < dim; d++)
+  for (int d = 0; d < dim; d++)
     ret._p[d] = -ret._p[d];
   return ret;
 }
 
-template <unsigned int dim>
+template <int dim>
 void Point<dim>::operator *= (const int factor){
   #pragma unroll(dim)
-  for (unsigned int d = 0; d < dim; d++)
+  for (int d = 0; d < dim; d++)
     _p[d] *= factor;
 }
 
-template <unsigned int dim>
+template <int dim>
 void Point<dim>::operator *= (const double factor){
   #pragma unroll(dim)
-  for (unsigned int d = 0; d < dim; d++)
+  for (int d = 0; d < dim; d++)
     _p[d] *= factor;
 }
 
-template <unsigned int dim>
+template <int dim>
 void Point<dim>::operator /= (const int divisor){
   if (divisor == 0) return;
   #pragma unroll(dim)
-  for (unsigned int d = 0; d < dim; d++)
+  for (int d = 0; d < dim; d++)
     _p[d] /= static_cast<double>(divisor);
 }
 
-template <unsigned int dim>
+template <int dim>
 void Point<dim>::operator /= (const double divisor){
   if (divisor == 0) return;
   #pragma unroll(dim)
-  for (unsigned int d = 0; d < dim; d++)
+  for (int d = 0; d < dim; d++)
     _p[d] /= divisor;
 }
 
-template <unsigned int dim>
+template <int dim>
 void Point<dim>::operator += (const Point& other){
   #pragma unroll(dim)
-  for (unsigned int d = 0; d < dim; d++)
+  for (int d = 0; d < dim; d++)
     _p[d] += other._p[d];
 }
 
-template <unsigned int dim>
+template <int dim>
 void Point<dim>::operator -= (const Point& other){
   #pragma unroll(dim)
-  for (unsigned int d = 0; d < dim; d++)
+  for (int d = 0; d < dim; d++)
     _p[d] -= other._p[d];
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim> Point<dim>::operator - (const Point &other) const{
   Point ret(*this);
   ret -= other;
   return ret;
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim> Point<dim>::operator + (const Point &other) const{
   Point ret(*this);
   ret += other;
@@ -253,7 +253,7 @@ Point<dim> Point<dim>::operator + (const Point &other) const{
 }
 
 
-template <unsigned int dim>
+template <int dim>
 Point<dim> Point<dim>::operator /(const double divisor) const
 {
   Point ret(*this);
@@ -261,7 +261,7 @@ Point<dim> Point<dim>::operator /(const double divisor) const
   return ret;
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim> Point<dim>::operator *(const double factor) const
 {
   Point ret(*this);
@@ -269,7 +269,7 @@ Point<dim> Point<dim>::operator *(const double factor) const
   return ret;
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim> Point<dim>::TransMatMultiply3(double *transMat, Point inPoint)
 {
   Point outPoint;
@@ -284,7 +284,7 @@ Point<dim> Point<dim>::TransMatMultiply3(double *transMat, Point inPoint)
   return outPoint;
 }
 
-template <unsigned int dim>
+template <int dim>
 Point<dim> Point<dim>::TransMatMultiply(double *transMat, Point inPoint)
 {
   if (dim == 3)
@@ -292,10 +292,10 @@ Point<dim> Point<dim>::TransMatMultiply(double *transMat, Point inPoint)
 
   Point outPoint;
 
-  for (unsigned int i = 0; i < dim; i++)
+  for (int i = 0; i < dim; i++)
   {
     outPoint._p[i] = transMat[dim*(dim+1) + i];
-    for (unsigned int j = 0; j < dim; j++)
+    for (int j = 0; j < dim; j++)
       outPoint._p[i] += transMat[j*(dim+1) + i] * inPoint._p[j];
   }
 
@@ -304,12 +304,12 @@ Point<dim> Point<dim>::TransMatMultiply(double *transMat, Point inPoint)
 
 
 
-template <unsigned int dim>
+template <int dim>
 void Point<dim>::normalize() {
   operator/=(abs());
 }
 
-template <unsigned int dim>
+template <int dim>
 double Point<dim>::magnitude()
 {
   return abs();
