@@ -77,7 +77,7 @@ size_t SFC_Tree<T, dim>::tsearch_lower_bound(
     const TreeNode<T, dim> &key)
 {
   return tsearch_equal_range(
-      &(*sortedOcts.begin()),
+      sortedOcts.data(),
       key,
       0, sortedOcts.size(),
       1, SFC_State<dim>::root()).first;
@@ -93,7 +93,7 @@ size_t SFC_Tree<T, dim>::tsearch_upper_bound(
     const TreeNode<T, dim> &key)
 {
   return tsearch_equal_range(
-      &(*sortedOcts.begin()),
+      sortedOcts.data(),
       key,
       0, sortedOcts.size(),
       1, SFC_State<dim>::root()).second;
@@ -109,7 +109,7 @@ std::pair<size_t, size_t> SFC_Tree<T, dim>::tsearch_equal_range(
       const TreeNode<T, dim> &key)
 {
   return tsearch_equal_range(
-      &(*sortedOcts.begin()),
+      sortedOcts.data(),
       key,
       0, sortedOcts.size(),
       1, SFC_State<dim>::root());
@@ -251,8 +251,8 @@ Overlaps<T, dim>::Overlaps(
    * @param overlaps [out] Concatenated lists of ancestor overlaps and lower bounds.
    */
   using Oct = TreeNode<T, dim>;
-  Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
-  Segment<const Oct> segSortedKeys(&(*sortedKeys.cbegin()), 0, sortedKeys.size());
+  Segment<const Oct> segSortedOcts(sortedOcts.data(), 0, sortedOcts.size());
+  Segment<const Oct> segSortedKeys(sortedKeys.data(), 0, sortedKeys.size());
   std::vector<size_t> lineage;
   m_beginOverlaps.clear();
   m_overlaps.clear();
@@ -316,8 +316,8 @@ std::vector<size_t> SFC_Tree<T, dim>::lower_bound(
   assert(isLocallySorted(sortedKeys));
 
   using Oct = TreeNode<T, dim>;
-  Segment<const Oct> segSortedOcts(&(*sortedOcts.cbegin()), 0, sortedOcts.size());
-  Segment<const Oct> segSortedKeys(&(*sortedKeys.cbegin()), 0, sortedKeys.size());
+  Segment<const Oct> segSortedOcts(sortedOcts.data(), 0, sortedOcts.size());
+  Segment<const Oct> segSortedKeys(sortedKeys.data(), 0, sortedKeys.size());
   std::vector<size_t> lowerBounds;
   lowerBounds.reserve(sortedKeys.size());
 
@@ -505,7 +505,7 @@ SFC_Tree<T,dim>:: distTreeSort(std::vector<TreeNode<T,dim>> &points,
   MPI_Comm_size(comm, &nProc);
 
   distTreePartition(points, 0, loadFlexibility, comm);
-  locTreeSort(&(*points.begin()), 0, points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
+  locTreeSort(points.data(), 0, points.size(), 0, m_uiMaxDepth, SFC_State<dim>::root());
 }
 
 
@@ -663,11 +663,11 @@ inline Buckets<nchild(dim)+1> bucket_sfc(
 
     static std::vector<char> copies;
     copies.resize((end - begin) * std::max({sizeof(X), sizeof(Y)...}));
-    X* copy_x = (X*) &(*copies.begin());
+    X* copy_x = (X*) copies.data();
 
     const auto copy_payload = [&](auto *values) {   // need c++14
       Buckets<nbuckets> ybuckets = buckets;
-      decltype(values) copy_y = decltype(values)(&(*copies.begin()));
+      decltype(values) copy_y = decltype(values)(copies.data());
       for (size_t i = end; i-- > begin; ) // backward
         copy_y[--ybuckets[pre_bucket(xs[i])]] = values[i];
       for (size_t i = begin; i < end; ++i)
@@ -953,10 +953,10 @@ struct BucketArray
 
   void all_reduce(MPI_Comm comm)
   {
-    par::Mpi_Allreduce(&(*m_local_begin.begin()), &(*m_global_begin.begin()), size(), MPI_SUM, comm);
-    par::Mpi_Allreduce(&(*m_local_end.begin()), &(*m_global_end.begin()), size(), MPI_SUM, comm);
+    par::Mpi_Allreduce(m_local_begin.data(), m_global_begin.data(), size(), MPI_SUM, comm);
+    par::Mpi_Allreduce(m_local_end.data(), m_global_end.data(), size(), MPI_SUM, comm);
 #if DEBUG_BUCKET_ARRAY
-    par::Mpi_Scan(&(*m_local_size.begin()), &(*m_process_offset_end.begin()), size(), MPI_SUM, comm);
+    par::Mpi_Scan(m_local_size.data(), m_process_offset_end.data(), size(), MPI_SUM, comm);
 #endif
     s_allreduce_sz += size();
     s_allreduce_ct += 2;
@@ -1055,8 +1055,8 @@ void distTreePartition_kway_impl(
       BucketRef<T, int(dim)> b)
   {
     Buckets<1+nchild(dim)> buckets = bucket_sfc<T, dim, X...>(
-        &(*v.begin()),
-        (&(*w.begin()))...,
+        v.data(),
+        (w.data())...,
         b.local_begin,
         b.local_end,
         b.octant.getLevel() + 1,
@@ -1688,7 +1688,7 @@ SFC_Tree<T,dim>:: distTreeConstruction(std::vector<TreeNode<T,dim>> &points,
   // Instead of locally sorting, locally complete the tree.
   // Since we don't have info about the global buckets, construct from the top.
   const LevI leafLevel = m_uiMaxDepth;
-  locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
+  locTreeConstruction(points.data(), tree, maxPtsPerRegion,
                       0, (RankI) points.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
                       SFC_State<dim>::root(),
@@ -1751,7 +1751,7 @@ SFC_Tree<T,dim>:: distTreeConstructionWithFilter(
   // Since we don't have info about the global buckets, construct from the top.
   const LevI leafLevel = m_uiMaxDepth;
   locTreeConstructionWithFilter(decider,
-                      &(*points.begin()), tree, maxPtsPerRegion,
+                      points.data(), tree, maxPtsPerRegion,
                       0, (RankI) points.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
                       SFC_State<dim>::root(),
@@ -1910,7 +1910,7 @@ SFC_Tree<T,dim>:: distRemoveDuplicates(std::vector<TreeNode<T,dim>> &tree, doubl
     MPI_Request request;
     MPI_Status status;
     if (rNE > 0)
-      par::Mpi_Isend<TreeNode<T,dim>>(&(*tree.begin()), 1, rNE-1, 0, nonemptys, &request);
+      par::Mpi_Isend<TreeNode<T,dim>>(tree.data(), 1, rNE-1, 0, nonemptys, &request);
     if (rNE < nNE-1)
       par::Mpi_Recv<TreeNode<T,dim>>(&nextBegin, 1, rNE+1, 0, nonemptys, &status);
 
@@ -1967,6 +1967,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: locRemoveDuplicates(std::vector<TreeNode<T,dim>> &tnodes)
 {
+  //future: replace with std::unique() with custom equality
   DOLLAR("locRemoveDuplicates()");
   const TreeNode<T,dim> *tEnd = &(*tnodes.end());
   TreeNode<T,dim> *tnCur = &(*tnodes.begin());
@@ -1996,6 +1997,7 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes)
 {
+  //future: replace with std::unique() with default equality
   DOLLAR("locRemoveDuplicatesStrict()");
   const TreeNode<T,dim> *tEnd = &(*tnodes.end());
   TreeNode<T,dim> *tnCur = &(*tnodes.begin());
@@ -2079,8 +2081,8 @@ void SFC_Tree<T, dim>::distCoalesceSiblings(
                         comm, MPI_STATUS_IGNORE);
 
       tree.insert(tree.begin(), recv_sz, {});
-      par::Mpi_Sendrecv(&(*tree.end()) - send_sz, send_sz, successor, int{},
-                        &(*tree.begin()), recv_sz, predecessor, int{},
+      par::Mpi_Sendrecv(tree.data() + tree.size() - send_sz, send_sz, successor, int{},
+                        tree.data(), recv_sz, predecessor, int{},
                         comm, MPI_STATUS_IGNORE);
       tree.erase(tree.end() - send_sz, tree.end());
     }
@@ -2147,8 +2149,8 @@ void SFC_Tree<T, dim>::distAdoptAncestors(
                         comm, MPI_STATUS_IGNORE);
 
       tree.insert(tree.begin(), recv_sz, {});
-      par::Mpi_Sendrecv(&(*tree.end()) - send_sz, send_sz, successor, int{},
-                        &(*tree.begin()), recv_sz, predecessor, int{},
+      par::Mpi_Sendrecv(tree.data() + tree.size() - send_sz, send_sz, successor, int{},
+                        tree.data(), recv_sz, predecessor, int{},
                         comm, MPI_STATUS_IGNORE);
       tree.erase(tree.end() - send_sz, tree.end());
     }
@@ -2731,7 +2733,7 @@ SFC_Tree<T,dim>:: propagateNeighbours(std::vector<TreeNode<T,dim>> &srcNodes)
         childList[i].getParent().appendAllNeighbours(parentList);
 
     // TODO Consider more efficient algorithms for removing duplicates from lp level.
-    locTreeSort(&(*treeLevels[lp].begin()), 0, treeLevels[lp].size(), 1, lp, SFC_State<dim>::root());
+    locTreeSort(treeLevels[lp].data(), 0, treeLevels[lp].size(), 1, lp, SFC_State<dim>::root());
     locRemoveDuplicates(treeLevels[lp]);
   }
 
@@ -2758,7 +2760,7 @@ SFC_Tree<T,dim>:: locTreeBalancing(std::vector<TreeNode<T,dim>> &points,
 {
   const LevI leafLevel = m_uiMaxDepth;
 
-  locTreeConstruction(&(*points.begin()), tree, maxPtsPerRegion,
+  locTreeConstruction(points.data(), tree, maxPtsPerRegion,
                       0, (RankI) points.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
                       SFC_State<dim>::root(),
@@ -2767,7 +2769,7 @@ SFC_Tree<T,dim>:: locTreeBalancing(std::vector<TreeNode<T,dim>> &points,
   propagateNeighbours(tree);
 
   std::vector<TreeNode<T,dim>> newTree;
-  locTreeConstruction(&(*tree.begin()), newTree, 1,
+  locTreeConstruction(tree.data(), newTree, 1,
                       0, (RankI) tree.size(),
                       1, leafLevel,         //TODO is sLev 0 or 1?
                       SFC_State<dim>::root(),
@@ -3063,6 +3065,7 @@ Buckets<nbuckets> bucket_dup(
 
   output.resize(output.size() + bucketing.total());
   X *out = &(*output.end() - bucketing.total());
+  //future: replace with better partitioning idiom
 
   // Forward on second pass.
   for (RangeUnion::It it = ru.iterator(); it.nonempty(); ++it)
@@ -3250,7 +3253,7 @@ void appendNeighboursOfParents(
   std::vector<TreeNode<T, dim>> parents = octList;
   TreeNode<T, dim> lastKeptParent;
   bool keptAParent = false;
-  Keeper<TreeNode<T, dim>> parentStore(&(*parents.begin()), 0, parents.size());
+  Keeper<TreeNode<T, dim>> parentStore(parents.data(), 0, parents.size());
   while (parentStore.nonempty())
   {
     TreeNode<T, dim> nextParent = (*parentStore).getParent();
@@ -3425,8 +3428,8 @@ void SFC_Tree<T, dim>::locResolveTree(
     std::vector<TreeNode<T, dim>> &&res)
 {
   using Oct = TreeNode<T, dim>;
-  Keeper<Oct> keep_domain(&(*tree.begin()), 0, tree.size());
-  Keeper<Oct> keep_res(&(*res.begin()), 0, res.size());
+  Keeper<Oct> keep_domain(tree.data(), 0, tree.size());
+  Keeper<Oct> keep_res(res.data(), 0, res.size());
   std::vector<Oct> extra;
 
   locResolveTree_rec<T, dim>(
@@ -3566,8 +3569,8 @@ void SFC_Tree<T, dim>::locMatchResolution(
   using Oct = TreeNode<T, dim>;
   std::vector<Oct> domain;
   std::swap(domain, tree);
-  Segment<const Oct> segDomain(&(*domain.cbegin()), 0, domain.size());
-  Segment<const Oct> segRes(&(*res.cbegin()), 0, res.size());
+  Segment<const Oct> segDomain(domain.data(), 0, domain.size());
+  Segment<const Oct> segRes(res.data(), 0, res.size());
   locMatchResolution_rec<T, dim>(
       segDomain,
       segRes,
@@ -3759,8 +3762,8 @@ std::vector<int> recvFromActive(
   int recvFromSz = 0;
   {
     std::vector<int> recvFromSizes(commSize, 0);
-    par::Mpi_Allreduce( &(*sendToSizes.cbegin()),
-                        &(*recvFromSizes.begin()),
+    par::Mpi_Allreduce( sendToSizes.data(),
+                        recvFromSizes.data(),
                         commSize, MPI_SUM, comm );
     recvFromSz = recvFromSizes[commRank];
   }
@@ -4155,8 +4158,8 @@ PartitionFront<T, dim> SFC_Tree<T, dim>::allgatherSplitters(
   std::vector<char> isNonempty(commSize, false);
   const TreeNode<T, dim> front = (nonempty_ ? front_ : TreeNode<T, dim>());
   const char nonempty = nonempty_;
-  par::Mpi_Allgather(&front, &(*splitters.begin()), 1, comm);
-  par::Mpi_Allgather(&nonempty, &(*isNonempty.begin()), 1, comm);
+  par::Mpi_Allgather(&front, splitters.data(), 1, comm);
+  par::Mpi_Allgather(&nonempty, isNonempty.data(), 1, comm);
 
   for (int r = commSize - 2; r >= 0; --r)
     if (!isNonempty[r])
@@ -4204,9 +4207,9 @@ SFC_Tree<T, dim>::PartitionFrontBackRequest::PartitionFrontBackRequest(
     back(nonempty_ ? back_ : TreeNode<T, dim>()),
     nonempty(nonempty_)
 {
-  par::Mpi_Iallgather(&front, &(*pfb.m_fronts.begin()), 1, comm, &requests[0]);
-  par::Mpi_Iallgather(&back, &(*pfb.m_backs.begin()), 1, comm, &requests[1]);
-  par::Mpi_Iallgather(&nonempty, &(*isNonempty.begin()), 1, comm, &requests[2]);
+  par::Mpi_Iallgather(&front, pfb.m_fronts.data(), 1, comm, &requests[0]);
+  par::Mpi_Iallgather(&back, pfb.m_backs.data(), 1, comm, &requests[1]);
+  par::Mpi_Iallgather(&nonempty, isNonempty.data(), 1, comm, &requests[2]);
 }
 
 // complete()
@@ -4517,7 +4520,7 @@ template <typename T, unsigned int dim>
 bool isLocallySorted(const std::vector<TreeNode<T, dim>> &octList)
 {
   return octList.size() == lenContainedSorted<T, dim>(
-      &(*octList.cbegin()),
+      octList.data(),
       0, octList.size(),
       TreeNode<T, dim>(),
       SFC_State<dim>::root());
@@ -4584,10 +4587,10 @@ bool isPartitioned(std::vector<TreeNode<T, dim>> octants, MPI_Comm comm)
   std::vector<int> displ_edges(comm_size, 0);
   std::vector<TreeNode<T, dim>> gathered(global_edges);
 
-  par::Mpi_Allgather(&local_edges, &(*count_edges.begin()), 1, comm);
-  par::Mpi_Allgather(&scan_edges, &(*displ_edges.begin()), 1, comm);
+  par::Mpi_Allgather(&local_edges, count_edges.data(), 1, comm);
+  par::Mpi_Allgather(&scan_edges, displ_edges.data(), 1, comm);
   par::Mpi_Allgatherv(edges, local_edges,
-      &(*gathered.begin()), &(*count_edges.begin()), &(*displ_edges.begin()), comm);
+      gathered.data(), count_edges.data(), displ_edges.data(), comm);
 
   return isLocallySorted(gathered);
 }
@@ -4632,10 +4635,10 @@ bool noRemoteEdgeDups(const std::vector<TreeNode<T, dim>> &octants, MPI_Comm com
   std::vector<int> displ_edges(comm_size, 0);
   std::vector<TreeNode<T, dim>> gathered(global_edges);
 
-  par::Mpi_Allgather(&local_edges, &(*count_edges.begin()), 1, comm);
-  par::Mpi_Allgather(&scan_edges, &(*displ_edges.begin()), 1, comm);
+  par::Mpi_Allgather(&local_edges, count_edges.data(), 1, comm);
+  par::Mpi_Allgather(&scan_edges, displ_edges.data(), 1, comm);
   par::Mpi_Allgatherv(edges, local_edges,
-      &(*gathered.begin()), &(*count_edges.begin()), &(*displ_edges.begin()), comm);
+      gathered.data(), count_edges.data(), displ_edges.data(), comm);
 
   assert(gathered.size() % 2 == 0);
 

@@ -906,7 +906,7 @@ namespace ot
         // Fill ghost segments of node coordinates vector.
         std::vector<ot::TreeNode<C,dim>> tmpSendBuf(m_sm.m_map.size());
         ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::TreeNode<C,dim>>(
-            &(*m_tnCoords.begin()), &(*tmpSendBuf.begin()), m_sm, m_gm, m_uiActiveComm);
+            m_tnCoords.data(), tmpSendBuf.data(), m_sm, m_gm, m_uiActiveComm);
         //TODO transfer ghostExchange into this class, then use new method.
 
         // Compute global ids of all nodes, including local and ghosted.
@@ -915,7 +915,7 @@ namespace ot
           m_uiLocalToGlobalNodalMap[m_uiLocalNodeBegin + ii] = m_uiGlobalRankBegin + ii;
         std::vector<ot::RankI> tmpSendGlobId(m_sm.m_map.size());
         ot::SFC_NodeSort<C,dim>::template ghostExchange<ot::RankI>(
-            &(*m_uiLocalToGlobalNodalMap.begin()), &(*tmpSendGlobId.begin()), m_sm, m_gm, m_uiActiveComm);
+            m_uiLocalToGlobalNodalMap.data(), tmpSendGlobId.data(), m_sm, m_gm, m_uiActiveComm);
         //TODO transfer ghostExchange into this class, then use new method.
 
         // Identify the (local ids of) domain boundary nodes in local vector.
