@@ -134,19 +134,19 @@ class Point{
 template <int dim>
 Point<dim>::Point(double scale)
 {
-  std::fill(&_p[0], &_p[dim], scale);
+  std::fill_n(&_p[0], dim, scale);
 }
 
 template <int dim>
 Point<dim>::Point(const std::array<double, dim> &newCoords)
 {
-  std::copy(&newCoords[0], &newCoords[dim], &_p[0]);
+  std::copy_n(&newCoords[0], dim, &_p[0]);
 }
 
 template <int dim>
 Point<dim>::Point(const double * newCoords)
 {
-  std::copy(&newCoords[0], &newCoords[dim], &_p[0]);
+  std::copy_n(&newCoords[0], dim, &_p[0]);
 }
 
 template <int dim>
