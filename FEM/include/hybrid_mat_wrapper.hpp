@@ -476,9 +476,9 @@ namespace fem
     const bool is_boundary = octant.getIsOnTreeBdry();
 
     static std::vector<double> node_coords_flat;
-    const std::vector<ot::TreeNode<uint32_t, dim>> *no_tn_coords = nullptr;
+    const std::vector<ot::TreeNode<uint32_t, dim>> no_tn_coords = {};
     ot::fillAccessNodeCoordsFlat(
-        false, *no_tn_coords,
+        false, no_tn_coords,
         octant, this->da()->getElementOrder(), node_coords_flat);
 
     static std::vector<ot::MatRecord> dummy_records;
@@ -504,9 +504,9 @@ namespace fem
     const bool is_boundary = octant.getIsOnTreeBdry();
 
     static std::vector<double> node_coords_flat;
-    const std::vector<ot::TreeNode<uint32_t, dim>> *no_tn_coords = nullptr;
+    const std::vector<ot::TreeNode<uint32_t, dim>> no_tn_coords = {};
     ot::fillAccessNodeCoordsFlat(
-        false, *no_tn_coords,
+        false, no_tn_coords,
         octant, this->da()->getElementOrder(), node_coords_flat);
 
     static std::vector<ot::MatRecord> elem_records;
