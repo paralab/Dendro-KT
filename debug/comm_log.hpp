@@ -290,7 +290,7 @@ namespace debug
       ~FlushOnDeath()
       {
         if (enabled)
-          out << buffer.str();
+          out << buffer.str() << std::flush;
       }
 
       FlushOnDeath(FlushOnDeath &&other)
