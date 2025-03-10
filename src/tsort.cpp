@@ -1967,29 +1967,29 @@ template <typename T, unsigned int dim>
 void
 SFC_Tree<T,dim>:: locRemoveDuplicates(std::vector<TreeNode<T,dim>> &tnodes)
 {
-  //future: replace with std::unique() with custom equality
+  //future: replace with STL functions.
+  // Not truly equivalence relation, and want to keep leafs (last not first).
   DOLLAR("locRemoveDuplicates()");
-  const TreeNode<T,dim> *tEnd = &(*tnodes.end());
-  TreeNode<T,dim> *tnCur = &(*tnodes.begin());
-  size_t numUnique = 0;
+  auto tnCur = tnodes.begin();
+  auto result = tnodes.begin();
 
-  while (tnCur < tEnd)
+  while (tnCur != tnodes.end())
   {
     // Find next leaf.
-    TreeNode<T,dim> *tnNext;
-    while ((tnNext = tnCur + 1) < tEnd &&
+    decltype(tnCur) tnNext;
+    while ((tnNext = tnCur + 1) != tnodes.end() &&
         (*tnCur == *tnNext || tnCur->isAncestor(*tnNext)))
       tnCur++;
 
     // Move the leaf.
-    if (&tnodes[numUnique] < tnCur)
-      tnodes[numUnique] = *tnCur;
-    numUnique++;
+    if (result != tnCur)
+      *result = *tnCur;
+    ++result;
 
-    tnCur++;
+    ++tnCur;
   }
 
-  tnodes.resize(numUnique);
+  tnodes.erase(result, tnodes.end());
 }
 
 
@@ -1999,27 +1999,27 @@ SFC_Tree<T,dim>:: locRemoveDuplicatesStrict(std::vector<TreeNode<T,dim>> &tnodes
 {
   //future: replace with std::unique() with default equality
   DOLLAR("locRemoveDuplicatesStrict()");
-  const TreeNode<T,dim> *tEnd = &(*tnodes.end());
-  TreeNode<T,dim> *tnCur = &(*tnodes.begin());
-  size_t numUnique = 0;
 
-  while (tnCur < tEnd)
+  auto tnCur = tnodes.begin();
+  auto result = tnodes.begin();
+
+  while (tnCur != tnodes.end())
   {
     // Find next leaf.
-    TreeNode<T,dim> *tnNext;
-    while ((tnNext = tnCur + 1) < tEnd &&
+    decltype(tnCur) tnNext;
+    while ((tnNext = tnCur + 1) != tnodes.end() &&
         (*tnCur == *tnNext))  // Strict equality only; ancestors retained.
       tnCur++;
 
     // Move the leaf.
-    if (&tnodes[numUnique] < tnCur)
-      tnodes[numUnique] = *tnCur;
-    numUnique++;
+    if (result != tnCur)
+      *result = *tnCur;
+    ++result;
 
-    tnCur++;
+    ++tnCur;
   }
 
-  tnodes.resize(numUnique);
+  tnodes.erase(result, tnodes.end());
 }
 
 
