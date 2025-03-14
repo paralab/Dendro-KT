@@ -8,20 +8,36 @@
 
 #include "zonelog.hpp"
 
+int fib_inner(int n);
 
 int fib(int n)
 {
-  ZONELOG_SCOPE_DATA(static_cast<uint64_t>(n));
+  ZONELOG_SCOPE_DATA(zonelog::EventData(n, n));
+
+  if (n <= 6)
+    return fib_inner(n);
 
   if (n < 2)
     return 1;
 
-  return fib(n - 1) + fib(n - 2);
+  const volatile int zero = 0;
+  return fib(n - 1) + fib(n - 2) + zero;
+}
+
+int fib_inner(int n)
+{
+  ZONELOG_SCOPE();
+
+  if (n < 2)
+    return 1;
+
+  const volatile int zero = 0;
+  return fib_inner(n - 1) + fib_inner(n - 2) + zero;
 }
 
 int main()
 {
-  const int n = 5;
+  const int n = 10;
 
   //warmup
   volatile int result;
@@ -32,19 +48,16 @@ int main()
   zonelog::offline::SumCalls log_stats;
   do
   {
-    ZONELOG_NAMED_SCOPE_DATA("outer", 2u);
-    ZONELOG_NAMED_SCOPE_DATA("outer", 1u);
-    const int repetitions = 2000;
+    ZONELOG_NAMED_SCOPE("outer_2");
+    ZONELOG_NAMED_SCOPE("outer_1");
+    const int repetitions = 10000;
     for (int repeat = 0; repeat < repetitions; ++repeat)
     {
-      ZONELOG_NAMED_SCOPE_DATA("inner", 2u);
-      ZONELOG_NAMED_SCOPE_DATA("inner", 1u);
+      ZONELOG_NAMED_SCOPE("inner_2");
+      ZONELOG_NAMED_SCOPE("inner_1");
       result = fib(n);
 
-      if ((repeat + 1) % 16)
-      {
-        zonelog::offline::flush_aggregate(zonelog::global_log(), log_stats);
-      }
+      zonelog::offline::flush_aggregate(zonelog::global_log(), log_stats);
     }
   }
   while (false);

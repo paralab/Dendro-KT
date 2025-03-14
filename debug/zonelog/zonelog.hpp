@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <ranges>
 
-#define ZONELOG_SCOPE            ZONELOG_NAMED_SCOPE("")
+#define ZONELOG_SCOPE()          ZONELOG_NAMED_SCOPE("")
 #define ZONELOG_SCOPE_DATA(data) ZONELOG_NAMED_SCOPE_DATA("", data)
 
 #define ZONELOG_NAMED_SCOPE(name) \
@@ -29,7 +29,7 @@
   static constexpr zonelog::Zone  ZONELOG_ZONE(anon) = \
       { name, __func__, __FILE__, __LINE__ }; \
   zonelog::online::ScopeGuard     ZONELOG_GUARD(anon) = \
-      { & ZONELOG_ZONE(anon), data };
+      { & ZONELOG_ZONE(anon), zonelog::EventData(data) };
 
 #define ZONELOG_ZONE(anon) ZONELOG_CAT(zl_zone_, anon)
 #define ZONELOG_GUARD(anon) ZONELOG_CAT(zl_guard_, anon)
@@ -44,7 +44,7 @@ namespace zonelog
     char const *name;
     char const *function;
     char const *file;
-    int line;
+    long int line;
   };
 
   auto zone_encode(const Zone * zone) -> uintptr_t { return reinterpret_cast<uintptr_t>(zone); }
@@ -52,50 +52,80 @@ namespace zonelog
 
   struct ZoneAction
   {
-    uintptr_t zone_code : sizeof(uintptr_t) * CHAR_BIT - 1;
+    uintptr_t zone_code : sizeof(uintptr_t) * CHAR_BIT - 2;
     bool pop : 1;
+    bool with_data: 1;
   };
-  ZoneAction zone_push(const Zone *zone) { return { zone_encode(zone), false }; }
-  ZoneAction zone_pop(const Zone *zone)  { return { zone_encode(zone), true }; }
+  ZoneAction zone_push(const Zone *zone, bool with_data = false) { return { zone_encode(zone), false, with_data}; }
+  ZoneAction zone_pop(const Zone *zone, bool with_data = false)  { return { zone_encode(zone), true, with_data }; }
   uintptr_t zone_code(ZoneAction za) { return za.zone_code; }
   const Zone * zone(ZoneAction za) { return zone_decode(zone_code(za)); }
   bool action_is_pop(ZoneAction za) { return za.pop; }
-  bool action_is_push(ZoneAction za) { return not za.pop; }
+  bool is_push(ZoneAction za) { return not za.pop; }
+  bool has_data(ZoneAction za) { return za.with_data; }
 
   using clock = std::chrono::steady_clock;
 
   struct Event
   {
-    ZoneAction zone_action;
-    clock::time_point time_stamp;
-    uint64_t data;
+    struct Mark {
+      ZoneAction zone_action;
+      clock::time_point time_stamp;
+    } mark = {};
+
+    std::array<uint64_t, 2> data = {};
   };
+
+  struct EventData
+  {
+    EventData() = default;
+    explicit EventData(uint64_t a0)              : array{{ a0 }} { }
+    explicit EventData(uint64_t a0, uint64_t a1) : array{{ a0, a1 }} { }
+    explicit EventData(std::array<uint64_t, 2> a) : array(a) { }
+
+    operator std::array<uint64_t, 2>() const { return array; }
+
+    std::array<uint64_t, 2> array = {};
+  };
+
+  using RawEventData = decltype(EventData::array);
 
   struct ZonePtrWData
   {
     uintptr_t zone_code = zone_encode(nullptr);
-    uint64_t data = {};
+    EventData data = {};
+    uint64_t has_data = false;
   };
+
+#ifdef ZONELOG_PREALLOCATION
+  static constexpr size_t preallocation = (ZONELOG_PREALLOCATION);
+#else
+  static constexpr size_t preallocation = 4u << 10; // 8 KiB
+#endif//ZONELOG_PREALLOCATION
 
   class Log
   {
     public:
       Log()
       {
-        m_stream.str(std::string(4u << 10, '\0')); // 4 KiB
+        m_stream.str(std::string(preallocation, '\0'));
         m_stream.seekg(0);
         m_stream.seekp(0);
       }
 
       void write(Event event)
       {
-        m_stream.write(reinterpret_cast<const char *>(&event), sizeof(event));
+        m_stream.write(reinterpret_cast<const char *>(&event.mark), sizeof(event.mark));
+        if (has_data(event.mark.zone_action))
+          m_stream.write(reinterpret_cast<const char *>(&event.data), sizeof(event.data));
       }
 
       Event read()
       {
-        Event event;
-        m_stream.read(reinterpret_cast<char *>(&event), sizeof(event));
+        Event event = {};
+        m_stream.read(reinterpret_cast<char *>(&event.mark), sizeof(event.mark));
+        if (has_data(event.mark.zone_action))
+          m_stream.read(reinterpret_cast<char *>(&event.data), sizeof(event.data));
         return event;
       }
 
@@ -130,30 +160,30 @@ namespace zonelog
 
     namespace internal
     {
-      void log_now(Log &log, ZoneAction zone_action, uint64_t data)
+      void log_now(Log &log, ZoneAction zone_action, EventData data)
       {
-        log.write(Event{zone_action, clock::now(), data});
+        log.write(Event{{zone_action, clock::now()}, data});
       }
     }
 
-    void log_push(Log &log, const Zone *zone, uint64_t data)
+    void log_push(Log &log, const Zone *zone, EventData data)
     {
-      internal::log_now(log, zone_push(zone), data);
+      internal::log_now(log, zone_push(zone, true), data);
     }
 
-    void log_pop(Log &log, const Zone *zone, uint64_t data)
+    void log_pop(Log &log, const Zone *zone, EventData data)
     {
-      internal::log_now(log, zone_pop(zone), data);
+      internal::log_now(log, zone_pop(zone, true), data);
     }
 
     void log_push(Log &log, const Zone *zone)
     {
-      log_push(log, zone, uint64_t{});
+      internal::log_now(log, zone_push(zone, false), EventData{});
     }
 
     void log_pop(Log &log, const Zone *zone)
     {
-      log_pop(log, zone, uint64_t{});
+      internal::log_now(log, zone_pop(zone, false), EventData{});
     }
 
     class ScopeGuard
@@ -164,7 +194,7 @@ namespace zonelog
         {
           log_push(global_log(), zone);
         }
-        ScopeGuard(const Zone *zone, uint64_t input_data)
+        ScopeGuard(const Zone *zone, EventData input_data)
           : zone(zone)
         {
           log_push(global_log(), zone, input_data);
@@ -415,22 +445,24 @@ namespace zonelog
     void SumCalls::consume_event(Event event)
     {
       // assume the input data comes on push
-      if (action_is_push(event.zone_action))
+      if (is_push(event.mark.zone_action))
       {
-        const uintptr_t zone_code = zonelog::zone_code(event.zone_action);
-        const uint64_t data = event.data;
+        const uintptr_t zone_code = zonelog::zone_code(event.mark.zone_action);
+        const uint64_t has_data = zonelog::has_data(event.mark.zone_action);
+        const EventData data {event.data};
+        /// const uint64_t data = 0u;
         const size_t parent = open_code_path;
         const size_t code_path =
-            call_trie.branch({parent, ZonePtrWData{zone_code, data}});
-        code_path_properties[code_path].open(event.time_stamp);
+            call_trie.branch({parent, ZonePtrWData{zone_code, data, has_data}});
+        code_path_properties[code_path].open(event.mark.time_stamp);
         open_code_path = code_path;
       }
       else
       {
-        const uintptr_t zone_code = zonelog::zone_code(event.zone_action);
+        const uintptr_t zone_code = zonelog::zone_code(event.mark.zone_action);
         if (zone_code != call_trie.key(open_code_path).zone_code)
           throw std::logic_error("Attempting to close a zone that is blocked or not open.");
-        code_path_properties[open_code_path].close(event.time_stamp);
+        code_path_properties[open_code_path].close(event.mark.time_stamp);
         open_code_path = call_trie.parent(open_code_path);
       }
     }
@@ -465,7 +497,7 @@ namespace zonelog
       }();
 
       // Aggregate. Code path context is unneeded after extracting self time.
-      using Key = std::tuple<uintptr_t, uint64_t>;
+      using Key = std::tuple<uintptr_t, RawEventData>;
       std::map<Key, CallProperty> call_properties;
       for (auto [code_path, zone_w_data] : call_trie.view())
       {
@@ -483,7 +515,8 @@ namespace zonelog
       {
         const ZonePtrWData zone_w_data = property.zone_w_data;
         const Zone *zone = zone_decode(zone_w_data.zone_code);
-        const uint64_t zone_data = zone_w_data.data;
+        const bool has_data = zone_w_data.has_data;
+        const EventData zone_data {zone_w_data.data};
 
         const long int count = property.count;
 
@@ -503,7 +536,15 @@ namespace zonelog
             count,
             microseconds / count,
             self_microseconds / count);
-        std::cout << fmt::format("{}.{}({})\n", zone->function, zone->name, zone_data);
+        if (has_data)
+        {
+          std::cout << fmt::format("{}.{}({}-{})\n",
+              zone->function, zone->name, zone_data.array[0], zone_data.array[1]);
+        }
+        else
+        {
+          std::cout << fmt::format("{}.{}\n", zone->function, zone->name);
+        }
       }
     }
 
@@ -536,17 +577,17 @@ namespace zonelog
       public:
         void consume_event(Event event)
         {
-          if (action_is_push(event.zone_action))
+          if (is_push(event.mark.zone_action))
           {
-            const uintptr_t zone_code = zonelog::zone_code(event.zone_action);
+            const uintptr_t zone_code = zonelog::zone_code(event.mark.zone_action);
             path = push(path, zone_code);
             FrameStat & frame = result[path.path];
             ++frame.count;
-            frame.last_entry = event.time_stamp;
+            frame.last_entry = event.mark.time_stamp;
           }
           else
           {
-            const clock::time_point exit = event.time_stamp;
+            const clock::time_point exit = event.mark.time_stamp;
             FrameStat & frame = result[path.path];
             frame.duration += (exit - frame.last_entry);
             path = pop(path);
