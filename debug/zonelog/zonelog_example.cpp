@@ -1,12 +1,6 @@
-
+#include <zonelog.h>
+#include <zonelog_call_trie.h>
 #include <iostream>
-#include <iomanip>
-
-#include <locale>
-#include <fmt/format.h>
-#include <fmt/ostream.h>
-
-#include "zonelog.hpp"
 
 int fib_inner(int n);
 
@@ -44,8 +38,7 @@ int main()
   result = fib(n);
   zonelog::global_log().clear();
 
-  /// zonelog::offline::SumTopDown log_stats;
-  zonelog::offline::SumCalls log_stats;
+  zonelog::SumCalls log_stats;
   do
   {
     ZONELOG_NAMED_SCOPE("outer_2");
