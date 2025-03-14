@@ -82,55 +82,47 @@ namespace zonelog
     public:
       Log()
       {
-        stream.str(std::string(1u << 10, '\0')); // 1 KiB
-        stream.seekg(0);
-        stream.seekp(0);
+        m_stream.str(std::string(4u << 10, '\0')); // 4 KiB
+        m_stream.seekg(0);
+        m_stream.seekp(0);
       }
 
       void write(Event event)
       {
-        stream.write(reinterpret_cast<const char *>(&event), sizeof(event));
+        m_stream.write(reinterpret_cast<const char *>(&event), sizeof(event));
       }
 
       Event read()
       {
         Event event;
-        stream.read(reinterpret_cast<char *>(&event), sizeof(event));
+        m_stream.read(reinterpret_cast<char *>(&event), sizeof(event));
         return event;
       }
 
       bool has_unread() const
       {
-        return stream.tellg() < stream.tellp();
+        return m_stream.tellg() < m_stream.tellp();
       }
 
-      void erase_to_front()
+      void clear()
       {
-        stream.seekg(0);
-        stream.seekp(0);
+        m_max_size = std::max(m_max_size, m_stream.view().size());
+        m_stream.seekg(0);
+        m_stream.seekp(0);
       }
 
-      size_t size() const
+      size_t max_size() const
       {
-        return stream.view().size();
-      }
-
-      bool is_full() const
-      {
-        return (stream.tellp() - std::stringstream::pos_type()) + sizeof(Event) > stream.view().size();
+        return m_max_size;
       }
 
     private:
-      mutable std::stringstream stream;
+      mutable std::stringstream m_stream;
+      size_t m_max_size;
   };
 
   //future: shared pointer or reference counting so libs cooperate w/o fiasco
   Log & global_log() { static Log log; return log; }
-
-  namespace internal
-  {
-    Log & debug_log() { static Log log; return log; }
-  }
 
   namespace online
   {
@@ -144,37 +136,13 @@ namespace zonelog
       }
     }
 
-    constexpr size_t round_1024(size_t size)
-    {
-      size_t x = -size;
-      x = (x >> 10) << 10;
-      size = -x;
-      return size;
-    }
-
     void log_push(Log &log, const Zone *zone, uint64_t data)
     {
-      if (log.is_full())
-      {
-        const uint64_t old_size = round_1024(log.size());
-        Log &debug_log = zonelog::internal::debug_log();
-        internal::log_now(debug_log, zone_push(&alloc_zone), old_size);
-        internal::log_now(debug_log, zone_pop(&alloc_zone), old_size);
-      }
-
       internal::log_now(log, zone_push(zone), data);
     }
 
     void log_pop(Log &log, const Zone *zone, uint64_t data)
     {
-      if (log.is_full())
-      {
-        const uint64_t old_size = round_1024(log.size());
-        Log &debug_log = zonelog::internal::debug_log();
-        internal::log_now(debug_log, zone_push(&alloc_zone), old_size);
-        internal::log_now(debug_log, zone_pop(&alloc_zone), old_size);
-      }
-
       internal::log_now(log, zone_pop(zone), data);
     }
 
@@ -220,7 +188,7 @@ namespace zonelog
         Event event = log.read();
         aggregator.consume_event(event);
       }
-      log.erase_to_front();
+      log.clear();
     }
 
 

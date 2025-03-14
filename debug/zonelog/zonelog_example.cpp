@@ -26,7 +26,7 @@ int main()
   //warmup
   volatile int result;
   result = fib(n);
-  zonelog::global_log().erase_to_front();
+  zonelog::global_log().clear();
 
   /// zonelog::offline::SumTopDown log_stats;
   zonelog::offline::SumCalls log_stats;
@@ -40,17 +40,17 @@ int main()
       ZONELOG_NAMED_SCOPE_DATA("inner", 2u);
       ZONELOG_NAMED_SCOPE_DATA("inner", 1u);
       result = fib(n);
+
+      if ((repeat + 1) % 16)
+      {
+        zonelog::offline::flush_aggregate(zonelog::global_log(), log_stats);
+      }
     }
   }
   while (false);
   zonelog::offline::flush_aggregate(zonelog::global_log(), log_stats);
   log_stats.print_results();
-
-  std::cout << "\n";
-  std::cout << "Log size = " << zonelog::global_log().size() << " bytes.\n";
-  zonelog::offline::SumCalls alloc_log_stats;
-  zonelog::offline::flush_aggregate(zonelog::internal::debug_log(), alloc_log_stats);
-  alloc_log_stats.print_results();
+  std::cout << "global_log().max_size() = " << zonelog::global_log().max_size() << "\n";
 
   return 0;
 }
