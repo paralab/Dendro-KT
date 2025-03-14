@@ -12,8 +12,8 @@
 #include <limits>
 
 
-#define UCHK u8"\u2713"
-#define UXXX u8"\u2717"
+#define UCHK "✓"
+#define UXXX "✗"
 
 
 template <int dim>

@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(Dendro-KT C CXX)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # This lets clangd LSP know the included directories.
@@ -101,6 +101,9 @@ endif()
 
 add_subdirectory(external/eigen)
 add_subdirectory(external/c4conf)
+add_subdirectory(external/fmt)
+
+add_subdirectory(debug/zonelog)
 
 # Add the Tracy profiler.
 option(TRACY_ENABLE "" ON)
@@ -219,7 +222,9 @@ target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/in
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/zlib/inc)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/array/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/FEM/include)
+target_link_libraries(dendroKT PRIVATE zonelog)
 target_link_libraries(dendroKT PRIVATE eigen)
+target_link_libraries(dendroKT PRIVATE fmt::fmt)
 target_link_libraries(dendroKT PRIVATE m)
 target_link_libraries(dendroKT PRIVATE MPI::MPI_CXX)
 
