@@ -55,7 +55,7 @@ int main()
   }
   while (false);
   zonelog::offline::flush_aggregate(zonelog::global_log(), log_stats);
-  log_stats.print_results();
+  std::cout << log_stats;
   std::cout << "global_log().max_size() = " << zonelog::global_log().max_size() << "\n";
 
   return 0;

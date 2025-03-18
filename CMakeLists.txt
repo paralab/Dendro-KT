@@ -222,7 +222,7 @@ target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/vtk/in
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/IO/zlib/inc)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/array/include)
 target_include_directories(dendroKT PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/FEM/include)
-target_link_libraries(dendroKT PRIVATE zonelog)
+target_link_libraries(dendroKT PUBLIC zonelog)
 target_link_libraries(dendroKT PRIVATE eigen)
 target_link_libraries(dendroKT PRIVATE fmt::fmt)
 target_link_libraries(dendroKT PRIVATE m)

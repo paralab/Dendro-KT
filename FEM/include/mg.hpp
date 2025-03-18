@@ -12,6 +12,8 @@
 
 #include "FEM/include/intergridTransfer.h"
 
+#include <zonelog.h>
+
 #include <map>
 #include <iostream>
 
@@ -312,6 +314,8 @@ namespace mg
 
       void vcycle(double *u_local, double *r_local)
       {
+        ZONELOG_SCOPE();
+
         const auto &base_da = *this->mats[0]->da();
         const int ndofs = this->ndofs;
         const int n_grids = this->n_grids();
@@ -342,18 +346,26 @@ namespace mg
 
         for (int height = 0; height < n_grids - 1; ++height)
         {
+          auto zone_pre_smooth = ZONELOG_NAMED_FZONE("pre_smooth");
+          zone_pre_smooth.push(height);
           // pre-smoothing (on ghosted vectors)
           for (int i = 0; i < pre_smooth; ++i)
             this->pre_smoother(height, u_ghosted[height].data(), r_ghosted[height].data());
+          zone_pre_smooth.pop();
 
+          auto zone_restrict = ZONELOG_NAMED_FZONE("restrict");
+          zone_restrict.push(height);
           // restriction (fine-to-coarse) (on ghosted vectors)
           restrict_fine_to_coarse<dim()>(
               {mats[height]->da(), this->surrogate_das[height]}, r_ghosted[height].data(),
               {mats[height+1]->da(), this->surrogate_das[height+1]}, r_ghosted[height+1].data(),
               [mat=mats[height+1]](double *vec) { mat->postMatVec(vec, vec); },
               ndofs, vector_pool);
+          zone_restrict.pop();
         }
 
+        auto zone_bottom_solve = ZONELOG_NAMED_FZONE("bottom_solve");
+        zone_bottom_solve.push(n_grids - 1);
         // Coarse solve
         // Direct method.
         const int coarse_steps = this->coarse_solver(
@@ -362,16 +374,22 @@ namespace mg
 
         mats[n_grids-1]->da()->readFromGhostBegin(u_ghosted[n_grids-1].data(), ndofs);
         mats[n_grids-1]->da()->readFromGhostEnd(u_ghosted[n_grids-1].data(), ndofs);
+        zone_bottom_solve.pop();
 
         for (int height = n_grids - 1; height > 0; --height)
         {
+          auto zone_prolongate = ZONELOG_NAMED_FZONE("prolongate");
+          zone_prolongate.push(height - 1);
           // prolongation (coarse-to-fine) (on ghosted vectors)
           prolongate_coarse_to_fine<dim()>(
               {mats[height]->da(), this->surrogate_das[height]}, u_ghosted[height].data(),
               {mats[height-1]->da(), this->surrogate_das[height-1]}, e_ghosted[height-1].data(),
               [mat=mats[height]](double *vec) { mat->preMatVec(vec, vec); },
               ndofs, vector_pool);
+          zone_prolongate.pop();
 
+          auto zone_correction = ZONELOG_NAMED_FZONE("correction");
+          zone_correction.push(height - 1);
           // Accumulate into u[h-1] and r[h-1]
           for (size_t i = 0; i < mats[height-1]->da()->getTotalNodalSz() * ndofs; ++i)
             u_ghosted[height-1][i] += e_ghosted[height-1][i];
@@ -381,10 +399,14 @@ namespace mg
               e_ghosted[height-1].data() + mats[height-1]->da()->getLocalNodeBegin() * ndofs);
           for (size_t i = 0; i < mats[height-1]->da()->getTotalNodalSz() * ndofs; ++i)
             r_ghosted[height-1][i] -= e_ghosted[height-1][i];
+          zone_correction.pop();
 
+          auto zone_post_smooth = ZONELOG_NAMED_FZONE("post_smooth");
+          zone_post_smooth.push(height - 1);
           // post-smoothing (on ghosted vectors)
           for (int i = 0; i < post_smooth; ++i)
             this->post_smoother(height - 1, u_ghosted[height-1].data(), r_ghosted[height-1].data());
+          zone_post_smooth.pop();
         }
 
         // Copy u_ghosted, r_ghosted to u, r.

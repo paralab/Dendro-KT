@@ -8,6 +8,8 @@
 #include <stdexcept>
 #include <ranges>
 
+#include <ostream>
+
 namespace zonelog
 {
   class SumCalls;
@@ -198,7 +200,7 @@ namespace zonelog
   {
     public:
       inline void consume_event(Event event);
-      void print_results() const;
+      friend std::ostream & operator<<(std::ostream &out, const SumCalls &aggregator);
     private:
       struct CodePathProperty {
         long int count = 0;

@@ -10,12 +10,12 @@ namespace zonelog
 {
   //future: Make new class for this secondary aggregation (call trie -> calls).
 
-  void SumCalls::print_results() const
+  std::ostream & operator<<(std::ostream &out, const SumCalls &aggregator)
   {
     const std::map<size_t, clock::duration>
     self_durations =
-        [&call_trie = std::as_const(this->call_trie),
-         &code_path_properties = std::as_const(this->code_path_properties)]()
+        [&call_trie = std::as_const(aggregator.call_trie),
+         &code_path_properties = std::as_const(aggregator.code_path_properties)]()
     {
       // Self time = (total time) - (total time of all children) >= 0.
 
@@ -39,11 +39,13 @@ namespace zonelog
     }();
 
     // Aggregate. Code path context is unneeded after extracting self time.
+    using CallProperty = SumCalls::CallProperty;
+    using CodePathProperty = SumCalls::CodePathProperty;
     using Key = std::tuple<uintptr_t, RawEventData>;
     std::map<Key, CallProperty> call_properties;
-    for (auto [code_path, zone_w_data] : call_trie.view())
+    for (auto [code_path, zone_w_data] : aggregator.call_trie.view())
     {
-      const CodePathProperty property = code_path_properties.at(code_path);
+      const CodePathProperty property = aggregator.code_path_properties.at(code_path);
       const long int count = property.count;
       const clock::duration duration = property.duration;
       const clock::duration self_duration = self_durations.at(code_path);
@@ -70,7 +72,7 @@ namespace zonelog
           std::chrono::duration_cast<std::chrono::nanoseconds>(
           property.self_duration).count() / 1000.0;
 
-      std::cout << fmt::format(
+      out << fmt::format(
           std::locale("en_US.UTF-8"), //thousands separators
           "{:>10.2Lf}\t: {:>10.2Lf}\t/ {:>10L}\t= {:>10.2Lf}\t: {:>10.2Lf}\t",
           microseconds,
@@ -80,13 +82,22 @@ namespace zonelog
           self_microseconds / count);
       if (has_data)
       {
-        std::cout << fmt::format("{}.{}({}-{})\n",
-            zone->function, zone->name, zone_data.array[0], zone_data.array[1]);
+        out << fmt::format("{}.{}({}-{})\t[{}]\n",
+            zone->function,
+            zone->name,
+            zone_data.array[0],
+            zone_data.array[1],
+            zone->pretty_function);
       }
       else
       {
-        std::cout << fmt::format("{}.{}\n", zone->function, zone->name);
+        out << fmt::format("{}.{}\t[{}]\n",
+            zone->function,
+            zone->name,
+            zone->pretty_function);
       }
     }
+
+    return out;
   }
 }

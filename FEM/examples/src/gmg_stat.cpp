@@ -14,6 +14,9 @@
 
 #include "c4/yml/detail/print.hpp"
 
+#include <zonelog.h>
+#include <zonelog_call_trie.h>
+
 #include "include/dendro.h"
 #include "include/parUtils.h"
 #include "debug/comm_log.hpp"
@@ -38,6 +41,7 @@
 #include <functional>
 #include <sstream>
 #include <thread>
+#include <iostream>
 
 // -----------------------------
 // Typedefs
@@ -448,6 +452,8 @@ int tmain(int argc, char *argv[], Configuration &config)
   //future: write relvant configurations to log
   //future: remember which configurations were accessed, log those
 
+  zonelog::SumCalls log_stats;
+
   debug::EnablePrint printer(rank == 0);
 
   /// debug::CommLog main_comm_log(std::cout);
@@ -551,6 +557,10 @@ int tmain(int argc, char *argv[], Configuration &config)
     // -------------------------------------------------------------------------
     // Discrete mesh
     // -------------------------------------------------------------------------
+
+    auto zone_make_base_mesh = ZONELOG_NAMED_FZONE("make_base_mesh");
+    zone_make_base_mesh.push();
+
     ot::DistTree<uint, dim> base_tree;
     std::string construction;
     setup["mesh_recipe"]["construct"] >> construction;
@@ -577,6 +587,9 @@ int tmain(int argc, char *argv[], Configuration &config)
     }
     ot::DA<dim> base_da(base_tree, comm, polynomial_degree, int{}, partition_tolerance);
 
+    zone_make_base_mesh.pop();
+    zonelog::flush_global(log_stats);
+
     const int real_max_depth = par::mpi_max(
           std::max_element(
             base_tree.getTreePartFiltered().begin(),
@@ -595,6 +608,9 @@ int tmain(int argc, char *argv[], Configuration &config)
     ///     base_tree.getTreePartFiltered(0).size(),
     ///     ("mesh_" + std::to_string(setup_idx)).c_str(),
     ///     base_tree.getComm());
+
+    auto zone_init_bdry_rhs = ZONELOG_NAMED_FZONE("init_bdry_rhs");
+    zone_init_bdry_rhs.push();
 
     // ghosted_node_coordinate()
     const auto ghosted_node_coordinate = [&](const ot::DA<dim> &da, size_t idx) -> Point<dim>
@@ -693,6 +709,11 @@ int tmain(int argc, char *argv[], Configuration &config)
         return err_max;
     };
 
+    zone_init_bdry_rhs.pop();
+    zonelog::flush_global(log_stats);
+
+    auto zone_mesh_hierarchy = ZONELOG_NAMED_FZONE("mesh_hierarchy");
+    zone_mesh_hierarchy.push();
 
     // Multigrid setup
     //  future: distCoarsen to coarsen by 1 or more levels
@@ -731,6 +752,9 @@ int tmain(int argc, char *argv[], Configuration &config)
     tower << " ]\n";
     printer(std::cout) << tower.str();
 
+    zone_mesh_hierarchy.pop();
+    zonelog::flush_global(log_stats);
+
     /// // base_da active comm
     /// debug::global_comm_log->register_comm(base_da.getCommActive(), COMMLOG_CONTEXT);
     /// for (int g = 1; g < n_grids; ++g)
@@ -740,6 +764,8 @@ int tmain(int argc, char *argv[], Configuration &config)
     ///   debug::global_comm_log->register_comm(das[g].surrogate->getCommActive(), COMMLOG_CONTEXT);
     /// }
 
+    auto zone_matrix_hierarchy = ZONELOG_NAMED_FZONE("matrix_hierarchy");
+    zone_matrix_hierarchy.push();
 
     std::vector<PoissonMat *> mats(n_grids, nullptr);
     mats[0] = &base_mat;
@@ -761,6 +787,11 @@ int tmain(int argc, char *argv[], Configuration &config)
       hybrid_mats[g] = new HybridPoissonMat(hybrid_mats[g - 1]->coarsen(mats[g]));
       hybrid_mats[g]->matdef()->zero_boundary(true);
     }
+
+    zone_matrix_hierarchy.pop();
+    zonelog::flush_global(log_stats);
+
+    printer(std::cout) << '\n' << log_stats << '\n';
 
     int run_idx = -1;
     const int n_runs = setup["runs"].num_children();
@@ -814,6 +845,8 @@ int tmain(int argc, char *argv[], Configuration &config)
 
         if (run["solver"]["type"].val() == "GMG")
         {
+          ZONELOG_NAMED_SCOPE("solve.gmg");
+
           mg::VCycle<PoissonMat> vcycle(das, mats.data(), cycle_settings, single_dof);
 
           const int steps = gmg_solver(
@@ -822,6 +855,8 @@ int tmain(int argc, char *argv[], Configuration &config)
         }
         else if (run["solver"]["type"].val() == "Hybrid")
         {
+          ZONELOG_NAMED_SCOPE("solve.hybrid");
+
           mg::VCycle<HybridPoissonMat> vcycle(das, hybrid_mats.data(), cycle_settings, single_dof);
 
           const int steps = gmg_solver(
@@ -830,6 +865,8 @@ int tmain(int argc, char *argv[], Configuration &config)
         }
         else if (run["solver"]["type"].val() == "AMG")
         {
+          ZONELOG_NAMED_SCOPE("solve.amg");
+
           const int steps = amg_solver(
               run, collection,
               &base_mat, cycle_settings, u_vec, v_vec, rhs_vec, max_vcycles, tol);
@@ -839,6 +876,10 @@ int tmain(int argc, char *argv[], Configuration &config)
       {
         assert(false);
       }
+
+      zonelog::flush_global(log_stats);
+
+      printer(std::cout) << '\n' << log_stats << '\n';
 
       // Define "group_name"
       //future (maybe): set attributes first, then rename
@@ -916,6 +957,14 @@ int tmain(int argc, char *argv[], Configuration &config)
         collection.flush_to_hdf5(group);
       }
     }
+
+    zonelog::flush_global(log_stats);
+
+    printer(std::cout) << '\n' << log_stats << '\n';
+    printer(std::cout)
+        << "global_log().max_size() = "
+        << (zonelog::global_log().max_size() + 1024 - 1)/1024
+        << " KiB" << '\n';
 
     // Multigrid teardown.
     delete hybrid_mats[0];
