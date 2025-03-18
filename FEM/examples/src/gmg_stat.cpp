@@ -791,8 +791,6 @@ int tmain(int argc, char *argv[], Configuration &config)
     zone_matrix_hierarchy.pop();
     zonelog::flush_global(log_stats);
 
-    printer(std::cout) << '\n' << log_stats << '\n';
-
     int run_idx = -1;
     const int n_runs = setup["runs"].num_children();
     for (c4::yml::ConstNodeRef run: setup["runs"])
@@ -878,8 +876,6 @@ int tmain(int argc, char *argv[], Configuration &config)
       }
 
       zonelog::flush_global(log_stats);
-
-      printer(std::cout) << '\n' << log_stats << '\n';
 
       // Define "group_name"
       //future (maybe): set attributes first, then rename

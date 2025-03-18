@@ -49,13 +49,32 @@ namespace zonelog
       const long int count = property.count;
       const clock::duration duration = property.duration;
       const clock::duration self_duration = self_durations.at(code_path);
+      const clock::time_point last_exit = property.last_exit;
       const Key key = {hash_bytes(zone_w_data.zone_code), zone_w_data.data};
       call_properties[key] +=
-          CallProperty{ zone_w_data, count, duration, self_duration };
+          CallProperty{ zone_w_data, count, duration, self_duration, last_exit };
     }
 
+    // Sort by last exit.
+    std::vector<CallProperty> sorted_properties = [&](){
+        auto && r = std::views::values(call_properties);
+        return std::vector(r.begin(), r.end());
+    }();
+    std::ranges::sort(sorted_properties, {}, &CallProperty::last_exit);
+
+    // Header
+    out << fmt::format(
+        "{:^13s}\t{:^13s}\t{:^6s}\t{:^13s}\t{:^13s}\t",
+        "Time(μs)",
+        "Self(μs)",
+        "Count",
+        "Time/1(μs)",
+        "Self/1(μs)");
+    out << fmt::format("{:^24s}\t[{}]:{}\n",
+        "Zone", "Function", "Line");
+
     // Print out (in unspecified order)
-    for (const CallProperty property : std::views::values(call_properties))
+    for (const CallProperty property : sorted_properties)
     {
       const ZonePtrWData zone_w_data = property.zone_w_data;
       const Zone *zone = zone_decode(zone_w_data.zone_code);
@@ -74,7 +93,7 @@ namespace zonelog
 
       out << fmt::format(
           std::locale("en_US.UTF-8"), //thousands separators
-          "{:>10.2Lf}\t: {:>10.2Lf}\t/ {:>10L}\t= {:>10.2Lf}\t: {:>10.2Lf}\t",
+          "{:>13.2Lf}\t{:>13.2Lf}\t{:>6L}\t{:>13.2Lf}\t{:>13.2Lf}\t",
           microseconds,
           self_microseconds,
           count,
@@ -82,20 +101,23 @@ namespace zonelog
           self_microseconds / count);
       if (has_data)
       {
-        out << fmt::format("{}.{}({}-{})\t[{}]\n",
-            zone->function,
-            zone->name,
-            zone_data.array[0],
-            zone_data.array[1],
-            zone->pretty_function);
+        out << fmt::format("{:<24s}\t",
+            fmt::format("{}.{}({}:{})",
+                zone->function,
+                zone->name,
+                zone_data.array[0],
+                zone_data.array[1]));
       }
       else
       {
-        out << fmt::format("{}.{}\t[{}]\n",
+        out << fmt::format("{:<24s}\t",
+            fmt::format("{}.{}",
             zone->function,
-            zone->name,
-            zone->pretty_function);
+            zone->name));
       }
+      out << fmt::format("[{}]:{}\n",
+          zone->pretty_function,
+          zone->line);
     }
 
     return out;

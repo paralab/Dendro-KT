@@ -206,9 +206,10 @@ namespace zonelog
         long int count = 0;
         clock::duration duration = {};
         clock::time_point last_entry = {};
+        clock::time_point last_exit = {};
 
         void open(clock::time_point when) { ++count; last_entry = when; }
-        void close(clock::time_point when) { duration += (when - last_entry); }
+        void close(clock::time_point when) { duration += (when - last_entry); last_exit = when; }
         // Never open twice before closing. Guaranteed by call_trie.
       };
 
@@ -217,6 +218,7 @@ namespace zonelog
         long int count = 0;
         clock::duration duration = {};
         clock::duration self_duration = {};
+        clock::time_point last_exit = clock::time_point::min();
 
         CallProperty & operator+=(const CallProperty &y)
         {
@@ -224,6 +226,7 @@ namespace zonelog
           count         += y.count;
           duration      += y.duration;
           self_duration += y.self_duration;
+          last_exit      = std::max(last_exit, y.last_exit);
           return *this;
         }
       };
