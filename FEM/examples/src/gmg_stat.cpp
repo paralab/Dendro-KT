@@ -452,7 +452,7 @@ int tmain(int argc, char *argv[], Configuration &config)
   //future: write relvant configurations to log
   //future: remember which configurations were accessed, log those
 
-  zonelog::SumCalls log_stats;
+  zonelog::CallTrie log_stats;
 
   debug::EnablePrint printer(rank == 0);
 

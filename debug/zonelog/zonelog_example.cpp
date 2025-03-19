@@ -8,8 +8,8 @@ int fib(int n)
 {
   ZONELOG_SCOPE_DATA(zonelog::EventData(n, n));
 
-  if (n <= 6)
-    return fib_inner(n);
+  /// if (n <= 6)
+  ///   return fib_inner(n);
 
   if (n < 2)
     return 1;
@@ -31,14 +31,14 @@ int fib_inner(int n)
 
 int main()
 {
-  const int n = 10;
+  const int n = 5;
 
   //warmup
   volatile int result;
   result = fib(n);
   zonelog::global_log().clear();
 
-  zonelog::SumCalls log_stats;
+  zonelog::CallTrie log_stats;
   do
   {
     ZONELOG_NAMED_SCOPE("outer_2");

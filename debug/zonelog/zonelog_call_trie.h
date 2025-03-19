@@ -12,7 +12,7 @@
 
 namespace zonelog
 {
-  class SumCalls;
+  class CallTrie;
 
   // -----------------------------------------------------------------------
   // Radix tree / trie on comparable data
@@ -179,12 +179,21 @@ namespace zonelog
         return map.at(node).key;
       }
 
-      constexpr auto view() const
+      constexpr auto hash_key_view() const
       {
-        return map |
+        return this->map |
             std::views::transform(
                 [](const auto &n_v){
                     return std::make_pair(n_v.first, n_v.second.key);
+                });
+      }
+
+      constexpr auto hash_parent_view() const
+      {
+        return this->map |
+            std::views::transform(
+                [](const auto &n_v){
+                    return std::make_pair(n_v.first, n_v.second.parent);
                 });
       }
     private:
@@ -196,11 +205,35 @@ namespace zonelog
   // -----------------------------------------------------------------------
 
 
-  class SumCalls
+  class CallTrie
   {
     public:
       inline void consume_event(Event event);
-      friend std::ostream & operator<<(std::ostream &out, const SumCalls &aggregator);
+
+      struct PrintZoneList;
+      struct PrintCallTrie;
+      PrintZoneList print_zone_list() const { return {this}; }
+      PrintCallTrie print_call_trie() const { return {this}; }
+
+      friend std::ostream & operator<<(std::ostream &out, const CallTrie & aggregator)
+      /// { return out << aggregator.print_zone_list(); }
+      { return out << aggregator.print_call_trie(); }
+
+      struct PrintZoneList { const CallTrie *_;
+        friend std::ostream & operator<<(std::ostream &o, const PrintZoneList &x)
+        { return x._->print_zone_list(o); }
+      };
+
+      struct PrintCallTrie { const CallTrie *_;
+        friend std::ostream & operator<<(std::ostream &o, const PrintCallTrie &x)
+        { return x._->print_call_trie(o); }
+      };
+      
+
+    private:
+      std::ostream & print_zone_list(std::ostream &out) const;
+      std::ostream & print_call_trie(std::ostream &out) const;
+
     private:
       struct CodePathProperty {
         long int count = 0;
@@ -210,37 +243,25 @@ namespace zonelog
 
         void open(clock::time_point when) { ++count; last_entry = when; }
         void close(clock::time_point when) { duration += (when - last_entry); last_exit = when; }
-        // Never open twice before closing. Guaranteed by call_trie.
-      };
-
-      struct CallProperty {
-        ZonePtrWData zone_w_data = {};
-        long int count = 0;
-        clock::duration duration = {};
-        clock::duration self_duration = {};
-        clock::time_point last_exit = clock::time_point::min();
-
-        CallProperty & operator+=(const CallProperty &y)
-        {
-          zone_w_data    = y.zone_w_data;
-          count         += y.count;
-          duration      += y.duration;
-          self_duration += y.self_duration;
-          last_exit      = std::max(last_exit, y.last_exit);
-          return *this;
-        }
+        // Never open twice before closing. Guaranteed by zone_trie.
       };
 
       std::map<size_t, CodePathProperty> code_path_properties;
 
-      Trie<ZonePtrWData> call_trie;
-      size_t open_code_path = call_trie.root();
+      Trie<ZonePtrWData> zone_trie;
+      size_t open_code_path = zone_trie.root();
+
+    private:
+      static auto self_durations(
+          const Trie<ZonePtrWData> &zone_trie,
+          const std::map<size_t, CodePathProperty> &code_path_properties)
+        -> std::map<size_t, clock::duration>;
   };
 
-  static_assert(offline::LogAggregator<SumCalls>);
+  static_assert(offline::LogAggregator<CallTrie>);
 
 
-  void SumCalls::consume_event(Event event)
+  void CallTrie::consume_event(Event event)
   {
     // assume the input data comes on push
     if (is_push(event.mark.zone_action))
@@ -250,17 +271,17 @@ namespace zonelog
       const EventData data {event.data};
       const size_t parent = open_code_path;
       const size_t code_path =
-          call_trie.branch({parent, ZonePtrWData{zone_code, data, has_data}});
+          zone_trie.branch({parent, ZonePtrWData{zone_code, data, has_data}});
       code_path_properties[code_path].open(event.mark.time_stamp);
       open_code_path = code_path;
     }
     else
     {
       const uintptr_t zone_code = zonelog::zone_code(event.mark.zone_action);
-      if (zone_code != call_trie.key(open_code_path).zone_code)
+      if (zone_code != zone_trie.key(open_code_path).zone_code)
         throw std::logic_error("Attempting to close a zone that is blocked or not open.");
       code_path_properties[open_code_path].close(event.mark.time_stamp);
-      open_code_path = call_trie.parent(open_code_path);
+      open_code_path = zone_trie.parent(open_code_path);
     }
   }
 
