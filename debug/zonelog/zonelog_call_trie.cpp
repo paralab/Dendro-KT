@@ -6,6 +6,7 @@
 #include <locale>
 #include <ostream>
 #include <stack>
+#include <assert.h>
 
 namespace zonelog
 {
@@ -239,6 +240,11 @@ namespace zonelog
     self_durations = CallTrie::self_durations(
         this->zone_trie, this->code_path_properties);
 
+    const auto node_last_exit = [this](size_t node) -> clock::time_point
+    {
+      return this->code_path_properties.at(node).last_exit;
+    };
+
     // Recover top-down parent->child structure.
     // (Entry/exit timestamps would be unreliable due to dynamic control flow.)
     std::multimap<size_t, size_t> c2p;
@@ -248,17 +254,29 @@ namespace zonelog
     }
 
     // Depth-first traversal.
-    // [parents first]  [siblings in unspecified order]
+    // [parents first]  [siblings by last exit]
     struct Node { size_t hash; size_t parent_hash; };
     std::vector<Node> node_list;
     {
       std::stack<Node, std::vector<Node>> stack;
 
-      const auto push_children = [](auto node, const auto &tree, auto &stack)
+      std::vector<size_t> siblings;
+      siblings.reserve(64);
+
+      const auto push_children = [&](auto node, const auto &tree, auto &stack)
       {
+        siblings.clear();
         for (auto [b, e] = tree.equal_range(node);
-            auto [parent, child] : std::ranges::subrange(b, e) | std::views::reverse)
-          stack.push(Node{child, parent});
+            auto [parent, child] : std::ranges::subrange(b, e))
+        {
+          assert(parent == node);
+          siblings.push_back(child);
+        }
+
+        std::ranges::sort(siblings, {}, node_last_exit);
+
+        for (size_t child : siblings | std::views::reverse)
+          stack.push(Node{child, node});
       };
 
       push_children(this->zone_trie.root(), c2p, stack);
@@ -317,6 +335,18 @@ namespace zonelog
       std::ranges::reverse(is_furthest);
       std::ranges::reverse(is_nonleaf);
     }
+
+    // Header
+    out << fmt::format(
+        "{:^13s}\t{:^13s}\t{:^10s}\t{:^13s}\t{:^13s}\t",
+        "Time(μs)",
+        "Self(μs)",
+        "Count",
+        "Time/1(μs)",
+        "Self/1(μs)");
+    out << fmt::format("{:^{}s}\t", "🌲", max_depth + 1);
+    out << fmt::format("{:^24s}\t[{}]:{}\n",
+        "Zone", "Function", "Line");
 
     TreeLines hierarchy_state;
     for (size_t i = 0; Node node : node_list)
