@@ -764,8 +764,8 @@ int tmain(int argc, char *argv[], Configuration &config)
     ///   debug::global_comm_log->register_comm(das[g].surrogate->getCommActive(), COMMLOG_CONTEXT);
     /// }
 
-    auto zone_matrix_hierarchy = ZONELOG_NAMED_FZONE("matrix_hierarchy");
-    zone_matrix_hierarchy.push();
+    auto zone_matrix_hierarchy_gmg = ZONELOG_NAMED_FZONE("matrix_hierarchy.gmg");
+    zone_matrix_hierarchy_gmg.push();
 
     std::vector<PoissonMat *> mats(n_grids, nullptr);
     mats[0] = &base_mat;
@@ -774,6 +774,11 @@ int tmain(int argc, char *argv[], Configuration &config)
       mats[g] = new PoissonMat(fe_matrix(*das[g].primary));
       mats[g]->zero_boundary(true);
     }
+
+    zone_matrix_hierarchy_gmg.pop();
+
+    auto zone_matrix_hierarchy_hybrid = ZONELOG_NAMED_FZONE("matrix_hierarchy.hybrid");
+    zone_matrix_hierarchy_hybrid.push();
 
     std::vector<HybridPoissonMat *> hybrid_mats(n_grids, nullptr);
     hybrid_mats[0] = new HybridPoissonMat(&base_mat);
@@ -788,7 +793,7 @@ int tmain(int argc, char *argv[], Configuration &config)
       hybrid_mats[g]->matdef()->zero_boundary(true);
     }
 
-    zone_matrix_hierarchy.pop();
+    zone_matrix_hierarchy_hybrid.pop();
     zonelog::flush_global(log_stats);
 
     int run_idx = -1;
