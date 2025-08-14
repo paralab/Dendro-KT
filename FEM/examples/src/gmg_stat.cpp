@@ -398,11 +398,6 @@ int tmain(int argc, char *argv[], Configuration &config)
   /// debug::CommLog main_comm_log(std::cout);
   /// debug::global_comm_log = &main_comm_log;
 
-  enum OverwriteMode { OverwriteAll, OverwriteSome };
-  OverwriteMode overwrite_mode = OverwriteAll;
-  if (to<bool>(config["overwrite_all"]) == false)
-    overwrite_mode = OverwriteSome;
-
   const std::string out_filename = to<std::string>(config["output"]);
 
   Collector collection(comm);
