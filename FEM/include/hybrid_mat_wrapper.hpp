@@ -167,7 +167,7 @@ namespace fem
       // -----------------------------------------------------------------------
 
       // Override the outer matVec() so as to use custom loops.
-      virtual void matVec(const VECType* in,VECType* out, double scale=1.0);
+      virtual void matVec(const VECType* in,VECType* out, double scale=1.0) override;
 
       // preMatVec()
       bool preMatVec(const VECType* in, VECType* out, double scale=1.0)
@@ -207,10 +207,10 @@ namespace fem
       // -----------------------------------------------------------------------
 
       // Override the outer setDiag() so as to use custom loops.
-      virtual void setDiag(VECType *out, double scale = 1.0);
+      virtual void setDiag(VECType *out, double scale = 1.0) override;
 
       // Override the outer getAssembledMatrix() so as to use custom loops.
-      virtual bool getAssembledMatrix(Mat *J, MatType mtype);
+      virtual bool getAssembledMatrix(Mat *J, MatType mtype) override;
 
 
     private:
