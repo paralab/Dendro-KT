@@ -1119,9 +1119,11 @@ int gmg_solver(
       //future: pass mat_mult into vcycles() to count inner matvecs.
     };
 
+    const bool print_progress = collection.is_root();
+
     const int steps = solve::pcgSolver(
         base_mat.da(), mat_mult, preconditioner,
-        &(*u_vec.begin()), &(*rhs_vec.begin()), max_vcycles, relative_tolerance, true,
+        &(*u_vec.begin()), &(*rhs_vec.begin()), max_vcycles, relative_tolerance, print_progress,
         [&](double l2, double linf){
           collection.observe(count_vcycles, count_vcycles, l2, linf);
         });
@@ -1212,10 +1214,13 @@ int amg_solver(
     PC pc;
 
     // Assemble the matrix (assuming one-time assembly).
+    auto zone_assemble = ZONELOG_NAMED_FZONE("matrix_assembly");
+    {{zone_assemble.push();}}
     da->createMatrix(petsc_mat, MATAIJ, mat->ndofs());
     mat->getAssembledMatrix(&petsc_mat, {});
     MatAssemblyBegin(petsc_mat, MAT_FINAL_ASSEMBLY);
     MatAssemblyEnd(petsc_mat, MAT_FINAL_ASSEMBLY);
+    {{zone_assemble.pop();}}
 
     const size_t local_size = da->getLocalNodalSz() * mat->ndofs();
     const size_t global_size = da->getGlobalNodeSz() * mat->ndofs();
@@ -1279,7 +1284,10 @@ int amg_solver(
 
     KSPGetPC(ksp, &pc);
     PCSetType(pc, PCGAMG);  // solver choice.
+    auto zone_ksp_set_up = ZONELOG_NAMED_FZONE("ksp_set_up");
+    {{zone_ksp_set_up.push();}}
     KSPSetUp(ksp);
+    {{zone_ksp_set_up.pop();}}
 
     /// if (collection.is_root())
     /// {
@@ -1291,7 +1299,10 @@ int amg_solver(
     VecPlaceArray(rhs, rhs_vec.data());
 
     // Solve.
+    auto zone_ksp_solve = ZONELOG_NAMED_FZONE("ksp_solve");
+    {{zone_ksp_solve.push();}}
     KSPSolve(ksp, rhs, u);
+    {{zone_ksp_solve.pop();}}
 
     /// // Debug for solution magnitude.
     /// PetscReal sol_norm = 0.0;
@@ -1442,17 +1453,5 @@ std::string Configuration::help() const
 {
   return m_help.str();
 }
-
-
-
-
-
-      /// const int steps = cgSolver(
-      ///     &base_da, [&base_mat](const double *u, double *v){ base_mat.matVec(u, v); },
-      ///     &(*u_vec.begin()), &(*rhs_vec.begin()), max_iter, tol, true);
-
-      /// const int steps = cgSolver(
-      ///     &base_da, pc_mat,
-      ///     &(*u_vec.begin()), &(*pc_rhs_vec.begin()), max_iter, tol, true);
 
 

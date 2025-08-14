@@ -58,7 +58,7 @@ namespace zonelog
   }( \
     zonelog::dtl::string_tag<name_>(), \
     zonelog::dtl::string_tag<__func__>(), \
-    zonelog::dtl::string_tag<__PRETTY_FUNCTION__>(), \
+    zonelog::dtl::string_tag<__func__>(), \
     zonelog::dtl::string_tag<__FILE__>(), \
     zonelog::dtl::int_tag<__LINE__>() \
    ) )
@@ -95,13 +95,13 @@ namespace zonelog
 
 #define ZONELOG_NAMED_SCOPE_impl(name, anon) \
   static constexpr zonelog::Zone  ZONELOG_ANON_ZONE(anon) = \
-      { name, __func__, __PRETTY_FUNCTION__, __FILE__, __LINE__ }; \
+      { name, __func__, __func__, __FILE__, __LINE__ }; \
   zonelog::online::ScopeGuard     ZONELOG_ANON_GUARD(anon) = \
       { & ZONELOG_ANON_ZONE(anon) };
 
 #define ZONELOG_NAMED_SCOPE_DATA_impl(name, anon, data) \
   static constexpr zonelog::Zone  ZONELOG_ANON_ZONE(anon) = \
-      { name, __func__, __PRETTY_FUNCTION__, __FILE__, __LINE__ }; \
+      { name, __func__, __func__, __FILE__, __LINE__ }; \
   zonelog::online::ScopeGuard     ZONELOG_ANON_GUARD(anon) = \
       { & ZONELOG_ANON_ZONE(anon), zonelog::EventData(data) };
 

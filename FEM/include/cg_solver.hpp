@@ -15,8 +15,8 @@ namespace solve
   int cgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, VECType * u, const VECType * rhs, int max_iter, double relResErr, bool print_progress);
 
   // pcgSolver()
-  template <unsigned int dim, typename MatMult, typename PCSolver>
-  int pcgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, const PCSolver &pc_solve, VECType * u, const VECType * rhs, int max_iter, double relResErr, bool print_progress);
+  template <unsigned int dim, typename MatMult, typename PCSolver, typename Monitor>
+  int pcgSolver(const ot::DA<dim> *da, const MatMult &mat_mult, const PCSolver &pc_solve, VECType * u, const VECType * rhs, int max_iter, double relResErr, bool print_progress, const Monitor &monitor);
 
 
   // cgSolver()
@@ -62,7 +62,10 @@ namespace solve
     residual(mat_mult, &r[0], u, rhs);
     VECType rmag = vec_norm_linf(&r[0]);
     const VECType rmag0 = rmag;
-    fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+    if (print_progress)
+    {
+      fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+    }
     if (rmag <= thresh)
       return step;
     VECType rProd = vec_dot(&r[0], &r[0]);
@@ -102,7 +105,10 @@ namespace solve
       if (print_progress and step % 10 == 0)
         fprintf(stdout, "step==%d  res==%e  reduce==%e  diff==%e  rProd==%e  pProd==%e  a==%e  b==%e\n", step, rmag, rmag/rmag0, iterLInf, rProd, pProd, alpha, beta);
     }
-    fprintf(stdout, "step==%d  normb==%e  res==%e  reduce==%e\n", step, normb, rmag, rmag/rmag0);
+    if (print_progress)
+    {
+      fprintf(stdout, "step==%d  normb==%e  res==%e  reduce==%e\n", step, normb, rmag, rmag/rmag0);
+    }
 
     return step;
   }
@@ -160,7 +166,10 @@ namespace solve
     VECType rmag_l2 = vec_norm_l2(&r[0]);
     monitor(rmag, rmag_l2);
     const VECType rmag0 = rmag;
-    fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+    if (print_progress)
+    {
+      fprintf(stdout, "step==%d  normb==%e  res==%e \n", step, normb, rmag);
+    }
     if (rmag <= thresh)
       return step;
 
@@ -210,7 +219,10 @@ namespace solve
       if (print_progress and step % 10 == 0)
         fprintf(stdout, "step==%d  res==%e  reduce==%e  diff==%e  rProd==%e  pProd==%e  a==%e  b==%e\n", step, rmag, rmag/rmag0, iterLInf, rProd, pProd, alpha, beta);
     }
-    fprintf(stdout, "step==%d  normb==%e  res==%e  reduce==%e\n", step, normb, rmag, rmag/rmag0);
+    if (print_progress)
+    {
+      fprintf(stdout, "step==%d  normb==%e  res==%e  reduce==%e\n", step, normb, rmag, rmag/rmag0);
+    }
 
     return step;
   }
