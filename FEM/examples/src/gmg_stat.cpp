@@ -325,11 +325,19 @@ options:
   help: false
   quiet: false
 
-dim: -1
+dim: 3
 
 problem:
   scale: 1.0
   freq: 0.5
+
+setups:
+  - mesh_recipe: {name: "uniform", construct: uniform, degree: 1}
+    max_depth: 6
+    runs:
+      - {active: true, solver: {name: "GMG+CG",      class: "multigrid", ksp: "CG", type: "GMG"}}
+      - {active: true, solver: {name: "HybridMG+CG", class: "multigrid", ksp: "CG", type: "Hybrid"}}
+      - {active: true, solver: {name: "AMG+CG",      class: "multigrid", ksp: "CG", type: "AMG"}}
 )";
 
 
