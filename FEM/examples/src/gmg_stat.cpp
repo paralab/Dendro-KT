@@ -6,9 +6,6 @@
 
 #include <mpi.h>
 
-#include "highfive/H5File.hpp"
-#include "highfive/H5Easy.hpp"
-
 #include "c4/conf/conf.hpp"
 #include "ryml_std.hpp"  // Add this for STL interop with ryml
 
@@ -274,60 +271,6 @@ class Collector
       }
     }
 
-    // create_hdf5()
-    HighFive::File create_hdf5(
-        const std::string &filename,
-        const Configuration &config) const
-    {
-      assert(this->is_root());
-
-      auto mode = HighFive::File::ReadWrite;
-      if (to<bool>(config["overwrite_all"]))
-        mode = HighFive::File::Overwrite;
-
-      int failed_attempts = 0;
-      while (failed_attempts < 3)
-      {
-        try
-        {
-          HighFive::File file(filename, mode);
-          return file;
-        }
-        catch (const HighFive::Exception &e)
-        {
-          ++failed_attempts;
-          if (failed_attempts == 3)
-            throw e;
-          std::this_thread::sleep_for(std::chrono::milliseconds{5});
-        }
-      }
-      //future: config
-      //future: git reference
-      return HighFive::File(filename, mode);
-    }
-
-    HighFive::Group & flush_to_hdf5(
-        HighFive::Group &group)
-    {
-      if (m_vcycle_progress.size() == 0)
-        std::cerr << YLW "Warning: Dataset size is 0!\n" NRM;
-
-      assert(this->is_root());
-      group.createDataSet("vcycles", m_vcycle_progress);
-      group.createDataSet("matvecs", m_matvec_progress);
-      group.createDataSet("res_L2", m_residual_L2);
-      group.createDataSet("res_Linf", m_residual_Linf);
-      this->clear_solver();
-      return group;
-    }
-
-    HighFive::Group flush_to_hdf5(
-        HighFive::Group &&group)
-    {
-      assert(this->is_root());
-      return std::move(this->flush_to_hdf5(group));
-    }
-
   private:
     MPI_Comm m_comm;
     bool m_is_root;
@@ -381,10 +324,6 @@ const char * const initial_config = R"(
 options:
   help: false
   quiet: false
-
-output: vcycle_data.hdf5
-
-overwrite_all: true
 
 dim: -1
 
@@ -467,12 +406,6 @@ int tmain(int argc, char *argv[], Configuration &config)
   const std::string out_filename = to<std::string>(config["output"]);
 
   Collector collection(comm);
-
-  HighFive::File *h5_file = nullptr;
-  if (collection.is_root())
-  {
-    h5_file = new auto(collection.create_hdf5(out_filename, config));
-  }
 
 #ifdef CRUNCHTIME
   DendroScopeBegin();
@@ -599,6 +532,7 @@ int tmain(int argc, char *argv[], Configuration &config)
             })->getLevel(),
         comm);
 
+    printer(std::cout) << "mpi_comm_size = " << par::mpi_comm_size(comm) << "\n";
     printer(std::cout) << "mesh = " << mesh_name << "\n";
     printer(std::cout) << "cells = " << double(base_da.getGlobalElementSz()) << "  "
               << "max_depth = " << real_max_depth << "\n";
@@ -810,25 +744,6 @@ int tmain(int argc, char *argv[], Configuration &config)
         continue;
       }
 
-      bool skip_existing = false;
-      const bool force_overwrite =
-          run.has_child("force_overwrite") and to<bool>(run["force_overwrite"]);
-      if (overwrite_mode == OverwriteSome and not force_overwrite)
-      {
-        if (collection.is_root())
-        {
-          skip_existing = h5_file->exist(std::to_string(all_runs));
-        }
-        par::Mpi_Bcast(&skip_existing, 1, 0, comm);
-      }
-
-      if (skip_existing)
-      {
-        printer(std::cout) << "Skipping run [" << run_idx << " <" << n_runs
-          << "] of setup [" << setup_idx << " <" << n_setups << "] (already exists).\n";
-        continue;
-      }
-
       printer(std::cout) << "Executing run [" << run_idx << " <" << n_runs
         << "] of setup [" << setup_idx << " <" << n_setups << "].\n";
 
@@ -929,43 +844,39 @@ int tmain(int argc, char *argv[], Configuration &config)
 
       const char axes[] = "xyzt";
 
-      if (collection.is_root())
-      {
-        if (h5_file->exist(group_name))
-          h5_file->unlink(group_name);
-        HighFive::Group group = h5_file->createGroup(group_name);
+      /// if (collection.is_root())
+      /// {
+      ///   if (h5_file->exist(group_name))
+      ///     h5_file->unlink(group_name);
+      ///   HighFive::Group group = h5_file->createGroup(group_name);
 
-        std::string scale_axis = "scale_x";
-        for (int d = 0; d < dim; ++d)
-        {
-          scale_axis[scale_axis.size() - 1] = axes[d];
-          group.createAttribute(scale_axis, scale[d]);
-        }
+      ///   std::string scale_axis = "scale_x";
+      ///   for (int d = 0; d < dim; ++d)
+      ///   {
+      ///     scale_axis[scale_axis.size() - 1] = axes[d];
+      ///     group.createAttribute(scale_axis, scale[d]);
+      ///   }
 
-        std::string frequency_axis = "frequency_x";
-        for (int d = 0; d < dim; ++d)
-        {
-          frequency_axis[frequency_axis.size() - 1] = axes[d];
-          group.createAttribute(frequency_axis, freq[d]);
-        }
+      ///   std::string frequency_axis = "frequency_x";
+      ///   for (int d = 0; d < dim; ++d)
+      ///   {
+      ///     frequency_axis[frequency_axis.size() - 1] = axes[d];
+      ///     group.createAttribute(frequency_axis, freq[d]);
+      ///   }
 
-        group.createAttribute("solver", to<std::string>(run["solver"]["name"]));
-        group.createAttribute("mesh_family", to<std::string>(setup["mesh_recipe"]["name"]));
-        group.createAttribute("mesh", mesh_name);
-        group.createAttribute("cells", base_da.getGlobalElementSz());
-        group.createAttribute("max_depth", real_max_depth);
-        group.createAttribute("unknowns", base_da.getGlobalNodeSz() * single_dof);
-        collection.flush_to_hdf5(group);
-      }
+      ///   group.createAttribute("solver", to<std::string>(run["solver"]["name"]));
+      ///   group.createAttribute("mesh_family", to<std::string>(setup["mesh_recipe"]["name"]));
+      ///   group.createAttribute("mesh", mesh_name);
+      ///   group.createAttribute("cells", base_da.getGlobalElementSz());
+      ///   group.createAttribute("max_depth", real_max_depth);
+      ///   group.createAttribute("unknowns", base_da.getGlobalNodeSz() * single_dof);
+      ///   collection.flush_to_hdf5(group);
+      /// }
     }
 
     zonelog::flush_global(log_stats);
 
     printer(std::cout) << '\n' << log_stats << '\n';
-    printer(std::cout)
-        << "global_log().max_size() = "
-        << (zonelog::global_log().max_size() + 1024 - 1)/1024
-        << " KiB" << '\n';
 
     // Multigrid teardown.
     delete hybrid_mats[0];
@@ -994,17 +905,15 @@ int tmain(int argc, char *argv[], Configuration &config)
   {
     collection.observe(0, 0, 1.0, 1.0);
     collection.observe(1, 1, 0.5, 0.5);
-    collection.flush_to_hdf5(*h5_file, "first");
+    /// collection.flush_to_hdf5(*h5_file, "first");
 
     collection.observe(0, 0, 1.0, 1.0);
     collection.observe(1, 1, 0.4, 0.4);
     collection.observe(3, 3, 0.25, 0.25);
-    collection.flush_to_hdf5(*h5_file, "second");
+    /// collection.flush_to_hdf5(*h5_file, "second");
   }
 
 #endif//CRUNCHTIME
-
-  delete h5_file;
 
   return 0;
 }

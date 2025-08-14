@@ -1,8 +1,5 @@
 dim: 3
 
-overwrite_all: true
-output: 2025-02-uniform-cube.hdf5
-
 setups:
   - mesh_recipe: {name: "uniform", construct: uniform, degree: 1}
     max_depth: 6
