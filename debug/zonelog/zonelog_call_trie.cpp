@@ -6,6 +6,8 @@
 #include <locale>
 #include <ostream>
 #include <stack>
+#include <vector>
+#include <tuple>
 #include <assert.h>
 
 namespace zonelog

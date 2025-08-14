@@ -5,6 +5,9 @@
 #include <sstream>
 #include <array>
 #include <stdexcept>
+#include <algorithm>
+#include <climits>
+#include <cstdint>
 
 // -----------------------------------------------------------------------------
 
